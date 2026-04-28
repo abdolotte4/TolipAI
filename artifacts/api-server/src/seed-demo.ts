@@ -434,8 +434,8 @@ async function run() {
         name: "Digor Demo",
         slug: DEMO_SLUG,
         active: true,
-        skipTraceDailyLimit: 999,
-        fetchCompsDailyLimit: 999,
+        skipTraceDailyLimit: 2,
+        fetchCompsDailyLimit: 2,
       })
       .returning();
     console.log("  ✓ Created demo campaign");
