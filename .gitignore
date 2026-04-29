@@ -72,3 +72,4 @@ attached_assets/
 
 # Exclude Replit Agent sandbox
 artifacts/mockup-sandbox/
+.aider*
