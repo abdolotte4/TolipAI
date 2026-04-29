@@ -225,3 +225,92 @@ export const crmSubmissionLinks = pgTable("crm_submission_links", {
   submissionsCount: integer("submissions_count").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ─── Advanced Scraper Engine (Python service) ────────────────────────────────
+// Generic job tracking for any async scrape kicked off by the Python engine.
+
+export const scraperJobs = pgTable("scraper_jobs", {
+  id: text("id").primaryKey(),
+  jobType: text("job_type").notNull(),       // cash_buyers | distressed | skip_trace
+  status: text("status").notNull().default("queued"), // queued | running | done | failed
+  campaignId: integer("campaign_id").references(() => crmCampaigns.id),
+  leadId: integer("lead_id").references(() => crmLeads.id, { onDelete: "set null" }),
+  createdBy: integer("created_by").references(() => crmUsers.id),
+  params: jsonb("params").notNull().default({}),
+  progress: integer("progress").notNull().default(0),     // 0-100
+  resultCount: integer("result_count").notNull().default(0),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+}, (t) => [
+  index("scraper_jobs_lead_id_idx").on(t.leadId),
+  index("scraper_jobs_status_idx").on(t.status),
+  index("scraper_jobs_type_idx").on(t.jobType),
+  index("scraper_jobs_created_at_idx").on(t.createdAt),
+]);
+
+// Cash buyer matches discovered for a specific lead. Each row is one investor
+// (LLC or individual) ranked by match quality against the lead's property.
+export const cashBuyerMatches = pgTable("cash_buyer_matches", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
+  jobId: text("job_id").references(() => scraperJobs.id, { onDelete: "set null" }),
+  buyerName: text("buyer_name").notNull(),       // human-readable display name
+  llcName: text("llc_name"),                     // legal entity if known
+  buyerType: text("buyer_type").notNull().default("unknown"), // flipper|landlord|hedge_fund|lender|wholesaler|unknown
+  matchScore: integer("match_score").notNull().default(0),    // 0-100
+  matchReasons: jsonb("match_reasons").notNull().default([]), // string[]
+  portfolioSize: integer("portfolio_size"),
+  portfolioValue: numeric("portfolio_value", { precision: 14, scale: 2 }),
+  portfolioAppreciation: numeric("portfolio_appreciation", { precision: 6, scale: 2 }), // %
+  avgPurchasePrice: numeric("avg_purchase_price", { precision: 12, scale: 2 }),
+  lastPurchaseDate: text("last_purchase_date"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  mailingAddress: text("mailing_address"),
+  phones: jsonb("phones").notNull().default([]),     // string[]
+  emails: jsonb("emails").notNull().default([]),     // string[]
+  principals: jsonb("principals").notNull().default([]), // {name,role}[]
+  classificationReason: text("classification_reason"),
+  source: text("source").notNull().default("scraper-engine"),
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("cash_buyer_matches_lead_id_idx").on(t.leadId),
+  index("cash_buyer_matches_job_id_idx").on(t.jobId),
+  index("cash_buyer_matches_score_idx").on(t.matchScore),
+  index("cash_buyer_matches_type_idx").on(t.buyerType),
+]);
+
+// Distressed property listings discovered by the AI multi-source scraper.
+export const distressedListings = pgTable("distressed_listings", {
+  id: serial("id").primaryKey(),
+  jobId: text("job_id").references(() => scraperJobs.id, { onDelete: "cascade" }),
+  campaignId: integer("campaign_id").references(() => crmCampaigns.id),
+  distressType: text("distress_type").notNull(), // trustee_sale|auction|preforeclosure|tax_lien|code_violation|probate|fsbo|expired
+  address: text("address").notNull(),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  county: text("county"),
+  parcelId: text("parcel_id"),
+  ownerName: text("owner_name"),
+  saleDate: text("sale_date"),
+  openingBid: numeric("opening_bid", { precision: 12, scale: 2 }),
+  estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
+  mortgageBalance: numeric("mortgage_balance", { precision: 12, scale: 2 }),
+  source: text("source").notNull(),       // trustee | auction.com | zillow | redfin | tax_collector | ...
+  sourceUrl: text("source_url"),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }),
+  rawData: jsonb("raw_data"),
+  importedAsLeadId: integer("imported_as_lead_id").references(() => crmLeads.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("distressed_listings_job_id_idx").on(t.jobId),
+  index("distressed_listings_zip_idx").on(t.zip),
+  index("distressed_listings_county_idx").on(t.county),
+  index("distressed_listings_type_idx").on(t.distressType),
+  index("distressed_listings_sale_date_idx").on(t.saleDate),
+]);

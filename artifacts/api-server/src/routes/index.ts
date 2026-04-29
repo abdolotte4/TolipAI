@@ -7,6 +7,7 @@ import crmRouter from "./crm/index";
 import toolsRouter from "./tools";
 import stripeRouter from "./stripe";
 import scraperRouter from "./scraper";
+import scraperEngineRouter from "./scraperEngine";
 import openphoneRouter from "./openphone";
 import signalwireRouter from "./signalwire";
 
@@ -20,6 +21,7 @@ router.use(crmRouter);
 router.use(toolsRouter);
 router.use(stripeRouter);
 router.use(scraperRouter);
+router.use(scraperEngineRouter);
 router.use(openphoneRouter);
 router.use(signalwireRouter);
 
