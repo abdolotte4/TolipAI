@@ -1,0 +1,52 @@
+
+artifacts/digor-scraper-engine/workers/main.py ```python
+from fastapi import FastAPI
+from pydantic import BaseModel
+from scraper import SkipTracer
+from pdf_parser import PDFExtractor
+from fusion import FusionEngine
+import os
+import psycopg2
+from psycopg2 import Error
+
+app = FastAPI()
+
+class ScrapeRequest(BaseModel):
+    url: str
+
+async def scrape_url(url: str):
+    connection = None
+    try:
+        connection = psycopg2.connect(os.getenv('DATABASE_URL'))
+        cursor = connection.cursor()
+    except (Exception, Error) as error:
+        print("Error while connecting to PostgreSQL", error)
+        return
+    
+    tracer = SkipTracer()
+    result = await tracer.scrape(url)
+    fusion_engine = FusionEngine(result.markdown)
+    scored_data = fusion_engine.run()
+    
+    try:
+        cursor.execute("INSERT INTO leads (url, data, score) VALUES (%s, %s, %s)", (url, result.markdown, scored_data['phones'][0]))
+        connection.commit()
+    except (Exception, Error) as error:
+        print("Error while inserting data into leads table", error)
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
+
+@app.post("/scrape")
+async def scrape(request: ScrapeRequest):
+    await scrape_url(request.url)
+    return {"message": "Scraping completed"}
+
+@app.post("/parse-pdf")
+def parse_pdf(file: bytes):
+    pdf_extractor = PDFExtractor(file)
+    data = pdf_extractor.extract()
+    return {"data": data}
