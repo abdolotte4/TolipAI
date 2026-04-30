@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from . import db
 from .llm import extract_investor_profile, score_buyer_match
-from .scrapers import zillow, redfin
+from .scrapers import zillow, redfin, attom
 from .skip_trace import trace as skip_trace
 
 log = logging.getLogger("cash_buyers")
@@ -57,21 +57,29 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 25,
     city = lead.get("city") or ""
     state = lead.get("state") or ""
 
+    # ── Tier 1: ATTOM (paid, accurate) ──────────────────────────────────────
+    sold_attom: List[Dict[str, Any]] = []
     if progress_cb:
-        await progress_cb(10, "Scanning recent sales (Zillow)…")
+        await progress_cb(8, "Trying ATTOM Data API for recent sales…")
+    try:
+        sold_attom = await attom.recent_sales(zip_code=zip_code, city=city,
+                                              state=state, max_results=80)
+    except Exception as e:  # noqa: BLE001
+        log.info("ATTOM unavailable / exhausted, falling back to free scrape: %s", e)
 
+    # ── Tier 2: free scrape (Zillow + Redfin) — always run as backfill ─────
+    if progress_cb:
+        await progress_cb(20, "Scanning recent sales (Zillow)…")
     sold_zillow = await zillow.fetch_recently_sold(zip_code=zip_code, city=city,
                                                   state=state, max_results=80)
-
     if progress_cb:
-        await progress_cb(30, "Scanning recent sales (Redfin)…")
-
+        await progress_cb(35, "Scanning recent sales (Redfin)…")
     sold_redfin = await redfin.fetch_recently_sold(zip_code=zip_code, city=city,
                                                   state=state, max_results=80)
 
-    all_sales = sold_zillow + sold_redfin
-    log.info("Found %d recent sales (%d Zillow + %d Redfin) for ZIP=%s",
-             len(all_sales), len(sold_zillow), len(sold_redfin), zip_code)
+    all_sales = sold_attom + sold_zillow + sold_redfin
+    log.info("Found %d recent sales (%d ATTOM + %d Zillow + %d Redfin) for ZIP=%s",
+             len(all_sales), len(sold_attom), len(sold_zillow), len(sold_redfin), zip_code)
 
     if not all_sales:
         return []

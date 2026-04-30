@@ -12,6 +12,7 @@ import Distressed from "@/pages/Distressed";
 import Arv from "@/pages/Arv";
 import PropertyLookup from "@/pages/PropertyLookup";
 import LeadScraper from "@/pages/LeadScraper";
+import AiDistressed from "@/pages/AiDistressed";
 
 const queryClient = new QueryClient();
 
@@ -69,6 +70,9 @@ function Router() {
       </Route>
       <Route path="/distressed">
         {() => <ProtectedRoute component={Distressed} />}
+      </Route>
+      <Route path="/ai-distressed">
+        {() => <ProtectedRoute component={AiDistressed} />}
       </Route>
       <Route path="/arv">
         {() => <ProtectedRoute component={Arv} />}

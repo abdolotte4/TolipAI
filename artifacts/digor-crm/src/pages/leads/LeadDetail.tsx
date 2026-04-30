@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { CashBuyerMatchPanel } from "@/components/leads/CashBuyerMatchPanel";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -2854,6 +2855,9 @@ export default function LeadDetail() {
           <EmailHistory leadId={leadId} />
         </div>
       </div>
+
+      {/* Cash Buyer AI Match — full width */}
+      <CashBuyerMatchPanel leadId={leadId} />
 
       {/* Zillow + Realtor Lookup — full width at bottom */}
       <ZillowCard

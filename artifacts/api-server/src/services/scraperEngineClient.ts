@@ -120,6 +120,50 @@ export const scraperEngine = {
     );
   },
 
+  async fetchComps(req: { address: string; radiusMiles?: number; maxResults?: number }) {
+    return request<any>("/scrape/comps", {
+      method: "POST",
+      body: JSON.stringify({
+        address: req.address,
+        radius_miles: req.radiusMiles ?? 0.5,
+        max_results: req.maxResults ?? 12,
+      }),
+      timeoutMs: 60_000,
+    });
+  },
+
+  async discoverTrustees(req: { state: string; county?: string; maxResults?: number }) {
+    return request<{ state: string; county?: string; trustees: any[]; count: number }>(
+      "/ai/trustees",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          state: req.state, county: req.county || "",
+          max_results: req.maxResults ?? 25,
+        }),
+        timeoutMs: 45_000,
+      },
+    );
+  },
+
+  async hedgeFundMarkets(maxResults = 12) {
+    return request<{ markets: any[]; count: number }>(
+      `/ai/hedge-fund-markets?max_results=${maxResults}`,
+      { method: "GET", timeoutMs: 30_000 },
+    );
+  },
+
+  async aiResearch(query: string, maxResults = 10) {
+    return request<{ query: string; results: any[]; count: number }>(
+      "/ai/research",
+      {
+        method: "POST",
+        body: JSON.stringify({ query, max_results: maxResults }),
+        timeoutMs: 30_000,
+      },
+    );
+  },
+
   async skipTrace(req: { name: string; llc?: string; address?: string; state?: string }) {
     return request<any>("/scrape/skip-trace", {
       method: "POST",

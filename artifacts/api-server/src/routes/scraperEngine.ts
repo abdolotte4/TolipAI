@@ -122,6 +122,47 @@ router.get("/scraper-engine/jobs/:jobId", crmAuth, async (req: Request, res: Res
   } catch (err) { handleEngineError(err, res); }
 });
 
+// ─── Comps via Propelio (CRM-authed) ─────────────────────────────────────────
+router.post("/scraper-engine/comps", crmAuth, async (req: Request, res: Response) => {
+  const { address, radiusMiles, maxResults } = (req.body ?? {}) as {
+    address?: string; radiusMiles?: number; maxResults?: number;
+  };
+  if (!address) { res.status(400).json({ error: "address is required" }); return; }
+  try {
+    const result = await scraperEngine.fetchComps({ address, radiusMiles, maxResults });
+    res.json(result);
+  } catch (err) { handleEngineError(err, res); }
+});
+
+// ─── AI Research (PIN-authed, internal tools) ───────────────────────────────
+router.post("/scraper-engine/ai/trustees", requirePin, async (req: Request, res: Response) => {
+  const { state, county, maxResults } = (req.body ?? {}) as {
+    state?: string; county?: string; maxResults?: number;
+  };
+  if (!state) { res.status(400).json({ error: "state is required" }); return; }
+  try {
+    const out = await scraperEngine.discoverTrustees({ state, county, maxResults });
+    res.json(out);
+  } catch (err) { handleEngineError(err, res); }
+});
+
+router.get("/scraper-engine/ai/hedge-fund-markets", requirePin, async (req: Request, res: Response) => {
+  const max = Number(req.query.maxResults ?? 12);
+  try {
+    const out = await scraperEngine.hedgeFundMarkets(Number.isFinite(max) ? max : 12);
+    res.json(out);
+  } catch (err) { handleEngineError(err, res); }
+});
+
+router.post("/scraper-engine/ai/research", requirePin, async (req: Request, res: Response) => {
+  const { query, maxResults } = (req.body ?? {}) as { query?: string; maxResults?: number };
+  if (!query) { res.status(400).json({ error: "query is required" }); return; }
+  try {
+    const out = await scraperEngine.aiResearch(query, maxResults ?? 10);
+    res.json(out);
+  } catch (err) { handleEngineError(err, res); }
+});
+
 // ─── Skip-trace (CRM-authed, sync) ───────────────────────────────────────────
 router.post("/scraper-engine/skip-trace", crmAuth, async (req: Request, res: Response) => {
   const { name, llc, address, state } = (req.body ?? {}) as {
