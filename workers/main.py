@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from . import db, cash_buyers, distressed, skip_trace, ai_research
 from . import http_client
 from .config import settings
-from .scrapers import county, propelio
+from .scrapers import county, propelio, propelio_v2, propwire
 
 logging.basicConfig(
     level=settings.log_level.upper(),
@@ -147,8 +147,143 @@ class CompsRequest(BaseModel):
 
 @app.post("/scrape/comps")
 async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
-    """Pull MLS-quality comps for an address (Propelio free tier)."""
+    """Pull MLS-quality comps for an address.
+
+    Tries authenticated Propelio first (richer data), falls back to the
+    free public viewer if credentials aren't set or the auth flow fails.
+    """
+    if os.getenv("PROPELIO_EMAIL") and os.getenv("PROPELIO_PASSWORD"):
+        try:
+            return await propelio_v2.estimate_arv(req.address, radius_miles=req.radius_miles)
+        except Exception as e:  # noqa: BLE001
+            log.warning("propelio_v2 failed, falling back to public: %s", e)
     return await propelio.estimate_arv(req.address, radius_miles=req.radius_miles)
+
+
+# ─── Propelio (authenticated) ───────────────────────────────────────────────
+
+
+class PropelioCashBuyersRequest(BaseModel):
+    address: str
+    distance_miles: int = 10
+    active_within: str = "ANY_TIME"  # ANY_TIME | LAST_6M | LAST_1Y | LAST_2Y
+    min_properties: int = 3
+    landlords: bool = True
+    flippers: bool = True
+    max_results: int = 500
+    lead_id: Optional[int] = None
+    campaign_id: Optional[int] = None
+    persist: bool = True
+
+
+@app.post("/scrape/propelio/cash-buyers")
+async def scrape_propelio_cash_buyers(req: PropelioCashBuyersRequest) -> Dict[str, Any]:
+    """Async: scrape Propelio's cash-buyer panel for an address."""
+    job_id = _new_job("propelio_cash_buyers", req.model_dump())
+    await db.create_job(job_id, "propelio_cash_buyers", req.model_dump(),
+                        lead_id=req.lead_id, campaign_id=req.campaign_id)
+
+    async def runner() -> None:
+        try:
+            cb = await _make_progress_cb(job_id)
+            result = await propelio_v2.cash_buyers_for_address(
+                req.address,
+                distance_miles=req.distance_miles,
+                active_within=req.active_within,
+                min_properties=req.min_properties,
+                landlords=req.landlords,
+                flippers=req.flippers,
+                max_results=req.max_results,
+                progress_cb=cb,
+            )
+            buyers = result.get("buyers") or []
+
+            if req.persist and req.lead_id:
+                for b in buyers:
+                    try:
+                        await db.insert_cash_buyer(req.lead_id, job_id, b)
+                    except Exception as e:  # noqa: BLE001
+                        log.debug("persist buyer failed: %s", e)
+
+            _set_status(job_id, "done", progress=100, result=result)
+            await db.update_job(job_id, status="done", progress=100,
+                                result_count=len(buyers), completed=True)
+        except Exception as e:  # noqa: BLE001
+            log.exception("propelio cash-buyers job %s failed", job_id)
+            _set_status(job_id, "failed", error=str(e))
+            await db.update_job(job_id, status="failed", error=str(e), completed=True)
+
+    asyncio.create_task(runner())
+    return {"job_id": job_id, "status": "queued", "address": req.address}
+
+
+# ─── Propwire (authenticated) ───────────────────────────────────────────────
+
+
+class PropwireQueryRequest(BaseModel):
+    query: str  # address or full propwire URL
+
+
+class PropwireCashBuyersRequest(BaseModel):
+    query: str
+    radius_miles: float = 1.0
+    min_properties: int = 3
+    max_results: int = 200
+    lead_id: Optional[int] = None
+    campaign_id: Optional[int] = None
+    persist: bool = True
+
+
+@app.post("/scrape/propwire/property")
+async def scrape_propwire_property(req: PropwireQueryRequest) -> Dict[str, Any]:
+    return await propwire.fetch_property(req.query)
+
+
+@app.post("/scrape/propwire/comps")
+async def scrape_propwire_comps(req: PropwireQueryRequest) -> Dict[str, Any]:
+    rows = await propwire.fetch_comps(req.query)
+    return {"query": req.query, "count": len(rows), "comps": rows}
+
+
+@app.post("/scrape/propwire/history")
+async def scrape_propwire_history(req: PropwireQueryRequest) -> Dict[str, Any]:
+    return await propwire.fetch_history(req.query)
+
+
+@app.post("/scrape/propwire/cash-buyers-nearby")
+async def scrape_propwire_cash_buyers(req: PropwireCashBuyersRequest) -> Dict[str, Any]:
+    job_id = _new_job("propwire_cash_buyers", req.model_dump())
+    await db.create_job(job_id, "propwire_cash_buyers", req.model_dump(),
+                        lead_id=req.lead_id, campaign_id=req.campaign_id)
+
+    async def runner() -> None:
+        try:
+            cb = await _make_progress_cb(job_id)
+            buyers = await propwire.fetch_cash_buyers_nearby(
+                req.query,
+                radius_miles=req.radius_miles,
+                min_properties=req.min_properties,
+                max_results=req.max_results,
+                progress_cb=cb,
+            )
+            if req.persist and req.lead_id:
+                for b in buyers:
+                    try:
+                        await db.insert_cash_buyer(req.lead_id, job_id, b)
+                    except Exception as e:  # noqa: BLE001
+                        log.debug("persist buyer failed: %s", e)
+
+            _set_status(job_id, "done", progress=100,
+                        result={"count": len(buyers), "buyers": buyers})
+            await db.update_job(job_id, status="done", progress=100,
+                                result_count=len(buyers), completed=True)
+        except Exception as e:  # noqa: BLE001
+            log.exception("propwire cash-buyers job %s failed", job_id)
+            _set_status(job_id, "failed", error=str(e))
+            await db.update_job(job_id, status="failed", error=str(e), completed=True)
+
+    asyncio.create_task(runner())
+    return {"job_id": job_id, "status": "queued", "query": req.query}
 
 
 # ─── AI Research ────────────────────────────────────────────────────────────

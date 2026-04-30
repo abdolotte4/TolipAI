@@ -175,6 +175,47 @@ async def insert_cash_buyer_matches(
         return len(rows)
 
 
+async def insert_cash_buyer(
+    lead_id: int, job_id: Optional[str], buyer: Dict[str, Any],
+) -> bool:
+    """Insert a single buyer row mapped from Propelio/Propwire payload shape.
+
+    Returns True on success, False if no DB or insert failed silently.
+    """
+    if not lead_id or not buyer:
+        return False
+    types = buyer.get("types") or []
+    btype = "unknown"
+    if "flipper" in types and "landlord" not in types:
+        btype = "flipper"
+    elif "landlord" in types and "flipper" not in types:
+        btype = "landlord"
+    elif "landlord" in types and "flipper" in types:
+        btype = "landlord"  # flipper+landlord — pick one
+    match: Dict[str, Any] = {
+        "buyer_name": buyer.get("name") or buyer.get("llc") or "Unknown",
+        "llc_name": buyer.get("llc"),
+        "buyer_type": btype,
+        "match_score": int(min(100, max(0, (buyer.get("props_count") or 0) * 2))),
+        "match_reasons": [f"{buyer.get('props_count', 0)} recent buys"],
+        "portfolio_size": buyer.get("props_count"),
+        "portfolio_value": buyer.get("total_deal"),
+        "avg_purchase_price": buyer.get("avg_deal"),
+        "last_purchase_date": buyer.get("last_deal"),
+        "city": buyer.get("city"),
+        "state": buyer.get("state"),
+        "zip": buyer.get("zip"),
+        "mailing_address": buyer.get("address"),
+        "phones": buyer.get("phones") or [],
+        "emails": buyer.get("emails") or [],
+        "principals": buyer.get("principals") or [],
+        "source": buyer.get("source") or "scraper-engine",
+        "raw_data": buyer.get("raw") or buyer,
+    }
+    n = await insert_cash_buyer_matches(job_id or "manual", lead_id, [match])
+    return n > 0
+
+
 async def list_cash_buyers_for_lead(lead_id: int, limit: int = 100) -> List[Dict[str, Any]]:
     async with conn() as c:
         if c is None:
