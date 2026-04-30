@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 
 from . import db, cash_buyers, distressed, skip_trace
+from . import http_client
 from .config import settings
 from .scrapers import county
 
@@ -37,10 +38,12 @@ _jobs: Dict[str, Dict[str, Any]] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init_pool()
+    await http_client.init_client()
     log.info("Engine ready on port %s (LLM=%s, proxies=%s)",
              os.getenv("PORT", str(settings.port)),
              settings.has_llm(), bool(settings.proxy_url()))
     yield
+    await http_client.close_client()
     await db.close_pool()
 
 

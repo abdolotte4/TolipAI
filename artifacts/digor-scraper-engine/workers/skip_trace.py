@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from .config import settings
-from .http_client import fetch_html
+from .http_client import fetch_html, _get_client
 from .llm import extract_investor_profile
 from .scrapers import sunbiz
 
@@ -26,18 +26,18 @@ log = logging.getLogger("skip_trace")
 async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[str, Any]:
     if not settings.property_api_keys:
         return {}
+    cli = _get_client()
     for key in settings.property_api_keys:
         try:
-            async with httpx.AsyncClient(timeout=settings.request_timeout) as cli:
-                r = await cli.post(
-                    "https://api.propertyapi.co/skip-trace",
-                    json={"name": name, "address": address or ""},
-                    headers={"Authorization": f"Bearer {key}"},
-                )
-                if r.status_code == 200:
-                    return r.json()
-                if r.status_code in (402, 403) and "credits" in r.text.lower():
-                    continue
+            r = await cli.post(
+                "https://api.propertyapi.co/skip-trace",
+                json={"name": name, "address": address or ""},
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code in (402, 403) and "credits" in r.text.lower():
+                continue
         except Exception as e:  # noqa: BLE001
             log.info("PropertyAPI skip failed: %s", e)
             continue

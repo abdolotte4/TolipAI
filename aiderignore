@@ -1,0 +1,9 @@
+dist/
+build/
+node_modules/
+*.map
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
