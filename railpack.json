@@ -13,7 +13,8 @@
   "steps": {
     "install": {
       "commands": [
-        "pnpm install --no-frozen-lockfile --prod=false"
+        "echo 'HELLO FROM RAILPACK'",
+    "exit 1"
       ]
     },
     "build": {
