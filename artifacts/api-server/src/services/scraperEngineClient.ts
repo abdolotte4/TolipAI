@@ -189,6 +189,87 @@ export const scraperEngine = {
       { method: "GET" },
     );
   },
+
+  // ─── Propelio (authenticated) ────────────────────────────────────────────
+
+  async startPropelioCashBuyers(req: {
+    address: string;
+    distanceMiles?: number;
+    activeWithin?: "ANY_TIME" | "LAST_6M" | "LAST_1Y" | "LAST_2Y";
+    minProperties?: number;
+    landlords?: boolean;
+    flippers?: boolean;
+    maxResults?: number;
+    leadId?: number;
+    campaignId?: number;
+    persist?: boolean;
+  }) {
+    return request<JobResponse>("/scrape/propelio/cash-buyers", {
+      method: "POST",
+      body: JSON.stringify({
+        address: req.address,
+        distance_miles: req.distanceMiles ?? 10,
+        active_within: req.activeWithin ?? "ANY_TIME",
+        min_properties: req.minProperties ?? 3,
+        landlords: req.landlords ?? true,
+        flippers: req.flippers ?? true,
+        max_results: req.maxResults ?? 500,
+        lead_id: req.leadId,
+        campaign_id: req.campaignId,
+        persist: req.persist ?? true,
+      }),
+      timeoutMs: 30_000,
+    });
+  },
+
+  // ─── Propwire (authenticated) ────────────────────────────────────────────
+
+  async propwireProperty(query: string) {
+    return request<any>("/scrape/propwire/property", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+      timeoutMs: 90_000,
+    });
+  },
+
+  async propwireComps(query: string) {
+    return request<{ query: string; count: number; comps: any[] }>(
+      "/scrape/propwire/comps",
+      { method: "POST", body: JSON.stringify({ query }), timeoutMs: 90_000 },
+    );
+  },
+
+  async propwireHistory(query: string) {
+    return request<any>("/scrape/propwire/history", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+      timeoutMs: 90_000,
+    });
+  },
+
+  async startPropwireCashBuyers(req: {
+    query: string;
+    radiusMiles?: number;
+    minProperties?: number;
+    maxResults?: number;
+    leadId?: number;
+    campaignId?: number;
+    persist?: boolean;
+  }) {
+    return request<JobResponse>("/scrape/propwire/cash-buyers-nearby", {
+      method: "POST",
+      body: JSON.stringify({
+        query: req.query,
+        radius_miles: req.radiusMiles ?? 1.0,
+        min_properties: req.minProperties ?? 3,
+        max_results: req.maxResults ?? 200,
+        lead_id: req.leadId,
+        campaign_id: req.campaignId,
+        persist: req.persist ?? true,
+      }),
+      timeoutMs: 30_000,
+    });
+  },
 };
 
 export function logEngineConfig() {

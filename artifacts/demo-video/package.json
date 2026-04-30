@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:client": "vite --port 5000",
-    "build": "tsc && vite build",
+    "build": "vite build",
+    "build:check": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

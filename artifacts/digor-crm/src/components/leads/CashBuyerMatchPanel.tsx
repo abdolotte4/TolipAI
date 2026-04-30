@@ -82,7 +82,9 @@ function ScoreRing({ value }: { value: number }) {
   );
 }
 
-export function CashBuyerMatchPanel({ leadId }: { leadId: string }) {
+type Source = "ai" | "propelio" | "propwire";
+
+export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; leadAddress?: string | null }) {
   const [buyers, setBuyers] = useState<Buyer[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -91,6 +93,15 @@ export function CashBuyerMatchPanel({ leadId }: { leadId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Buyer | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Source + Propelio/Propwire filters ──
+  const [source, setSource] = useState<Source>("ai");
+  const [distanceMiles, setDistanceMiles] = useState<number>(1);
+  const [activeWithin, setActiveWithin] = useState<string>("12");
+  const [minProperties, setMinProperties] = useState<number>(2);
+  const [landlords, setLandlords] = useState<boolean>(true);
+  const [flippers, setFlippers] = useState<boolean>(true);
+  const [maxResults, setMaxResults] = useState<number>(100);
 
   // ── Load existing matches on mount ──
   const refreshList = async () => {
@@ -142,10 +153,31 @@ export function CashBuyerMatchPanel({ leadId }: { leadId: string }) {
     setError(null);
     setJob(null);
     try {
-      const res = await fetch(`/api/scraper-engine/cash-buyers/${leadId}`, {
+      let url = `/api/scraper-engine/cash-buyers/${leadId}`;
+      let body: Record<string, any> = {};
+      if (source === "propelio") {
+        if (!leadAddress) throw new Error("This lead has no address — cannot search Propelio.");
+        url = `/api/scraper-engine/propelio/cash-buyers`;
+        body = {
+          address: leadAddress,
+          distanceMiles, activeWithin, minProperties,
+          landlords, flippers, maxResults,
+          leadId: Number(leadId), persist: true,
+        };
+      } else if (source === "propwire") {
+        if (!leadAddress) throw new Error("This lead has no address — cannot search Propwire.");
+        url = `/api/scraper-engine/propwire/cash-buyers-nearby`;
+        body = {
+          query: leadAddress,
+          radiusMiles: distanceMiles,
+          minProperties, maxResults,
+          leadId: Number(leadId), persist: true,
+        };
+      }
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({} as any));
@@ -173,25 +205,88 @@ export function CashBuyerMatchPanel({ leadId }: { leadId: string }) {
             <Sparkles className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h3 className="font-display font-bold text-base">Cash Buyer AI Match</h3>
+            <h3 className="font-display font-bold text-base">Cash Buyer Search</h3>
             <p className="text-xs text-muted-foreground">
-              Scans recent cash sales near this lead, classifies investors with Kimi K2,
-              then skip-traces phone &amp; email.
+              AI match, Propelio investor panel, or Propwire nearby buyers — results merge into this list.
             </p>
           </div>
         </div>
-        <Button
-          onClick={handleStart}
-          disabled={starting || Boolean(isRunning)}
-          className="rounded-xl gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          {starting || isRunning ? (
-            <><RefreshCw className="w-4 h-4 animate-spin" /> Searching…</>
-          ) : (
-            <><Search className="w-4 h-4" /> Find Cash Buyers</>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value as Source)}
+            disabled={starting || Boolean(isRunning)}
+            className="rounded-lg bg-secondary/40 border border-white/10 text-xs px-2 py-1.5 outline-none"
+          >
+            <option value="ai">AI Match (Kimi K2)</option>
+            <option value="propelio">Propelio (authenticated)</option>
+            <option value="propwire">Propwire (authenticated)</option>
+          </select>
+          <Button
+            onClick={handleStart}
+            disabled={starting || Boolean(isRunning)}
+            className="rounded-xl gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            {starting || isRunning ? (
+              <><RefreshCw className="w-4 h-4 animate-spin" /> Searching…</>
+            ) : (
+              <><Search className="w-4 h-4" /> Find Buyers</>
+            )}
+          </Button>
+        </div>
       </div>
+
+      {/* Filters (visible for Propelio / Propwire) */}
+      {source !== "ai" && (
+        <div className="px-5 py-3 border-b border-border bg-secondary/10 grid grid-cols-2 sm:grid-cols-6 gap-3 text-xs">
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Distance (mi)</span>
+            <input type="number" min={0.25} step={0.25} value={distanceMiles}
+              onChange={(e) => setDistanceMiles(Number(e.target.value))}
+              className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
+          </label>
+          {source === "propelio" && (
+            <label className="flex flex-col gap-1">
+              <span className="text-muted-foreground">Active within (mo)</span>
+              <select value={activeWithin}
+                onChange={(e) => setActiveWithin(e.target.value)}
+                className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none">
+                <option value="3">3</option>
+                <option value="6">6</option>
+                <option value="12">12</option>
+                <option value="24">24</option>
+                <option value="any">Any</option>
+              </select>
+            </label>
+          )}
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Min properties</span>
+            <input type="number" min={1} step={1} value={minProperties}
+              onChange={(e) => setMinProperties(Number(e.target.value))}
+              className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Max results</span>
+            <input type="number" min={10} step={10} value={maxResults}
+              onChange={(e) => setMaxResults(Number(e.target.value))}
+              className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
+          </label>
+          {source === "propelio" && (
+            <>
+              <label className="flex items-center gap-2 mt-4">
+                <input type="checkbox" checked={landlords}
+                  onChange={(e) => setLandlords(e.target.checked)} />
+                <span>Landlords</span>
+              </label>
+              <label className="flex items-center gap-2 mt-4">
+                <input type="checkbox" checked={flippers}
+                  onChange={(e) => setFlippers(e.target.checked)} />
+                <span>Flippers</span>
+              </label>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Job progress */}
       {job && (

@@ -2857,7 +2857,7 @@ export default function LeadDetail() {
       </div>
 
       {/* Cash Buyer AI Match — full width */}
-      <CashBuyerMatchPanel leadId={leadId} />
+      <CashBuyerMatchPanel leadId={leadId} leadAddress={lead.address} />
 
       {/* Zillow + Realtor Lookup — full width at bottom */}
       <ZillowCard

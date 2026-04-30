@@ -163,6 +163,67 @@ router.post("/scraper-engine/ai/research", requirePin, async (req: Request, res:
   } catch (err) { handleEngineError(err, res); }
 });
 
+// ─── Propelio (authenticated) — cash buyers panel ───────────────────────────
+router.post("/scraper-engine/propelio/cash-buyers", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  const {
+    address, distanceMiles, activeWithin, minProperties,
+    landlords, flippers, maxResults, leadId, persist,
+  } = (req.body ?? {}) as {
+    address?: string; distanceMiles?: number; activeWithin?: any;
+    minProperties?: number; landlords?: boolean; flippers?: boolean;
+    maxResults?: number; leadId?: number; persist?: boolean;
+  };
+  if (!address) { res.status(400).json({ error: "address is required" }); return; }
+  try {
+    const job = await scraperEngine.startPropelioCashBuyers({
+      address, distanceMiles, activeWithin, minProperties,
+      landlords, flippers, maxResults, leadId, persist,
+      campaignId: user.campaignId ?? undefined,
+    });
+    res.json(job);
+  } catch (err) { handleEngineError(err, res); }
+});
+
+// ─── Propwire — property details, comps, history, nearby cash buyers ─────────
+router.post("/scraper-engine/propwire/property", crmAuth, async (req: Request, res: Response) => {
+  const { query } = (req.body ?? {}) as { query?: string };
+  if (!query) { res.status(400).json({ error: "query is required" }); return; }
+  try { res.json(await scraperEngine.propwireProperty(query)); }
+  catch (err) { handleEngineError(err, res); }
+});
+
+router.post("/scraper-engine/propwire/comps", crmAuth, async (req: Request, res: Response) => {
+  const { query } = (req.body ?? {}) as { query?: string };
+  if (!query) { res.status(400).json({ error: "query is required" }); return; }
+  try { res.json(await scraperEngine.propwireComps(query)); }
+  catch (err) { handleEngineError(err, res); }
+});
+
+router.post("/scraper-engine/propwire/history", crmAuth, async (req: Request, res: Response) => {
+  const { query } = (req.body ?? {}) as { query?: string };
+  if (!query) { res.status(400).json({ error: "query is required" }); return; }
+  try { res.json(await scraperEngine.propwireHistory(query)); }
+  catch (err) { handleEngineError(err, res); }
+});
+
+router.post("/scraper-engine/propwire/cash-buyers-nearby", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  const { query, radiusMiles, minProperties, maxResults, leadId, persist } =
+    (req.body ?? {}) as {
+      query?: string; radiusMiles?: number; minProperties?: number;
+      maxResults?: number; leadId?: number; persist?: boolean;
+    };
+  if (!query) { res.status(400).json({ error: "query is required" }); return; }
+  try {
+    const job = await scraperEngine.startPropwireCashBuyers({
+      query, radiusMiles, minProperties, maxResults, leadId, persist,
+      campaignId: user.campaignId ?? undefined,
+    });
+    res.json(job);
+  } catch (err) { handleEngineError(err, res); }
+});
+
 // ─── Skip-trace (CRM-authed, sync) ───────────────────────────────────────────
 router.post("/scraper-engine/skip-trace", crmAuth, async (req: Request, res: Response) => {
   const { name, llc, address, state } = (req.body ?? {}) as {

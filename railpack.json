@@ -1,7 +1,14 @@
 {
   "$schema": "https://schema.railpack.com",
   "packages": {
+    "node": "20",
     "pnpm": "9"
   },
-  "installCmd": "NODE_ENV=development pnpm install --no-frozen-lockfile"
+  "env": {
+    "NODE_ENV": "development",
+    "CI": "true"
+  },
+  "installCmd": "pnpm install --no-frozen-lockfile --prod=false",
+  "buildCmd": "pnpm --filter @workspace/api-server run build:prod",
+  "startCmd": "node --enable-source-maps artifacts/api-server/dist/index.mjs"
 }
