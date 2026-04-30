@@ -23,6 +23,7 @@ import CampaignList from "@/pages/campaigns/CampaignList";
 import Pipeline from "@/pages/pipeline/Pipeline";
 import SequenceList from "@/pages/sequences/SequenceList";
 import BuyersList from "@/pages/buyers/BuyersList";
+import CashBuyersAll from "@/pages/buyers/CashBuyersAll";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -102,6 +103,12 @@ function Router() {
         {() => (
           <AppLayout><BuyersList /></AppLayout>
         )}
+      </Route>
+
+      <Route path="/cash-buyers">
+        <AppLayout>
+          <CashBuyersAll />
+        </AppLayout>
       </Route>
 
       <Route path="/admin/sequences">

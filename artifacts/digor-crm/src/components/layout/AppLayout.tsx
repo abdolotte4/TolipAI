@@ -18,6 +18,7 @@ import {
   Sun,
   Moon,
   BookUser,
+  Database,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
@@ -235,6 +236,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         { label: "Pipeline", href: "/pipeline", icon: Columns },
         { label: "All Tasks", href: "/tasks", icon: CheckSquare, badge: pendingTasksCount },
         { label: "Buyers List", href: "/buyers", icon: BookUser },
+        { label: "Cash Buyer DB", href: "/cash-buyers", icon: Database },
       ]
     : [
         { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -242,6 +244,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         { label: "Pipeline", href: "/pipeline", icon: Columns },
         { label: "Tasks", href: "/tasks", icon: CheckSquare, badge: pendingTasksCount },
         { label: "Buyers List", href: "/buyers", icon: BookUser },
+        { label: "Cash Buyer DB", href: "/cash-buyers", icon: Database },
       ];
 
   const adminNavItems = [

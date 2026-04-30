@@ -7,8 +7,8 @@
  */
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { cashBuyerMatches, distressedListings } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { cashBuyerMatches, distressedListings, crmLeads } from "@workspace/db/schema";
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { crmAuth, type CrmTokenPayload } from "./crm/middleware";
 import { scraperEngine, ScraperEngineUnavailable } from "../services/scraperEngineClient";
 import { logger } from "../lib/logger";
@@ -71,6 +71,260 @@ router.get("/scraper-engine/leads/:leadId/buyers", crmAuth, async (req: Request,
     res.json({ leadId, count: rows.length, buyers: rows });
   } catch (err) {
     logger.error({ err }, "list cash buyers failed");
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── All Cash Buyers (CRM-authed, aggregated across leads) ───────────────────
+//
+// Powers the /cash-buyers page in the CRM. Lists every cash-buyer match the
+// team has ever pulled from any source (Propelio, Propwire, AI), with
+// portfolio + score filters and CSV export.
+type BuyerListFilters = {
+  search?: string;            // matches name/llcName/mailingAddress
+  source?: string[];          // e.g. ["propelio","propwire","scraper-engine"]
+  buyerType?: string[];       // e.g. ["flipper","landlord"]
+  state?: string[];           // 2-letter codes
+  minPortfolioSize?: number;
+  maxPortfolioSize?: number;
+  minScore?: number;
+  leadId?: number;
+};
+
+function parseListFilters(q: Request["query"]): BuyerListFilters {
+  const arr = (v: unknown): string[] | undefined => {
+    if (!v) return undefined;
+    const list = (Array.isArray(v) ? v : String(v).split(","))
+      .map((s) => String(s).trim())
+      .filter(Boolean);
+    return list.length ? list : undefined;
+  };
+  const num = (v: unknown): number | undefined => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  return {
+    search: q.search ? String(q.search).trim() : undefined,
+    source: arr(q.source),
+    buyerType: arr(q.buyerType),
+    state: arr(q.state)?.map((s) => s.toUpperCase()),
+    minPortfolioSize: num(q.minPortfolioSize),
+    maxPortfolioSize: num(q.maxPortfolioSize),
+    minScore: num(q.minScore),
+    leadId: num(q.leadId),
+  };
+}
+
+function buildBuyerWhere(
+  filters: BuyerListFilters,
+  scope: { campaignId: number | null; isSuperAdmin: boolean },
+): SQL | undefined {
+  const conds: SQL[] = [];
+
+  // Campaign scope: super_admin sees everything; everyone else only their campaign.
+  if (!scope.isSuperAdmin && scope.campaignId != null) {
+    conds.push(eq(crmLeads.campaignId, scope.campaignId));
+  } else if (!scope.isSuperAdmin && scope.campaignId == null) {
+    // Non-super-admin without a campaign sees nothing.
+    conds.push(sql`false`);
+  }
+
+  if (filters.leadId != null) conds.push(eq(cashBuyerMatches.leadId, filters.leadId));
+  if (filters.source?.length) conds.push(inArray(cashBuyerMatches.source, filters.source));
+  if (filters.buyerType?.length) conds.push(inArray(cashBuyerMatches.buyerType, filters.buyerType));
+  if (filters.state?.length) conds.push(inArray(cashBuyerMatches.state, filters.state));
+  if (filters.minPortfolioSize != null) conds.push(gte(cashBuyerMatches.portfolioSize, filters.minPortfolioSize));
+  if (filters.maxPortfolioSize != null) conds.push(lte(cashBuyerMatches.portfolioSize, filters.maxPortfolioSize));
+  if (filters.minScore != null) conds.push(gte(cashBuyerMatches.matchScore, filters.minScore));
+
+  if (filters.search) {
+    const like = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+    const searchExpr = or(
+      ilike(cashBuyerMatches.buyerName, like),
+      ilike(cashBuyerMatches.llcName, like),
+      ilike(cashBuyerMatches.mailingAddress, like),
+      ilike(cashBuyerMatches.city, like),
+    );
+    if (searchExpr) conds.push(searchExpr);
+  }
+
+  return conds.length ? and(...conds) : undefined;
+}
+
+// GET /api/scraper-engine/buyers
+//   ?search=...&source=propelio,propwire&buyerType=flipper,landlord
+//   &state=GA,FL&minPortfolioSize=5&maxPortfolioSize=500&minScore=40
+//   &leadId=123&page=1&limit=50
+router.get("/scraper-engine/buyers", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  const filters = parseListFilters(req.query);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+  const offset = (page - 1) * limit;
+
+  const where = buildBuyerWhere(filters, {
+    campaignId: user.campaignId ?? null,
+    isSuperAdmin: user.role === "super_admin",
+  });
+
+  try {
+    const baseQuery = db
+      .select({
+        id: cashBuyerMatches.id,
+        leadId: cashBuyerMatches.leadId,
+        buyerName: cashBuyerMatches.buyerName,
+        llcName: cashBuyerMatches.llcName,
+        buyerType: cashBuyerMatches.buyerType,
+        matchScore: cashBuyerMatches.matchScore,
+        matchReasons: cashBuyerMatches.matchReasons,
+        portfolioSize: cashBuyerMatches.portfolioSize,
+        portfolioValue: cashBuyerMatches.portfolioValue,
+        portfolioAppreciation: cashBuyerMatches.portfolioAppreciation,
+        avgPurchasePrice: cashBuyerMatches.avgPurchasePrice,
+        lastPurchaseDate: cashBuyerMatches.lastPurchaseDate,
+        city: cashBuyerMatches.city,
+        state: cashBuyerMatches.state,
+        zip: cashBuyerMatches.zip,
+        mailingAddress: cashBuyerMatches.mailingAddress,
+        phones: cashBuyerMatches.phones,
+        emails: cashBuyerMatches.emails,
+        principals: cashBuyerMatches.principals,
+        source: cashBuyerMatches.source,
+        createdAt: cashBuyerMatches.createdAt,
+        leadAddress: crmLeads.address,
+        leadCampaignId: crmLeads.campaignId,
+      })
+      .from(cashBuyerMatches)
+      .innerJoin(crmLeads, eq(cashBuyerMatches.leadId, crmLeads.id));
+
+    const rows = await (where ? baseQuery.where(where) : baseQuery)
+      .orderBy(desc(cashBuyerMatches.matchScore), desc(cashBuyerMatches.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const totalQuery = db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(cashBuyerMatches)
+      .innerJoin(crmLeads, eq(cashBuyerMatches.leadId, crmLeads.id));
+    const totalRows = await (where ? totalQuery.where(where) : totalQuery);
+    const total = totalRows[0]?.count ?? 0;
+
+    res.json({ buyers: rows, total, page, limit });
+  } catch (err) {
+    logger.error({ err }, "list all cash buyers failed");
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// GET /api/scraper-engine/buyers/facets — distinct values for filter dropdowns.
+router.get("/scraper-engine/buyers/facets", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  const isSuperAdmin = user.role === "super_admin";
+  const scopeWhere = isSuperAdmin
+    ? undefined
+    : (user.campaignId != null ? eq(crmLeads.campaignId, user.campaignId) : sql`false`);
+
+  try {
+    const facets = await db
+      .select({
+        source: cashBuyerMatches.source,
+        buyerType: cashBuyerMatches.buyerType,
+        state: cashBuyerMatches.state,
+      })
+      .from(cashBuyerMatches)
+      .innerJoin(crmLeads, eq(cashBuyerMatches.leadId, crmLeads.id))
+      .where(scopeWhere as any);
+
+    const uniq = (vals: (string | null)[]) =>
+      Array.from(new Set(vals.filter((v): v is string => !!v))).sort();
+
+    res.json({
+      sources: uniq(facets.map((f) => f.source)),
+      buyerTypes: uniq(facets.map((f) => f.buyerType)),
+      states: uniq(facets.map((f) => f.state)),
+      totalRows: facets.length,
+    });
+  } catch (err) {
+    logger.error({ err }, "buyer facets failed");
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// GET /api/scraper-engine/buyers/export.csv — same filters, streamed CSV.
+router.get("/scraper-engine/buyers/export.csv", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  const filters = parseListFilters(req.query);
+  const where = buildBuyerWhere(filters, {
+    campaignId: user.campaignId ?? null,
+    isSuperAdmin: user.role === "super_admin",
+  });
+
+  const csvCell = (v: unknown): string => {
+    if (v === null || v === undefined) return "";
+    const s = Array.isArray(v) ? v.join(" | ") : String(v);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  try {
+    const baseQuery = db
+      .select({
+        id: cashBuyerMatches.id,
+        buyerName: cashBuyerMatches.buyerName,
+        llcName: cashBuyerMatches.llcName,
+        buyerType: cashBuyerMatches.buyerType,
+        matchScore: cashBuyerMatches.matchScore,
+        portfolioSize: cashBuyerMatches.portfolioSize,
+        portfolioValue: cashBuyerMatches.portfolioValue,
+        portfolioAppreciation: cashBuyerMatches.portfolioAppreciation,
+        avgPurchasePrice: cashBuyerMatches.avgPurchasePrice,
+        lastPurchaseDate: cashBuyerMatches.lastPurchaseDate,
+        city: cashBuyerMatches.city,
+        state: cashBuyerMatches.state,
+        zip: cashBuyerMatches.zip,
+        mailingAddress: cashBuyerMatches.mailingAddress,
+        phones: cashBuyerMatches.phones,
+        emails: cashBuyerMatches.emails,
+        source: cashBuyerMatches.source,
+        createdAt: cashBuyerMatches.createdAt,
+        leadId: cashBuyerMatches.leadId,
+        leadAddress: crmLeads.address,
+      })
+      .from(cashBuyerMatches)
+      .innerJoin(crmLeads, eq(cashBuyerMatches.leadId, crmLeads.id));
+
+    const rows = await (where ? baseQuery.where(where) : baseQuery)
+      .orderBy(desc(cashBuyerMatches.matchScore), desc(cashBuyerMatches.createdAt))
+      .limit(10000); // safety cap
+
+    const header = [
+      "id", "buyer_name", "llc_name", "buyer_type", "match_score",
+      "portfolio_size", "portfolio_value", "portfolio_appreciation_pct",
+      "avg_purchase_price", "last_purchase_date",
+      "city", "state", "zip", "mailing_address",
+      "phones", "emails", "source", "discovered_at",
+      "lead_id", "lead_address",
+    ];
+    const lines = [header.join(",")];
+    for (const r of rows) {
+      lines.push([
+        r.id, r.buyerName, r.llcName, r.buyerType, r.matchScore,
+        r.portfolioSize, r.portfolioValue, r.portfolioAppreciation,
+        r.avgPurchasePrice, r.lastPurchaseDate,
+        r.city, r.state, r.zip, r.mailingAddress,
+        r.phones, r.emails, r.source,
+        r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+        r.leadId, r.leadAddress,
+      ].map(csvCell).join(","));
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="cash-buyers-${stamp}.csv"`);
+    res.send(lines.join("\n"));
+  } catch (err) {
+    logger.error({ err }, "buyer csv export failed");
     res.status(500).json({ error: (err as Error).message });
   }
 });
