@@ -7,12 +7,14 @@
   },
   "steps": {
     "install": {
-      "inputs": ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "**/package.json"],
       "commands": ["pnpm install --no-frozen-lockfile"]
     },
     "build": {
       "inputs": ["."],
       "commands": ["pnpm --filter @workspace/api-server run build:prod"]
     }
+  },
+  "deploy": {
+    "startCommand": "node --enable-source-maps artifacts/api-server/dist/index.mjs"
   }
 }
