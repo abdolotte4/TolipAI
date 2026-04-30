@@ -5,23 +5,18 @@
     "node": "20",
     "pnpm": "9.15.9"
   },
-  "env": {
-    "NODE_ENV": "development",
-    "CI": "true",
-    "NPM_CONFIG_PRODUCTION": "false"
-  },
   "steps": {
     "install": {
       "commands": [
-        "echo 'HELLO FROM RAILPACK'",
-    "exit 1"
+        "pwd",
+        "ls -la",
+        "find . -maxdepth 2 -name package.json",
+        "pnpm install --no-frozen-lockfile"
       ]
     },
     "build": {
       "inputs": [{ "step": "install" }],
-      "commands": [
-        "pnpm --filter @workspace/api-server run build:prod"
-      ]
+      "commands": ["pnpm --filter @workspace/api-server run build:prod"]
     }
   },
   "deploy": {
