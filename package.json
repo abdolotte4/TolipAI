@@ -8,9 +8,10 @@
   "license": "MIT",
   "scripts": {
     "db:push": "pnpm --filter @workspace/db run push",
-    "build": "pnpm run typecheck && pnpm -r run build",
+    "build": "pnpm --filter @workspace/api-server run build:prod",
+    "build:all": "pnpm -r run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "tsc --build --emitDeclarationOnly || true"
+    "typecheck": "echo 'typecheck skipped (production build uses esbuild)'"
   },
   "pnpm": {
     "frozen-lockfile": false

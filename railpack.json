@@ -1,14 +1,29 @@
 {
   "$schema": "https://schema.railpack.com",
+  "provider": "node",
   "packages": {
     "node": "20",
-    "pnpm": "9"
+    "pnpm": "9.15.9"
   },
   "env": {
     "NODE_ENV": "development",
-    "CI": "true"
+    "CI": "true",
+    "NPM_CONFIG_PRODUCTION": "false"
   },
-  "installCmd": "pnpm install --no-frozen-lockfile --prod=false",
-  "buildCmd": "pnpm --filter @workspace/api-server run build:prod",
-  "startCmd": "node --enable-source-maps artifacts/api-server/dist/index.mjs"
+  "steps": {
+    "install": {
+      "commands": [
+        "pnpm install --no-frozen-lockfile --prod=false"
+      ]
+    },
+    "build": {
+      "inputs": [{ "step": "install" }],
+      "commands": [
+        "pnpm --filter @workspace/api-server run build:prod"
+      ]
+    }
+  },
+  "deploy": {
+    "startCommand": "node --enable-source-maps artifacts/api-server/dist/index.mjs"
+  }
 }
