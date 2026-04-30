@@ -2,5 +2,6 @@
   "$schema": "https://schema.railpack.com",
   "packages": {
     "pnpm": "9"
-  }
+  },
+  "installCmd": "NODE_ENV=development pnpm install --no-frozen-lockfile"
 }
