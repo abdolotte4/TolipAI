@@ -18,10 +18,10 @@ from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 
-from . import db, cash_buyers, distressed, skip_trace
+from . import db, cash_buyers, distressed, skip_trace, ai_research
 from . import http_client
 from .config import settings
-from .scrapers import county
+from .scrapers import county, propelio
 
 logging.basicConfig(
     level=settings.log_level.upper(),
@@ -135,6 +135,53 @@ async def list_sources(state: Optional[str] = None) -> Dict[str, Any]:
     sources = distressed.list_sources(state=state)
     cats = distressed.list_categories()
     return {"categories": cats, "sources": sources, "count": len(sources)}
+
+
+# ─── Comps (Propelio scrape) ────────────────────────────────────────────────
+
+class CompsRequest(BaseModel):
+    address: str
+    radius_miles: float = 0.5
+    max_results: int = 12
+
+
+@app.post("/scrape/comps")
+async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
+    """Pull MLS-quality comps for an address (Propelio free tier)."""
+    return await propelio.estimate_arv(req.address, radius_miles=req.radius_miles)
+
+
+# ─── AI Research ────────────────────────────────────────────────────────────
+
+class TrusteeDiscoveryRequest(BaseModel):
+    state: str
+    county: Optional[str] = ""
+    max_results: int = 25
+
+
+@app.post("/ai/trustees")
+async def ai_trustees(req: TrusteeDiscoveryRequest) -> Dict[str, Any]:
+    trustees = await ai_research.discover_trustees(
+        state=req.state, county=req.county or "", max_results=req.max_results,
+    )
+    return {"state": req.state, "county": req.county, "trustees": trustees,
+            "count": len(trustees)}
+
+
+@app.get("/ai/hedge-fund-markets")
+async def ai_hedge_fund_markets(max_results: int = 12) -> Dict[str, Any]:
+    markets = await ai_research.hedge_fund_markets(max_results=max_results)
+    return {"markets": markets, "count": len(markets)}
+
+
+class ResearchRequest(BaseModel):
+    query: str
+    max_results: int = 10
+
+
+@app.post("/ai/research")
+async def ai_research_endpoint(req: ResearchRequest) -> Dict[str, Any]:
+    return await ai_research.research(req.query, max_results=req.max_results)
 
 
 @app.post("/scrape/cash-buyers")
