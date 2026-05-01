@@ -134,8 +134,12 @@ async def insert_cash_buyer_matches(
     async with conn() as c:
         if c is None:
             return 0
-        # lead_id column is TEXT — always coerce to str
-        lead_id_str = str(lead_id) if lead_id is not None else None
+        # lead_id column is INTEGER — coerce strings to int safely
+        try:
+            lead_id_str = int(lead_id) if lead_id is not None else None
+        except (ValueError, TypeError):
+            log.warning("insert_cash_buyer_matches: could not coerce lead_id=%r to int", lead_id)
+            lead_id_str = None
         def _to_int(v: Any) -> Optional[int]:
             """Coerce LLM-returned strings/floats to int, None if unparseable."""
             if v is None:
@@ -251,7 +255,7 @@ async def list_cash_buyers_for_lead(lead_id: Union[int, str], limit: int = 100) 
             ORDER BY match_score DESC, created_at DESC
             LIMIT $2
             """,
-            str(lead_id), limit,
+            int(lead_id), limit,
         )
         return [dict(r) for r in rows]
 
@@ -312,6 +316,136 @@ async def list_distressed_for_job(job_id: str, limit: int = 500) -> List[Dict[st
             job_id, limit,
         )
         return [dict(r) for r in rows]
+
+
+async def insert_property_comps(lead_id: int, source: str,
+                                comps: List[Dict[str, Any]], job_id: Optional[str] = None) -> int:
+    if not comps:
+        return 0
+    async with conn() as c:
+        if c is None:
+            return 0
+        rows = []
+        for comp in comps:
+            def _n(v): return float(str(v).replace(",","").replace("$","").strip()) if v is not None else None
+            def _i(v): return int(float(str(v).replace(",","").replace("$","").strip())) if v is not None else None
+            try:
+                rows.append((
+                    lead_id, job_id, source,
+                    comp.get("address") or "Unknown",
+                    comp.get("city"), comp.get("state"), comp.get("zip"),
+                    _i(comp.get("beds")), _n(comp.get("baths")),
+                    _i(comp.get("sqft")), _i(comp.get("lot_sqft")),
+                    _i(comp.get("year_built")),
+                    _n(comp.get("sale_price") or comp.get("price")),
+                    _n(comp.get("price_per_sqft")),
+                    comp.get("sold_date") or comp.get("soldDate"),
+                    comp.get("status"),
+                    _n(comp.get("distance_from_subject")),
+                    _n(comp.get("latitude")), _n(comp.get("longitude")),
+                    comp.get("source_url"), json.dumps(comp),
+                ))
+            except Exception as e:
+                log.debug("skip bad comp row: %s", e)
+        if not rows:
+            return 0
+        await c.executemany(
+            """
+            INSERT INTO property_comps
+              (lead_id, job_id, source, address, city, state, zip,
+               beds, baths, sqft, lot_sqft, year_built, sale_price, price_per_sqft,
+               sold_date, status, distance_from_subject, latitude, longitude,
+               source_url, raw_data)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb)
+            """,
+            rows,
+        )
+        return len(rows)
+
+
+async def insert_property_history(lead_id: int, source: str,
+                                   sales: List[Dict[str, Any]],
+                                   mortgages: List[Dict[str, Any]]) -> int:
+    events = [{"event_type": "sale", **s} for s in sales] + \
+             [{"event_type": "mortgage", **m} for m in mortgages]
+    if not events:
+        return 0
+    async with conn() as c:
+        if c is None:
+            return 0
+        rows = []
+        for ev in events:
+            def _n(v): return float(str(v).replace(",","").replace("$","").strip()) if v is not None else None
+            rows.append((
+                lead_id, source,
+                ev.get("event_type", "sale"),
+                ev.get("event_date") or ev.get("date") or ev.get("saleDate"),
+                _n(ev.get("sale_price") or ev.get("amount") or ev.get("price")),
+                _n(ev.get("mortgage_amount") or ev.get("loanAmount")),
+                ev.get("lender_name") or ev.get("lender"),
+                ev.get("buyer_name") or ev.get("buyer"),
+                ev.get("seller_name") or ev.get("seller"),
+                ev.get("document_type") or ev.get("docType"),
+                json.dumps(ev),
+            ))
+        await c.executemany(
+            """
+            INSERT INTO property_history
+              (lead_id, source, event_type, event_date, sale_price, mortgage_amount,
+               lender_name, buyer_name, seller_name, document_type, raw_data)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+            """,
+            rows,
+        )
+        return len(rows)
+
+
+async def upsert_property_tax(lead_id: int, source: str, tax: Dict[str, Any],
+                               tax_history: List[Dict[str, Any]]) -> None:
+    async with conn() as c:
+        if c is None:
+            return
+        def _n(v): return float(str(v).replace(",","").replace("$","").strip()) if v is not None else None
+        await c.execute(
+            """
+            INSERT INTO property_tax
+              (lead_id, source, assessed_value, market_value, land_value,
+               improvement_value, annual_tax, tax_year, parcel_id,
+               legal_description, tax_history)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+            ON CONFLICT DO NOTHING
+            """,
+            lead_id, source,
+            _n(tax.get("assessed_value")), _n(tax.get("market_value")),
+            _n(tax.get("land_value")), _n(tax.get("improvement_value")),
+            _n(tax.get("annual_tax")),
+            str(tax.get("tax_year") or "") or None,
+            tax.get("parcel_id"), tax.get("legal_description"),
+            json.dumps(tax_history or []),
+        )
+
+
+async def insert_skip_trace_result(lead_id: Optional[int], subject_name: str,
+                                    result: Dict[str, Any]) -> None:
+    async with conn() as c:
+        if c is None:
+            return
+        await c.execute(
+            """
+            INSERT INTO skip_trace_results
+              (lead_id, subject_name, llc_name, phones, emails,
+               principals, addresses, sources, raw_data)
+            VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb)
+            """,
+            lead_id, subject_name,
+            result.get("llc_name"),
+            json.dumps(result.get("phones") or []),
+            json.dumps(result.get("emails") or []),
+            json.dumps(result.get("principals") or []),
+            json.dumps(result.get("addresses") or []),
+            json.dumps(result.get("sources") or []),
+            json.dumps(result),
+        )
 
 
 async def get_lead(lead_id: int) -> Optional[Dict[str, Any]]:

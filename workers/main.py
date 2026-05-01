@@ -361,6 +361,61 @@ async def health() -> Dict[str, Any]:
     }
 
 
+@app.get("/health/keys")
+async def health_keys() -> Dict[str, Any]:
+    """Per-key status for all scraping providers — shows active vs exhausted keys."""
+    from .http_client import _exhausted, _tier_dead, _key_403_hits, _KEY_403_LIMIT
+
+    def _key_status(key: str, provider: str) -> Dict[str, Any]:
+        if key in _exhausted:
+            return {"key_tail": f"…{key[-8:]}", "status": "exhausted"}
+        hits = _key_403_hits.get(key, 0)
+        return {
+            "key_tail": f"…{key[-8:]}",
+            "status": "active",
+            "consecutive_403s": hits,
+            "exhausts_at": _KEY_403_LIMIT,
+        }
+
+    scraperapi_keys = settings.scraperapi_keys
+    scrapingbee_keys = settings.scrapingbee_keys
+
+    scraperapi_statuses = [_key_status(k, "scraperapi") for k in scraperapi_keys]
+    scrapingbee_statuses = [_key_status(k, "scrapingbee") for k in scrapingbee_keys]
+
+    scraperapi_active = sum(1 for s in scraperapi_statuses if s["status"] == "active")
+    scrapingbee_active = sum(1 for s in scrapingbee_statuses if s["status"] == "active")
+
+    return {
+        "scraperapi": {
+            "tier_dead": "scraperapi" in _tier_dead,
+            "keys_total": len(scraperapi_keys),
+            "keys_active": scraperapi_active,
+            "keys_exhausted": len(scraperapi_keys) - scraperapi_active,
+            "keys": scraperapi_statuses,
+        },
+        "scrapingbee": {
+            "tier_dead": "scrapingbee" in _tier_dead,
+            "keys_total": len(scrapingbee_keys),
+            "keys_active": scrapingbee_active,
+            "keys_exhausted": len(scrapingbee_keys) - scrapingbee_active,
+            "keys": scrapingbee_statuses,
+        },
+        "llm": {
+            "groq_configured": bool(settings.groq_api_key),
+            "cerebras_configured": bool(settings.cerebras_api_key),
+            "nvidia_configured": bool(settings.nvidia_api_key),
+            "moonshot_configured": bool(settings.moonshot_api_key),
+            "together_configured": bool(settings.together_api_key),
+        },
+        "attom": {
+            "keys_total": len(settings.attom_keys) + len(settings.property_api_keys),
+            "attom_keys": len(settings.attom_keys),
+            "property_api_keys": len(settings.property_api_keys),
+        },
+    }
+
+
 @app.get("/sources")
 async def list_sources(state: Optional[str] = None) -> Dict[str, Any]:
     """All free public-record distressed sources, optionally filtered by state."""
@@ -487,6 +542,12 @@ async def scrape_propwire_comps(req: PropwireQueryRequest) -> Dict[str, Any]:
 @app.post("/scrape/propwire/history")
 async def scrape_propwire_history(req: PropwireQueryRequest) -> Dict[str, Any]:
     return await propwire.fetch_history(req.query)
+
+
+@app.post("/scrape/propwire/tax")
+async def scrape_propwire_tax(req: PropwireQueryRequest) -> Dict[str, Any]:
+    """Scrape tax assessment + tax history from the Propwire Property tab."""
+    return await propwire.fetch_tax(req.query)
 
 
 @app.post("/scrape/propwire/cash-buyers-nearby")

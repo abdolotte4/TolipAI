@@ -328,6 +328,82 @@ async def fetch_history(query_or_url: str) -> Dict[str, Any]:
             await page.close()
 
 
+async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
+    """Scrape tax assessment + tax history from Propwire's Property tab.
+
+    Returns a dict with keys:
+      assessed_value, market_value, annual_tax, tax_year,
+      tax_history (list of {year, assessed, taxes}),
+      land_value, improvement_value, parcel_id, legal_description
+    """
+    import json as _json
+
+    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+        base = await _resolve_property_url(ctx, query_or_url)
+        # Tax info lives on the Property tab (root URL)
+        prop_url = re.sub(r"/(comparable-sales|history|owner|market|comps|buyers)$", "", base) or base
+        page = await ctx.new_page()
+        try:
+            await page.goto(prop_url, wait_until="networkidle", timeout=45000)
+            if "/login" in page.url:
+                await invalidate_session(SERVICE)
+                raise RuntimeError("Propwire session expired")
+
+            # Try __NEXT_DATA__ first — most data is embedded there
+            next_data_raw = await page.evaluate(
+                "() => { const el = document.getElementById('__NEXT_DATA__');"
+                " return el ? el.textContent : null; }"
+            )
+            tax: Dict[str, Any] = {}
+            tax_history: List[Dict[str, Any]] = []
+
+            if next_data_raw:
+                try:
+                    parsed = _json.loads(next_data_raw)
+                    pp = (parsed.get("props") or {}).get("pageProps") or {}
+                    prop = pp.get("property") or pp.get("propertyDetails") or pp
+                    tax_info = (prop.get("tax") or prop.get("taxInfo")
+                                or prop.get("assessment") or {})
+                    tax = {
+                        "assessed_value":   _safe_num(tax_info.get("assessedValue") or tax_info.get("assessed")),
+                        "market_value":     _safe_num(tax_info.get("marketValue") or tax_info.get("market")),
+                        "land_value":       _safe_num(tax_info.get("landValue") or tax_info.get("land")),
+                        "improvement_value": _safe_num(tax_info.get("improvementValue") or tax_info.get("improvement")),
+                        "annual_tax":       _safe_num(tax_info.get("annualTax") or tax_info.get("taxes") or tax_info.get("taxAmount")),
+                        "tax_year":         tax_info.get("taxYear") or tax_info.get("year"),
+                        "parcel_id":        prop.get("parcelId") or prop.get("apn") or tax_info.get("parcelId"),
+                        "legal_description": prop.get("legalDescription") or tax_info.get("legalDescription"),
+                    }
+                    tax_history = (prop.get("taxHistory") or pp.get("taxHistory") or [])
+                except Exception:
+                    pass
+
+            # If __NEXT_DATA__ didn't have tax, fall back to DOM scraping
+            if not any(v for v in tax.values() if v is not None):
+                async def _grab_label(label: str) -> Optional[str]:
+                    try:
+                        sel = f'*:has-text("{label}") + *, *:has-text("{label}") ~ *'
+                        el = page.locator(sel).first
+                        return (await el.inner_text(timeout=3000)).strip()
+                    except Exception:
+                        return None
+
+                tax = {
+                    "assessed_value":   _safe_num(await _grab_label("Assessed Value")),
+                    "market_value":     _safe_num(await _grab_label("Market Value")),
+                    "land_value":       _safe_num(await _grab_label("Land Value")),
+                    "improvement_value": _safe_num(await _grab_label("Improvement Value")),
+                    "annual_tax":       _safe_num(await _grab_label("Annual Tax") or await _grab_label("Taxes")),
+                    "tax_year":         await _grab_label("Tax Year"),
+                    "parcel_id":        await _grab_label("Parcel ID") or await _grab_label("APN"),
+                    "legal_description": await _grab_label("Legal Description"),
+                }
+
+            return {"url": prop_url, "tax": tax, "tax_history": tax_history}
+        finally:
+            await page.close()
+
+
 async def fetch_cash_buyers_nearby(
     query_or_url: str,
     *,
