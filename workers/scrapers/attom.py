@@ -29,7 +29,13 @@ class AttomExhausted(Exception):
 
 
 def _attom_keys() -> List[str]:
-    return [k for k in (settings.property_api_keys or []) if k]
+    seen: set = set()
+    keys = []
+    for k in (settings.attom_keys or []) + (settings.property_api_keys or []):
+        if k and k not in seen:
+            seen.add(k)
+            keys.append(k)
+    return keys
 
 
 async def _get(path: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:

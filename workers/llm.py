@@ -29,12 +29,12 @@ _moonshot_client: Optional[AsyncOpenAI] = None
 _dead_providers: Set[str] = set()
 # Track 429 consecutive hits per provider (reset on success)
 _rate_hits: Dict[str, int] = {}
-_MAX_RATE_HITS = 3  # give up after 3 consecutive 429s
+_MAX_RATE_HITS = 5  # give up after 5 consecutive 429s
 
 # Global concurrency gate — Groq free tier is ~30 req/min.
-# Limiting to 4 concurrent calls keeps us well under the limit and
+# Limiting to 2 concurrent calls keeps us well under the limit and
 # eliminates the 429 storm that happens when 40+ buyers are processed at once.
-_LLM_CONCURRENCY = int(__import__("os").getenv("LLM_CONCURRENCY", "4"))
+_LLM_CONCURRENCY = int(__import__("os").getenv("LLM_CONCURRENCY", "2"))
 _llm_sem: Optional[asyncio.Semaphore] = None
 
 
@@ -170,9 +170,11 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                 if _is_rate_limited(e):
                     _rate_hits[provider] = hits + 1
                     if attempt == 0:
-                        log.info("LLM provider %s rate-limited (hit %d/%d), backing off…",
-                                 provider, hits + 1, _MAX_RATE_HITS)
-                        await asyncio.sleep(2 ** attempt * 1.5)
+                        backoff = 4.0 * (2 ** (hits + 1))  # 8s, 16s, 32s … per consecutive hit
+                        backoff = min(backoff, 60.0)
+                        log.info("LLM provider %s rate-limited (hit %d/%d), backing off %.1fs…",
+                                 provider, hits + 1, _MAX_RATE_HITS, backoff)
+                        await asyncio.sleep(backoff)
                         continue
                     log.info("LLM provider %s rate-limited, moving to next provider", provider)
                     break

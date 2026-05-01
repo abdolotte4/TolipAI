@@ -44,7 +44,7 @@ class Settings:
     #    Sign up: https://cloud.cerebras.ai  → API → Create key
     cerebras_api_key: Optional[str] = _env("CEREBRAS_API_KEY")
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
-    cerebras_model: str = _env("CEREBRAS_MODEL", "llama-3.3-70b") or "llama-3.3-70b"
+    cerebras_model: str = _env("CEREBRAS_MODEL", "llama3.1-8b") or "llama3.1-8b"
 
     # 3. Together AI — $5 free credit on signup, many open models
     #    Sign up: https://api.together.ai → API Keys
