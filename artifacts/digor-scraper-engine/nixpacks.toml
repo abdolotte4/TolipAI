@@ -27,8 +27,4 @@ nixPkgs = [
 cmds = ["pip install -r requirements.txt"]
 
 [phases.build]
-# This MUST run during build, not start, to persist the browser
 cmds = ["playwright install --with-deps chromium"]
-
-[start]
-cmd = "uvicorn workers.main:app --host 0.0.0.0 --port 3000"
