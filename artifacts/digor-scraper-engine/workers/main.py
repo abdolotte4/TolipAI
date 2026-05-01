@@ -405,9 +405,14 @@ async def health_keys() -> Dict[str, Any]:
         "llm": {
             "groq_configured": bool(settings.groq_api_key),
             "cerebras_configured": bool(settings.cerebras_api_key),
-            "nvidia_configured": bool(settings.nvidia_api_key),
-            "moonshot_configured": bool(settings.moonshot_api_key),
             "together_configured": bool(settings.together_api_key),
+            "nvidia_configured": bool(settings.nvidia_api_key),
+            "openrouter_configured": bool(settings.openrouter_api_key),
+            "moonshot_configured": bool(settings.moonshot_api_key),
+        },
+        "proxy": {
+            "brightdata_configured": bool(settings.proxy_host and settings.proxy_user and settings.proxy_pass),
+            "proxy_host": settings.proxy_host or None,
         },
         "attom": {
             "keys_total": len(settings.attom_keys) + len(settings.property_api_keys),

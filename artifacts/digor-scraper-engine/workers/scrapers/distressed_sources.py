@@ -136,6 +136,63 @@ SOURCES: List[Dict[str, Any]] = [
      "url": "https://www.homesteps.com/", "render": True,
      "notes": "Freddie Mac REO listings"},
 
+    # ── Cleveland / Cuyahoga County OH ──────────────────────────────────────
+    # 1. County Clerk — Cuyahoga County Auditor (lis pendens / deeds)
+    {"key": "OH-cuyahoga-clerk",  "category": "county_clerk", "state": "OH",
+     "name": "Cuyahoga County OH — Auditor Property Search",
+     "url": "https://auditor.cuyahogacounty.us/en-US/property-search.aspx",
+     "render": True,
+     "notes": "Search recent lis pendens & deeds. Look for filings with 'FORECLOSURE' or 'LIS PENDENS'."},
+
+    # 2. Cuyahoga County RealAuction Sheriff Sales (the REAL system)
+    {"key": "OH-cuyahoga-sheriff", "category": "public_trustee", "state": "OH",
+     "name": "Cuyahoga County OH — Sheriff Sale Auction (RealAuction)",
+     "url": "https://cuyahoga.sheriffsaleauction.ohio.gov/index.cfm?zaction=AUCTION&Zmethod=PREVIEW",
+     "render": True,
+     "notes": "Live Cuyahoga County sheriff foreclosure auctions. Extract case#, address, opening bid, sale date, plaintiff."},
+
+    # 3. Cuyahoga Sheriff Sale — item detail (individual listings)
+    {"key": "OH-cuyahoga-sheriff-items", "category": "public_trustee", "state": "OH",
+     "name": "Cuyahoga County OH — Sheriff Sale Items",
+     "url": "https://cuyahoga.sheriffsaleauction.ohio.gov/index.cfm?zaction=AUCTION&Zmethod=PREVIEW&AuctionDate={date}",
+     "render": True,
+     "notes": "Date-specific sheriff sale listings. Requires {date} substitution (e.g., 05/05/2026). Extract case#, address, opening bid."},
+
+    # 4. Cuyahoga County Probate Court
+    {"key": "OH-cuyahoga-probate", "category": "probate_court", "state": "OH",
+     "name": "Cuyahoga County OH — Probate Court",
+     "url": "https://probate.cuyahogacounty.us/",
+     "render": True,
+     "notes": "Probate estate filings — look for real estate assets in estate cases."},
+
+    # 5. Cuyahoga County Treasurer — Tax Delinquent
+    {"key": "OH-cuyahoga-tax",    "category": "tax_assessor", "state": "OH",
+     "name": "Cuyahoga County OH — Treasurer Tax Delinquent",
+     "url": "https://treasurer.cuyahogacounty.us/en-US/delinquent-tax.aspx",
+     "render": True,
+     "notes": "Tax-delinquent property lists. Extract address, owner, tax amount owed."},
+
+    # 6. Auction.com — Ohio foreclosures (Cleveland area)
+    {"key": "OH-auction-com",     "category": "auction_aggregator", "state": "OH",
+     "name": "Auction.com — Ohio Foreclosures (Cleveland)",
+     "url": "https://www.auction.com/residential/ohio/?q=cleveland",
+     "render": True,
+     "notes": "Foreclosure + bank-owned auctions in Cleveland OH area. Extract address, price, auction date."},
+
+    # 7. Hubzu Ohio
+    {"key": "OH-hubzu",           "category": "auction_aggregator", "state": "OH",
+     "name": "Hubzu — Ohio Real Estate Auctions",
+     "url": "https://www.hubzu.com/storefront/list?state=OH",
+     "render": True,
+     "notes": "Hubzu auction listings for Ohio — focus on Cuyahoga / Cleveland area."},
+
+    # 8. Xome — Ohio
+    {"key": "OH-xome",            "category": "auction_aggregator", "state": "OH",
+     "name": "Xome — Ohio Foreclosure Auctions",
+     "url": "https://www.xome.com/auctions/ohio/",
+     "render": True,
+     "notes": "Xome bank-owned and foreclosure auctions for Ohio."},
+
     # ── 6. Auction aggregators (catch-all, multi-source) ────────────────────
     {"key": "auction-com",        "category": "auction_aggregator", "state": "*",
      "name": "Auction.com (nationwide)",

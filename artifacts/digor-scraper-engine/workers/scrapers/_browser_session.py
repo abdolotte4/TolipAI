@@ -19,6 +19,20 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
 
 log = logging.getLogger("browser")
 
+
+def _proxy_settings() -> Optional[Dict[str, str]]:
+    """Return a Playwright proxy dict if BrightData / residential proxy is configured."""
+    host = os.getenv("PROXY_HOST")
+    user = os.getenv("PROXY_USER")
+    pw   = os.getenv("PROXY_PASS")
+    if host and user and pw:
+        return {"server": f"http://{host}", "username": user, "password": pw}
+    oxu = os.getenv("OXYLABS_USERNAME")
+    oxp = os.getenv("OXYLABS_PASSWORD")
+    if oxu and oxp:
+        return {"server": "http://unblock.oxylabs.io:60000", "username": oxu, "password": oxp}
+    return None
+
 _STATE_DIR = Path(os.getenv("BROWSER_STATE_DIR", "/tmp")).resolve()
 _STATE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -64,8 +78,10 @@ async def browser_context(
     # prevent "Target page, context or browser has been closed" crashes.
     # --single-process keeps everything in one process (avoids /dev/shm issues).
     # --disable-dev-shm-usage reroutes shared memory to /tmp.
+    proxy_cfg = _proxy_settings()
     browser = await pw.chromium.launch(
         headless=headless,
+        proxy=proxy_cfg,
         args=[
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -80,6 +96,8 @@ async def browser_context(
             "--disable-blink-features=AutomationControlled",
         ],
     )
+    if proxy_cfg:
+        log.info("[%s] using residential proxy %s", service, proxy_cfg["server"])
     try:
         ctx = await browser.new_context(
             storage_state=storage_state,
