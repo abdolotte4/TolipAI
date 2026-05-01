@@ -9,7 +9,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import asyncpg
 
@@ -127,17 +127,23 @@ async def get_job(job_id: str) -> Optional[Dict[str, Any]]:
 # ─── cash_buyer_matches ──────────────────────────────────────────────────────
 
 async def insert_cash_buyer_matches(
-    job_id: str, lead_id: int, matches: List[Dict[str, Any]],
+    job_id: str, lead_id: Any, matches: List[Dict[str, Any]],
 ) -> int:
     if not matches:
         return 0
     async with conn() as c:
         if c is None:
             return 0
+        # lead_id column is TEXT — always coerce to str
+        lead_id_str = str(lead_id) if lead_id is not None else None
         rows = []
         for m in matches:
+            # last_purchase_date: column is TEXT; guard against raw int timestamps
+            lpd = m.get("last_purchase_date")
+            if lpd is not None and not isinstance(lpd, str):
+                lpd = str(lpd)
             rows.append((
-                lead_id,
+                lead_id_str,
                 job_id,
                 m.get("buyer_name") or "Unknown",
                 m.get("llc_name"),
@@ -148,7 +154,7 @@ async def insert_cash_buyer_matches(
                 m.get("portfolio_value"),
                 m.get("portfolio_appreciation"),
                 m.get("avg_purchase_price"),
-                m.get("last_purchase_date"),
+                lpd,
                 m.get("city"), m.get("state"), m.get("zip"),
                 m.get("mailing_address"),
                 json.dumps(m.get("phones") or []),

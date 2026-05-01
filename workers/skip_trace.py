@@ -8,12 +8,15 @@ Strategy ladder (cheapest, most legal, most accurate first):
   2. OpenCorporates API (free tier: ~100 calls/day, 200M+ companies)
   3. SEC EDGAR (free, unlimited — for investment entities w/ Form ADV / 13D / 13G)
   4. PropertyAPI.co skip-trace if a key is configured (paid fallback)
-  5. Google site-dorking (avoids ToS-violating people-search scraping)
+  5. Google site-dorking — DISABLED by default (controlled by ENABLE_GOOGLE_DORKS env)
+
+Circuit breakers: OpenCorporates 401 and PropertyAPI DNS failures are logged
+ONCE then the source is silently skipped for the rest of the process lifetime.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import httpx
 
@@ -24,8 +27,10 @@ from .scrapers import sunbiz
 
 log = logging.getLogger("skip_trace")
 
-# Per-state Secretary of State search portals — used for both direct lookup
-# and reporting which jurisdiction yielded a hit.
+# Circuit breakers — sources added here are skipped for the rest of the run
+_dead_sources: Set[str] = set()
+
+# Per-state Secretary of State search portals
 SOS_URLS: Dict[str, str] = {
     "FL": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults",
     "TX": "https://mycpa.cpa.state.tx.us/coa/",
@@ -52,20 +57,22 @@ async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
     """Query state SOS for officers + registered agent."""
     state = state.upper()
     if state == "FL":
-        # Use the structured Sunbiz scraper we already have.
-        hits = await sunbiz.search_llc(llc_name)
-        if hits:
-            detail = await sunbiz.fetch_llc_detail(hits[0]["detail_path"])
-            if detail:
-                return {
-                    "principals": detail.get("principals") or [],
-                    "registered_agent": detail.get("registered_agent"),
-                    "address": detail.get("mailing_address"),
-                    "jurisdiction": "us_fl",
-                }
+        try:
+            hits = await sunbiz.search_llc(llc_name)
+            if hits:
+                detail = await sunbiz.fetch_llc_detail(hits[0]["detail_path"])
+                if detail:
+                    return {
+                        "principals": detail.get("principals") or [],
+                        "registered_agent": detail.get("registered_agent"),
+                        "address": detail.get("mailing_address"),
+                        "jurisdiction": "us_fl",
+                    }
+        except Exception as e:
+            log.info("Sunbiz lookup failed for %s: %s", llc_name, e)
+        return {}
     if state not in SOS_URLS:
         return {}
-    # Generic LLM-extraction path for other states.
     try:
         url = f"{SOS_URLS[state]}?searchTerm={llc_name.replace(' ', '+')}"
         html = await fetch_html(url, render=True)
@@ -78,7 +85,7 @@ async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
             "address": prof.get("mailing_address"),
             "jurisdiction": f"us_{state.lower()}",
         }
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.info("SOS lookup failed for %s/%s: %s", state, llc_name, e)
         return {}
 
@@ -86,7 +93,11 @@ async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
 # ─── Step 2: OpenCorporates (free tier) ─────────────────────────────────────
 
 async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
-    """Use OpenCorporates API (free tier ≈100 calls/day)."""
+    """Use OpenCorporates API — skipped if disabled or after first auth failure."""
+    if not settings.enable_opencorporates:
+        return {}
+    if "opencorporates" in _dead_sources:
+        return {}
     cli = _get_client()
     try:
         params: Dict[str, Any] = {"q": name}
@@ -94,8 +105,12 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
             params["jurisdiction_code"] = f"us_{state.lower()}"
         r = await cli.get(OPENCORPORATES_API, params=params,
                           headers={"User-Agent": USER_AGENT})
+        if r.status_code == 401:
+            _dead_sources.add("opencorporates")
+            log.warning("OpenCorporates 401 — invalid key, disabling for this run")
+            return {}
         if r.status_code != 200:
-            log.info("OpenCorporates returned %s", r.status_code)
+            log.info("OpenCorporates returned %s — skipping", r.status_code)
             return {}
         data = r.json()
         companies = (data.get("results") or {}).get("companies") or []
@@ -110,16 +125,20 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
             "address": company.get("registered_address_in_full"),
             "jurisdiction": company.get("jurisdiction_code"),
         }
-    except Exception as e:  # noqa: BLE001
-        log.info("OpenCorporates lookup failed: %s", e)
+    except Exception as e:
+        err = str(e).lower()
+        if "name or service not known" in err or "dns" in err or "connection" in err:
+            _dead_sources.add("opencorporates")
+            log.warning("OpenCorporates DNS/connection failure — disabling for this run: %s", e)
+        else:
+            log.info("OpenCorporates lookup failed: %s", e)
         return {}
 
 
 # ─── Step 3: SEC EDGAR (free, unlimited; investment entities) ───────────────
 
 async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
-    """Search SEC EDGAR for Form ADV / 13D / 13G filings — useful for hedge
-    funds, REITs, and large investment LLCs."""
+    """Search SEC EDGAR — free, no API key required."""
     cli = _get_client()
     try:
         r = await cli.get(SEC_EDGAR_SEARCH, params={
@@ -136,7 +155,7 @@ async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
             "address":      prof.get("mailing_address"),
             "jurisdiction": "sec_filings",
         }
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.info("SEC EDGAR lookup failed: %s", e)
         return {}
 
@@ -144,7 +163,11 @@ async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
 # ─── Step 4: Paid PropertyAPI.co fallback ───────────────────────────────────
 
 async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[str, Any]:
+    if not settings.enable_propertyapi:
+        return {}
     if not settings.property_api_keys:
+        return {}
+    if "propertyapi" in _dead_sources:
         return {}
     cli = _get_client()
     for key in settings.property_api_keys:
@@ -158,22 +181,26 @@ async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[st
                 return r.json()
             if r.status_code in (402, 403) and "credit" in r.text.lower():
                 continue
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            err = str(e).lower()
+            if "name or service not known" in err or "dns" in err or "failed to connect" in err:
+                _dead_sources.add("propertyapi")
+                log.warning("PropertyAPI DNS failure — disabling for this run: %s", e)
+                return {}
             log.info("PropertyAPI skip failed: %s", e)
             continue
     return {}
 
 
-# ─── Step 5: Google site-dorking (last resort, ToS-friendly) ─────────────────
+# ─── Step 5: Google site-dorking (disabled by default) ───────────────────────
 
 async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
-    """Search Google with site-specific dorks instead of scraping people-search.
+    """Google dork — only runs when ENABLE_GOOGLE_DORKS=true."""
+    if not settings.enable_google_dorks:
+        return {}
+    if "google_dork" in _dead_sources:
+        return {}
 
-    Examples:
-      "ABC Properties LLC" "registered agent" Florida
-      "ABC Properties LLC" site:sunbiz.org
-      "ABC Properties LLC" "phone number"
-    """
     queries: List[str] = [
         f'"{name}" "registered agent" {state}',
         f'"{name}" "phone" "email" LLC',
@@ -188,6 +215,7 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
             html = await fetch_html(
                 f"https://www.google.com/search?q={q.replace(' ', '+')}",
                 render=False,
+                is_google=True,
             )
             from bs4 import BeautifulSoup
             text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
@@ -197,8 +225,13 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
             if prof.get("mailing_address"):
                 aggregated["addresses"].append(prof["mailing_address"])
             if aggregated["phones"] or aggregated["emails"]:
-                break  # good enough
-        except Exception as e:  # noqa: BLE001
+                break
+        except Exception as e:
+            err = str(e).lower()
+            if "400" in err or "custom_google" in err:
+                _dead_sources.add("google_dork")
+                log.warning("Google dork disabled — ScrapingBee config issue: %s", e)
+                break
             log.info("Google dork failed for query '%s': %s", q, e)
     return aggregated
 
@@ -250,7 +283,7 @@ async def trace(name: str, *, llc: Optional[str] = None,
         out["emails"].extend(papi.get("emails") or [])
         out["sources"].append("propertyapi")
 
-    # 5. Google dork fallback for phones/emails only
+    # 5. Google dork fallback (disabled by default — ENABLE_GOOGLE_DORKS=true to enable)
     if not out["phones"] and not out["emails"]:
         gd = await _google_dork_lookup(target, state_u)
         out["phones"].extend(gd.get("phones") or [])
@@ -261,8 +294,8 @@ async def trace(name: str, *, llc: Optional[str] = None,
             out["sources"].append("google_dork")
 
     # de-dupe + sort
-    out["phones"]    = sorted({p for p in out["phones"] if p})
-    out["emails"]    = sorted({e for e in out["emails"] if e})
-    out["addresses"] = sorted({a for a in out["addresses"] if a})
+    out["phones"]     = sorted({p for p in out["phones"] if p})
+    out["emails"]     = sorted({e for e in out["emails"] if e})
+    out["addresses"]  = sorted({a for a in out["addresses"] if a})
     out["principals"] = sorted({p for p in out["principals"] if p})
     return out

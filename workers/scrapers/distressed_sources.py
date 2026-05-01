@@ -123,10 +123,10 @@ SOURCES: List[Dict[str, Any]] = [
      "render": True, "notes": "Tax-defaulted property auctions"},
 
     # ── 5. Government REO Portals ───────────────────────────────────────────
-    {"key": "HUD-homestore",      "category": "government_reo", "state": "*",
-     "name": "HUD Home Store (nationwide REO)",
-     "url": "https://www.hudhomestore.gov/Listing/PropertySearch.aspx",
-     "render": True, "notes": "HUD-owned single-family homes"},
+    # NOTE: HUD 404, VA-Vendee 500/502, USDA 500 — disabled until sites recover.
+    # {"key": "HUD-homestore", ...},  # 404 — removed from HUD
+    # {"key": "VA-vendee", ...},       # 500/502 DNS — site down
+    # {"key": "USDA-reo", ...},        # 500 — site error
     {"key": "Fannie-homepath",    "category": "government_reo", "state": "*",
      "name": "Fannie Mae HomePath (nationwide REO)",
      "url": "https://www.homepath.com/listings",
@@ -135,14 +135,6 @@ SOURCES: List[Dict[str, Any]] = [
      "name": "Freddie Mac HomeSteps (nationwide REO)",
      "url": "https://www.homesteps.com/", "render": True,
      "notes": "Freddie Mac REO listings"},
-    {"key": "VA-vendee",          "category": "government_reo", "state": "*",
-     "name": "VA Vendee (nationwide VA REO)",
-     "url": "https://www.vendeerealestate.com/properties/", "render": True,
-     "notes": "VA-acquired single-family homes"},
-    {"key": "USDA-reo",           "category": "government_reo", "state": "*",
-     "name": "USDA Rural Development REO",
-     "url": "https://properties.sc.egov.usda.gov/resales/public/PropertyByCounty",
-     "render": True, "notes": "USDA Rural Development inventory"},
 
     # ── 6. Auction aggregators (catch-all, multi-source) ────────────────────
     {"key": "auction-com",        "category": "auction_aggregator", "state": "*",
