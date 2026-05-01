@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from . import db, cash_buyers, distressed, skip_trace, ai_research
 from . import http_client
 from .config import settings
+from .retry_queue import retry_queue, is_transient
 from .scrapers import county, propelio, propelio_v2, propwire
 
 logging.basicConfig(
@@ -39,10 +40,23 @@ _jobs: Dict[str, Dict[str, Any]] = {}
 async def lifespan(app: FastAPI):
     await db.init_pool()
     await http_client.init_client()
+
+    # Register retry runners (see _run_* functions below).
+    retry_queue.register("cash_buyers",          _run_cash_buyers)
+    retry_queue.register("distressed",           _run_distressed)
+    retry_queue.register("propelio_cash_buyers", _run_propelio_cash_buyers)
+    retry_queue.register("propwire_cash_buyers", _run_propwire_cash_buyers)
+
+    retry_queue.start(
+        on_success=_on_retry_success,
+        on_exhaust=_on_retry_exhausted,
+    )
+
     log.info("Engine ready on port %s (LLM=%s, proxies=%s)",
              os.getenv("PORT", str(settings.port)),
              settings.has_llm(), bool(settings.proxy_url()))
     yield
+    retry_queue.stop()
     await http_client.close_client()
     await db.close_pool()
 
@@ -108,6 +122,126 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
         _jobs[job_id]["status"] = status
         for k, v in kwargs.items():
             _jobs[job_id][k] = v
+
+
+# ─── Retry-queue standalone runners ─────────────────────────────────────────
+# Each runner receives (job_id, params) and runs the full job logic again.
+# They are called by the retry queue after the backoff period expires.
+
+async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    lead = await db.get_lead(params["lead_id"])
+    if not lead:
+        raise RuntimeError(f"Lead {params['lead_id']} not found — cannot retry")
+    _jobs.setdefault(job_id, {"id": job_id, "type": "cash_buyers",
+                               "status": "retrying", "progress": 0,
+                               "params": params, "result": None, "error": None})
+    _set_status(job_id, "retrying")
+    await db.update_job(job_id, status="running", progress=0)
+    cb = await _make_progress_cb(job_id)
+    results = await cash_buyers.find_cash_buyers(
+        lead, max_buyers=params.get("max_buyers", 25),
+        job_id=job_id, progress_cb=cb,
+    )
+    _set_status(job_id, "done", progress=100, result=results)
+    await db.update_job(job_id, status="done", progress=100,
+                        result_count=len(results), completed=True)
+    return {"count": len(results)}
+
+
+async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    _jobs.setdefault(job_id, {"id": job_id, "type": "distressed",
+                               "status": "retrying", "progress": 0,
+                               "params": params, "result": None, "error": None})
+    _set_status(job_id, "retrying")
+    await db.update_job(job_id, status="running", progress=0)
+    cb = await _make_progress_cb(job_id)
+    listings = await distressed.find_distressed(
+        zip_code=params.get("zip", ""),
+        county_key=params.get("county_key", ""),
+        state=params.get("state", ""),
+        categories=params.get("categories"),
+        source_keys=params.get("source_keys"),
+        job_id=job_id,
+        campaign_id=params.get("campaign_id"),
+        progress_cb=cb,
+    )
+    _set_status(job_id, "done", progress=100, result=listings)
+    await db.update_job(job_id, status="done", progress=100,
+                        result_count=len(listings), completed=True)
+    return {"count": len(listings)}
+
+
+async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    _jobs.setdefault(job_id, {"id": job_id, "type": "propelio_cash_buyers",
+                               "status": "retrying", "progress": 0,
+                               "params": params, "result": None, "error": None})
+    _set_status(job_id, "retrying")
+    await db.update_job(job_id, status="running", progress=0)
+    cb = await _make_progress_cb(job_id)
+    result = await propelio_v2.cash_buyers_for_address(
+        params["address"],
+        distance_miles=params.get("distance_miles", 10),
+        active_within=params.get("active_within", "ANY_TIME"),
+        min_properties=params.get("min_properties", 3),
+        landlords=params.get("landlords", True),
+        flippers=params.get("flippers", True),
+        max_results=params.get("max_results", 500),
+        progress_cb=cb,
+    )
+    buyers = result.get("buyers") or []
+    if params.get("persist") and params.get("lead_id"):
+        for b in buyers:
+            try:
+                await db.insert_cash_buyer(params["lead_id"], job_id, b)
+            except Exception as e:
+                log.debug("persist buyer failed on retry: %s", e)
+    _set_status(job_id, "done", progress=100, result=result)
+    await db.update_job(job_id, status="done", progress=100,
+                        result_count=len(buyers), completed=True)
+    return {"count": len(buyers)}
+
+
+async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    _jobs.setdefault(job_id, {"id": job_id, "type": "propwire_cash_buyers",
+                               "status": "retrying", "progress": 0,
+                               "params": params, "result": None, "error": None})
+    _set_status(job_id, "retrying")
+    await db.update_job(job_id, status="running", progress=0)
+    cb = await _make_progress_cb(job_id)
+    buyers = await propwire.fetch_cash_buyers_nearby(
+        params["query"],
+        radius_miles=params.get("radius_miles", 1.0),
+        min_properties=params.get("min_properties", 3),
+        max_results=params.get("max_results", 200),
+        progress_cb=cb,
+    )
+    if params.get("persist") and params.get("lead_id"):
+        for b in buyers:
+            try:
+                await db.insert_cash_buyer(params["lead_id"], job_id, b)
+            except Exception as e:
+                log.debug("persist buyer failed on retry: %s", e)
+    result = {"count": len(buyers), "buyers": buyers}
+    _set_status(job_id, "done", progress=100, result=result)
+    await db.update_job(job_id, status="done", progress=100,
+                        result_count=len(buyers), completed=True)
+    return {"count": len(buyers)}
+
+
+# ─── Retry-queue DB callbacks ────────────────────────────────────────────────
+
+async def _on_retry_success(job_id: str, result: Any) -> None:
+    """Called by the retry queue when a retry succeeds."""
+    log.info("Job %s recovered via retry → result: %s", job_id, str(result)[:60])
+
+
+async def _on_retry_exhausted(job_id: str, error: str) -> None:
+    """Called when all retry attempts are exhausted — mark job as permanently failed."""
+    log.error("Job %s permanently failed after %d retries: %s",
+              job_id, 3, error[:120])
+    _set_status(job_id, "failed", error=f"exhausted_retries: {error}")
+    await db.update_job(job_id, status="failed",
+                        error=f"exhausted_retries: {error[:200]}", completed=True)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -307,9 +441,16 @@ async def scrape_propelio_cash_buyers(req: PropelioCashBuyersRequest) -> Dict[st
             await db.update_job(job_id, status="done", progress=100,
                                 result_count=len(buyers), completed=True)
         except Exception as e:  # noqa: BLE001
-            log.exception("propelio cash-buyers job %s failed", job_id)
-            _set_status(job_id, "failed", error=str(e))
-            await db.update_job(job_id, status="failed", error=str(e), completed=True)
+            err = str(e)
+            if is_transient(e) and retry_queue.enqueue(job_id, "propelio_cash_buyers",
+                                                        req.model_dump(), last_error=err):
+                log.warning("propelio_cash_buyers job %s failed (transient) — queued for retry: %s", job_id, err[:80])
+                _set_status(job_id, "retry_pending", error=err)
+                await db.update_job(job_id, status="retry_pending", error=err)
+            else:
+                log.exception("propelio cash-buyers job %s failed (fatal)", job_id)
+                _set_status(job_id, "failed", error=err)
+                await db.update_job(job_id, status="failed", error=err, completed=True)
 
     asyncio.create_task(runner())
     return {"job_id": job_id, "status": "queued", "address": req.address}
@@ -376,9 +517,16 @@ async def scrape_propwire_cash_buyers(req: PropwireCashBuyersRequest) -> Dict[st
             await db.update_job(job_id, status="done", progress=100,
                                 result_count=len(buyers), completed=True)
         except Exception as e:  # noqa: BLE001
-            log.exception("propwire cash-buyers job %s failed", job_id)
-            _set_status(job_id, "failed", error=str(e))
-            await db.update_job(job_id, status="failed", error=str(e), completed=True)
+            err = str(e)
+            if is_transient(e) and retry_queue.enqueue(job_id, "propwire_cash_buyers",
+                                                        req.model_dump(), last_error=err):
+                log.warning("propwire_cash_buyers job %s failed (transient) — queued for retry: %s", job_id, err[:80])
+                _set_status(job_id, "retry_pending", error=err)
+                await db.update_job(job_id, status="retry_pending", error=err)
+            else:
+                log.exception("propwire cash-buyers job %s failed (fatal)", job_id)
+                _set_status(job_id, "failed", error=err)
+                await db.update_job(job_id, status="failed", error=err, completed=True)
 
     asyncio.create_task(runner())
     return {"job_id": job_id, "status": "queued", "query": req.query}
@@ -437,9 +585,16 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
             await db.update_job(job_id, status="done", progress=100,
                                 result_count=len(results), completed=True)
         except Exception as e:  # noqa: BLE001
-            log.exception("cash_buyers job %s failed", job_id)
-            _set_status(job_id, "failed", error=str(e))
-            await db.update_job(job_id, status="failed", error=str(e), completed=True)
+            err = str(e)
+            if is_transient(e) and retry_queue.enqueue(job_id, "cash_buyers",
+                                                        req.model_dump(), last_error=err):
+                log.warning("cash_buyers job %s failed (transient) — queued for retry: %s", job_id, err[:80])
+                _set_status(job_id, "retry_pending", error=err)
+                await db.update_job(job_id, status="retry_pending", error=err)
+            else:
+                log.exception("cash_buyers job %s failed (fatal)", job_id)
+                _set_status(job_id, "failed", error=err)
+                await db.update_job(job_id, status="failed", error=err, completed=True)
 
     asyncio.create_task(runner())
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
@@ -466,9 +621,16 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
             await db.update_job(job_id, status="done", progress=100,
                                 result_count=len(listings), completed=True)
         except Exception as e:  # noqa: BLE001
-            log.exception("distressed job %s failed", job_id)
-            _set_status(job_id, "failed", error=str(e))
-            await db.update_job(job_id, status="failed", error=str(e), completed=True)
+            err = str(e)
+            if is_transient(e) and retry_queue.enqueue(job_id, "distressed",
+                                                        req.model_dump(), last_error=err):
+                log.warning("distressed job %s failed (transient) — queued for retry: %s", job_id, err[:80])
+                _set_status(job_id, "retry_pending", error=err)
+                await db.update_job(job_id, status="retry_pending", error=err)
+            else:
+                log.exception("distressed job %s failed (fatal)", job_id)
+                _set_status(job_id, "failed", error=err)
+                await db.update_job(job_id, status="failed", error=err, completed=True)
 
     asyncio.create_task(runner())
     return {"job_id": job_id, "status": "queued"}
@@ -483,6 +645,19 @@ async def scrape_skip_trace(req: SkipTraceRequest) -> Dict[str, Any]:
         )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/jobs/retries")
+async def list_retries_early() -> Dict[str, Any]:
+    """Return the current in-memory retry queue (survives only while the process is up)."""
+    pending = retry_queue.pending()
+    return {
+        "queue_size": retry_queue.size(),
+        "poll_interval_seconds": 30,
+        "max_attempts": 3,
+        "backoff_seconds": [60, 300, 900],
+        "pending": pending,
+    }
 
 
 @app.get("/jobs/{job_id}")
@@ -506,6 +681,37 @@ async def list_buyers(lead_id: int, limit: int = 100) -> Dict[str, Any]:
 async def list_distressed(job_id: str, limit: int = 500) -> Dict[str, Any]:
     rows = await db.list_distressed_for_job(job_id, limit=limit)
     return {"job_id": job_id, "count": len(rows), "listings": rows}
+
+
+@app.post("/jobs/{job_id}/retry")
+async def manual_retry(job_id: str) -> Dict[str, Any]:
+    """Force-enqueue a job for immediate retry regardless of its current status.
+
+    Useful after fixing a config issue (e.g. adding a new API key) when you
+    want to retry a permanently-failed job without waiting for the backoff.
+    """
+    row = _jobs.get(job_id) or await db.get_job(job_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job_type = row.get("type") or row.get("job_type")
+    params   = row.get("params") or {}
+    if isinstance(params, str):
+        import json as _json
+        try:
+            params = _json.loads(params)
+        except Exception:
+            params = {}
+    if job_type not in ("cash_buyers", "distressed",
+                        "propelio_cash_buyers", "propwire_cash_buyers"):
+        raise HTTPException(status_code=400,
+                            detail=f"Manual retry not supported for job_type={job_type}")
+    retry_queue.enqueue(job_id, job_type, params, attempt=0,
+                        last_error="manual_retry_requested")
+    _set_status(job_id, "retry_pending")
+    await db.update_job(job_id, status="retry_pending",
+                        error="manual_retry_requested")
+    return {"job_id": job_id, "status": "retry_pending",
+            "message": "Job re-queued — will execute within 30 seconds"}
 
 
 if __name__ == "__main__":
