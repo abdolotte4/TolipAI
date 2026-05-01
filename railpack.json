@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schema.railpack.com",
+  "$schema": "https://railpack.com",
   "provider": "node",
   "packages": {
     "node": "20",
@@ -7,16 +7,17 @@
   },
   "steps": {
     "install": {
-      "inputs": ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "**/package.json"],
-      "commands": [
-        "pnpm install --no-frozen-lockfile"
-      ]
+      "inputs": [
+        { "paths": ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "**/package.json"] }
+      ],
+      "commands": ["pnpm install --no-frozen-lockfile"]
     },
     "build": {
-      "inputs": [{ "step": "install" }, "."],
-      "commands": [
-        "pnpm --filter @workspace/api-server run build:prod"
-      ]
+      "inputs": [
+        { "step": "install" },
+        { "paths": ["."] }
+      ],
+      "commands": ["pnpm --filter @workspace/api-server run build:prod"]
     }
   },
   "deploy": {
