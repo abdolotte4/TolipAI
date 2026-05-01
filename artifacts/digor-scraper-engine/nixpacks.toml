@@ -1,5 +1,7 @@
 [phases.setup]
 nixPkgs = [
+  "python311",
+  "python311Packages.pip",
   "glib",
   "nss",
   "nspr",
@@ -21,5 +23,3 @@ nixPkgs = [
   "alsa-lib",
 ]
 
-[phases.build]
-cmds = ["playwright install chromium || true"]
