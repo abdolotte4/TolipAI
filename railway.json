@@ -1,15 +1,8 @@
 {
-  "$schema": "https://railway.app"
-  "build": {
-    "builder": "RAILPACK"
-  },
-  "deploy": {
-    "startCommand": "node --enable-source-maps artifacts/api-server/dist/index.mjs",
-    "healthcheckPath": "/api/healthz",
-    "healthcheckTimeout": 300,
-    "restartPolicyType": "ON_FAILURE",
-    "numReplicas": 1
+  "$schema": "https://railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "20",
+    "pnpm": "9.15.9"
   }
 }
-
-
