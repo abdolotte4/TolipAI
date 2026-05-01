@@ -29,6 +29,19 @@ _dead_providers: Set[str] = set()
 _rate_hits: Dict[str, int] = {}
 _MAX_RATE_HITS = 3  # give up after 3 consecutive 429s
 
+# Global concurrency gate — Groq free tier is ~30 req/min.
+# Limiting to 4 concurrent calls keeps us well under the limit and
+# eliminates the 429 storm that happens when 40+ buyers are processed at once.
+_LLM_CONCURRENCY = int(__import__("os").getenv("LLM_CONCURRENCY", "4"))
+_llm_sem: Optional[asyncio.Semaphore] = None
+
+
+def _get_sem() -> asyncio.Semaphore:
+    global _llm_sem
+    if _llm_sem is None:
+        _llm_sem = asyncio.Semaphore(_LLM_CONCURRENCY)
+    return _llm_sem
+
 
 def _groq() -> Optional[AsyncOpenAI]:
     global _groq_client
@@ -81,7 +94,16 @@ async def _chat(messages: List[Dict[str, str]], *, json_mode: bool = True,
     Provider order: Groq → NVIDIA → Moonshot.
     Each provider is skipped silently after its first fatal error.
     Rate-limit (429) is retried up to _MAX_RATE_HITS times before moving on.
+    A global semaphore caps concurrent calls so we never hammer the free-tier
+    rate limit (Groq: ~30 req/min).
     """
+    async with _get_sem():
+        return await _chat_inner(messages, json_mode=json_mode,
+                                 temperature=temperature, max_tokens=max_tokens)
+
+
+async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
+                      temperature: float = 0.2, max_tokens: int = 1500) -> str:
     providers = [
         ("groq",     _groq,     settings.groq_model),
         ("nvidia",   _nvidia,   settings.nvidia_model),
