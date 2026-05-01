@@ -1975,7 +1975,11 @@ export default function LeadDetail() {
 
   const arv = Number(formData.arv) || 0;
   const erc = Number(formData.estimatedRepairCost) || 0;
-  const mao = arv > 0 ? (arv * 0.8) - erc : 0;
+  // Mirror server-side getMaoDiscount: ≤3→70%, ≤6→80%, >6→90%
+  const conditionNum = Number(formData.condition) || 0;
+  const discountFactor = conditionNum <= 0 ? 0.80 : conditionNum <= 3 ? 0.70 : conditionNum <= 6 ? 0.80 : 0.90;
+  const discountPct = Math.round(discountFactor * 100);
+  const mao = arv > 0 ? Math.max(0, Math.round(arv * discountFactor - erc)) : 0;
 
   const agingDays = differenceInDays(new Date(), new Date(lead.updatedAt || lead.createdAt));
   const isRented = formData.occupancy === "Rented" || formData.isRental === true;
@@ -2731,7 +2735,7 @@ export default function LeadDetail() {
               <div className="pt-4 border-t border-white/10">
                 <div className="flex justify-between items-center mb-1">
                   <Label className="text-primary font-semibold">Max Allowable Offer</Label>
-                  <span className="text-xs text-muted-foreground">(ARV × 80%) - ERC</span>
+                  <span className="text-xs text-muted-foreground">(ARV × {discountPct}%) - ERC</span>
                 </div>
                 <div className="text-3xl font-display font-bold text-white tracking-tight bg-background/50 p-3 rounded-xl border border-white/5 text-center shadow-inner">
                   {mao > 0 ? fmt$(mao) : "—"}
@@ -2743,8 +2747,8 @@ export default function LeadDetail() {
                       <span className="text-white">{fmt$(arv ?? 0)}</span>
                     </div>
                     <div className="flex justify-between text-muted-foreground">
-                      <span>× 80%</span>
-                      <span className="text-white">{fmt$(Math.round((arv ?? 0) * 0.8))}</span>
+                      <span>× {discountPct}%</span>
+                      <span className="text-white">{fmt$(Math.round((arv ?? 0) * discountFactor))}</span>
                     </div>
                     {Number(formData.estimatedRepairCost) > 0 && (
                       <div className="flex justify-between text-muted-foreground">
