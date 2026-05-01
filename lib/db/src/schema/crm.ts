@@ -314,3 +314,90 @@ export const distressedListings = pgTable("distressed_listings", {
   index("distressed_listings_type_idx").on(t.distressType),
   index("distressed_listings_sale_date_idx").on(t.saleDate),
 ]);
+
+// Comparable sales pulled from Propwire or Propelio for a lead.
+export const propertyComps = pgTable("property_comps", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").references(() => crmLeads.id, { onDelete: "cascade" }),
+  jobId: text("job_id"),
+  source: text("source").notNull().default("propwire"), // propwire | propelio | manual
+  address: text("address").notNull(),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  beds: integer("beds"),
+  baths: numeric("baths", { precision: 4, scale: 1 }),
+  sqft: integer("sqft"),
+  lotSqft: integer("lot_sqft"),
+  yearBuilt: integer("year_built"),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2 }),
+  pricePerSqft: numeric("price_per_sqft", { precision: 10, scale: 2 }),
+  soldDate: text("sold_date"),
+  status: text("status"),             // Sold | Active | Pending
+  distanceFromSubject: numeric("distance_from_subject", { precision: 6, scale: 2 }),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }),
+  sourceUrl: text("source_url"),
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("property_comps_lead_id_idx").on(t.leadId),
+  index("property_comps_source_idx").on(t.source),
+]);
+
+// Sale + mortgage history for a lead's property (from Propwire).
+export const propertyHistory = pgTable("property_history", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").references(() => crmLeads.id, { onDelete: "cascade" }),
+  source: text("source").notNull().default("propwire"),
+  eventType: text("event_type").notNull(), // sale | mortgage | refinance | transfer
+  eventDate: text("event_date"),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2 }),
+  mortgageAmount: numeric("mortgage_amount", { precision: 12, scale: 2 }),
+  lenderName: text("lender_name"),
+  buyerName: text("buyer_name"),
+  sellerName: text("seller_name"),
+  documentType: text("document_type"),
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("property_history_lead_id_idx").on(t.leadId),
+  index("property_history_event_type_idx").on(t.eventType),
+]);
+
+// Tax assessment + tax history for a lead's property (from Propwire).
+export const propertyTax = pgTable("property_tax", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").references(() => crmLeads.id, { onDelete: "cascade" }),
+  source: text("source").notNull().default("propwire"),
+  assessedValue: numeric("assessed_value", { precision: 12, scale: 2 }),
+  marketValue: numeric("market_value", { precision: 12, scale: 2 }),
+  landValue: numeric("land_value", { precision: 12, scale: 2 }),
+  improvementValue: numeric("improvement_value", { precision: 12, scale: 2 }),
+  annualTax: numeric("annual_tax", { precision: 10, scale: 2 }),
+  taxYear: text("tax_year"),
+  parcelId: text("parcel_id"),
+  legalDescription: text("legal_description"),
+  taxHistory: jsonb("tax_history"),   // [{year, assessed, taxes}]
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+}, (t) => [
+  index("property_tax_lead_id_idx").on(t.leadId),
+]);
+
+// Skip-trace results for a lead or a buyer name.
+export const skipTraceResults = pgTable("skip_trace_results", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").references(() => crmLeads.id, { onDelete: "cascade" }),
+  subjectName: text("subject_name").notNull(),
+  llcName: text("llc_name"),
+  phones: jsonb("phones"),            // string[]
+  emails: jsonb("emails"),            // string[]
+  principals: jsonb("principals"),    // [{name, role}]
+  addresses: jsonb("addresses"),      // string[]
+  sources: jsonb("sources"),          // which skip-trace sources returned data
+  rawData: jsonb("raw_data"),
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+}, (t) => [
+  index("skip_trace_results_lead_id_idx").on(t.leadId),
+  index("skip_trace_results_name_idx").on(t.subjectName),
+]);
