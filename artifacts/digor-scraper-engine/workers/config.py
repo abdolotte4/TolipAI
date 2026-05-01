@@ -34,13 +34,18 @@ class Settings:
     # ── Database ────────────────────────────────────────────────────────────
     database_url: Optional[str] = _env("DATABASE_URL")
 
-    # ── LLM (Kimi K2 via NVIDIA, Moonshot fallback) ─────────────────────────
+    # ── LLM: Groq (primary, free) → NVIDIA → Moonshot ───────────────────────
+    groq_api_key: Optional[str] = _env("GROQ_API_KEY")
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_model: str = _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
+
     nvidia_api_key: Optional[str] = _env("NVIDIA_API_KEY")
     nvidia_base_url: str = _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
-    nvidia_model: str = _env("NVIDIA_KIMI_MODEL", "moonshotai/kimi-k2-instruct") or ""
+    nvidia_model: str = _env("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct") or ""
+
     moonshot_api_key: Optional[str] = _env("MOONSHOT_KIMI_API_KEY")
     moonshot_base_url: str = _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
-    moonshot_model: str = _env("MOONSHOT_MODEL", "kimi-k2-0905-preview") or ""
+    moonshot_model: str = _env("MOONSHOT_MODEL", "moonshot-v1-8k") or ""
 
     # ── Scraping providers (auto-CAPTCHA) ──────────────────────────────────
     scraperapi_keys: List[str] = field(default_factory=lambda: _env_list(
@@ -70,6 +75,13 @@ class Settings:
         "ATTOM_API_KEY", "ATTOM_API_KEY_2",
     ))
 
+    # ── Feature flags ──────────────────────────────────────────────────────
+    # Disable Google dorks — burns ScrapingBee credits, requires custom_google=True
+    enable_google_dorks: bool = os.getenv("ENABLE_GOOGLE_DORKS", "false").lower() == "true"
+    # Disable dead / unreliable paid skip-trace sources
+    enable_opencorporates: bool = os.getenv("ENABLE_OPENCORPORATES", "true").lower() == "true"
+    enable_propertyapi: bool = os.getenv("ENABLE_PROPERTYAPI", "true").lower() == "true"
+
     # ── Tunables ───────────────────────────────────────────────────────────
     request_timeout: float = float(os.getenv("SCRAPER_TIMEOUT", "45"))
     job_concurrency: int = int(os.getenv("SCRAPER_JOB_CONCURRENCY", "4"))
@@ -87,7 +99,7 @@ class Settings:
         return None
 
     def has_llm(self) -> bool:
-        return bool(self.nvidia_api_key or self.moonshot_api_key)
+        return bool(self.groq_api_key or self.nvidia_api_key or self.moonshot_api_key)
 
 
 settings = Settings()

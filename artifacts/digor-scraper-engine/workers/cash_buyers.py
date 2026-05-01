@@ -161,9 +161,9 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 25,
 
     out.sort(key=lambda r: r.get("match_score", 0), reverse=True)
 
-    # Persist
+    # Persist — pass lead["id"] as-is (db coerces to str to match TEXT column)
     if job_id and lead.get("id"):
-        await db.insert_cash_buyer_matches(job_id, int(lead["id"]), out)
+        await db.insert_cash_buyer_matches(job_id, lead["id"], out)
 
     if progress_cb:
         await progress_cb(95, "Saving matches…")

@@ -1,18 +1,17 @@
-"""Kimi K2 client (NVIDIA primary, Moonshot fallback).
+"""LLM client — Groq (primary, free) → NVIDIA → Moonshot fallback chain.
 
-Both providers expose an OpenAI-compatible Chat Completions API, so we use the
-official `openai` SDK with `base_url` overrides.
-
-Used to:
-  - Convert messy HTML/markdown into structured investor profiles
-  - Classify a buyer (flipper vs landlord vs hedge_fund vs lender vs wholesaler)
-  - Score how good a match a buyer is for a specific lead/property
+All three providers expose an OpenAI-compatible Chat Completions API.
+Circuit breakers: each provider is permanently skipped after its first
+unrecoverable failure (suspended / deprecated / auth error) so the same
+error never spams the logs.  Transient 429s are retried with backoff (max 2
+retries) before the provider is considered dead for this process lifetime.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from openai import AsyncOpenAI
 
@@ -20,8 +19,25 @@ from .config import settings
 
 log = logging.getLogger("llm")
 
+_groq_client: Optional[AsyncOpenAI] = None
 _nvidia_client: Optional[AsyncOpenAI] = None
 _moonshot_client: Optional[AsyncOpenAI] = None
+
+# Circuit breakers — providers added here are permanently skipped for this run
+_dead_providers: Set[str] = set()
+# Track 429 consecutive hits per provider (reset on success)
+_rate_hits: Dict[str, int] = {}
+_MAX_RATE_HITS = 3  # give up after 3 consecutive 429s
+
+
+def _groq() -> Optional[AsyncOpenAI]:
+    global _groq_client
+    if _groq_client is None and settings.groq_api_key:
+        _groq_client = AsyncOpenAI(
+            api_key=settings.groq_api_key,
+            base_url=settings.groq_base_url,
+        )
+    return _groq_client
 
 
 def _nvidia() -> Optional[AsyncOpenAI]:
@@ -44,35 +60,80 @@ def _moonshot() -> Optional[AsyncOpenAI]:
     return _moonshot_client
 
 
+def _is_fatal(exc: Exception) -> bool:
+    """Return True for errors that mean this provider will never work."""
+    msg = str(exc).lower()
+    return any(k in msg for k in (
+        "suspended", "account", "forbidden", "unauthorized", "401",
+        "deprecated", "not found", "no such model", "does not exist",
+    ))
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "429" in msg or "rate limit" in msg or "too many requests" in msg
+
+
 async def _chat(messages: List[Dict[str, str]], *, json_mode: bool = True,
                 temperature: float = 0.2, max_tokens: int = 1500) -> str:
-    """Run a chat completion. Try NVIDIA Kimi first, then Moonshot."""
-    last_err: Optional[Exception] = None
-    for provider, client_fn, model in (
-        ("nvidia", _nvidia, settings.nvidia_model),
+    """Run a chat completion through the provider chain with circuit breakers.
+
+    Provider order: Groq → NVIDIA → Moonshot.
+    Each provider is skipped silently after its first fatal error.
+    Rate-limit (429) is retried up to _MAX_RATE_HITS times before moving on.
+    """
+    providers = [
+        ("groq",     _groq,     settings.groq_model),
+        ("nvidia",   _nvidia,   settings.nvidia_model),
         ("moonshot", _moonshot, settings.moonshot_model),
-    ):
+    ]
+    last_err: Optional[Exception] = None
+    for provider, client_fn, model in providers:
+        if provider in _dead_providers:
+            continue
         client = client_fn()
         if client is None:
             continue
-        try:
-            kwargs: Dict[str, Any] = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            }
-            if json_mode:
-                kwargs["response_format"] = {"type": "json_object"}
-            resp = await client.chat.completions.create(**kwargs)
-            return resp.choices[0].message.content or ""
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            log.warning("LLM provider %s failed: %s", provider, e)
+        hits = _rate_hits.get(provider, 0)
+        if hits >= _MAX_RATE_HITS:
+            if provider not in _dead_providers:
+                _dead_providers.add(provider)
+                log.warning("LLM provider %s: max rate-limit hits reached — skipping for this run", provider)
             continue
+        for attempt in range(2):
+            try:
+                kwargs: Dict[str, Any] = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+                if json_mode:
+                    kwargs["response_format"] = {"type": "json_object"}
+                resp = await client.chat.completions.create(**kwargs)
+                _rate_hits[provider] = 0  # reset on success
+                return resp.choices[0].message.content or ""
+            except Exception as e:
+                last_err = e
+                if _is_fatal(e):
+                    _dead_providers.add(provider)
+                    log.warning("LLM provider %s permanently dead: %s", provider, e)
+                    break
+                if _is_rate_limited(e):
+                    _rate_hits[provider] = hits + 1
+                    if attempt == 0:
+                        log.info("LLM provider %s rate-limited (hit %d/%d), backing off…",
+                                 provider, hits + 1, _MAX_RATE_HITS)
+                        await asyncio.sleep(2 ** attempt * 1.5)
+                        continue
+                    log.info("LLM provider %s rate-limited, moving to next provider", provider)
+                    break
+                log.warning("LLM provider %s error: %s", provider, e)
+                break  # non-fatal non-rate error → try next provider
+
     if last_err:
         raise last_err
-    raise RuntimeError("No LLM provider configured (set NVIDIA_API_KEY or MOONSHOT_KIMI_API_KEY)")
+    raise RuntimeError("No LLM provider available (set GROQ_API_KEY, NVIDIA_API_KEY, or MOONSHOT_KIMI_API_KEY)")
 
 
 # ─── Public helpers ──────────────────────────────────────────────────────────
@@ -166,7 +227,7 @@ async def parse_distressed_page(text: str, *, source: str) -> List[Dict[str, Any
     try:
         data = json.loads(raw)
         listings = data.get("listings") or []
-        return [l for l in listings if isinstance(l, dict) and l.get("address")]
+        return [lst for lst in listings if isinstance(lst, dict) and lst.get("address")]
     except Exception:
         log.warning("LLM distressed parse returned non-JSON")
         return []
