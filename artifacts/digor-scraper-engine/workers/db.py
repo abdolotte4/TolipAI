@@ -136,6 +136,24 @@ async def insert_cash_buyer_matches(
             return 0
         # lead_id column is TEXT — always coerce to str
         lead_id_str = str(lead_id) if lead_id is not None else None
+        def _to_int(v: Any) -> Optional[int]:
+            """Coerce LLM-returned strings/floats to int, None if unparseable."""
+            if v is None:
+                return None
+            try:
+                return int(float(str(v).replace(",", "").replace("$", "").strip()))
+            except (ValueError, TypeError):
+                return None
+
+        def _to_float(v: Any) -> Optional[float]:
+            """Coerce LLM-returned strings to float, None if unparseable."""
+            if v is None:
+                return None
+            try:
+                return float(str(v).replace(",", "").replace("$", "").strip())
+            except (ValueError, TypeError):
+                return None
+
         rows = []
         for m in matches:
             # last_purchase_date: column is TEXT; guard against raw int timestamps
@@ -150,10 +168,10 @@ async def insert_cash_buyer_matches(
                 m.get("buyer_type") or "unknown",
                 int(m.get("match_score") or 0),
                 json.dumps(m.get("match_reasons") or []),
-                m.get("portfolio_size"),
-                m.get("portfolio_value"),
-                m.get("portfolio_appreciation"),
-                m.get("avg_purchase_price"),
+                _to_int(m.get("portfolio_size")),
+                _to_float(m.get("portfolio_value")),
+                _to_float(m.get("portfolio_appreciation")),
+                _to_float(m.get("avg_purchase_price")),
                 lpd,
                 m.get("city"), m.get("state"), m.get("zip"),
                 m.get("mailing_address"),
@@ -222,7 +240,7 @@ async def insert_cash_buyer(
     return n > 0
 
 
-async def list_cash_buyers_for_lead(lead_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+async def list_cash_buyers_for_lead(lead_id: Union[int, str], limit: int = 100) -> List[Dict[str, Any]]:
     async with conn() as c:
         if c is None:
             return []
@@ -233,7 +251,7 @@ async def list_cash_buyers_for_lead(lead_id: int, limit: int = 100) -> List[Dict
             ORDER BY match_score DESC, created_at DESC
             LIMIT $2
             """,
-            lead_id, limit,
+            str(lead_id), limit,
         )
         return [dict(r) for r in rows]
 

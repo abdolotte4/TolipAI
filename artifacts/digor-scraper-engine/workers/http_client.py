@@ -75,7 +75,7 @@ def _scrapingbee_keys() -> list[str]:
 
 
 _key_403_hits: Dict[str, int] = {}
-_KEY_403_LIMIT = 2  # mark exhausted after this many consecutive 403s
+_KEY_403_LIMIT = 1  # mark exhausted after the first 403 (ScraperAPI returns plain 403 on credit exhaustion)
 
 
 def _is_exhausted(text: str, status: int, key: str = "") -> bool:
@@ -267,24 +267,37 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us",
 # ─── Crawl4AI rendered fetch (slowest, strongest) ───────────────────────────
 
 async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None) -> str:
-    """Use Crawl4AI's headless browser when JS rendering + DOM is essential."""
-    from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+    """Use Crawl4AI's headless browser when JS rendering + DOM is essential.
 
-    cfg = BrowserConfig(
-        headless=True,
-        proxy=settings.proxy_url(),
-        user_agent=random.choice(USER_AGENTS),
-    )
-    run_cfg = CrawlerRunConfig(
-        cache_mode=CacheMode.BYPASS,
-        word_count_threshold=10,
-        wait_for=wait_for,
-    )
-    async with AsyncWebCrawler(config=cfg) as crawler:
-        result = await crawler.arun(url=url, config=run_cfg)
-        if not result.success:
-            raise RuntimeError(f"Crawl4AI failed: {result.error_message}")
-        return result.markdown or result.html or ""
+    Raises RuntimeError if Crawl4AI/Playwright is unavailable (e.g. missing
+    system library libglib-2.0 in the Railway container) so the caller can
+    fall through to the next tier without crashing.
+    """
+    try:
+        from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+    except (ImportError, OSError) as e:
+        raise RuntimeError(f"Crawl4AI unavailable (import/library error): {e}") from e
+
+    try:
+        cfg = BrowserConfig(
+            headless=True,
+            proxy=settings.proxy_url(),
+            user_agent=random.choice(USER_AGENTS),
+        )
+        run_cfg = CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS,
+            word_count_threshold=10,
+            wait_for=wait_for,
+        )
+        async with AsyncWebCrawler(config=cfg) as crawler:
+            result = await crawler.arun(url=url, config=run_cfg)
+            if not result.success:
+                raise RuntimeError(f"Crawl4AI failed: {result.error_message}")
+            return result.markdown or result.html or ""
+    except RuntimeError:
+        raise
+    except OSError as e:
+        raise RuntimeError(f"Crawl4AI system dependency missing: {e}") from e
 
 
 # ─── Small await helpers ─────────────────────────────────────────────────────
