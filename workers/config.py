@@ -34,15 +34,31 @@ class Settings:
     # ── Database ────────────────────────────────────────────────────────────
     database_url: Optional[str] = _env("DATABASE_URL")
 
-    # ── LLM: Groq (primary, free) → NVIDIA → Moonshot ───────────────────────
+    # ── LLM chain (all free-tier first, paid fallbacks last) ────────────────
+    # 1. Groq — free, 30 req/min, llama-3.3-70b
     groq_api_key: Optional[str] = _env("GROQ_API_KEY")
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_model: str = _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
 
+    # 2. Cerebras — completely free, fastest inference on the planet
+    #    Sign up: https://cloud.cerebras.ai  → API → Create key
+    cerebras_api_key: Optional[str] = _env("CEREBRAS_API_KEY")
+    cerebras_base_url: str = "https://api.cerebras.ai/v1"
+    cerebras_model: str = _env("CEREBRAS_MODEL", "llama-3.3-70b") or "llama-3.3-70b"
+
+    # 3. Together AI — $5 free credit on signup, many open models
+    #    Sign up: https://api.together.ai → API Keys
+    together_api_key: Optional[str] = _env("TOGETHER_API_KEY")
+    together_base_url: str = "https://api.together.xyz/v1"
+    together_model: str = _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
+
+    # 4. NVIDIA NIM — free credits available
     nvidia_api_key: Optional[str] = _env("NVIDIA_API_KEY")
     nvidia_base_url: str = _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
     nvidia_model: str = _env("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct") or ""
 
+    # 5. Moonshot / Kimi k2 — paid but affordable, excellent for real estate text
+    #    Sign up: https://platform.moonshot.ai → API Keys
     moonshot_api_key: Optional[str] = _env("MOONSHOT_KIMI_API_KEY")
     moonshot_base_url: str = _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
     moonshot_model: str = _env("MOONSHOT_MODEL", "moonshot-v1-8k") or ""
@@ -99,7 +115,10 @@ class Settings:
         return None
 
     def has_llm(self) -> bool:
-        return bool(self.groq_api_key or self.nvidia_api_key or self.moonshot_api_key)
+        return bool(
+            self.groq_api_key or self.cerebras_api_key or self.together_api_key
+            or self.nvidia_api_key or self.moonshot_api_key
+        )
 
 
 settings = Settings()

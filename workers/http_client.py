@@ -74,11 +74,32 @@ def _scrapingbee_keys() -> list[str]:
     return [k for k in settings.scrapingbee_keys if k not in _exhausted]
 
 
-def _is_exhausted(text: str, status: int) -> bool:
+_key_403_hits: Dict[str, int] = {}
+_KEY_403_LIMIT = 2  # mark exhausted after this many consecutive 403s
+
+
+def _is_exhausted(text: str, status: int, key: str = "") -> bool:
+    """A key is exhausted when:
+    - status 402 (explicit payment required), OR
+    - 403 with "exhausted"/"quota"/"credits" text, OR
+    - 403 received twice in a row (ScraperAPI returns plain 403 when out of credits)
+    """
     t = (text or "").lower()
-    if status == 403 and ("exhausted" in t or "quota" in t or "credits" in t):
+    if status == 402:
         return True
-    return status == 402
+    if status == 403:
+        if any(w in t for w in ("exhausted", "quota", "credits", "out of", "limit")):
+            return True
+        if key:
+            hits = _key_403_hits.get(key, 0) + 1
+            _key_403_hits[key] = hits
+            if hits >= _KEY_403_LIMIT:
+                return True
+    else:
+        # Reset hit counter on any success or non-403 status
+        if key and key in _key_403_hits:
+            _key_403_hits[key] = 0
+    return False
 
 
 async def fetch_via_scraperapi(url: str, *, render: bool = False,
@@ -102,7 +123,7 @@ async def fetch_via_scraperapi(url: str, *, render: bool = False,
             params["premium"] = "true"
         try:
             r = await cli.get("https://api.scraperapi.com/", params=params)
-            if _is_exhausted(r.text, r.status_code):
+            if _is_exhausted(r.text, r.status_code, key):
                 _exhausted.add(key)
                 log.warning("ScraperAPI key …%s exhausted", key[-6:])
                 continue
@@ -144,7 +165,7 @@ async def fetch_via_scrapingbee(url: str, *, render: bool = True,
             params["custom_google"] = "true"
         try:
             r = await cli.get("https://app.scrapingbee.com/api/v1/", params=params)
-            if _is_exhausted(r.text, r.status_code):
+            if _is_exhausted(r.text, r.status_code, key):
                 _exhausted.add(key)
                 log.warning("ScrapingBee key …%s exhausted", key[-6:])
                 continue
@@ -201,13 +222,16 @@ async def fetch_direct(url: str, *, use_proxy: bool = True,
 
 async def fetch_html(url: str, *, render: bool = False, country: str = "us",
                      is_google: bool = False) -> str:
-    """Tiered fetch — ScraperAPI → ScrapingBee → direct (proxy).
+    """Tiered fetch — ScrapingBee → Crawl4AI → direct (proxy).
 
-    Returns rendered HTML when `render=True` is honoured by the chosen tier.
+    ScraperAPI is tried only if keys are available and not all exhausted.
+    Crawl4AI (our local Playwright-based engine) is the strongest free tier
+    for JS-heavy pages and is preferred over bare direct fetches.
     Raises if all tiers fail.
     """
     errors: list[str] = []
 
+    # Tier 1: ScraperAPI (paid, try only if keys are alive)
     if _scraperapi_keys() and "scraperapi" not in _tier_dead:
         try:
             return await fetch_via_scraperapi(url, render=render, country=country)
@@ -215,6 +239,7 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us",
             errors.append(f"sapi: {e}")
             log.info("ScraperAPI failed: %s", e)
 
+    # Tier 2: ScrapingBee (paid, try only if keys are alive)
     if _scrapingbee_keys() and "scrapingbee" not in _tier_dead:
         try:
             return await fetch_via_scrapingbee(url, render=render, premium=True,
@@ -223,6 +248,15 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us",
             errors.append(f"sbee: {e}")
             log.info("ScrapingBee failed: %s", e)
 
+    # Tier 3: Crawl4AI — our free Playwright-based engine (strong JS rendering)
+    if render:
+        try:
+            return await fetch_crawl4ai(url)
+        except Exception as e:
+            errors.append(f"crawl4ai: {e}")
+            log.info("Crawl4AI failed: %s", e)
+
+    # Tier 4: Plain direct fetch with residential proxy
     try:
         return await fetch_direct(url, use_proxy=True, verify_ssl=False)
     except Exception as e:
