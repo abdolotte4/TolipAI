@@ -7,17 +7,16 @@
   },
   "steps": {
     "install": {
-      "inputs": [
-        { "paths": ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "**/package.json"] }
-      ],
-      "commands": ["pnpm install --no-frozen-lockfile"]
+      "inputs": [{ "directory": "." }],
+      "commands": [
+        "pnpm install --no-frozen-lockfile"
+      ]
     },
     "build": {
-      "inputs": [
-        { "step": "install" },
-        { "paths": ["."] }
-      ],
-      "commands": ["pnpm --filter @workspace/api-server run build:prod"]
+      "inputs": [{ "step": "install" }],
+      "commands": [
+        "pnpm --filter @workspace/api-server run build:prod"
+      ]
     }
   },
   "deploy": {
