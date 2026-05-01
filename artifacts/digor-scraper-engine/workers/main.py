@@ -114,18 +114,116 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
 
 @app.get("/health")
 async def health() -> Dict[str, Any]:
-    pool = await db.init_pool()
+    """Deep health-check: probes DB, each LLM provider, and each scraper tier."""
+    import time
+    from .llm import _dead_providers, _rate_hits, _MAX_RATE_HITS
+    from .http_client import _exhausted, _tier_dead, _scraperapi_keys, _scrapingbee_keys
+    from .skip_trace import _dead_sources
+    from openai import AsyncOpenAI
+
+    async def _probe_llm(name: str, client_fn, model: str) -> Dict[str, Any]:
+        if name in _dead_providers:
+            return {"status": "dead", "reason": "circuit_breaker_open"}
+        hits = _rate_hits.get(name, 0)
+        if hits >= _MAX_RATE_HITS:
+            return {"status": "rate_limited", "consecutive_hits": hits}
+        client = client_fn()
+        if client is None:
+            return {"status": "unconfigured", "reason": "no_api_key"}
+        t0 = time.monotonic()
+        try:
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "reply with the single word OK"}],
+                max_tokens=5,
+                temperature=0,
+            )
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            content = (resp.choices[0].message.content or "").strip()
+            return {"status": "ok", "latency_ms": latency_ms, "response": content[:20]}
+        except Exception as e:
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            msg = str(e)
+            return {
+                "status": "error",
+                "latency_ms": latency_ms,
+                "error": msg[:120],
+            }
+
+    async def _probe_db() -> Dict[str, Any]:
+        t0 = time.monotonic()
+        try:
+            pool = await db.init_pool()
+            if pool is None:
+                return {"status": "unconfigured", "reason": "no_DATABASE_URL"}
+            async with pool.acquire() as c:
+                await c.fetchval("SELECT 1")
+            return {"status": "ok", "latency_ms": int((time.monotonic() - t0) * 1000)}
+        except Exception as e:
+            return {"status": "error", "error": str(e)[:120]}
+
+    async def _probe_scraperapi() -> Dict[str, Any]:
+        if "scraperapi" in _tier_dead:
+            return {"status": "dead", "reason": "all_keys_exhausted"}
+        active = len(_scraperapi_keys())
+        total = len(settings.scraperapi_keys)
+        if total == 0:
+            return {"status": "unconfigured"}
+        if active == 0:
+            return {"status": "exhausted", "keys_total": total}
+        return {"status": "ok", "keys_active": active, "keys_total": total}
+
+    async def _probe_scrapingbee() -> Dict[str, Any]:
+        if "scrapingbee" in _tier_dead:
+            return {"status": "dead", "reason": "all_keys_exhausted"}
+        active = len(_scrapingbee_keys())
+        total = len(settings.scrapingbee_keys)
+        if total == 0:
+            return {"status": "unconfigured"}
+        if active == 0:
+            return {"status": "exhausted", "keys_total": total}
+        return {"status": "ok", "keys_active": active, "keys_total": total}
+
+    from .llm import _groq, _nvidia, _moonshot
+
+    llm_groq, llm_nvidia, llm_moon, db_result, sapi, sbee = await asyncio.gather(
+        _probe_llm("groq",     _groq,     settings.groq_model),
+        _probe_llm("nvidia",   _nvidia,   settings.nvidia_model),
+        _probe_llm("moonshot", _moonshot, settings.moonshot_model),
+        _probe_db(),
+        _probe_scraperapi(),
+        _probe_scrapingbee(),
+    )
+
+    llm_ok = any(r["status"] == "ok" for r in (llm_groq, llm_nvidia, llm_moon))
+    db_ok  = db_result.get("status") == "ok"
+    overall = "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
+
     return {
-        "status": "ok",
+        "status": overall,
         "version": "0.1.0",
-        "db": bool(pool),
-        "llm": settings.has_llm(),
-        "scraperapi_keys": len(settings.scraperapi_keys),
-        "scrapingbee_keys": len(settings.scrapingbee_keys),
-        "residential_proxy": bool(settings.proxy_url()),
-        "supported_counties": county.list_supported_counties(),
-        "categories": distressed.list_categories(),
-        "source_count": len(distressed.list_sources()),
+        "llm": {
+            "groq":     llm_groq,
+            "nvidia":   llm_nvidia,
+            "moonshot": llm_moon,
+            "any_ok":   llm_ok,
+        },
+        "database": db_result,
+        "scrapers": {
+            "scraperapi":  sapi,
+            "scrapingbee": sbee,
+            "residential_proxy": bool(settings.proxy_url()),
+            "google_dorks_enabled": settings.enable_google_dorks,
+        },
+        "skip_trace": {
+            "opencorporates_enabled": settings.enable_opencorporates,
+            "propertyapi_enabled":    settings.enable_propertyapi,
+            "dead_sources": sorted(_dead_sources),
+        },
+        "distressed_sources": {
+            "total": len(distressed.list_sources()),
+            "categories": len(distressed.list_categories()),
+        },
     }
 
 
