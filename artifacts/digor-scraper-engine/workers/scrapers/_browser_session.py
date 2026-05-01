@@ -60,9 +60,25 @@ async def browser_context(
     storage_state: Optional[str] = str(state_file) if state_file.exists() else None
 
     pw = await async_playwright().start()
+    # Container-hardened flags — Railway/Docker environments need these to
+    # prevent "Target page, context or browser has been closed" crashes.
+    # --single-process keeps everything in one process (avoids /dev/shm issues).
+    # --disable-dev-shm-usage reroutes shared memory to /tmp.
     browser = await pw.chromium.launch(
         headless=headless,
-        args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+        args=[
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--no-first-run",
+            "--no-zygote",
+            "--single-process",
+            "--disable-blink-features=AutomationControlled",
+        ],
     )
     try:
         ctx = await browser.new_context(

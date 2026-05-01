@@ -1606,26 +1606,47 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       `${propertyContext}\n\n` +
       `Reply with: {"condition": <integer 1-10>, "rationale": "<one short sentence>", "confidence": "low"|"medium"|"high"}`;
 
-    const aiRes = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.AI_MODEL || "llama-3.3-70b-versatile",
-        max_tokens: 200,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
+    // Try primary AI, then fall back to Groq directly (up to 3 attempts total)
+    const model = process.env.AI_MODEL || "llama-3.3-70b-versatile";
+    const payload = JSON.stringify({
+      model,
+      max_tokens: 200,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
     });
+    const endpoints = [
+      { url: `${aiBaseUrl}/chat/completions`, key: aiApiKey },
+      // Direct Groq fallback — works even if Replit AI integration is down
+      ...(process.env.GROQ_API_KEY
+        ? [{ url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY }]
+        : []),
+    ];
 
-    if (!aiRes.ok) {
-      res.status(502).json({ error: `AI call failed: ${aiRes.status}` });
+    let raw = "";
+    let lastStatus = 0;
+    for (const ep of endpoints) {
+      try {
+        const aiRes = await fetch(ep.url, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${ep.key}`, "Content-Type": "application/json" },
+          body: payload,
+          signal: AbortSignal.timeout(20_000),
+        });
+        lastStatus = aiRes.status;
+        if (!aiRes.ok) continue;
+        const json = await aiRes.json() as any;
+        raw = json?.choices?.[0]?.message?.content ?? "";
+        if (raw) break;
+      } catch { /* network error — try next endpoint */ }
+    }
+
+    if (!raw) {
+      res.status(502).json({ error: `AI call failed after ${endpoints.length} attempts (last status: ${lastStatus})` });
       return;
     }
 
-    const json = await aiRes.json() as any;
-    const raw = json?.choices?.[0]?.message?.content ?? "";
     const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
 
     let parsed: { condition?: number; rationale?: string; confidence?: string };

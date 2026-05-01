@@ -20,6 +20,8 @@ from .config import settings
 log = logging.getLogger("llm")
 
 _groq_client: Optional[AsyncOpenAI] = None
+_cerebras_client: Optional[AsyncOpenAI] = None
+_together_client: Optional[AsyncOpenAI] = None
 _nvidia_client: Optional[AsyncOpenAI] = None
 _moonshot_client: Optional[AsyncOpenAI] = None
 
@@ -51,6 +53,26 @@ def _groq() -> Optional[AsyncOpenAI]:
             base_url=settings.groq_base_url,
         )
     return _groq_client
+
+
+def _cerebras() -> Optional[AsyncOpenAI]:
+    global _cerebras_client
+    if _cerebras_client is None and settings.cerebras_api_key:
+        _cerebras_client = AsyncOpenAI(
+            api_key=settings.cerebras_api_key,
+            base_url=settings.cerebras_base_url,
+        )
+    return _cerebras_client
+
+
+def _together() -> Optional[AsyncOpenAI]:
+    global _together_client
+    if _together_client is None and settings.together_api_key:
+        _together_client = AsyncOpenAI(
+            api_key=settings.together_api_key,
+            base_url=settings.together_base_url,
+        )
+    return _together_client
 
 
 def _nvidia() -> Optional[AsyncOpenAI]:
@@ -104,10 +126,14 @@ async def _chat(messages: List[Dict[str, str]], *, json_mode: bool = True,
 
 async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                       temperature: float = 0.2, max_tokens: int = 1500) -> str:
+    # Free-tier first, paid fallbacks last.
+    # Add CEREBRAS_API_KEY and/or TOGETHER_API_KEY to Railway env for extra headroom.
     providers = [
-        ("groq",     _groq,     settings.groq_model),
-        ("nvidia",   _nvidia,   settings.nvidia_model),
-        ("moonshot", _moonshot, settings.moonshot_model),
+        ("groq",     _groq,      settings.groq_model),
+        ("cerebras", _cerebras,  settings.cerebras_model),
+        ("together", _together,  settings.together_model),
+        ("nvidia",   _nvidia,    settings.nvidia_model),
+        ("moonshot", _moonshot,  settings.moonshot_model),
     ]
     last_err: Optional[Exception] = None
     for provider, client_fn, model in providers:
