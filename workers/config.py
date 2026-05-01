@@ -52,13 +52,19 @@ class Settings:
     together_base_url: str = "https://api.together.xyz/v1"
     together_model: str = _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
 
-    # 4. NVIDIA NIM — free credits available
+    # 4. NVIDIA NIM — free credits
+    #    Current models: nvidia/llama-3.1-nemotron-70b-instruct, meta/llama-3.1-8b-instruct
     nvidia_api_key: Optional[str] = _env("NVIDIA_API_KEY")
     nvidia_base_url: str = _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
-    nvidia_model: str = _env("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct") or ""
+    nvidia_model: str = _env("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct") or ""
 
-    # 5. Moonshot / Kimi k2 — paid but affordable, excellent for real estate text
-    #    Sign up: https://platform.moonshot.ai → API Keys
+    # 5. OpenRouter — single key, rotates across many open models (free + paid)
+    #    Sign up: https://openrouter.ai → Keys
+    openrouter_api_key: Optional[str] = _env("OPENROUTER_API_KEY")
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = _env("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free") or ""
+
+    # 6. Moonshot / Kimi — paid, excellent for long real-estate text
     moonshot_api_key: Optional[str] = _env("MOONSHOT_KIMI_API_KEY")
     moonshot_base_url: str = _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
     moonshot_model: str = _env("MOONSHOT_MODEL", "moonshot-v1-8k") or ""
@@ -117,7 +123,7 @@ class Settings:
     def has_llm(self) -> bool:
         return bool(
             self.groq_api_key or self.cerebras_api_key or self.together_api_key
-            or self.nvidia_api_key or self.moonshot_api_key
+            or self.nvidia_api_key or self.openrouter_api_key or self.moonshot_api_key
         )
 
 

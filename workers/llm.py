@@ -1,6 +1,9 @@
-"""LLM client — Groq (primary, free) → NVIDIA → Moonshot fallback chain.
+"""LLM client — provider chain with circuit breakers.
 
-All three providers expose an OpenAI-compatible Chat Completions API.
+Provider order (free-tier first):
+  Groq → Cerebras → Together → NVIDIA → OpenRouter → Moonshot
+
+All providers expose an OpenAI-compatible Chat Completions API.
 Circuit breakers: each provider is permanently skipped after its first
 unrecoverable failure (suspended / deprecated / auth error) so the same
 error never spams the logs.  Transient 429s are retried with backoff (max 2
@@ -23,6 +26,7 @@ _groq_client: Optional[AsyncOpenAI] = None
 _cerebras_client: Optional[AsyncOpenAI] = None
 _together_client: Optional[AsyncOpenAI] = None
 _nvidia_client: Optional[AsyncOpenAI] = None
+_openrouter_client: Optional[AsyncOpenAI] = None
 _moonshot_client: Optional[AsyncOpenAI] = None
 
 # Circuit breakers — providers added here are permanently skipped for this run
@@ -85,6 +89,20 @@ def _nvidia() -> Optional[AsyncOpenAI]:
     return _nvidia_client
 
 
+def _openrouter() -> Optional[AsyncOpenAI]:
+    global _openrouter_client
+    if _openrouter_client is None and settings.openrouter_api_key:
+        _openrouter_client = AsyncOpenAI(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            default_headers={
+                "HTTP-Referer": "https://digor.app",
+                "X-Title": "Digor",
+            },
+        )
+    return _openrouter_client
+
+
 def _moonshot() -> Optional[AsyncOpenAI]:
     global _moonshot_client
     if _moonshot_client is None and settings.moonshot_api_key:
@@ -127,13 +145,13 @@ async def _chat(messages: List[Dict[str, str]], *, json_mode: bool = True,
 async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                       temperature: float = 0.2, max_tokens: int = 1500) -> str:
     # Free-tier first, paid fallbacks last.
-    # Add CEREBRAS_API_KEY and/or TOGETHER_API_KEY to Railway env for extra headroom.
     providers = [
-        ("groq",     _groq,      settings.groq_model),
-        ("cerebras", _cerebras,  settings.cerebras_model),
-        ("together", _together,  settings.together_model),
-        ("nvidia",   _nvidia,    settings.nvidia_model),
-        ("moonshot", _moonshot,  settings.moonshot_model),
+        ("groq",        _groq,        settings.groq_model),
+        ("cerebras",    _cerebras,    settings.cerebras_model),
+        ("together",    _together,    settings.together_model),
+        ("nvidia",      _nvidia,      settings.nvidia_model),
+        ("openrouter",  _openrouter,  settings.openrouter_model),
+        ("moonshot",    _moonshot,    settings.moonshot_model),
     ]
     last_err: Optional[Exception] = None
     for provider, client_fn, model in providers:
