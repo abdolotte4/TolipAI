@@ -72,7 +72,8 @@ app = FastAPI(
 # ─── Request models ──────────────────────────────────────────────────────────
 
 class CashBuyerRequest(BaseModel):
-    lead_id: int = Field(..., description="ID of crm_leads row")
+    lead_id: Optional[int] = Field(None, description="ID of crm_leads row (omit for ad-hoc / test calls)")
+    address: Optional[str] = Field(None, description="Full address (used when lead_id is absent)")
     max_buyers: int = 25
     campaign_id: Optional[int] = None
 
@@ -628,9 +629,16 @@ async def ai_research_endpoint(req: ResearchRequest) -> Dict[str, Any]:
 
 @app.post("/scrape/cash-buyers")
 async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
-    lead = await db.get_lead(req.lead_id)
-    if not lead:
-        raise HTTPException(status_code=404, detail=f"Lead {req.lead_id} not found")
+    if req.lead_id is not None:
+        lead = await db.get_lead(req.lead_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail=f"Lead {req.lead_id} not found")
+    else:
+        if not req.address:
+            raise HTTPException(status_code=422, detail="Provide either lead_id or address")
+        lead = {"id": None, "address": req.address, "city": "", "state": "", "zip": "",
+                "beds": None, "baths": None, "sqft": None, "year_built": None,
+                "owner_name": None, "owner_llc": None}
 
     job_id = _new_job("cash_buyers", req.model_dump())
     await db.create_job(job_id, "cash_buyers", req.model_dump(),
