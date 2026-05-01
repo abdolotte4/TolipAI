@@ -5,19 +5,8 @@
     "node": "20",
     "pnpm": "9.15.9"
   },
-  "steps": {
-    "install": {
-      "inputs": [{ "directory": "." }],
-      "commands": [
-        "pnpm install --no-frozen-lockfile"
-      ]
-    },
-    "build": {
-      "inputs": [{ "step": "install" }],
-      "commands": [
-        "pnpm --filter @workspace/api-server run build:prod"
-      ]
-    }
+  "variables": {
+    "NPM_CONFIG_PRODUCTION": "false"
   },
   "deploy": {
     "startCommand": "node --enable-source-maps artifacts/api-server/dist/index.mjs"
