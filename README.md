@@ -1,6 +1,6 @@
 # Digor CRM & Tools Platform
 
-![CI](https://github.com/abdolotte7/digor/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Agawish24/digor/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Node 20](https://img.shields.io/badge/node-20-brightgreen)
 ![pnpm 10](https://img.shields.io/badge/pnpm-10-orange)
