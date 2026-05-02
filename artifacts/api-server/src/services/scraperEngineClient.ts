@@ -289,7 +289,7 @@ export const scraperEngine = {
         max_results: req.maxResults ?? 50,
         use_ai_scoring: req.useAiScoring ?? true,
       }),
-      timeoutMs: 120_000,
+      timeoutMs: 180_000,
     });
   },
 };
