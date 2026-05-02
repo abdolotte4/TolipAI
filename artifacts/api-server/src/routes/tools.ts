@@ -13,7 +13,7 @@ import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 import Papa from "papaparse";
 import { estimateMarketPricePerSqft, ADJUSTMENT_FACTORS } from "../services/propertyApi";
-import { attomGet, hasAttomKey, fetchAttomAvm } from "../services/attomApi";
+import { attomGet, hasAttomKey, fetchAttomAvm, geocodeViaAttom, fetchPropertyDataViaAttom } from "../services/attomApi";
 
 const router: Router = Router();
 
@@ -146,10 +146,10 @@ async function lookupProperty(address: string) {
     if (!key) break;
     const url = `${PAPI_BASE}/parcels/search-by-address?address=${encodeURIComponent(address)}`;
     const res = await fetch(url, { headers: { "X-Api-Key": key } });
-    if (res.status === 402 || res.status === 429) {
+    if (res.status === 402 || res.status === 429 || res.status === 401) {
       _depletedKeys.add(key);
-      lastError = "Insufficient credits on this API key";
-      logger.warn({ key: key.slice(-8) }, "PropertyAPI key depleted (402) — rotating");
+      lastError = `Key invalid or depleted (${res.status})`;
+      logger.warn({ key: key.slice(-8), status: res.status }, "PropertyAPI key invalid/depleted — rotating");
       continue;
     }
     if (!res.ok) {
@@ -772,12 +772,52 @@ router.post("/tools/arv/calculate", requirePin, async (req, res) => {
   };
 
   if (!street) { res.status(400).json({ error: "Street address is required" }); return; }
-  if (!getPropertyApiKeys().length) { res.status(503).json({ error: "PropertyAPI keys not configured" }); return; }
-  if (!hasAttomKey()) { res.status(503).json({ error: "ATTOM_API_KEY not configured" }); return; }
+  if (!hasAttomKey() && !getPropertyApiKeys().length) {
+    res.status(503).json({ error: "Neither ATTOM nor PropertyAPI key is configured" }); return;
+  }
 
   try {
     const fullAddress = [street, city, state, zip].filter(Boolean).join(" ");
-    const subject = await lookupProperty(fullAddress);
+
+    // Step 1a: Try PropertyAPI for geocoding + basic details; fall back to ATTOM if unavailable/exhausted
+    let subject: {
+      latitude: number | null; longitude: number | null;
+      beds: number | null; baths: number | null; sqft: number | null;
+      yearBuilt: number | null; avm: number | null; propertyType: string | null;
+    } | null = null;
+    let subjectSqftSource = "PropertyAPI";
+
+    if (getPropertyApiKeys().length) {
+      try {
+        const pResult = await lookupProperty(fullAddress);
+        subject = pResult;
+      } catch (pErr: any) {
+        logger.warn({ err: pErr?.message }, "[ARV] PropertyAPI failed — falling back to ATTOM for geocoding");
+      }
+    }
+
+    // ATTOM fallback for geocoding + property details
+    if (!subject?.latitude || !subject?.longitude) {
+      if (!hasAttomKey()) {
+        res.status(503).json({ error: "PropertyAPI exhausted and ATTOM key not configured — cannot geocode address" }); return;
+      }
+      const [coords, attomProp] = await Promise.allSettled([
+        geocodeViaAttom(street, city, state, zip),
+        fetchPropertyDataViaAttom(street, city, state, zip),
+      ]);
+      const c = coords.status === "fulfilled" ? coords.value : null;
+      const a = attomProp.status === "fulfilled" ? attomProp.value : null;
+      if (!c) {
+        res.status(404).json({ error: "Could not geocode subject property. Please verify the address." }); return;
+      }
+      subject = {
+        latitude: c.lat, longitude: c.lng,
+        beds: a?.beds ?? null, baths: a?.baths ?? null,
+        sqft: a?.sqft ?? null, yearBuilt: a?.yearBuilt ?? null,
+        avm: a?.avm ?? null, propertyType: a?.propertyType ?? null,
+      };
+      subjectSqftSource = "ATTOM";
+    }
 
     if (!subject.latitude || !subject.longitude) {
       res.status(404).json({ error: "Could not geocode subject property. Please verify the address." });
@@ -790,7 +830,7 @@ router.post("/tools/arv/calculate", requirePin, async (req, res) => {
 
     // Step 1b: Look up subject sqft via ATTOM property/snapshot — same universalsize scale as comps
     let subjectSqft: number = subject.sqft ?? 1500;
-    let subjectSqftSource = "PropertyAPI";
+    if (subjectSqftSource !== "ATTOM") subjectSqftSource = "PropertyAPI";
     try {
       const address2 = [city, state, zip].filter(Boolean).join(" ");
       const snapData = await attomGet("/propertyapi/v1.0.0/property/snapshot", {
@@ -895,10 +935,10 @@ router.post("/tools/arv/calculate", requirePin, async (req, res) => {
         const compLat = parseFloat(sale?.location?.latitude || "0");
         const compLon = parseFloat(sale?.location?.longitude || "0");
 
-        const dLat = ((subject.latitude! - compLat) * Math.PI) / 180;
-        const dLon = ((subject.longitude! - compLon) * Math.PI) / 180;
+        const dLat = ((subject!.latitude! - compLat) * Math.PI) / 180;
+        const dLon = ((subject!.longitude! - compLon) * Math.PI) / 180;
         const aHav = Math.sin(dLat / 2) ** 2 +
-          Math.cos((subject.latitude! * Math.PI) / 180) *
+          Math.cos((subject!.latitude! * Math.PI) / 180) *
           Math.cos((compLat * Math.PI) / 180) *
           Math.sin(dLon / 2) ** 2;
         const distMiles = +(3959 * 2 * Math.atan2(Math.sqrt(aHav), Math.sqrt(1 - aHav))).toFixed(2);
@@ -980,13 +1020,17 @@ router.post("/tools/property-lookup/search", requirePin, async (req, res) => {
     street: string; city?: string; state?: string; zip?: string;
   };
   if (!street) { res.status(400).json({ error: "Street address is required" }); return; }
-  if (!getPropertyApiKeys().length) { res.status(503).json({ error: "PropertyAPI keys not configured" }); return; }
+  if (!getPropertyApiKeys().length && !hasAttomKey()) {
+    res.status(503).json({ error: "Neither PropertyAPI nor ATTOM key is configured" }); return;
+  }
 
   try {
     const fullAddress = [street, city, state, zip].filter(Boolean).join(" ");
     const address2 = [city, state, zip].filter(Boolean).join(" ");
     const [propData, attomResult, skipTraceResult] = await Promise.allSettled([
-      lookupProperty(fullAddress),
+      getPropertyApiKeys().length
+        ? lookupProperty(fullAddress)
+        : Promise.reject(new Error("No PropertyAPI keys configured")),
       hasAttomKey()
         ? attomGet("/propertyapi/v1.0.0/property/detailmortgageowner", {
             address1: street,
@@ -997,8 +1041,32 @@ router.post("/tools/property-lookup/search", requirePin, async (req, res) => {
       skipTraceBatch([{ uid: "lookup", street: street || "", city: city || "", state: state || "", zip: zip || "" }]),
     ]);
 
-    const prop = propData.status === "fulfilled" ? propData.value : null;
-    if (!prop) throw (propData as PromiseRejectedResult).reason;
+    // If PropertyAPI failed, fall back to ATTOM for property details
+    let prop = propData.status === "fulfilled" ? propData.value : null;
+    if (!prop) {
+      logger.warn({ err: (propData as PromiseRejectedResult).reason?.message }, "[property-lookup] PropertyAPI failed — using ATTOM data only");
+      if (!hasAttomKey()) {
+        throw (propData as PromiseRejectedResult).reason;
+      }
+      // Build a synthetic prop from ATTOM data we already fetched, or fetch directly
+      const attomDetail = await fetchPropertyDataViaAttom(street, city, state, zip);
+      if (!attomDetail) {
+        throw new Error("PropertyAPI exhausted and ATTOM returned no data for this address");
+      }
+      prop = {
+        beds: attomDetail.beds, baths: attomDetail.baths, sqft: attomDetail.sqft,
+        yearBuilt: attomDetail.yearBuilt, avm: attomDetail.avm,
+        assessedValue: attomDetail.taxAssessedValue,
+        lastSalePrice: attomDetail.lastSalePrice, lastSaleDate: attomDetail.lastSaleDate ?? null,
+        propertyType: attomDetail.propertyType,
+        ownerName: attomDetail.ownerName,
+        latitude: attomDetail.latitude, longitude: attomDetail.longitude,
+        creditsRemaining: undefined,
+      };
+    }
+
+    // TypeScript narrowing guard — prop is guaranteed non-null at this point
+    if (!prop) throw new Error("Could not retrieve property data from any source");
 
     const attomProp = attomResult.status === "fulfilled" ? attomResult.value?.property?.[0] : null;
     const attomOwner = attomProp?.owner;

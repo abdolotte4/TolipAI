@@ -1204,6 +1204,73 @@ const rawComps: any[] = parsed?.comps ?? [];
   }
 }
 
+// ─── Scraper-Engine Comps Fallback (Propelio → Propwire) ─────────────────────
+// Called when ATTOM comps fail. Returns AttomComp-shaped objects (or empty array).
+async function fetchCompsViaScraperEngine(
+  address: string,
+  radiusMiles: number,
+): Promise<import("../../services/attomApi").AttomComp[]> {
+  const scraperUrl = process.env.SCRAPER_ENGINE_URL;
+  if (!scraperUrl) return [];
+
+  function normalizeComp(c: any): import("../../services/attomApi").AttomComp | null {
+    const price = Number(c.sold_price ?? c.salePrice ?? c.price ?? 0);
+    if (!price) return null;
+    return {
+      address: c.address || "",
+      beds: c.beds != null ? Number(c.beds) : undefined,
+      baths: c.baths != null ? Number(c.baths) : undefined,
+      sqft: c.sqft != null ? Number(c.sqft) : undefined,
+      yearBuilt: c.year_built != null ? Number(c.year_built) : undefined,
+      salePrice: price,
+      soldDate: c.sold_date ?? c.soldDate ?? "",
+      propertyType: c.property_type ?? undefined,
+    };
+  }
+
+  // 1) Try Propelio (authenticated; requires PROPELIO_EMAIL + PROPELIO_PASSWORD in scraper env)
+  try {
+    const res = await fetch(`${scraperUrl}/scrape/comps`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, radius_miles: radiusMiles, max_results: 12 }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (res.ok) {
+      const data = await res.json() as any;
+      const comps = (data.comps ?? []).map(normalizeComp).filter(Boolean) as import("../../services/attomApi").AttomComp[];
+      if (comps.length > 0) {
+        console.log(`[scraper-engine comps] Propelio returned ${comps.length} comps for "${address}"`);
+        return comps;
+      }
+    }
+  } catch (e) {
+    console.warn("[scraper-engine comps] Propelio request failed:", (e as Error)?.message);
+  }
+
+  // 2) Try Propwire as second fallback
+  try {
+    const res = await fetch(`${scraperUrl}/scrape/propwire/comps`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: address }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (res.ok) {
+      const data = await res.json() as any;
+      const comps = (data.comps ?? []).map(normalizeComp).filter(Boolean) as import("../../services/attomApi").AttomComp[];
+      if (comps.length > 0) {
+        console.log(`[scraper-engine comps] Propwire returned ${comps.length} comps for "${address}"`);
+        return comps;
+      }
+    }
+  } catch (e) {
+    console.warn("[scraper-engine comps] Propwire request failed:", (e as Error)?.message);
+  }
+
+  return [];
+}
+
 // POST /crm/leads/:id/fetch-comps — starts async export job, returns immediately
 router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
@@ -1310,20 +1377,27 @@ router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
       return;
     }
 
-    let rawComps;
+    let rawComps: import("../../services/attomApi").AttomComp[] = [];
+    let compsSource = "attom";
     try {
-     // CHANGE TO:
-rawComps = await fetchCompsViaAttom(lat, lng, radiusMiles, 8, subjectProp.sqft, lead.propertyType);
+      rawComps = await fetchCompsViaAttom(lat, lng, radiusMiles, 8, subjectProp.sqft, lead.propertyType);
     } catch (attomErr: any) {
       console.error("[ATTOM comps] failed:", attomErr?.message);
-      // ATTOM failed → fall back to AI
-      const aiResult = await fetchCompsViaAI(lead, id, subjectProp);
-      if (aiResult.added > 0) {
-        res.json({ status: "done", success: true, aiGenerated: true, added: aiResult.added, comps: aiResult.comps, arv: aiResult.arv, mao: aiResult.mao });
+      // Fallback chain: Propelio → Propwire → AI
+      const leadAddr = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
+      rawComps = await fetchCompsViaScraperEngine(leadAddr, radiusMiles);
+      if (rawComps.length > 0) {
+        compsSource = "propelio_propwire";
+        console.log(`[comps] Scraper-engine fallback returned ${rawComps.length} comps`);
       } else {
-        res.status(503).json({ error: `ATTOM comps failed: ${attomErr?.message}` });
+        const aiResult = await fetchCompsViaAI(lead, id, subjectProp);
+        if (aiResult.added > 0) {
+          res.json({ status: "done", success: true, aiGenerated: true, added: aiResult.added, comps: aiResult.comps, arv: aiResult.arv, mao: aiResult.mao });
+        } else {
+          res.status(503).json({ error: `ATTOM comps failed: ${attomErr?.message}` });
+        }
+        return;
       }
-      return;
     }
 
     if (rawComps.length === 0) {
@@ -1347,6 +1421,7 @@ rawComps = await fetchCompsViaAttom(lat, lng, radiusMiles, 8, subjectProp.sqft, 
         { salePrice: c.salePrice, beds: c.beds ?? null, baths: c.baths ?? null, sqft: c.sqft ?? null, yearBuilt: c.yearBuilt ?? null, soldDate: c.soldDate || null },
         marketPricePerSqft,
       );
+      const sourceLabel = compsSource === "propelio_propwire" ? "Propelio/Propwire" : "ATTOM";
       const [inserted] = await db.insert(crmComps).values({
         leadId: id,
         address: c.address,
@@ -1357,8 +1432,8 @@ rawComps = await fetchCompsViaAttom(lat, lng, radiusMiles, 8, subjectProp.sqft, 
         salePrice: c.salePrice.toString(),
         soldDate: c.soldDate || null,
         adjustedPrice: adjustedPrice.toString(),
-        source: "attom",
-        notes: `Auto-fetched via ATTOM (${radiusMiles} mi radius)${c.propertyType ? ` — ${c.propertyType}` : ""}`,
+        source: compsSource === "propelio_propwire" ? "propelio" : "attom",
+        notes: `Auto-fetched via ${sourceLabel} (${radiusMiles} mi radius)${c.propertyType ? ` — ${c.propertyType}` : ""}`,
       }).returning();
       insertedComps.push({
         id: inserted.id, address: inserted.address, beds: inserted.beds,
