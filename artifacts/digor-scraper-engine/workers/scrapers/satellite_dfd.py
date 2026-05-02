@@ -264,15 +264,26 @@ async def scan_area(
             except (TypeError, ValueError):
                 pass
 
+            # Map actual listing fields → distress signals
+            dom_raw = p.get("days_on_market")
+            try:
+                dom_val = int(dom_raw) if dom_raw is not None else None
+            except (TypeError, ValueError):
+                dom_val = None
+
             signals = {
                 "year_built": year_built,
-                "days_on_market": None,
-                "price_reduction": False,
+                "days_on_market": dom_val,
+                "price_reduction": bool(p.get("price_reduction")),
                 "is_fsbo": bool(p.get("is_fsbo")),
-                "vacant": False,
-                "equity_pct": None,
-                "tax_delinquent": False,
-                "ownership_years": None,
+                # vacant: explicit flag OR home status suggests unoccupied
+                "vacant": bool(
+                    p.get("vacant")
+                    or (p.get("home_status") or "").upper() in ("VACANT", "FOR_RENT", "RECENTLY_SOLD")
+                ),
+                "equity_pct": p.get("equity_pct"),
+                "tax_delinquent": bool(p.get("tax_delinquent")),
+                "ownership_years": p.get("ownership_years"),
             }
             base = _compute_score(signals)
 

@@ -69,6 +69,13 @@ async def fetch_recently_sold(zip_code: Optional[str] = None,
     out: List[Dict[str, Any]] = []
     for p in results[:max_results]:
         info = (p or {}).get("hdpData", {}).get("homeInfo") or {}
+        # price_reduction: truthy if Zillow records a price cut (negative priceChange or reductionDate)
+        price_change = info.get("priceChange") or info.get("priceReduction") or 0
+        try:
+            price_change = float(price_change)
+        except (TypeError, ValueError):
+            price_change = 0
+        price_reduction = bool(info.get("priceReductionDate") or price_change < 0)
         out.append({
             "address": p.get("address") or info.get("streetAddress"),
             "city": info.get("city"),
@@ -78,6 +85,10 @@ async def fetch_recently_sold(zip_code: Optional[str] = None,
             "beds": p.get("beds") or info.get("bedrooms"),
             "baths": p.get("baths") or info.get("bathrooms"),
             "sqft": p.get("area") or info.get("livingArea"),
+            "year_built": info.get("yearBuilt"),
+            "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
+            "price_reduction": price_reduction,
+            "home_status": info.get("homeStatus"),
             "sold_date": info.get("dateSold"),
             "zillow_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
             "latitude": info.get("latitude"),
@@ -129,12 +140,27 @@ async def fetch_fsbo(zip_code: Optional[str] = None, city: str = "", state: str 
     out: List[Dict[str, Any]] = []
     for p in results[:max_results]:
         info = (p or {}).get("hdpData", {}).get("homeInfo") or {}
+        price_change = info.get("priceChange") or info.get("priceReduction") or 0
+        try:
+            price_change = float(price_change)
+        except (TypeError, ValueError):
+            price_change = 0
+        price_reduction = bool(info.get("priceReductionDate") or price_change < 0)
         out.append({
             "distress_type": "fsbo",
+            "is_fsbo": True,
             "address": p.get("address") or info.get("streetAddress"),
             "city": info.get("city"), "state": info.get("state"), "zip": info.get("zipcode"),
             "estimated_value": info.get("zestimate"),
+            "price": p.get("price") or info.get("price"),
             "opening_bid": p.get("price") or info.get("price"),
+            "beds": p.get("beds") or info.get("bedrooms"),
+            "baths": p.get("baths") or info.get("bathrooms"),
+            "sqft": p.get("area") or info.get("livingArea"),
+            "year_built": info.get("yearBuilt"),
+            "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
+            "price_reduction": price_reduction,
+            "home_status": info.get("homeStatus"),
             "source": "zillow_fsbo",
             "source_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
             "latitude": info.get("latitude"), "longitude": info.get("longitude"),

@@ -80,13 +80,23 @@ async def fetch_recently_sold(zip_code: Optional[str] = None, city: str = "",
                           sold=True, max_results=max_results)
     out: List[Dict[str, Any]] = []
     for r in rows:
+        # PRICE column vs ORIGINAL LIST PRICE can indicate a price cut
+        price_str = r.get("PRICE") or ""
+        orig_str = r.get("ORIGINAL LIST PRICE") or ""
+        try:
+            price_cut = (float(str(price_str).replace("$", "").replace(",", "") or 0)
+                         < float(str(orig_str).replace("$", "").replace(",", "") or 0))
+        except (TypeError, ValueError):
+            price_cut = False
         out.append({
             "address": r.get("ADDRESS"),
             "city": r.get("CITY"), "state": r.get("STATE OR PROVINCE"),
             "zip": r.get("ZIP OR POSTAL CODE"),
-            "price": r.get("PRICE"),
+            "price": price_str,
             "beds": r.get("BEDS"), "baths": r.get("BATHS"),
             "sqft": r.get("SQUARE FEET"), "year_built": r.get("YEAR BUILT"),
+            "days_on_market": r.get("DAYS ON MARKET") or r.get("DOM"),
+            "price_reduction": price_cut,
             "sold_date": r.get("SOLD DATE"),
             "redfin_url": r.get("URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)") or r.get("URL"),
             "latitude": r.get("LATITUDE"), "longitude": r.get("LONGITUDE"),
