@@ -261,9 +261,23 @@ async def fetch_cash_buyers(
 
     url = f"{PROPELIO_BASE}/search/{property_id}/cash-buyers"
     buyers: List[Dict[str, Any]] = []
+    api_pat = re.compile(r"cash[-_]?buyers?|/buyers", re.IGNORECASE)
 
     async with browser_context(SERVICE, login_fn=_do_login) as ctx:
         page = await ctx.new_page()
+        # ── Register XHR capture BEFORE navigation so first-page results aren't missed ──
+        pending_xhr: List[Dict[str, Any]] = []
+
+        async def _capture_response(resp):
+            try:
+                if (api_pat.search(resp.url)
+                        and "application/json" in (resp.headers.get("content-type") or "")):
+                    body = await resp.json()
+                    pending_xhr.append({"url": resp.url, "body": body})
+            except Exception:
+                pass
+
+        page.on("response", _capture_response)
         try:
             await page.goto(url, wait_until="networkidle", timeout=45000)
             if "/login" in page.url:
@@ -326,25 +340,30 @@ async def fetch_cash_buyers(
 
             await page.wait_for_load_state("networkidle", timeout=15000)
 
+            def _drain_xhr() -> List[Dict[str, Any]]:
+                """Consume all accumulated XHR responses and return normalised buyer rows."""
+                rows: List[Dict[str, Any]] = []
+                while pending_xhr:
+                    item = pending_xhr.pop(0)
+                    body = item.get("body") or {}
+                    raw = (body.get("data") or body.get("buyers")
+                           or body.get("results") or body.get("items") or [])
+                    if isinstance(raw, list):
+                        rows.extend(raw)
+                return rows
+
             # Now paginate through results
             seen_pages = 0
             while len(buyers) < max_results and seen_pages < 50:
-                # Capture fresh XHR for this page (list requests usually contain
-                # /cash-buyers and a page param)
-                api_pat = re.compile(r"cash[-_]?buyers?", re.IGNORECASE)
-                xhr_results = await _intercept_json(page, api_pat, timeout_ms=4000)
-                page_buyers: List[Dict[str, Any]] = []
-                for item in xhr_results:
-                    body = item.get("body") or {}
-                    rows = (body.get("data") or body.get("buyers")
-                            or body.get("results") or body.get("items") or [])
-                    if isinstance(rows, list):
-                        page_buyers.extend(rows)
+                # Drain any XHR responses captured since last check
+                page_buyers: List[Dict[str, Any]] = _drain_xhr()
 
-                # Fallback: parse the rendered cards
+                # DOM fallback — always run to complement XHR (handles cases where
+                # the API response shape doesn't match our keys)
                 if not page_buyers:
                     cards = await page.locator(
-                        '[data-testid*="buyer"], .buyer-card, .result-card, li:has-text("Average Deal")'
+                        '[data-testid*="buyer"], .buyer-card, .result-card, '
+                        'li:has-text("Average Deal"), div:has-text("Average Deal")'
                     ).all()
                     for card in cards:
                         text = (await card.inner_text()).strip()
@@ -363,7 +382,7 @@ async def fetch_cash_buyers(
                         buyers.append(norm)
 
                 if progress_cb:
-                    pct = min(99, int(100 * len(buyers) / max_results))
+                    pct = min(99, int(100 * len(buyers) / max(max_results, 1)))
                     try:
                         await progress_cb(pct, f"page {seen_pages + 1}: {len(buyers)} buyers")
                     except Exception:
@@ -385,6 +404,10 @@ async def fetch_cash_buyers(
 
             return buyers[:max_results]
         finally:
+            try:
+                page.remove_listener("response", _capture_response)
+            except Exception:
+                pass
             await page.close()
 
 
