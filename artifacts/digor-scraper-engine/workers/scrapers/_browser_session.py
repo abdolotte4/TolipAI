@@ -127,8 +127,14 @@ async def browser_context(
                     await ctx.close()
                     ctx = await browser.new_context(
                         storage_state=str(state_file),
+                        user_agent=(
+                            user_agent or
+                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+                        ),
                         viewport={"width": 1440, "height": 900},
                         locale="en-US",
+                        ignore_https_errors=True,
                     )
         yield ctx
     finally:

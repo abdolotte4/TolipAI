@@ -301,7 +301,6 @@ async def health() -> Dict[str, Any]:
     """Deep health-check: probes DB, each LLM provider, and each scraper tier."""
     import time
     from .llm import _dead_providers, _rate_hits, _MAX_RATE_HITS
-    from .http_client import _exhausted, _tier_dead, _scraperapi_keys, _scrapingbee_keys
     from .skip_trace import _dead_sources
     from openai import AsyncOpenAI
 
@@ -352,41 +351,19 @@ async def health() -> Dict[str, Any]:
         except Exception as e:
             return {"status": "error", "error": str(e)[:120]}
 
-    async def _probe_scraperapi() -> Dict[str, Any]:
-        if "scraperapi" in _tier_dead:
-            return {"status": "dead", "reason": "all_keys_exhausted"}
-        active = len(_scraperapi_keys())
-        total = len(settings.scraperapi_keys)
-        if total == 0:
-            return {"status": "unconfigured"}
-        if active == 0:
-            return {"status": "exhausted", "keys_total": total}
-        return {"status": "ok", "keys_active": active, "keys_total": total}
-
-    async def _probe_scrapingbee() -> Dict[str, Any]:
-        if "scrapingbee" in _tier_dead:
-            return {"status": "dead", "reason": "all_keys_exhausted"}
-        active = len(_scrapingbee_keys())
-        total = len(settings.scrapingbee_keys)
-        if total == 0:
-            return {"status": "unconfigured"}
-        if active == 0:
-            return {"status": "exhausted", "keys_total": total}
-        return {"status": "ok", "keys_active": active, "keys_total": total}
-
     from .llm import _groq, _cerebras, _nvidia, _openrouter, _moonshot
 
     (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon,
-     db_result, sapi, sbee) = await asyncio.gather(
+     db_result) = await asyncio.gather(
         _probe_llm("groq",       _groq,       settings.groq_model),
         _probe_llm("cerebras",   _cerebras,   settings.cerebras_model),
         _probe_llm("nvidia",     _nvidia,     settings.nvidia_model),
         _probe_llm("openrouter", _openrouter, settings.openrouter_model),
         _probe_llm("moonshot",   _moonshot,   settings.moonshot_model),
         _probe_db(),
-        _probe_scraperapi(),
-        _probe_scrapingbee(),
     )
+    sapi = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
+    sbee = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
 
     llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon)
     llm_ok = any(r["status"] == "ok" for r in llm_results)
@@ -426,42 +403,18 @@ async def health() -> Dict[str, Any]:
 @app.get("/health/keys")
 async def health_keys() -> Dict[str, Any]:
     """Per-key status for all scraping providers — shows active vs exhausted keys."""
-    from .http_client import _exhausted, _tier_dead, _key_403_hits, _KEY_403_LIMIT
-
-    def _key_status(key: str, provider: str) -> Dict[str, Any]:
-        if key in _exhausted:
-            return {"key_tail": f"…{key[-8:]}", "status": "exhausted"}
-        hits = _key_403_hits.get(key, 0)
-        return {
-            "key_tail": f"…{key[-8:]}",
-            "status": "active",
-            "consecutive_403s": hits,
-            "exhausts_at": _KEY_403_LIMIT,
-        }
-
-    scraperapi_keys = settings.scraperapi_keys
-    scrapingbee_keys = settings.scrapingbee_keys
-
-    scraperapi_statuses = [_key_status(k, "scraperapi") for k in scraperapi_keys]
-    scrapingbee_statuses = [_key_status(k, "scrapingbee") for k in scrapingbee_keys]
-
-    scraperapi_active = sum(1 for s in scraperapi_statuses if s["status"] == "active")
-    scrapingbee_active = sum(1 for s in scrapingbee_statuses if s["status"] == "active")
-
     return {
         "scraperapi": {
-            "tier_dead": "scraperapi" in _tier_dead,
-            "keys_total": len(scraperapi_keys),
-            "keys_active": scraperapi_active,
-            "keys_exhausted": len(scraperapi_keys) - scraperapi_active,
-            "keys": scraperapi_statuses,
+            "status": "disabled",
+            "reason": "permanently_removed_use_crawl4ai",
+            "keys_total": 0,
+            "keys_active": 0,
         },
         "scrapingbee": {
-            "tier_dead": "scrapingbee" in _tier_dead,
-            "keys_total": len(scrapingbee_keys),
-            "keys_active": scrapingbee_active,
-            "keys_exhausted": len(scrapingbee_keys) - scrapingbee_active,
-            "keys": scrapingbee_statuses,
+            "status": "disabled",
+            "reason": "permanently_removed_use_crawl4ai",
+            "keys_total": 0,
+            "keys_active": 0,
         },
         "llm": {
             "groq_configured": bool(settings.groq_api_key),
