@@ -28,13 +28,19 @@ type Listing = {
   city?: string | null;
   state?: string | null;
   zip?: string | null;
-  type?: string | null;
+  // DB returns distressType (Drizzle camelCase); Python engine returns distress_type
+  distressType?: string | null;
+  distress_type?: string | null;
   saleDate?: string | null;
+  sale_date?: string | null;
   openingBid?: number | null;
+  opening_bid?: number | null;
   ownerName?: string | null;
+  owner_name?: string | null;
   parcelId?: string | null;
   source?: string | null;
   sourceUrl?: string | null;
+  source_url?: string | null;
 };
 
 type JobStatus = {
@@ -311,18 +317,24 @@ export default function AiDistressed() {
                         </div>
                       </div>
                     </td>
-                    <td className="py-2 pr-3"><TypeBadge type={l.type} /></td>
-                    <td className="py-2 pr-3 text-xs text-muted-foreground inline-flex items-center gap-1">
-                      {l.saleDate && <Calendar className="w-3 h-3" />}
-                      {l.saleDate ? new Date(l.saleDate).toLocaleDateString() : "—"}
+                    <td className="py-2 pr-3">
+                      <TypeBadge type={l.distressType || l.distress_type || undefined} />
                     </td>
-                    <td className="py-2 pr-3 font-mono text-xs">{fmtMoney(l.openingBid)}</td>
+                    <td className="py-2 pr-3 text-xs text-muted-foreground inline-flex items-center gap-1">
+                      {(l.saleDate || l.sale_date) && <Calendar className="w-3 h-3" />}
+                      {(l.saleDate || l.sale_date)
+                        ? new Date((l.saleDate || l.sale_date)!).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-xs">
+                      {fmtMoney(l.openingBid ?? l.opening_bid)}
+                    </td>
                     <td className="py-2 pr-3 text-xs truncate max-w-[180px]">
-                      {l.ownerName || "—"}
+                      {l.ownerName || l.owner_name || "—"}
                     </td>
                     <td className="py-2 pr-3">
-                      {l.sourceUrl ? (
-                        <a href={l.sourceUrl} target="_blank" rel="noreferrer"
+                      {(l.sourceUrl || l.source_url) ? (
+                        <a href={(l.sourceUrl || l.source_url)!} target="_blank" rel="noreferrer"
                            className="text-primary hover:underline inline-flex items-center gap-1 text-xs">
                           <Globe2 className="w-3 h-3" /> {l.source || "link"}
                         </a>

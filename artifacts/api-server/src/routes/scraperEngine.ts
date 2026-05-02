@@ -38,6 +38,29 @@ function handleEngineError(err: unknown, res: Response) {
   res.status(status).json({ error: message });
 }
 
+/**
+ * Normalise a job-start response from the Python engine so the frontend
+ * always receives:
+ *   { id, jobId, status: "queued"|"running"|"completed"|"failed", ... }
+ *
+ * The Python engine uses snake_case `job_id` and the status string `"done"`.
+ */
+function normalizeJob(raw: any): any {
+  const id = raw?.job_id ?? raw?.id ?? raw?.jobId ?? null;
+  const status = raw?.status === "done" ? "completed" : (raw?.status ?? "queued");
+  return { ...raw, id, jobId: id, status };
+}
+
+/**
+ * Normalise a job-status response (GET /jobs/:id) so the frontend sees
+ * `status: "completed"` instead of `"done"`, and `id` is always present.
+ */
+function normalizeStatus(raw: any): any {
+  const id = raw?.id ?? raw?.job_id ?? raw?.jobId ?? null;
+  const status = raw?.status === "done" ? "completed" : (raw?.status ?? "queued");
+  return { ...raw, id, jobId: id, status };
+}
+
 // ─── Health (proxy + engine) ─────────────────────────────────────────────────
 router.get("/scraper-engine/health", async (_req, res) => {
   try {
@@ -57,7 +80,7 @@ router.post("/scraper-engine/cash-buyers/:leadId", crmAuth, async (req: Request,
       maxBuyers,
       campaignId: user.campaignId ?? undefined,
     });
-    res.json(job);
+    res.json(normalizeJob(job));
   } catch (err) { handleEngineError(err, res); }
 });
 
@@ -348,31 +371,34 @@ router.post("/scraper-engine/distressed", requirePin, async (req: Request, res: 
       zip, state, categories, sourceKeys,
       countyKey: countyKey || county,
     });
-    res.json(job);
+    res.json(normalizeJob(job));
   } catch (err) { handleEngineError(err, res); }
 });
 
 router.get("/scraper-engine/distressed/:jobId", requirePin, async (req: Request, res: Response) => {
   const jobId = req.params.jobId;
   try {
-    const status = await scraperEngine.getJob(jobId);
+    const raw = await scraperEngine.getJob(jobId);
+    const status = normalizeStatus(raw);
     let listings: any[] = [];
-    if (status.status === "done") {
+    if (raw.status === "done" || raw.status === "completed") {
       try {
         const dbRows = await db.select().from(distressedListings).where(eq(distressedListings.jobId, jobId));
         listings = dbRows;
       } catch { /* fall back to in-memory result */ }
-      if (!listings.length && Array.isArray(status.result)) listings = status.result;
+      if (!listings.length && Array.isArray(raw.result)) listings = raw.result;
     }
-    res.json({ ...status, listings });
+    // Put listings under result.listings so the frontend's data.result?.listings check works
+    const result = { ...(status.result || {}), listings };
+    res.json({ ...status, result, listings });
   } catch (err) { handleEngineError(err, res); }
 });
 
 // ─── Job polling (CRM-authed; same shape works for either flow) ──────────────
 router.get("/scraper-engine/jobs/:jobId", crmAuth, async (req: Request, res: Response) => {
   try {
-    const status = await scraperEngine.getJob(req.params.jobId);
-    res.json(status);
+    const raw = await scraperEngine.getJob(req.params.jobId);
+    res.json(normalizeStatus(raw));
   } catch (err) { handleEngineError(err, res); }
 });
 
@@ -454,7 +480,7 @@ router.post("/scraper-engine/propelio/cash-buyers", crmAuth, async (req: Request
       landlords, flippers, maxResults, leadId, persist,
       campaignId: user.campaignId ?? undefined,
     });
-    res.json(job);
+    res.json(normalizeJob(job));
   } catch (err) { handleEngineError(err, res); }
 });
 
@@ -493,7 +519,7 @@ router.post("/scraper-engine/propwire/cash-buyers-nearby", crmAuth, async (req: 
       query, radiusMiles, minProperties, maxResults, leadId, persist,
       campaignId: user.campaignId ?? undefined,
     });
-    res.json(job);
+    res.json(normalizeJob(job));
   } catch (err) { handleEngineError(err, res); }
 });
 

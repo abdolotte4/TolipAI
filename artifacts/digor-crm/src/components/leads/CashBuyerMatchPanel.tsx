@@ -15,7 +15,7 @@ type Buyer = {
   id?: string;
   buyerName: string;
   llcName?: string | null;
-  type: "flipper" | "landlord" | "lender" | "hedge_fund" | "wholesaler" | string;
+  buyerType: "flipper" | "landlord" | "lender" | "hedge_fund" | "wholesaler" | string;
   matchScore?: number | null;
   portfolioSize?: number | null;
   portfolioValue?: number | null;
@@ -23,7 +23,7 @@ type Buyer = {
   lastPurchaseDate?: string | null;
   phones?: any[] | null;
   emails?: any[] | null;
-  addresses?: any[] | null;
+  mailingAddress?: string | null;
   classificationReason?: string | null;
   source?: string | null;
 };
@@ -335,8 +335,8 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
                     <h4 className="font-semibold text-sm truncate">
                       {b.llcName || b.buyerName}
                     </h4>
-                    <Badge className={`text-[10px] border ${TYPE_STYLES[b.type] ?? "bg-secondary"}`}>
-                      {TYPE_LABELS[b.type] ?? b.type}
+                    <Badge className={`text-[10px] border ${TYPE_STYLES[b.buyerType] ?? "bg-secondary"}`}>
+                      {TYPE_LABELS[b.buyerType] ?? b.buyerType}
                     </Badge>
                     {b.lastPurchaseDate && (
                       <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
@@ -398,8 +398,8 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   {selected.llcName || selected.buyerName}
-                  <Badge className={`text-[10px] border ${TYPE_STYLES[selected.type] ?? "bg-secondary"}`}>
-                    {TYPE_LABELS[selected.type] ?? selected.type}
+                  <Badge className={`text-[10px] border ${TYPE_STYLES[selected.buyerType] ?? "bg-secondary"}`}>
+                    {TYPE_LABELS[selected.buyerType] ?? selected.buyerType}
                   </Badge>
                 </DialogTitle>
                 <DialogDescription>
@@ -458,17 +458,13 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
                 </div>
               )}
 
-              {/* Addresses */}
-              {selected.addresses && selected.addresses.length > 0 && (
+              {/* Mailing Address */}
+              {selected.mailingAddress && (
                 <div className="mt-3">
                   <div className="text-[10px] uppercase text-muted-foreground tracking-wide mb-1.5">Mailing</div>
-                  <div className="space-y-1">
-                    {selected.addresses.map((a: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <MapPin className="w-3.5 h-3.5 text-amber-400" />
-                        <span>{typeof a === "string" ? a : a.full || `${a.street}, ${a.city}`}</span>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{selected.mailingAddress}</span>
                   </div>
                 </div>
               )}
