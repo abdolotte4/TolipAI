@@ -98,6 +98,58 @@ async def fetch_recently_sold(zip_code: Optional[str] = None,
     return out
 
 
+async def fetch_active_listings(zip_code: Optional[str] = None, city: str = "", state: str = "",
+                               max_results: int = 50) -> List[Dict[str, Any]]:
+    """Active for-sale listings — these carry days_on_market and price-reduction signals."""
+    if zip_code:
+        path = f"https://www.zillow.com/homes/for_sale/{zip_code}_rb/"
+    elif city and state:
+        path = f"https://www.zillow.com/homes/for_sale/{_slug(city, state)}_rb/"
+    else:
+        return []
+    try:
+        html = await fetch_html(path, render=True)
+    except Exception as e:
+        log.warning("Zillow active listings fetch failed: %s", e)
+        return []
+    data = _parse_next_data(html)
+    if not data:
+        return []
+    cat = (data.get("cat1") or {}) or (
+        data.get("props", {}).get("pageProps", {}).get("searchPageState", {}).get("cat1") or {}
+    )
+    results = (cat.get("searchResults") or {}).get("listResults") or []
+    out: List[Dict[str, Any]] = []
+    for p in results[:max_results]:
+        info = (p or {}).get("hdpData", {}).get("homeInfo") or {}
+        price_change = info.get("priceChange") or info.get("priceReduction") or 0
+        try:
+            price_change = float(price_change)
+        except (TypeError, ValueError):
+            price_change = 0
+        price_reduction = bool(info.get("priceReductionDate") or price_change < 0)
+        out.append({
+            "address": p.get("address") or info.get("streetAddress"),
+            "city": info.get("city"),
+            "state": info.get("state"),
+            "zip": info.get("zipcode"),
+            "price": p.get("price") or info.get("price"),
+            "beds": p.get("beds") or info.get("bedrooms"),
+            "baths": p.get("baths") or info.get("bathrooms"),
+            "sqft": p.get("area") or info.get("livingArea"),
+            "year_built": info.get("yearBuilt"),
+            "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
+            "price_reduction": price_reduction,
+            "home_status": info.get("homeStatus"),
+            "estimated_value": info.get("zestimate"),
+            "zillow_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
+            "latitude": info.get("latitude"),
+            "longitude": info.get("longitude"),
+            "source": "zillow_active",
+        })
+    return out
+
+
 async def fetch_property_owner(zillow_url: str) -> Optional[Dict[str, Any]]:
     """Try to extract owner / tax mailing info from a Zillow detail page."""
     try:

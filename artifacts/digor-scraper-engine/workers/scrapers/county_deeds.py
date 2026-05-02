@@ -307,6 +307,121 @@ async def _propertyshark_deeds(city: str, state: str, max_results: int = 50) -> 
 
 # ─── Public entrypoint ────────────────────────────────────────────────────────
 
+async def _fl_orange_deeds(zip_code: str = "", max_results: int = 80) -> List[Dict[str, Any]]:
+    """Orange County FL Comptroller official records — recent warranty deeds (buyer names)."""
+    url = (
+        "https://or.occompt.com/recorder/eagleweb/docIndex.jsp"
+        "?displayCount=50&searchType=documentType&documentType=WD"
+        f"&startDate={_recent_date(180)}&endDate={date.today().isoformat()}"
+    )
+    try:
+        html = await fetch_html(url, render=True)
+    except Exception as e:
+        log.info("Orange County FL deed search failed: %s", e)
+        return []
+    soup = BeautifulSoup(html, "lxml")
+    text = soup.get_text("\n", strip=True)[:8000]
+    return await _ai_extract_deeds(text, state="FL", city="Orlando",
+                                   zip_code=zip_code, source="fl_orange_comptroller")
+
+
+async def _fl_miami_dade_deeds(zip_code: str = "", max_results: int = 80) -> List[Dict[str, Any]]:
+    """Miami-Dade County FL Clerk official records — recent deed transfers."""
+    url = (
+        "https://www2.miami-dadeclerk.com/ocs/Search.aspx"
+        f"?QS=doctype%3DWD%26daterange%3D{_recent_date(180).replace('-', '%2F')}%7E{date.today().strftime('%m/%d/%Y').replace('/', '%2F')}"
+    )
+    try:
+        html = await fetch_html(url, render=True)
+    except Exception as e:
+        log.info("Miami-Dade deed search failed: %s", e)
+        return []
+    soup = BeautifulSoup(html, "lxml")
+    text = soup.get_text("\n", strip=True)[:8000]
+    return await _ai_extract_deeds(text, state="FL", city="Miami",
+                                   zip_code=zip_code, source="fl_miami_dade_clerk")
+
+
+async def _fl_hillsborough_deeds(zip_code: str = "", max_results: int = 80) -> List[Dict[str, Any]]:
+    """Hillsborough County FL (Tampa) official records — warranty deed transfers."""
+    url = "https://pubrec2.hillsclerk.com/pubrec/docIndex.jsp?searchType=documentType&documentType=WD&displayCount=50"
+    try:
+        html = await fetch_html(url, render=True)
+    except Exception as e:
+        log.info("Hillsborough County deed search failed: %s", e)
+        return []
+    soup = BeautifulSoup(html, "lxml")
+    text = soup.get_text("\n", strip=True)[:8000]
+    return await _ai_extract_deeds(text, state="FL", city="Tampa",
+                                   zip_code=zip_code, source="fl_hillsborough_clerk")
+
+
+async def _ga_fulton_deeds(zip_code: str = "", max_results: int = 80) -> List[Dict[str, Any]]:
+    """Fulton County GA (Atlanta) — GSCCCA deed index search for recent warranty deeds."""
+    url = (
+        "https://search.gsccca.org/RealEstate/index.asp"
+        f"?County=60&DocType=WD&FromDate={_recent_date(180)}&ToDate={date.today().isoformat()}"
+        f"&PageSize={min(max_results, 50)}"
+    )
+    try:
+        html = await fetch_html(url, render=True)
+    except Exception as e:
+        log.info("GSCCCA Fulton County deed search failed: %s", e)
+        return []
+    soup = BeautifulSoup(html, "lxml")
+    rows = soup.select("table tr")[1:max_results + 1]
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+        if len(cells) < 4:
+            continue
+        out.append(_deed(
+            grantor=cells[2] if len(cells) > 2 else "",
+            grantee=cells[3] if len(cells) > 3 else "",
+            date_str=cells[1] if len(cells) > 1 else "",
+            state="GA", city="Atlanta", zip_code=zip_code,
+            source="gsccca_fulton",
+        ))
+    if out:
+        return [r for r in out if r["grantee"]]
+    text = soup.get_text("\n", strip=True)[:8000]
+    return await _ai_extract_deeds(text, state="GA", city="Atlanta",
+                                   zip_code=zip_code, source="gsccca_fulton")
+
+
+async def _ga_dekalb_deeds(zip_code: str = "", max_results: int = 80) -> List[Dict[str, Any]]:
+    """DeKalb County GA (Atlanta suburb) — Superior Court deed index."""
+    url = (
+        "https://search.gsccca.org/RealEstate/index.asp"
+        f"?County=44&DocType=WD&FromDate={_recent_date(180)}&ToDate={date.today().isoformat()}"
+        f"&PageSize={min(max_results, 50)}"
+    )
+    try:
+        html = await fetch_html(url, render=True)
+    except Exception as e:
+        log.info("GSCCCA DeKalb County deed search failed: %s", e)
+        return []
+    soup = BeautifulSoup(html, "lxml")
+    rows = soup.select("table tr")[1:max_results + 1]
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+        if len(cells) < 4:
+            continue
+        out.append(_deed(
+            grantor=cells[2] if len(cells) > 2 else "",
+            grantee=cells[3] if len(cells) > 3 else "",
+            date_str=cells[1] if len(cells) > 1 else "",
+            state="GA", city="Atlanta", zip_code=zip_code,
+            source="gsccca_dekalb",
+        ))
+    if out:
+        return [r for r in out if r["grantee"]]
+    text = soup.get_text("\n", strip=True)[:8000]
+    return await _ai_extract_deeds(text, state="GA", city="Atlanta",
+                                   zip_code=zip_code, source="gsccca_dekalb")
+
+
 COUNTY_DISPATCH = {
     # OH
     ("OH", "cuyahoga"):  lambda zip_code, n: _cuyahoga_transfers(zip_code, n),
@@ -319,6 +434,18 @@ COUNTY_DISPATCH = {
     # TX
     ("TX", "harris"):  lambda zip_code, n: _harris_tx_deeds(zip_code, n),
     ("TX", "houston"): lambda zip_code, n: _harris_tx_deeds(zip_code, n),
+    # FL
+    ("FL", "orange"):   lambda zip_code, n: _fl_orange_deeds(zip_code, n),
+    ("FL", "orlando"):  lambda zip_code, n: _fl_orange_deeds(zip_code, n),
+    ("FL", "miami"):    lambda zip_code, n: _fl_miami_dade_deeds(zip_code, n),
+    ("FL", "miami-dade"): lambda zip_code, n: _fl_miami_dade_deeds(zip_code, n),
+    ("FL", "hillsborough"): lambda zip_code, n: _fl_hillsborough_deeds(zip_code, n),
+    ("FL", "tampa"):    lambda zip_code, n: _fl_hillsborough_deeds(zip_code, n),
+    # GA
+    ("GA", "fulton"):   lambda zip_code, n: _ga_fulton_deeds(zip_code, n),
+    ("GA", "atlanta"):  lambda zip_code, n: _ga_fulton_deeds(zip_code, n),
+    ("GA", "dekalb"):   lambda zip_code, n: _ga_dekalb_deeds(zip_code, n),
+    ("GA", "decatur"):  lambda zip_code, n: _ga_dekalb_deeds(zip_code, n),
 }
 
 
