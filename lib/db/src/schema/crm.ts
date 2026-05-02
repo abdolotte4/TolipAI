@@ -384,6 +384,36 @@ export const propertyTax = pgTable("property_tax", {
   index("property_tax_lead_id_idx").on(t.leadId),
 ]);
 
+// ─── Tools: Batch Jobs (persistent across restarts) ──────────────────────────
+
+export const toolsSkipTraceJobs = pgTable("tools_skip_trace_jobs", {
+  jobId:           text("job_id").primaryKey(),
+  status:          text("status").notNull().default("queued"),
+  startedAt:       timestamp("started_at"),
+  totalRecords:    integer("total_records").notNull().default(0),
+  processed:       integer("processed").notNull().default(0),
+  succeeded:       integer("succeeded").notNull().default(0),
+  failed:          integer("failed").notNull().default(0),
+  progressPercent: integer("progress_percent").notNull().default(0),
+  resultRows:      jsonb("result_rows").notNull().default([]),
+  error:           text("error"),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+});
+
+export const toolsDistressedJobs = pgTable("tools_distressed_jobs", {
+  jobId:               text("job_id").primaryKey(),
+  status:              text("status").notNull().default("queued"),
+  startedAt:           timestamp("started_at"),
+  locations:           jsonb("locations").notNull().default([]),
+  categories:          jsonb("categories").notNull().default([]),
+  totalLocations:      integer("total_locations").notNull().default(0),
+  locationsProcessed:  integer("locations_processed").notNull().default(0),
+  totalFound:          integer("total_found").notNull().default(0),
+  resultRows:          jsonb("result_rows").notNull().default([]),
+  error:               text("error"),
+  createdAt:           timestamp("created_at").defaultNow().notNull(),
+});
+
 // Skip-trace results for a lead or a buyer name.
 export const skipTraceResults = pgTable("skip_trace_results", {
   id: serial("id").primaryKey(),

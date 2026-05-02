@@ -11,6 +11,9 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
+import { db } from "@workspace/db";
+import { toolsSkipTraceJobs, toolsDistressedJobs } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
 import Papa from "papaparse";
 import { estimateMarketPricePerSqft, ADJUSTMENT_FACTORS } from "../services/propertyApi";
 import { attomGet, hasAttomKey, fetchAttomAvm, geocodeViaAttom, fetchPropertyDataViaAttom } from "../services/attomApi";
@@ -265,7 +268,7 @@ async function resolveCountyGeoid(countyName: string, stateAbbr: string): Promis
   }
 }
 
-// ─── In-Memory Jobs ───────────────────────────────────────────────────────────
+// ─── In-Memory + Persistent Jobs ─────────────────────────────────────────────
 
 interface SkipTraceJob {
   jobId: string;
@@ -306,6 +309,96 @@ const skipTraceJobs = new Map<string, SkipTraceJob>();
 const distressedJobs = new Map<string, DistressedJob>();
 const enrichJobs = new Map<string, EnrichJob>();
 
+// ─── DB Sync Helpers (fire-and-forget) ───────────────────────────────────────
+
+function syncSkipJobToDB(job: SkipTraceJob, includeRows = false): void {
+  const payload = {
+    jobId:           job.jobId,
+    status:          job.status,
+    startedAt:       job.startedAt ? new Date(job.startedAt) : null,
+    totalRecords:    job.totalRecords,
+    processed:       job.processed,
+    succeeded:       job.succeeded,
+    failed:          job.failed,
+    progressPercent: job.progressPercent,
+    resultRows:      includeRows ? job.resultRows : [],
+    error:           job.error ?? null,
+  };
+  db.insert(toolsSkipTraceJobs)
+    .values(payload)
+    .onConflictDoUpdate({ target: toolsSkipTraceJobs.jobId, set: payload })
+    .catch((err: any) => logger.warn({ err: err?.message }, "syncSkipJobToDB failed"));
+}
+
+function syncDistressedJobToDB(job: DistressedJob, includeRows = false): void {
+  const payload = {
+    jobId:              job.jobId,
+    status:             job.status,
+    startedAt:          job.startedAt ? new Date(job.startedAt) : null,
+    locations:          job.locations,
+    categories:         job.categories,
+    totalLocations:     job.totalLocations,
+    locationsProcessed: job.locationsProcessed,
+    totalFound:         job.totalFound,
+    resultRows:         includeRows ? job.resultRows : [],
+    error:              job.error ?? null,
+  };
+  db.insert(toolsDistressedJobs)
+    .values(payload)
+    .onConflictDoUpdate({ target: toolsDistressedJobs.jobId, set: payload })
+    .catch((err: any) => logger.warn({ err: err?.message }, "syncDistressedJobToDB failed"));
+}
+
+function dbRowToSkipJob(row: any): SkipTraceJob {
+  return {
+    jobId:           row.jobId,
+    status:          row.status as SkipTraceJob["status"],
+    startedAt:       row.startedAt ? (row.startedAt as Date).toISOString() : null,
+    totalRecords:    row.totalRecords,
+    processed:       row.processed,
+    succeeded:       row.succeeded,
+    failed:          row.failed,
+    progressPercent: row.progressPercent,
+    resultRows:      (row.resultRows as any[]) ?? [],
+    error:           row.error ?? undefined,
+  };
+}
+
+function dbRowToDistressedJob(row: any): DistressedJob {
+  return {
+    jobId:              row.jobId,
+    status:             row.status as DistressedJob["status"],
+    startedAt:          row.startedAt ? (row.startedAt as Date).toISOString() : null,
+    locations:          (row.locations as string[]) ?? [],
+    categories:         (row.categories as string[]) ?? [],
+    totalLocations:     row.totalLocations,
+    locationsProcessed: row.locationsProcessed,
+    totalFound:         row.totalFound,
+    resultRows:         (row.resultRows as any[]) ?? [],
+    error:              row.error ?? undefined,
+  };
+}
+
+async function getSkipJob(jobId: string): Promise<SkipTraceJob | null> {
+  const mem = skipTraceJobs.get(jobId);
+  if (mem) return mem;
+  const [row] = await db.select().from(toolsSkipTraceJobs).where(eq(toolsSkipTraceJobs.jobId, jobId)).limit(1);
+  if (!row) return null;
+  const job = dbRowToSkipJob(row);
+  skipTraceJobs.set(jobId, job);
+  return job;
+}
+
+async function getDistressedJob(jobId: string): Promise<DistressedJob | null> {
+  const mem = distressedJobs.get(jobId);
+  if (mem) return mem;
+  const [row] = await db.select().from(toolsDistressedJobs).where(eq(toolsDistressedJobs.jobId, jobId)).limit(1);
+  if (!row) return null;
+  const job = dbRowToDistressedJob(row);
+  distressedJobs.set(jobId, job);
+  return job;
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 router.post("/tools/auth/verify", (req, res) => {
@@ -325,15 +418,53 @@ router.get("/tools/status", requirePin, (_req, res) => {
 
 // ─── Bulk Skip Trace ──────────────────────────────────────────────────────────
 
-router.get("/tools/skip-trace/jobs", requirePin, (_req, res) => {
-  const jobs = Array.from(skipTraceJobs.values())
-    .sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""))
-    .map(({ resultRows: _r, ...j }) => j);
+router.get("/tools/skip-trace/jobs", requirePin, async (_req, res) => {
+  // Merge in-memory (running/queued) with DB history
+  const dbRows = await db.select({
+    jobId: toolsSkipTraceJobs.jobId,
+    status: toolsSkipTraceJobs.status,
+    startedAt: toolsSkipTraceJobs.startedAt,
+    totalRecords: toolsSkipTraceJobs.totalRecords,
+    processed: toolsSkipTraceJobs.processed,
+    succeeded: toolsSkipTraceJobs.succeeded,
+    failed: toolsSkipTraceJobs.failed,
+    progressPercent: toolsSkipTraceJobs.progressPercent,
+    error: toolsSkipTraceJobs.error,
+    createdAt: toolsSkipTraceJobs.createdAt,
+  }).from(toolsSkipTraceJobs).orderBy(desc(toolsSkipTraceJobs.createdAt)).limit(50).catch(() => []);
+
+  const seen = new Set<string>();
+  const jobs: any[] = [];
+
+  // In-memory first (has live progress)
+  for (const j of skipTraceJobs.values()) {
+    seen.add(j.jobId);
+    const { resultRows: _r, ...safe } = j;
+    jobs.push(safe);
+  }
+  // DB rows for historical jobs not in memory
+  for (const row of dbRows) {
+    if (!seen.has(row.jobId)) {
+      jobs.push({
+        jobId: row.jobId,
+        status: row.status,
+        startedAt: row.startedAt ? row.startedAt.toISOString() : null,
+        totalRecords: row.totalRecords,
+        processed: row.processed,
+        succeeded: row.succeeded,
+        failed: row.failed,
+        progressPercent: row.progressPercent,
+        error: row.error ?? undefined,
+      });
+    }
+  }
+
+  jobs.sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
   res.json({ jobs });
 });
 
-router.get("/tools/skip-trace/status/:jobId", requirePin, (req, res) => {
-  const job = skipTraceJobs.get(req.params.jobId as string);
+router.get("/tools/skip-trace/status/:jobId", requirePin, async (req, res) => {
+  const job = await getSkipJob(req.params.jobId as string);
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   const { resultRows: _r, ...safe } = job;
   res.json(safe);
@@ -354,6 +485,7 @@ router.post("/tools/skip-trace/upload", requirePin, async (req: any, res) => {
     succeeded: 0, failed: 0, progressPercent: 0, resultRows: [],
   };
   skipTraceJobs.set(jobId, job);
+  syncSkipJobToDB(job);
 
   setImmediate(async () => {
     job.status = "running";
@@ -442,13 +574,14 @@ router.post("/tools/skip-trace/upload", requirePin, async (req: any, res) => {
 
     job.status = "completed";
     job.progressPercent = 100;
+    syncSkipJobToDB(job, true);
   });
 
   res.json({ jobId, message: "Job started", totalRecords: records.length });
 });
 
-router.get("/tools/skip-trace/download/:jobId", requirePin, (req, res) => {
-  const job = skipTraceJobs.get(req.params.jobId as string);
+router.get("/tools/skip-trace/download/:jobId", requirePin, async (req, res) => {
+  const job = await getSkipJob(req.params.jobId as string);
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status !== "completed") { res.status(400).json({ error: "Job not complete" }); return; }
   const csv = Papa.unparse(job.resultRows);
@@ -461,15 +594,50 @@ router.get("/tools/skip-trace/download/:jobId", requirePin, (req, res) => {
 
 const MORTGAGE_FILTER_CATEGORIES = new Set(["free_clear", "absentee_owner"]);
 
-router.get("/tools/distressed/jobs", requirePin, (_req, res) => {
-  const jobs = Array.from(distressedJobs.values())
-    .sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""))
-    .map(({ resultRows: _r, ...j }) => j);
+router.get("/tools/distressed/jobs", requirePin, async (_req, res) => {
+  const dbRows = await db.select({
+    jobId: toolsDistressedJobs.jobId,
+    status: toolsDistressedJobs.status,
+    startedAt: toolsDistressedJobs.startedAt,
+    locations: toolsDistressedJobs.locations,
+    categories: toolsDistressedJobs.categories,
+    totalLocations: toolsDistressedJobs.totalLocations,
+    locationsProcessed: toolsDistressedJobs.locationsProcessed,
+    totalFound: toolsDistressedJobs.totalFound,
+    error: toolsDistressedJobs.error,
+    createdAt: toolsDistressedJobs.createdAt,
+  }).from(toolsDistressedJobs).orderBy(desc(toolsDistressedJobs.createdAt)).limit(50).catch(() => []);
+
+  const seen = new Set<string>();
+  const jobs: any[] = [];
+
+  for (const j of distressedJobs.values()) {
+    seen.add(j.jobId);
+    const { resultRows: _r, ...safe } = j;
+    jobs.push(safe);
+  }
+  for (const row of dbRows) {
+    if (!seen.has(row.jobId)) {
+      jobs.push({
+        jobId: row.jobId,
+        status: row.status,
+        startedAt: row.startedAt ? row.startedAt.toISOString() : null,
+        locations: row.locations,
+        categories: row.categories,
+        totalLocations: row.totalLocations,
+        locationsProcessed: row.locationsProcessed,
+        totalFound: row.totalFound,
+        error: row.error ?? undefined,
+      });
+    }
+  }
+
+  jobs.sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
   res.json({ jobs });
 });
 
-router.get("/tools/distressed/status/:jobId", requirePin, (req, res) => {
-  const job = distressedJobs.get(req.params.jobId as string);
+router.get("/tools/distressed/status/:jobId", requirePin, async (req, res) => {
+  const job = await getDistressedJob(req.params.jobId as string);
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   const { resultRows: _r, ...safe } = job;
   res.json(safe);
@@ -577,6 +745,7 @@ router.post("/tools/distressed/search", requirePin, async (req, res) => {
     locationsProcessed: 0, totalFound: 0, resultRows: [],
   };
   distressedJobs.set(jobId, job);
+  syncDistressedJobToDB(job);
 
   setImmediate(async () => {
     job.status = "running";
@@ -681,17 +850,19 @@ router.post("/tools/distressed/search", requirePin, async (req, res) => {
       }
 
       job.locationsProcessed++;
+      syncDistressedJobToDB(job);
       await new Promise<void>(resolve => setTimeout(resolve, 300));
     }
 
     job.status = "completed";
+    syncDistressedJobToDB(job, true);
   });
 
   res.json({ jobId, message: "Search started", note: "Returns properties in the selected area. Use + Deep Skip Trace to add owner contact info." });
 });
 
-router.get("/tools/distressed/download/:jobId", requirePin, (req, res) => {
-  const job = distressedJobs.get(req.params.jobId as string);
+router.get("/tools/distressed/download/:jobId", requirePin, async (req, res) => {
+  const job = await getDistressedJob(req.params.jobId as string);
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status !== "completed") { res.status(400).json({ error: "Job not complete" }); return; }
   const csv = Papa.unparse(job.resultRows);
@@ -701,7 +872,7 @@ router.get("/tools/distressed/download/:jobId", requirePin, (req, res) => {
 });
 
 router.post("/tools/distressed/enrich/:jobId", requirePin, async (req, res) => {
-  const job = distressedJobs.get(req.params.jobId as string);
+  const job = await getDistressedJob(req.params.jobId as string);
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status !== "completed" || !job.resultRows.length) { res.status(400).json({ error: "Job not complete or no results" }); return; }
   if (!getPropertyApiKeys().length) { res.status(503).json({ error: "PropertyAPI keys not configured" }); return; }
