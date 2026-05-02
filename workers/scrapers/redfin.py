@@ -48,7 +48,7 @@ async def _resolve_region(zip_code: Optional[str] = None,
 async def _gis_csv(region_id: str, region_type: int, *, sold: bool = True,
                    max_results: int = 100) -> List[Dict[str, Any]]:
     base = "https://www.redfin.com/stingray/api/gis-csv"
-    sf = "1,2,3,5,6,7" if sold else "1,2,3,5,6,7"
+    sf = "6,9" if sold else "1,2,3,5,7"
     sold_within = "&sold_within_days=180" if sold else ""
     url = (
         f"{base}?al=1&market=socal&num_homes={max_results}&ord=redfin-recommended-asc"

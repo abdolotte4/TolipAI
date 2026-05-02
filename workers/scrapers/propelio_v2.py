@@ -24,6 +24,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ._browser_session import browser_context, invalidate_session
+from ._utils import _safe_num, _parse_buyer_card
 
 log = logging.getLogger("propelio")
 
@@ -72,20 +73,6 @@ async def _do_login(page) -> None:
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
-
-
-def _safe_num(s: Any) -> Optional[float]:
-    if s is None:
-        return None
-    if isinstance(s, (int, float)):
-        return float(s)
-    m = re.search(r"-?\d[\d,]*\.?\d*", str(s))
-    if not m:
-        return None
-    try:
-        return float(m.group(0).replace(",", ""))
-    except ValueError:
-        return None
 
 
 async def _intercept_json(page, url_pattern: re.Pattern, timeout_ms: int = 25000) -> List[Dict[str, Any]]:
@@ -383,41 +370,6 @@ async def fetch_cash_buyers(
             return buyers[:max_results]
         finally:
             await page.close()
-
-
-def _parse_buyer_card(text: str) -> Dict[str, Any]:
-    """Heuristic parser for the rendered buyer cards seen in the screenshot."""
-    out: Dict[str, Any] = {"_raw_text": text}
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if lines:
-        out["name"] = lines[0]
-    m = re.search(r"(\d+)\s*Props", text, re.IGNORECASE)
-    if m:
-        out["props_count"] = int(m.group(1))
-    m = re.search(r"Average\s+Deal[\s\S]*?\$([\d,]+)", text, re.IGNORECASE)
-    if m:
-        out["avg_deal"] = _safe_num(m.group(1))
-    m = re.search(r"Total\s+Deal[\s\S]*?\$([\d.]+)([MK])?", text, re.IGNORECASE)
-    if m:
-        n = float(m.group(1)) * (1_000_000 if m.group(2) == "M" else (1_000 if m.group(2) == "K" else 1))
-        out["total_deal"] = n
-    m = re.search(r"Last\s+Deal[\s\S]*?(\d{2}[./]\d{2}[./]\d{2,4})", text, re.IGNORECASE)
-    if m:
-        out["last_deal"] = m.group(1)
-    m = re.search(r"Price\s+Range[\s\S]*?\$([\d,]+)\s*-\s*\$([\d,]+)", text, re.IGNORECASE)
-    if m:
-        out["price_min"] = _safe_num(m.group(1))
-        out["price_max"] = _safe_num(m.group(2))
-    if "Landlord" in text:
-        out["types"] = (out.get("types") or []) + ["landlord"]
-    if "Flipper" in text:
-        out["types"] = (out.get("types") or []) + ["flipper"]
-    # Try to grab address (line after name, before counts)
-    for ln in lines[1:6]:
-        if re.search(r"\d", ln) and ("," in ln or re.search(r"[A-Z]{2}\s*\d{5}", ln)):
-            out["address"] = ln
-            break
-    return out
 
 
 def _normalise_buyer(b: Dict[str, Any]) -> Dict[str, Any]:

@@ -12,6 +12,7 @@ useful because it fuses 8+ data signals.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -25,6 +26,19 @@ from ..llm import _chat
 from . import zillow, redfin
 
 log = logging.getLogger("satellite_dfd")
+
+# Cap concurrent AI distress-scoring calls to avoid LLM rate-limit storms.
+# Each listing calls the LLM once; without a cap, 60+ concurrent calls will
+# hammer Groq's free tier and trigger cascading 429s.
+_AI_SCORE_SEM: Optional[asyncio.Semaphore] = None
+
+
+def _get_ai_sem() -> asyncio.Semaphore:
+    global _AI_SCORE_SEM
+    if _AI_SCORE_SEM is None:
+        limit = int(os.getenv("DFD_AI_CONCURRENCY", "4"))
+        _AI_SCORE_SEM = asyncio.Semaphore(limit)
+    return _AI_SCORE_SEM
 
 
 # ─── Distress signal weights ──────────────────────────────────────────────────
@@ -277,9 +291,10 @@ async def scan_area(
             }
 
             if use_ai_scoring:
-                ai = await _ai_distress_score(
-                    p.get("address") or "", signals, base
-                )
+                async with _get_ai_sem():
+                    ai = await _ai_distress_score(
+                        p.get("address") or "", signals, base
+                    )
                 result["distress_score"] = ai["score"]
                 result["distress_category"] = ai["category"]
                 result["rationale"] = ai["rationale"]

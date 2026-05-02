@@ -11,6 +11,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
+import re as _re
+
 import asyncpg
 
 from .config import settings
@@ -21,20 +23,31 @@ _pool: Optional[asyncpg.Pool] = None
 
 
 async def init_pool() -> Optional[asyncpg.Pool]:
-    """Create a singleton pool, or return None if no DATABASE_URL set."""
+    """Create a singleton pool, or return None if no DATABASE_URL set.
+
+    Neon DB requires SSL.  We detect Neon (or any URL with sslmode=require)
+    and strip the sslmode query param before passing to asyncpg (which does
+    not parse it from the DSN), then pass ssl="require" explicitly.
+    """
     global _pool
     if _pool is not None:
         return _pool
     if not settings.database_url:
         log.warning("DATABASE_URL not set — DB persistence disabled")
         return None
-    _pool = await asyncpg.create_pool(
-        settings.database_url,
-        min_size=1,
-        max_size=8,
-        command_timeout=30,
-    )
-    log.info("PG pool ready")
+
+    dsn = settings.database_url
+    ssl_param = None
+    if "neon.tech" in dsn or "sslmode=require" in dsn:
+        dsn = _re.sub(r"[?&]sslmode=[^&]*", "", dsn).rstrip("?").rstrip("&")
+        ssl_param = "require"
+
+    pool_kwargs = dict(min_size=1, max_size=8, command_timeout=30)
+    if ssl_param:
+        pool_kwargs["ssl"] = ssl_param  # type: ignore[assignment]
+
+    _pool = await asyncpg.create_pool(dsn, **pool_kwargs)
+    log.info("PG pool ready (ssl=%s)", ssl_param or "off")
     return _pool
 
 
