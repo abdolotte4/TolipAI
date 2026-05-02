@@ -47,7 +47,7 @@ def _get_ai_sem() -> asyncio.Semaphore:
 
 def _age_score(year_built: Optional[int]) -> int:
     if not year_built:
-        return 5
+        return 0
     age = max(0, 2025 - int(year_built))
     if age >= 80:
         return 20
@@ -195,8 +195,21 @@ def _category(score: int) -> str:
 
 async def _fetch_listings(zip_code: str = "", city: str = "",
                           state: str = "") -> List[Dict[str, Any]]:
-    """Pull active + recently-sold listings from Zillow + Redfin (capped to keep latency low)."""
+    """Pull active for-sale + FSBO + recently-sold listings from Zillow + Redfin.
+
+    Active for-sale listings carry the richest distress signals (days on market,
+    price reductions, FSBO status). Recently-sold are included as supplementary
+    volume but contribute fewer real-time signals.
+    """
     results: List[Dict[str, Any]] = []
+
+    async def _safe_active():
+        try:
+            return await zillow.fetch_active_listings(zip_code=zip_code, city=city,
+                                                      state=state, max_results=40)
+        except Exception as e:
+            log.info("Zillow active listings fetch failed: %s", e)
+            return []
 
     async def _safe_fsbo():
         try:
@@ -211,7 +224,7 @@ async def _fetch_listings(zip_code: str = "", city: str = "",
     async def _safe_zillow_sold():
         try:
             return await zillow.fetch_recently_sold(zip_code=zip_code, city=city,
-                                                    state=state, max_results=25)
+                                                    state=state, max_results=20)
         except Exception as e:
             log.info("Zillow sold fetch failed: %s", e)
             return []
@@ -219,18 +232,31 @@ async def _fetch_listings(zip_code: str = "", city: str = "",
     async def _safe_redfin_sold():
         try:
             return await redfin.fetch_recently_sold(zip_code=zip_code, city=city,
-                                                    state=state, max_results=25)
+                                                    state=state, max_results=20)
         except Exception as e:
             log.info("Redfin sold fetch failed: %s", e)
             return []
 
-    fsbo_listings, zillow_sold, redfin_sold = await asyncio.gather(
-        _safe_fsbo(), _safe_zillow_sold(), _safe_redfin_sold()
+    active_listings, fsbo_listings, zillow_sold, redfin_sold = await asyncio.gather(
+        _safe_active(), _safe_fsbo(), _safe_zillow_sold(), _safe_redfin_sold()
     )
+    # Active listings first — they have the best distress signals
+    results.extend(active_listings)
     results.extend(fsbo_listings)
     results.extend(zillow_sold)
     results.extend(redfin_sold)
-    return results
+
+    # De-dupe by address so FSBO / active duplicates don't double-count
+    seen_addrs: set[str] = set()
+    deduped: List[Dict[str, Any]] = []
+    for p in results:
+        addr_key = (p.get("address") or "").strip().lower()
+        if addr_key and addr_key in seen_addrs:
+            continue
+        if addr_key:
+            seen_addrs.add(addr_key)
+        deduped.append(p)
+    return deduped
 
 
 # ─── Public entrypoint ────────────────────────────────────────────────────────

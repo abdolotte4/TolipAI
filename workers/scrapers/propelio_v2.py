@@ -59,31 +59,52 @@ async def _do_login(page) -> None:
     )
 
     await page.wait_for_selector(email_sel, timeout=25000)
-    await page.fill(email_sel, email)
-    await page.fill(pw_sel, password)
 
-    # Submit — try button first, then Enter on password field as fallback
+    # Explicitly click then fill — React needs focus events to fire onChange handlers
+    email_el = page.locator(email_sel).first
+    await email_el.click()
+    await page.wait_for_timeout(300)
+    await email_el.fill(email)
+    await page.wait_for_timeout(200)
+
+    pw_el = page.locator(pw_sel).first
+    await pw_el.click()
+    await page.wait_for_timeout(300)
+    await pw_el.fill(password)
+    await page.wait_for_timeout(300)
+
+    # Submit — check all common button text variants (including all-caps "SIGN IN")
     btn = page.locator(
-        'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in"), '
-        'button:has-text("Login"), input[type="submit"]'
+        'button[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign In"), '
+        'button:has-text("Sign in"), button:has-text("LOG IN"), button:has-text("Log In"), '
+        'button:has-text("Log in"), button:has-text("Login"), input[type="submit"]'
     ).first
     if await btn.count():
         await btn.click()
     else:
-        await page.locator(pw_sel).first.press("Enter")
+        await pw_el.press("Enter")
 
     # Wait for navigation AWAY from /login — accept ANY URL that is not the login page
     try:
         await page.wait_for_function(
             "() => !window.location.href.includes('/login')",
-            timeout=35000,
+            timeout=40000,
         )
     except Exception:
         # Last-chance fallback: wait for network to settle then re-check
         await page.wait_for_load_state("networkidle", timeout=15000)
 
     if "/login" in page.url:
-        raise RuntimeError("Propelio login appears to have failed (still on /login)")
+        # Capture any visible error message to help diagnose
+        try:
+            err_el = page.locator('[role="alert"], .error, .alert, [class*="error" i]').first
+            err_text = (await err_el.inner_text(timeout=3000)).strip() if await err_el.count() else ""
+        except Exception:
+            err_text = ""
+        raise RuntimeError(
+            f"Propelio login failed (still on /login). "
+            f"Page error: {err_text or 'none detected'}"
+        )
 
     log.info("Propelio: login OK, now at %s", page.url)
 

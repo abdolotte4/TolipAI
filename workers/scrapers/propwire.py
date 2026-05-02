@@ -55,29 +55,49 @@ async def _do_login(page) -> None:
     )
 
     await page.wait_for_selector(email_sel, timeout=30000)
-    await page.fill(email_sel, email)
-    await page.fill(pw_sel, password)
+
+    # Explicitly click then fill — Next.js/React forms need focus events for onChange
+    email_el = page.locator(email_sel).first
+    await email_el.click()
+    await page.wait_for_timeout(300)
+    await email_el.fill(email)
+    await page.wait_for_timeout(200)
+
+    pw_el = page.locator(pw_sel).first
+    await pw_el.click()
+    await page.wait_for_timeout(300)
+    await pw_el.fill(password)
+    await page.wait_for_timeout(300)
 
     btn = page.locator(
-        'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in"), '
-        'button:has-text("Login"), input[type="submit"]'
+        'button[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign In"), '
+        'button:has-text("Sign in"), button:has-text("LOG IN"), button:has-text("Log In"), '
+        'button:has-text("Log in"), button:has-text("Login"), input[type="submit"]'
     ).first
     if await btn.count():
         await btn.click()
     else:
-        await page.locator(pw_sel).first.press("Enter")
+        await pw_el.press("Enter")
 
     # Wait for ANY URL change away from /login
     try:
         await page.wait_for_function(
             "() => !window.location.href.includes('/login')",
-            timeout=35000,
+            timeout=40000,
         )
     except Exception:
         await page.wait_for_load_state("networkidle", timeout=15000)
 
     if "/login" in page.url:
-        raise RuntimeError("Propwire login failed (still on /login)")
+        try:
+            err_el = page.locator('[role="alert"], .error, .alert, [class*="error" i]').first
+            err_text = (await err_el.inner_text(timeout=3000)).strip() if await err_el.count() else ""
+        except Exception:
+            err_text = ""
+        raise RuntimeError(
+            f"Propwire login failed (still on /login). "
+            f"Page error: {err_text or 'none detected'}"
+        )
 
     log.info("Propwire: login OK, now at %s", page.url)
 
