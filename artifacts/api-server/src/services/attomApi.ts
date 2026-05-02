@@ -14,6 +14,19 @@ function loadAttomKeys(): string[] {
 
 let _attomKeyIndex = 0;
 const _depletedAttomKeys = new Set<string>();
+const _depletedAttomKeyTimes = new Map<string, number>();
+
+// Auto-clear ATTOM depleted-key cache after 5 minutes so transient auth errors self-heal
+setInterval(() => {
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  for (const [key, t] of _depletedAttomKeyTimes) {
+    if (t < cutoff) {
+      _depletedAttomKeys.delete(key);
+      _depletedAttomKeyTimes.delete(key);
+      logger.info({ key: key.slice(0, 8) + "…" }, "[ATTOM] depleted-key cache expired — key re-enabled");
+    }
+  }
+}, 60_000).unref();
 
 export function hasAttomKey(): boolean {
   return loadAttomKeys().length > 0;
@@ -50,6 +63,7 @@ export async function attomGet(path: string, params: Record<string, string | num
 
       if (res.status === 401 || res.status === 403) {
         _depletedAttomKeys.add(key);
+        _depletedAttomKeyTimes.set(key, Date.now());
         lastError = `ATTOM ${res.status} (key unauthorized)`;
         logger.warn({ key: key.slice(0, 8) + "…", status: res.status }, "[ATTOM] key unauthorized — rotating to next");
         continue;

@@ -483,7 +483,9 @@ export async function fetchPropertyData(address: string): Promise<PropertyApiDat
   const keyIndex = (_keyIndex === 0 ? loadApiKeys().length : _keyIndex); // 1-based index of key that was just used
 
   try {
-    const url = `${BASE_URL}/parcels/search-by-address?address=${encodeURIComponent(address)}`;
+    // PropertyAPI requires + for spaces (not %20) — use URLSearchParams which encodes correctly
+    const qs = new URLSearchParams({ address });
+    const url = `${BASE_URL}/parcels/search-by-address?${qs}`;
     const resp = await fetch(url, {
       headers: { "X-Api-Key": apiKey },
     });

@@ -144,12 +144,21 @@ async function lookupProperty(address: string) {
   for (let attempt = 0; attempt < allKeys.length; attempt++) {
     const key = getNextPropertyApiKey();
     if (!key) break;
-    const url = `${PAPI_BASE}/parcels/search-by-address?address=${encodeURIComponent(address)}`;
+    // PropertyAPI requires + for spaces (not %20) — use URLSearchParams which encodes correctly
+    const qs = new URLSearchParams({ address });
+    const url = `${PAPI_BASE}/parcels/search-by-address?${qs}`;
     const res = await fetch(url, { headers: { "X-Api-Key": key } });
     if (res.status === 402 || res.status === 429 || res.status === 401) {
       _depletedKeys.add(key);
       lastError = `Key invalid or depleted (${res.status})`;
       logger.warn({ key: key.slice(-8), status: res.status }, "PropertyAPI key invalid/depleted — rotating");
+      continue;
+    }
+    if (res.status >= 500) {
+      // Transient server error — skip this key attempt and retry with the next
+      const text = await res.text().catch(() => "");
+      lastError = `PropertyAPI ${res.status}: ${text.slice(0, 120)}`;
+      logger.warn({ key: key.slice(-8), status: res.status, err: lastError }, "PropertyAPI server error — skipping");
       continue;
     }
     if (!res.ok) {
@@ -158,14 +167,18 @@ async function lookupProperty(address: string) {
     }
     const json = await res.json() as any;
     const d = json.data || {};
+    const num = (v: any): number | null => {
+      const n = parseFloat(v);
+      return isNaN(n) || n === 0 ? null : n;
+    };
     return {
-      beds: d.bedrooms ?? null,
-      baths: d.bathrooms ?? null,
-      sqft: d.living_sqft ?? d.square_feet ?? null,
-      yearBuilt: d.year_built ?? d.struct_year_built ?? null,
-      avm: d.market_estimate ?? d.market_value ?? null,
-      assessedValue: d.assessed_total ?? d.tax_assessed_value ?? null,
-      lastSalePrice: d.last_sale_price ?? null,
+      beds: num(d.bedrooms),
+      baths: num(d.bathrooms),
+      sqft: num(d.living_sqft) ?? num(d.square_feet),
+      yearBuilt: num(d.year_built) ?? num(d.struct_year_built),
+      avm: num(d.market_estimate) ?? num(d.market_value),
+      assessedValue: num(d.assessed_total) ?? num(d.tax_assessed_value),
+      lastSalePrice: num(d.last_sale_price),
       lastSaleDate: d.last_sale_date ? String(d.last_sale_date).split("T")[0] : null,
       propertyType: d.use_standardized_desc ?? d.property_type ?? null,
       ownerName: d.owner ?? d.owner_name ?? null,
