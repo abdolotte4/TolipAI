@@ -58,7 +58,7 @@ export async function attomGet(path: string, params: Record<string, string | num
     try {
       const res = await fetch(url.toString(), {
         headers: { "apikey": key, "accept": "application/json" },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (res.status === 401 || res.status === 403) {
