@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Set
 import httpx
 
 from .config import settings
-from .http_client import _get_client, fetch_html
+from .http_client import fetch_html
 from .llm import extract_investor_profile
 from .scrapers import sunbiz
 
@@ -98,13 +98,13 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
         return {}
     if "opencorporates" in _dead_sources:
         return {}
-    cli = _get_client()
     try:
         params: Dict[str, Any] = {"q": name}
         if state:
             params["jurisdiction_code"] = f"us_{state.lower()}"
-        r = await cli.get(OPENCORPORATES_API, params=params,
-                          headers={"User-Agent": USER_AGENT})
+        async with httpx.AsyncClient(timeout=20) as cli:
+            r = await cli.get(OPENCORPORATES_API, params=params,
+                              headers={"User-Agent": USER_AGENT})
         if r.status_code == 401:
             _dead_sources.add("opencorporates")
             log.warning("OpenCorporates 401 — invalid key, disabling for this run")
@@ -139,12 +139,12 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
 
 async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
     """Search SEC EDGAR — free, no API key required."""
-    cli = _get_client()
     try:
-        r = await cli.get(SEC_EDGAR_SEARCH, params={
-            "action": "getcompany", "company": name, "type": "13",
-            "dateb": "", "owner": "include", "count": "10",
-        }, headers={"User-Agent": USER_AGENT})
+        async with httpx.AsyncClient(timeout=20) as cli:
+            r = await cli.get(SEC_EDGAR_SEARCH, params={
+                "action": "getcompany", "company": name, "type": "13",
+                "dateb": "", "owner": "include", "count": "10",
+            }, headers={"User-Agent": USER_AGENT})
         if r.status_code != 200:
             return {}
         from bs4 import BeautifulSoup
@@ -169,14 +169,14 @@ async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[st
         return {}
     if "propertyapi" in _dead_sources:
         return {}
-    cli = _get_client()
     for key in settings.property_api_keys:
         try:
-            r = await cli.post(
-                "https://api.propertyapi.co/skip-trace",
-                json={"name": name, "address": address or ""},
-                headers={"Authorization": f"Bearer {key}"},
-            )
+            async with httpx.AsyncClient(timeout=20) as cli:
+                r = await cli.post(
+                    "https://api.propertyapi.co/skip-trace",
+                    json={"name": name, "address": address or ""},
+                    headers={"Authorization": f"Bearer {key}"},
+                )
             if r.status_code == 200:
                 return r.json()
             if r.status_code in (402, 403) and "credit" in r.text.lower():
