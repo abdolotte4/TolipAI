@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
-import { crmTasks, crmUsers, crmCampaigns, crmNotifications, crmLeadFollowers, crmLeads } from "@workspace/db/schema";
-import { eq, and, lte, lt, gt, ne } from "drizzle-orm";
+import { crmTasks, crmUsers, crmCampaigns, crmNotifications, crmLeadFollowers, crmLeads, toolsSkipTraceJobs, toolsDistressedJobs } from "@workspace/db/schema";
+import { eq, and, lte, lt, gt, ne, sql } from "drizzle-orm";
 import { sendEmail, buildNewLeadEmail, buildTaskReminderEmail } from "./emailService";
 import { logger } from "../lib/logger";
 
@@ -229,5 +229,19 @@ export async function runTaskAutomationCron() {
     logger.info(`[automation] Cron done — ${soonTasks.length} reminders, ${overdueTasks.length} escalations`);
   } catch (err) {
     console.error("[automation] runTaskAutomationCron error:", err);
+  }
+
+  // Purge job rows older than 30 days (runs every hour but only deletes when rows exist)
+  try {
+    const cutoff = sql`NOW() - INTERVAL '30 days'`;
+    const [skipDel, distDel] = await Promise.all([
+      db.delete(toolsSkipTraceJobs).where(lt(toolsSkipTraceJobs.createdAt, cutoff)).returning({ jobId: toolsSkipTraceJobs.jobId }),
+      db.delete(toolsDistressedJobs).where(lt(toolsDistressedJobs.createdAt, cutoff)).returning({ jobId: toolsDistressedJobs.jobId }),
+    ]);
+    if (skipDel.length || distDel.length) {
+      logger.info(`[automation] Purged ${skipDel.length} old skip-trace jobs, ${distDel.length} old distressed jobs`);
+    }
+  } catch (err) {
+    logger.warn({ err }, "[automation] Job purge failed");
   }
 }
