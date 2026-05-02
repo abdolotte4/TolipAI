@@ -19,6 +19,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._browser_session import browser_context, invalidate_session
+from ._utils import _safe_num, _parse_buyer_card
 
 log = logging.getLogger("propwire")
 
@@ -65,20 +66,6 @@ async def _do_login(page) -> None:
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
-
-
-def _safe_num(s: Any) -> Optional[float]:
-    if s is None:
-        return None
-    if isinstance(s, (int, float)):
-        return float(s)
-    m = re.search(r"-?\d[\d,]*\.?\d*", str(s))
-    if not m:
-        return None
-    try:
-        return float(m.group(0).replace(",", ""))
-    except ValueError:
-        return None
 
 
 async def _resolve_property_url(ctx, query_or_url: str) -> str:
@@ -467,7 +454,6 @@ async def fetch_cash_buyers_nearby(
                     for card in cards:
                         text = (await card.inner_text()).strip()
                         if text:
-                            from .propelio_v2 import _parse_buyer_card
                             page_buyers.append(_parse_buyer_card(text))
 
                 for b in page_buyers:
