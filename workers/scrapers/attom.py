@@ -17,7 +17,6 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from ..config import settings
-from ..http_client import _get_client
 
 log = logging.getLogger("attom")
 
