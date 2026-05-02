@@ -190,13 +190,18 @@ export async function fetchPropertyDataViaAttom(
 ): Promise<PropertyApiData | null> {
   try {
     const address2 = [city, state, zip].filter(Boolean).join(" ");
-    const data = await attomGet("/propertyapi/v1.0.0/property/detail", {
-      address1: street,
-      ...(address2 ? { address2 } : {}),
-    });
+    const addrParams = { address1: street, ...(address2 ? { address2 } : {}) };
 
-    const prop = data?.property?.[0];
-    if (!prop) return null;
+    // Fire detail + allevents in parallel — allevents reliably carries sale history and owner
+    const [detailData, eventsData] = await Promise.allSettled([
+      attomGet("/propertyapi/v1.0.0/property/detail", addrParams),
+      attomGet("/propertyapi/v1.0.0/allevents/detail", addrParams),
+    ]);
+
+    const prop = detailData.status === "fulfilled" ? detailData.value?.property?.[0] : null;
+    const evt  = eventsData.status  === "fulfilled" ? eventsData.value?.property?.[0]  : null;
+
+    if (!prop && !evt) return null;
 
     const num = (v: any): number | null => {
       const n = parseFloat(v);
@@ -205,38 +210,85 @@ export async function fetchPropertyDataViaAttom(
     const str = (v: any): string | null =>
       v && typeof v === "string" && v.trim() ? v.trim() : null;
 
-    const beds         = num(prop?.building?.rooms?.bedroomscount);
-    const baths        = num(prop?.building?.rooms?.bathstotal ?? prop?.building?.rooms?.bathscalculated);
-    const sqft         = num(prop?.building?.size?.livingsize ?? prop?.building?.size?.universalsize);
-    const yearBuilt    = num(prop?.summary?.yearbuilt);
+    // ── Physical characteristics (from detail) ────────────────────────────────
+    const beds      = num(prop?.building?.rooms?.bedroomscount);
+    const baths     = num(prop?.building?.rooms?.bathstotal ?? prop?.building?.rooms?.bathscalculated);
+    const sqft      = num(prop?.building?.size?.livingsize ?? prop?.building?.size?.universalsize);
+    const yearBuilt = num(prop?.summary?.yearbuilt);
 
-    const lotAcres     = num(prop?.lot?.lotsize1);
-    const lotSqft      = lotAcres != null ? Math.round(lotAcres * 43560)
-                       : num(prop?.lot?.lotsize2) ?? null;
+    const lotAcres  = num(prop?.lot?.lotsize1);
+    const lotSqft   = lotAcres != null ? Math.round(lotAcres * 43560)
+                    : num(prop?.lot?.lotsize2) ?? null;
 
-    const ownerName    = str(prop?.owner?.owner1?.fullname ?? prop?.owner?.owner1?.lastName);
-    const taxAssessed  = num(prop?.assessment?.assessed?.assdttlvalue);
-    const lastSalePrice = num(prop?.sale?.amount?.saleamt);
-    const lastSaleDateRaw = prop?.sale?.saleTransDate ?? prop?.sale?.salesearchdate;
+    const propertyType = str(prop?.summary?.proptype ?? prop?.summary?.propClass
+                           ?? evt?.summary?.proptype ?? evt?.summary?.propClass);
+    const lat = num(prop?.location?.latitude  ?? evt?.address?.latitude);
+    const lng = num(prop?.location?.longitude ?? evt?.address?.longitude);
+
+    // ── Owner name — try multiple paths across both responses ─────────────────
+    const ownerName = str(
+      prop?.owner?.owner1?.fullname ??
+      prop?.owner?.owner1?.firstName + (prop?.owner?.owner1?.lastName ? " " + prop.owner.owner1.lastName : "") ||
+      prop?.owner?.owner1?.lastName ??
+      prop?.owner?.owner1?.corpname ??
+      evt?.owner?.owner1?.fullname ??
+      evt?.owner?.owner1?.lastName ??
+      evt?.owner?.owner1?.corpname,
+    );
+
+    // ── Tax assessed value ────────────────────────────────────────────────────
+    const taxAssessed = num(
+      prop?.assessment?.assessed?.assdttlvalue ??
+      prop?.assessment?.market?.mktttlvalue,
+    );
+
+    // ── Sale history — prefer allevents (more reliable), fall back to detail ──
+    // allevents returns an array of events; find the most recent DEED/sale
+    let lastSalePrice: number | null = null;
+    let lastSaleDateRaw: string | null = null;
+
+    const evtList: any[] = evt?.eventHistory ?? [];
+    const saleEvent = evtList
+      .filter((e: any) => {
+        const type = (e?.recordinginfo?.formtype ?? e?.recordingInfo?.formType ?? "").toUpperCase();
+        return type.includes("DEED") || type.includes("SALE") || type.includes("TRANSFER");
+      })
+      .sort((a: any, b: any) => {
+        const da = new Date(a?.recordinginfo?.recordingdate ?? a?.recordingInfo?.recordingDate ?? 0).getTime();
+        const db = new Date(b?.recordinginfo?.recordingdate ?? b?.recordingInfo?.recordingDate ?? 0).getTime();
+        return db - da;
+      })[0];
+
+    if (saleEvent) {
+      lastSalePrice    = num(saleEvent?.amount?.saleamt ?? saleEvent?.saleamt);
+      lastSaleDateRaw  = saleEvent?.recordinginfo?.recordingdate ?? saleEvent?.recordingInfo?.recordingDate
+                        ?? saleEvent?.saleTransDate ?? null;
+    }
+
+    // Fall back to property/detail sale block
+    if (lastSalePrice == null) lastSalePrice = num(prop?.sale?.amount?.saleamt);
+    if (lastSaleDateRaw == null) lastSaleDateRaw = prop?.sale?.saleTransDate ?? prop?.sale?.salesearchdate ?? null;
+
     const lastSaleDate = lastSaleDateRaw
       ? new Date(lastSaleDateRaw).toISOString().split("T")[0]
       : null;
-    const propertyType = str(prop?.summary?.proptype ?? prop?.summary?.propClass);
-    const lat          = num(prop?.location?.latitude);
-    const lng          = num(prop?.location?.longitude);
 
-    const prkgType     = str(prop?.building?.parking?.prkgtype);
-    const hasGarage    = prkgType != null && prkgType.toUpperCase() !== "NONE";
-    const poolStr      = str(prop?.utilities?.PoolInd ?? prop?.utilities?.poolInd);
-    const hasPool      = poolStr != null && poolStr.toUpperCase() === "YES";
+    // ── Amenities ─────────────────────────────────────────────────────────────
+    const prkgType  = str(prop?.building?.parking?.prkgtype);
+    const hasGarage = prkgType != null && prkgType.toUpperCase() !== "NONE";
+    const poolStr   = str(prop?.utilities?.PoolInd ?? prop?.utilities?.poolInd);
+    const hasPool   = poolStr != null && poolStr.toUpperCase() === "YES";
 
-    logger.info({ street, city, state }, "[ATTOM] fetchPropertyDataViaAttom success");
+    logger.info(
+      { street, city, state, ownerName, lastSalePrice, lastSaleDate, detailOk: !!prop, eventsOk: !!evt },
+      "[ATTOM] fetchPropertyDataViaAttom success",
+    );
 
     return {
       beds, baths, sqft, yearBuilt, ownerName, lotSqft, hasPool, hasGarage,
       taxAssessedValue: taxAssessed, lastSalePrice, lastSaleDate, propertyType,
       latitude: lat, longitude: lng,
-      avm: null, // AVM requires separate call — use "Get ATTOM AVM" button
+      avm: null,
     };
   } catch (err: any) {
     logger.warn({ err: err?.message }, "[ATTOM] fetchPropertyDataViaAttom failed");
