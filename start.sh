@@ -18,16 +18,19 @@ import os, glob, re
 
 NIX = "/nix/store"
 needed = {
-    "libX11.so.6":       r"libX11-1\.[0-9]",
-    "libXcomposite.so.1":r"libXcomposite-",
-    "libXdamage.so.1":   r"libx?Xdamage-",
-    "libXext.so.6":      r"libXext-",
-    "libXfixes.so.3":    r"libXfixes-",
-    "libXrandr.so.2":    r"libXrandr-|libxrandr-",
-    "libxcb.so.1":       r"libxcb-1\.",
-    "libgbm.so.1":       r"mesa-libgbm-|mesa-[0-9]",
-    "libexpat.so.1":     r"expat-2\.",
-    "libudev.so.1":      r"eudev-|libudev-zero-",
+    "libX11.so.6":         r"libX11-1\.[0-9]",
+    "libXcomposite.so.1":  r"libXcomposite-",
+    "libXdamage.so.1":     r"libx?Xdamage-",
+    "libXext.so.6":        r"libXext-",
+    "libXfixes.so.3":      r"libXfixes-",
+    "libXrandr.so.2":      r"libXrandr-|libxrandr-",
+    "libxcb.so.1":         r"libxcb-1\.",
+    "libgbm.so.1":         r"mesa-libgbm-|mesa-[0-9]",
+    "libexpat.so.1":       r"expat-2\.",
+    "libudev.so.1":        r"eudev-|libudev-zero-",
+    "libxkbcommon.so.0":   r"libxkbcommon-[0-9]",
+    "libXau.so.6":         r"libXau-",
+    "libxshmfence.so.1":   r"libxshmfence-",
 }
 
 dirs = set()
