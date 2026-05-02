@@ -226,15 +226,16 @@ export async function fetchPropertyDataViaAttom(
     const lng = num(prop?.location?.longitude ?? evt?.address?.longitude);
 
     // ── Owner name — try multiple paths across both responses ─────────────────
-    const ownerName = str(
-      prop?.owner?.owner1?.fullname ??
-      prop?.owner?.owner1?.firstName + (prop?.owner?.owner1?.lastName ? " " + prop.owner.owner1.lastName : "") ||
-      prop?.owner?.owner1?.lastName ??
-      prop?.owner?.owner1?.corpname ??
-      evt?.owner?.owner1?.fullname ??
-      evt?.owner?.owner1?.lastName ??
-      evt?.owner?.owner1?.corpname,
-    );
+    const _o1 = prop?.owner?.owner1;
+    const _e1 = evt?.owner?.owner1;
+    const _ownerFull = str(_o1?.fullname)
+      ?? ((_o1?.firstName || _o1?.lastName) ? [_o1.firstName, _o1.lastName].filter(Boolean).join(" ") : null)
+      ?? str(_o1?.lastName)
+      ?? str(_o1?.corpname)
+      ?? str(_e1?.fullname)
+      ?? str(_e1?.lastName)
+      ?? str(_e1?.corpname);
+    const ownerName = _ownerFull;
 
     // ── Tax assessed value ────────────────────────────────────────────────────
     const taxAssessed = num(
