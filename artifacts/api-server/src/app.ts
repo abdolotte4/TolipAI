@@ -20,9 +20,17 @@ app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
 });
 
 const ALLOWED_ORIGINS = [
+  // Replit published domains (*.replit.app) and dev preview (*.replit.dev)
+  /^https:\/\/.*\.replit\.app$/,
+  /^https:\/\/.*\.replit\.dev$/,
+  // Railway scraper / internal services
   /^https:\/\/.*\.up\.railway\.app$/,
+  // Custom domain
   /^https:\/\/.*\.digorva\.com$/,
   /^https:\/\/digorva\.com$/,
+  // Local development
+  /^http:\/\/localhost(:\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(:\d+)?$/,
 ];
 
 const corsOptions: cors.CorsOptions = {
@@ -157,7 +165,6 @@ if (process.env.NODE_ENV === "production") {
 
   const crmDir = path.join(cwd, "artifacts/digor-crm/dist/public");
   const toolsDir = path.join(cwd, "artifacts/digor-tools/dist/public");
-  const demoDir = path.join(cwd, "artifacts/demo-video/dist/public");
   const websiteDir = path.join(cwd, "artifacts/digor-website/dist/public");
 
   app.use("/crm", express.static(crmDir));
@@ -168,11 +175,6 @@ if (process.env.NODE_ENV === "production") {
   app.use("/tools", express.static(toolsDir));
   app.get("/tools/*path", (_req: Request, res: Response) => {
     res.sendFile(path.join(toolsDir, "index.html"));
-  });
-
-  app.use("/demo", express.static(demoDir));
-  app.get("/demo/*path", (_req: Request, res: Response) => {
-    res.sendFile(path.join(demoDir, "index.html"));
   });
 
   app.use("/", express.static(websiteDir));
