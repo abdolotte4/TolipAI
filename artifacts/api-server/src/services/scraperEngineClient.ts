@@ -267,7 +267,7 @@ export const scraperEngine = {
         campaign_id: req.campaignId,
         persist: req.persist ?? true,
       }),
-      timeoutMs: 30_000,
+      timeoutMs: 90_000,
     });
   },
 

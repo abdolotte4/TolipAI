@@ -1629,7 +1629,8 @@ export default function LeadDetail() {
             variant: "destructive",
           });
         } else {
-          toast({ title: "Could not fetch property data", description: "Check the address is complete and try again", variant: "destructive" });
+          const detail = body?.error || err?.message || "Check the address is complete and try again";
+          toast({ title: "Could not fetch property data", description: detail, variant: "destructive" });
         }
       },
     },

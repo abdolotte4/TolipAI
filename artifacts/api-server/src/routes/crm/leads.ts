@@ -4,7 +4,7 @@ import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers,
 import { eq, desc, ilike, and, or, sql, ne } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { onLeadCreated, onLeadStatusChanged } from "../../services/automation";
-import { fetchPropertyData, checkCooldown, recordFetch, runSkipTrace, checkSkipTraceCooldown, recordSkipTrace, getLastSkipTraceError, calculateAdjustedComp, calculateArvFromComps, calculateMao, getMaoDiscount, checkFetchCompsCooldown, recordFetchComps, pollCompsExport, downloadComps} from "../../services/propertyApi";
+import { fetchPropertyData, checkCooldown, recordFetch, runSkipTrace, checkSkipTraceCooldown, recordSkipTrace, getLastSkipTraceError, calculateAdjustedComp, calculateArvFromComps, calculateMao, getMaoDiscount, checkFetchCompsCooldown, recordFetchComps, pollCompsExport, downloadComps, getKeyPoolSize } from "../../services/propertyApi";
 import { getRentcastValuation } from "../../services/rentcastApi";
 import { geocodeViaAttom, fetchCompsViaAttom, hasAttomKey, fetchAttomAvm } from "../../services/attomApi";
 
@@ -859,10 +859,16 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
     const address = parts.join(", ");
     if (!address) { res.status(400).json({ error: "Lead has no address" }); return; }
 
+    // Check key is configured before even calling
+    if (getKeyPoolSize() === 0) {
+      res.status(503).json({ error: "PROPERTY_API_KEY not configured — set it in Railway environment variables" });
+      return;
+    }
+
     const data = await fetchPropertyData(address);
     if (!data) {
       res.status(503).json({
-        error: "PropertyAPI lookup failed — API may be unreachable from this environment (works in production)"
+        error: "PropertyAPI lookup failed — key may be exhausted or address not found in database"
       });
       return;
     }

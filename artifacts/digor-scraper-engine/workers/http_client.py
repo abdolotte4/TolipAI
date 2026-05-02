@@ -30,6 +30,32 @@ from .config import settings
 
 log = logging.getLogger("http")
 
+# Government / county sites that block residential proxies (return 502 / ERR_HTTP_RESPONSE_CODE_FAILURE).
+# Crawl4AI should use direct access for these.
+_PROXY_BLOCKED_DOMAINS = (
+    "treasurer.cuyahoga",
+    "auditor.cuyahoga",
+    "probate.cuyahoga",
+    "cuyahogacounty.us",
+    "sheriffsaleauction.ohio.gov",
+    ".state.oh.us",
+    ".state.nc.us",
+    ".state.tx.us",
+    ".state.fl.us",
+    "hctax.net",
+    "lacounty.gov",
+    "ttc.lacounty",
+    "cclerk.hctx",
+    "octaxcol.com",
+    "broward.county-taxes",
+)
+
+
+def _should_skip_proxy(url: str) -> bool:
+    """Return True for government/county URLs that block residential proxy traffic."""
+    u = url.lower()
+    return any(d in u for d in _PROXY_BLOCKED_DOMAINS)
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -142,20 +168,25 @@ async def fetch_html(url: str, *, render: bool = False,
     ScraperAPI and ScrapingBee are permanently disabled.
     - Tier 1: direct httpx with residential proxy (works for Zillow, most JSON APIs)
     - Tier 2: Crawl4AI Playwright (only when render=True and direct fails — JS-heavy SPAs)
+
+    Government/county sites skip the residential proxy — they block BrightData
+    and return 502 Proxy Connect Timeout.
     """
     errors: list[str] = []
+    gov_site = _should_skip_proxy(url)
 
-    # Tier 1: Direct fetch with residential proxy
+    # Tier 1: Direct fetch — skip proxy for government sites that block it
     try:
-        return await fetch_direct(url, use_proxy=True, verify_ssl=False)
+        return await fetch_direct(url, use_proxy=not gov_site, verify_ssl=False)
     except Exception as e:
         errors.append(f"direct: {e}")
         log.debug("Direct fetch failed for %s: %s", url, e)
 
     # Tier 2: Crawl4AI — Playwright rendering (JS-heavy sites, when direct is blocked)
+    # Government sites also skip proxy here to avoid 502 Proxy Connect Timeout.
     if render:
         try:
-            return await fetch_crawl4ai(url)
+            return await fetch_crawl4ai(url, use_proxy=not gov_site)
         except Exception as e:
             errors.append(f"crawl4ai: {e}")
             log.info("Crawl4AI failed for %s: %s", url, e)
@@ -165,8 +196,12 @@ async def fetch_html(url: str, *, render: bool = False,
 
 # ─── Crawl4AI rendered fetch (Playwright, slowest but strongest) ─────────────
 
-async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None) -> str:
+async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
+                         use_proxy: bool = True) -> str:
     """Crawl4AI headless Playwright — for JS-heavy sites that block direct fetches.
+
+    use_proxy=False skips the residential proxy (needed for government/county sites
+    that return 502 Proxy Connect Timeout when accessed via BrightData).
 
     Raises RuntimeError if Playwright is unavailable so callers can fall through.
     """
@@ -176,9 +211,10 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None) -> str:
         raise RuntimeError(f"Crawl4AI unavailable: {e}") from e
 
     try:
+        proxy = settings.proxy_url() if use_proxy else None
         cfg = BrowserConfig(
             headless=True,
-            proxy=settings.proxy_url(),
+            proxy=proxy,
             user_agent=random.choice(USER_AGENTS),
             ignore_https_errors=True,
         )
