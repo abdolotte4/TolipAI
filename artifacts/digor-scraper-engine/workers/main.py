@@ -71,6 +71,7 @@ from . import http_client
 from .config import settings
 from .retry_queue import retry_queue, is_transient
 from .scrapers import county, propelio, propelio_v2, propwire
+from .scrapers import satellite_dfd
 
 logging.basicConfig(
     level=settings.log_level.upper(),
@@ -732,6 +733,40 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
 
     asyncio.create_task(runner())
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
+
+
+# ─── Satellite Drive-For-Dollars ─────────────────────────────────────────────
+
+class SatelliteDFDRequest(BaseModel):
+    zip: str = ""
+    city: str = ""
+    state: str = ""
+    min_score: int = Field(30, ge=0, le=100,
+        description="Minimum distress score 0-100 to include in results")
+    max_results: int = Field(50, ge=1, le=200)
+    use_ai_scoring: bool = True
+
+
+@app.post("/ai/satellite-dfd")
+async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
+    """SkyDrive-style AI distress scan for an area.
+
+    Returns properties ranked by distress score (0-100) with coordinates,
+    reasoning, and optional satellite imagery URL (when GOOGLE_MAPS_API_KEY set).
+    """
+    if not (req.zip or (req.city and req.state)):
+        raise HTTPException(status_code=400, detail="Provide zip or city+state")
+    try:
+        return await satellite_dfd.scan_area(
+            zip_code=req.zip,
+            city=req.city,
+            state=req.state,
+            min_score=req.min_score,
+            max_results=req.max_results,
+            use_ai_scoring=req.use_ai_scoring,
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/scrape/distressed")

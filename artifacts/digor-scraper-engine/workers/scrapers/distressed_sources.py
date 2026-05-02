@@ -193,6 +193,49 @@ SOURCES: List[Dict[str, Any]] = [
      "render": True,
      "notes": "Xome bank-owned and foreclosure auctions for Ohio."},
 
+    # ── North Carolina / Fayetteville (Cumberland County) ───────────────────
+    {"key": "NC-cumberland-clerk",  "category": "county_clerk", "state": "NC",
+     "name": "Cumberland County NC — Register of Deeds",
+     "url": "https://rodweb.cumberlandcountync.gov/RodWeb/search.do?searchType=REWRITE_INSTRUMENT&docTypeCode=LIS",
+     "render": False,
+     "notes": "Lis Pendens filings in Cumberland County (Fayetteville NC area). Extract grantor/grantee names, address, filing date."},
+
+    {"key": "NC-cumberland-foreclosure", "category": "public_trustee", "state": "NC",
+     "name": "Cumberland County NC — Clerk of Superior Court Foreclosures",
+     "url": "https://www.nccourts.gov/courts/superior-court/cumberland-county",
+     "render": True,
+     "notes": "NC uses judicial foreclosures filed in Superior Court. Look for Special Proceedings (10-SP) — these are foreclosure actions."},
+
+    {"key": "NC-cumberland-tax",  "category": "tax_assessor", "state": "NC",
+     "name": "Cumberland County NC — Tax Administration Delinquent",
+     "url": "https://taxadmin.co.cumberland.nc.us/",
+     "render": True,
+     "notes": "Delinquent real property tax list. Extract parcel, owner name, address, amount owed."},
+
+    {"key": "NC-auction-com", "category": "auction_aggregator", "state": "NC",
+     "name": "Auction.com — North Carolina Foreclosures (Fayetteville)",
+     "url": "https://www.auction.com/residential/north-carolina/?q=fayetteville",
+     "render": True,
+     "notes": "Foreclosure + bank-owned auctions in Fayetteville NC / Cumberland County area."},
+
+    {"key": "NC-hubzu", "category": "auction_aggregator", "state": "NC",
+     "name": "Hubzu — North Carolina Real Estate Auctions",
+     "url": "https://www.hubzu.com/storefront/list?state=NC",
+     "render": True,
+     "notes": "Hubzu auction listings for NC — focus on Cumberland / Fayetteville area."},
+
+    {"key": "NC-wake-clerk", "category": "county_clerk", "state": "NC",
+     "name": "Wake County NC — Register of Deeds (Lis Pendens)",
+     "url": "https://services.wakegov.com/realestate/SearchDeed.asp",
+     "render": False,
+     "notes": "Wake County (Raleigh) deed/lis pendens search. Document type LIS PENDENS."},
+
+    {"key": "NC-mecklenburg-clerk", "category": "county_clerk", "state": "NC",
+     "name": "Mecklenburg County NC — Register of Deeds (Charlotte)",
+     "url": "https://meckrod.manatron.com/",
+     "render": True,
+     "notes": "Mecklenburg County (Charlotte NC) ROD — search for LIS PENDENS last 60 days."},
+
     # ── 6. Auction aggregators (catch-all, multi-source) ────────────────────
     {"key": "auction-com",        "category": "auction_aggregator", "state": "*",
      "name": "Auction.com (nationwide)",

@@ -13,6 +13,7 @@ import Arv from "@/pages/Arv";
 import PropertyLookup from "@/pages/PropertyLookup";
 import LeadScraper from "@/pages/LeadScraper";
 import AiDistressed from "@/pages/AiDistressed";
+import SatelliteDFD from "@/pages/SatelliteDFD";
 
 const queryClient = new QueryClient();
 
@@ -82,6 +83,9 @@ function Router() {
       </Route>
       <Route path="/lead-scraper">
         {() => <ProtectedRoute component={LeadScraper} />}
+      </Route>
+      <Route path="/satellite-dfd">
+        {() => <ProtectedRoute component={SatelliteDFD} />}
       </Route>
       <Route component={NotFound} />
     </Switch>

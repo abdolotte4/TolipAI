@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Database, Search, Calculator, Home, LogOut, Globe2, Sparkles } from "lucide-react";
+import { Database, Search, Calculator, Home, LogOut, Globe2, Sparkles, Satellite } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +11,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/contact-enrichment", label: "Contact Enrichment", icon: Database },
     { href: "/opportunity-finder", label: "Opportunity Finder", icon: Search },
     { href: "/ai-distressed", label: "AI Multi-Source", icon: Sparkles },
+    { href: "/satellite-dfd", label: "SkyDrive AI", icon: Satellite },
     { href: "/arv", label: "ARV Calculator", icon: Calculator },
     { href: "/property-lookup", label: "Property Lookup", icon: Home },
     { href: "/lead-scraper", label: "Lead Scraper", icon: Globe2 },

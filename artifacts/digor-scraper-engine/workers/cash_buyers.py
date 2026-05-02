@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from . import db
 from .llm import extract_investor_profile, score_buyer_match
 from .scrapers import zillow, redfin, attom
+from .scrapers.county_deeds import fetch_recent_deeds
 from .skip_trace import trace as skip_trace
 
 log = logging.getLogger("cash_buyers")
@@ -57,19 +58,51 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 25,
     city = lead.get("city") or ""
     state = lead.get("state") or ""
 
-    # ── Tier 1: ATTOM (paid, accurate) ──────────────────────────────────────
+    # ── Tier 1: ATTOM (paid, accurate — has real owner names) ───────────────
     sold_attom: List[Dict[str, Any]] = []
     if progress_cb:
-        await progress_cb(8, "Trying ATTOM Data API for recent sales…")
+        await progress_cb(5, "Trying ATTOM Data API for recent sales…")
     try:
         sold_attom = await attom.recent_sales(zip_code=zip_code, city=city,
                                               state=state, max_results=80)
     except Exception as e:  # noqa: BLE001
         log.info("ATTOM unavailable / exhausted, falling back to free scrape: %s", e)
 
-    # ── Tier 2: free scrape (Zillow + Redfin) — always run as backfill ─────
+    # ── Tier 2: County deed records (real grantee/buyer names from public records)
+    sold_deeds: List[Dict[str, Any]] = []
     if progress_cb:
-        await progress_cb(20, "Scanning recent sales (Zillow)…")
+        await progress_cb(12, "Pulling county deed transfer records…")
+    try:
+        raw_deeds = await fetch_recent_deeds(
+            state=state or "",
+            city=city or "",
+            zip_code=zip_code or "",
+            max_results=80,
+        )
+        # Normalise to the same shape as ATTOM/Zillow rows
+        for d in raw_deeds:
+            if not d.get("grantee"):
+                continue
+            sold_deeds.append({
+                "address":   d.get("address"),
+                "city":      d.get("city"),
+                "state":     d.get("state"),
+                "zip":       d.get("zip"),
+                "price":     d.get("price"),
+                "sold_date": d.get("sold_date"),
+                "owner_name": d["grantee"],   # <-- real buyer name
+                "buyer_name": d["grantee"],
+                "seller_name": d.get("grantor"),
+                "parcel_id": d.get("parcel_id"),
+                "source":    d.get("source", "county_deeds"),
+            })
+        log.info("County deeds: %d records with real buyer names", len(sold_deeds))
+    except Exception as e:  # noqa: BLE001
+        log.info("County deed scrape failed, continuing: %s", e)
+
+    # ── Tier 3: free scrape (Zillow + Redfin) — always run as backfill ─────
+    if progress_cb:
+        await progress_cb(22, "Scanning recent sales (Zillow)…")
     sold_zillow = await zillow.fetch_recently_sold(zip_code=zip_code, city=city,
                                                   state=state, max_results=80)
     if progress_cb:
@@ -77,9 +110,11 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 25,
     sold_redfin = await redfin.fetch_recently_sold(zip_code=zip_code, city=city,
                                                   state=state, max_results=80)
 
-    all_sales = sold_attom + sold_zillow + sold_redfin
-    log.info("Found %d recent sales (%d ATTOM + %d Zillow + %d Redfin) for ZIP=%s",
-             len(all_sales), len(sold_attom), len(sold_zillow), len(sold_redfin), zip_code)
+    # Deeds first so real names take priority in aggregation
+    all_sales = sold_attom + sold_deeds + sold_zillow + sold_redfin
+    log.info("Found %d recent sales (%d ATTOM + %d Deeds + %d Zillow + %d Redfin) for ZIP=%s",
+             len(all_sales), len(sold_attom), len(sold_deeds),
+             len(sold_zillow), len(sold_redfin), zip_code)
 
     if not all_sales:
         return []
