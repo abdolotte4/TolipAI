@@ -337,8 +337,6 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
       tax_history (list of {year, assessed, taxes}),
       land_value, improvement_value, parcel_id, legal_description
     """
-    import json as _json
-
     async with browser_context(SERVICE, login_fn=_do_login) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         # Tax info lives on the Property tab (root URL)
@@ -360,7 +358,7 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
 
             if next_data_raw:
                 try:
-                    parsed = _json.loads(next_data_raw)
+                    parsed = json.loads(next_data_raw)
                     pp = (parsed.get("props") or {}).get("pageProps") or {}
                     prop = pp.get("property") or pp.get("propertyDetails") or pp
                     tax_info = (prop.get("tax") or prop.get("taxInfo")
