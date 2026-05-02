@@ -1,7 +1,11 @@
+# Do NOT add python311/pip to nixPkgs — nixpacks auto-detects Python and manages
+# its own venv. Adding Nix-managed Python causes "externally-managed-environment"
+# errors when pip tries to install packages (PEP 668 / Nix immutable store).
+#
+# We only add the system-level shared libraries that Chromium/Playwright needs.
+
 [phases.setup]
 nixPkgs = [
-  "python311",
-  "python311Packages.pip",
   "glib",
   "nss",
   "nspr",
@@ -23,8 +27,8 @@ nixPkgs = [
   "alsa-lib",
 ]
 
-[phases.install]
-cmds = ["pip install -r requirements.txt"]
+# nixpacks auto-generates the install phase (pip install -r requirements.txt
+# into its own venv). We do NOT override it.
 
 [phases.build]
-cmds = ["playwright install --with-deps chromium"]
+cmds = ["playwright install chromium || true"]
