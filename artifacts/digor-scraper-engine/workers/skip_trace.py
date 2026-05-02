@@ -230,7 +230,7 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
             err = str(e).lower()
             if "400" in err or "custom_google" in err:
                 _dead_sources.add("google_dork")
-                log.warning("Google dork disabled — ScrapingBee config issue: %s", e)
+                log.warning("Google dork disabled — proxy/fetch error: %s", e)
                 break
             log.info("Google dork failed for query '%s': %s", q, e)
     return aggregated

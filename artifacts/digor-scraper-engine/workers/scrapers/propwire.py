@@ -13,10 +13,11 @@ Session: cached on disk via _browser_session helper.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ._browser_session import browser_context, invalidate_session
 from ._utils import _safe_num, _parse_buyer_card
@@ -148,7 +149,6 @@ async def fetch_property(query_or_url: str) -> Dict[str, Any]:
             data: Dict[str, Any] = {}
             if next_data:
                 try:
-                    import json
                     parsed = json.loads(next_data)
                     data = (parsed.get("props") or {}).get("pageProps") or {}
                 except Exception:
@@ -246,7 +246,6 @@ async def fetch_comps(query_or_url: str, *, max_results: int = 50) -> List[Dict[
             comps: List[Dict[str, Any]] = []
             if next_data:
                 try:
-                    import json
                     parsed = json.loads(next_data)
                     pp = (parsed.get("props") or {}).get("pageProps") or {}
                     rows = pp.get("comps") or pp.get("comparableSales") or []
@@ -319,7 +318,6 @@ async def fetch_history(query_or_url: str) -> Dict[str, Any]:
             mortgages: List[Dict[str, Any]] = []
             if next_data:
                 try:
-                    import json
                     parsed = json.loads(next_data)
                     pp = (parsed.get("props") or {}).get("pageProps") or {}
                     sales = pp.get("salesHistory") or pp.get("transactionHistory") or []
@@ -452,7 +450,6 @@ async def fetch_cash_buyers_nearby(
                 page_buyers: List[Dict[str, Any]] = []
                 if next_data:
                     try:
-                        import json
                         parsed = json.loads(next_data)
                         pp = (parsed.get("props") or {}).get("pageProps") or {}
                         rows = (pp.get("buyers") or pp.get("cashBuyers")

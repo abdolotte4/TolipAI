@@ -302,7 +302,6 @@ async def health() -> Dict[str, Any]:
     import time
     from .llm import _dead_providers, _rate_hits, _MAX_RATE_HITS
     from .skip_trace import _dead_sources
-    from openai import AsyncOpenAI
 
     async def _probe_llm(name: str, client_fn, model: str) -> Dict[str, Any]:
         if name in _dead_providers:
