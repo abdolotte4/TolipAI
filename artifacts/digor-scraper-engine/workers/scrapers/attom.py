@@ -41,27 +41,27 @@ async def _get(path: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     keys = _attom_keys()
     if not keys:
         return None
-    cli = _get_client()
     last_err: Optional[Exception] = None
-    for key in keys:
-        try:
-            r = await cli.get(
-                f"{ATTOM_BASE}{path}",
-                params=params,
-                headers={"apikey": key, "Accept": "application/json"},
-            )
-            if r.status_code == 200:
-                return r.json()
-            txt = r.text.lower()
-            if r.status_code in (402, 403) and ("credit" in txt or "quota" in txt):
-                log.warning("ATTOM key …%s exhausted", key[-6:])
+    async with httpx.AsyncClient(timeout=30) as cli:
+        for key in keys:
+            try:
+                r = await cli.get(
+                    f"{ATTOM_BASE}{path}",
+                    params=params,
+                    headers={"apikey": key, "Accept": "application/json"},
+                )
+                if r.status_code == 200:
+                    return r.json()
+                txt = r.text.lower()
+                if r.status_code in (402, 403) and ("credit" in txt or "quota" in txt):
+                    log.warning("ATTOM key …%s exhausted", key[-6:])
+                    continue
+                if r.status_code == 401:
+                    continue
+                last_err = RuntimeError(f"ATTOM {r.status_code}: {r.text[:200]}")
+            except httpx.HTTPError as e:
+                last_err = e
                 continue
-            if r.status_code == 401:
-                continue
-            last_err = RuntimeError(f"ATTOM {r.status_code}: {r.text[:200]}")
-        except httpx.HTTPError as e:
-            last_err = e
-            continue
     if last_err:
         log.info("ATTOM call failed: %s", last_err)
     raise AttomExhausted("All ATTOM keys exhausted or invalid")
