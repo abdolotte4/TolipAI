@@ -27,8 +27,10 @@ nixPkgs = [
   "alsa-lib",
 ]
 
-# nixpacks auto-generates the install phase (pip install -r requirements.txt
-# into its own venv). We do NOT override it.
+# Explicitly install from requirements.railway.txt (renamed to prevent
+# Replit's publisher from auto-detecting it and failing on the read-only Nix store).
+[phases.install]
+cmds = ["pip install -r requirements.railway.txt"]
 
 [phases.build]
 cmds = ["playwright install chromium || true"]

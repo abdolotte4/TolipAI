@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Digor advanced scraping + skip-trace + investor classification engine"
 requires-python = ">=3.11,<3.13"
 
+[tool.uv]
+managed = false
+
 [tool.ruff]
 line-length = 110
 target-version = "py311"
