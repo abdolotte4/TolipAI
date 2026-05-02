@@ -107,6 +107,7 @@ async def browser_context(
             ),
             viewport={"width": 1440, "height": 900},
             locale="en-US",
+            ignore_https_errors=True,
         )
         # First-time login (or session expired) flow
         if not storage_state and login_fn is not None:

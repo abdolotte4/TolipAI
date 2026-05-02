@@ -29,13 +29,18 @@ def _aggregate_by_buyer(properties: List[Dict[str, Any]]) -> Dict[str, Dict[str,
     """Group properties by buyer (proxied by owner_name → mailing_address)."""
     by_buyer: Dict[str, Dict[str, Any]] = {}
     for p in properties:
-        # Without a true owner field, use a synthetic key for now.  The
-        # Zillow/Redfin "recently sold" feed rarely surfaces buyer names —
-        # in production we enrich via PropertyAPI.co/ATTOM batch lookup.
-        key = (p.get("owner_name") or p.get("buyer_name")
-               or f"unknown::{p.get('zip')}::{(p.get('address') or '').split(',')[0]}")
+        # County deeds and ATTOM provide real buyer names via owner_name/buyer_name/grantee.
+        # Zillow/Redfin rarely expose buyer identity, so we use the address as key
+        # to group re-purchases by the same investor (same property = same entity).
+        real_name = p.get("owner_name") or p.get("buyer_name") or p.get("grantee")
+        addr_part = (p.get("address") or "").split(",")[0].strip()
+        key = real_name or f"investor::{p.get('zip')}::{addr_part}"
+        # Display name: prefer real name, fall back to a descriptive placeholder
+        display_name = real_name or (
+            f"Investor — {p.get('city') or p.get('zip') or 'Unknown Area'}"
+        )
         b = by_buyer.setdefault(key, {
-            "buyer_name": p.get("owner_name") or "Recent Buyer",
+            "buyer_name": display_name,
             "city": p.get("city"), "state": p.get("state"), "zip": p.get("zip"),
             "purchases": [], "prices": [], "last_purchase_date": None,
         })
@@ -186,7 +191,7 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 25,
             "match_score": scoring["match_score"],
             "match_reasons": scoring["match_reasons"],
             "raw_data": {"purchases": cand["purchases"][:8]},
-            "source": "scraper-engine/zillow+redfin",
+            "source": "scraper-engine",
         }
         out.append(record)
 
