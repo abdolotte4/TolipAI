@@ -40,22 +40,38 @@ async def _do_login(page) -> None:
         raise RuntimeError("PROPWIRE_EMAIL / PROPWIRE_PASSWORD not set")
 
     log.info("Propwire: navigating to login page")
-    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=45000)
+    # networkidle gives React/Next.js time to fully render the login form
+    await page.goto(LOGIN_URL, wait_until="networkidle", timeout=60000)
 
-    email_sel = 'input[type="email"], input[name="email"]'
-    pw_sel = 'input[type="password"], input[name="password"]'
+    # Try multiple selector variants — Propwire periodically updates markup
+    email_sel = (
+        'input[type="email"], input[name="email"], '
+        'input[autocomplete="email"], input[id*="email" i], input[placeholder*="email" i]'
+    )
+    pw_sel = (
+        'input[type="password"], input[name="password"], '
+        'input[autocomplete="current-password"]'
+    )
 
-    await page.wait_for_selector(email_sel, timeout=20000)
+    await page.wait_for_selector(email_sel, timeout=30000)
     await page.fill(email_sel, email)
     await page.fill(pw_sel, password)
 
     btn = page.locator(
-        'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in")'
+        'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in"), '
+        'button:has-text("Login"), input[type="submit"]'
     ).first
-    await btn.click()
+    if await btn.count():
+        await btn.click()
+    else:
+        await page.locator(pw_sel).first.press("Enter")
 
+    # Wait for ANY URL change away from /login
     try:
-        await page.wait_for_url(re.compile(r".*/(search|dashboard|home).*"), timeout=30000)
+        await page.wait_for_function(
+            "() => !window.location.href.includes('/login')",
+            timeout=35000,
+        )
     except Exception:
         await page.wait_for_load_state("networkidle", timeout=15000)
 

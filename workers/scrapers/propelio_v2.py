@@ -45,25 +45,41 @@ async def _do_login(page) -> None:
         raise RuntimeError("PROPELIO_EMAIL / PROPELIO_PASSWORD not set")
 
     log.info("Propelio: navigating to login page")
-    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=45000)
+    # Use networkidle so React has time to render the form fields
+    await page.goto(LOGIN_URL, wait_until="networkidle", timeout=60000)
 
-    # Form selectors — Propelio uses standard email/password inputs.
-    email_sel = 'input[type="email"], input[name="email"], input[name="username"]'
-    pw_sel = 'input[type="password"], input[name="password"]'
+    # Form selectors — try multiple variants in case Propelio updates their markup
+    email_sel = (
+        'input[type="email"], input[name="email"], input[name="username"], '
+        'input[autocomplete="email"], input[id*="email" i], input[placeholder*="email" i]'
+    )
+    pw_sel = (
+        'input[type="password"], input[name="password"], '
+        'input[autocomplete="current-password"], input[autocomplete="password"]'
+    )
 
-    await page.wait_for_selector(email_sel, timeout=20000)
+    await page.wait_for_selector(email_sel, timeout=25000)
     await page.fill(email_sel, email)
     await page.fill(pw_sel, password)
 
-    # Submit
-    btn = page.locator('button[type="submit"], button:has-text("Sign in"), button:has-text("Log in")').first
-    await btn.click()
+    # Submit — try button first, then Enter on password field as fallback
+    btn = page.locator(
+        'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in"), '
+        'button:has-text("Login"), input[type="submit"]'
+    ).first
+    if await btn.count():
+        await btn.click()
+    else:
+        await page.locator(pw_sel).first.press("Enter")
 
-    # Wait for navigation away from /login
+    # Wait for navigation AWAY from /login — accept ANY URL that is not the login page
     try:
-        await page.wait_for_url(re.compile(r".*/(search|dashboard|home).*"), timeout=30000)
+        await page.wait_for_function(
+            "() => !window.location.href.includes('/login')",
+            timeout=35000,
+        )
     except Exception:
-        # Fallback: wait for any cookie set / network idle
+        # Last-chance fallback: wait for network to settle then re-check
         await page.wait_for_load_state("networkidle", timeout=15000)
 
     if "/login" in page.url:
