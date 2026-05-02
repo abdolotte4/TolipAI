@@ -1,31 +1,4 @@
 { pkgs }: {
   deps = [
-    pkgs.eudev
-    pkgs.expat
-    pkgs.xorg.libxcb
-    pkgs.xorg.libXrandr
-    pkgs.xorg.libXfixes
-    pkgs.xorg.libXext
-    pkgs.xorg.libXdamage
-    pkgs.xorg.libXcomposite
-    pkgs.xorg.libX11
-    pkgs.python311
-    pkgs.playwright-driver.browsers
-    pkgs.libGL
-    pkgs.libGLU
-    pkgs.glib
-    pkgs.nss
-    pkgs.nspr
-    pkgs.atk
-    pkgs.at-spi2-atk
-    pkgs.cups
-    pkgs.libdrm
-    pkgs.dbus
-    pkgs.libxkbcommon
-    pkgs.mesa
-    pkgs.pango
-    pkgs.cairo
-    pkgs.alsa-lib
-    pkgs.tesseract
   ];
 }
