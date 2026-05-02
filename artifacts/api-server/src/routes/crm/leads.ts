@@ -6,7 +6,7 @@ import { crmAuth, crmAdminOnly } from "./middleware";
 import { onLeadCreated, onLeadStatusChanged } from "../../services/automation";
 import { fetchPropertyData, checkCooldown, recordFetch, runSkipTrace, checkSkipTraceCooldown, recordSkipTrace, getLastSkipTraceError, calculateAdjustedComp, calculateArvFromComps, calculateMao, getMaoDiscount, checkFetchCompsCooldown, recordFetchComps, pollCompsExport, downloadComps, getKeyPoolSize } from "../../services/propertyApi";
 import { getRentcastValuation } from "../../services/rentcastApi";
-import { geocodeViaAttom, fetchCompsViaAttom, hasAttomKey, fetchAttomAvm } from "../../services/attomApi";
+import { geocodeViaAttom, fetchCompsViaAttom, hasAttomKey, fetchAttomAvm, fetchPropertyDataViaAttom } from "../../services/attomApi";
 
 // ─── In-memory comps job store ────────────────────────────────────────────────
 interface CompsJob {
@@ -859,19 +859,30 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
     const address = parts.join(", ");
     if (!address) { res.status(400).json({ error: "Lead has no address" }); return; }
 
-    // Check key is configured before even calling
-    if (getKeyPoolSize() === 0) {
-      res.status(503).json({ error: "PROPERTY_API_KEY not configured — set it in Railway environment variables" });
+    // Try PropertyAPI.co first if configured, then fall back to ATTOM
+    let data = null;
+    let source = "";
+
+    if (getKeyPoolSize() > 0) {
+      data = await fetchPropertyData(address);
+      source = "PropertyAPI.co";
+    }
+
+    if (!data && hasAttomKey()) {
+      data = await fetchPropertyDataViaAttom(lead.address, lead.city, lead.state, lead.zip);
+      source = "ATTOM";
+    }
+
+    if (!data) {
+      const tried = getKeyPoolSize() > 0 && hasAttomKey() ? "PropertyAPI.co and ATTOM"
+                  : getKeyPoolSize() > 0                  ? "PropertyAPI.co (key may be exhausted)"
+                  : hasAttomKey()                         ? "ATTOM (address not found in database)"
+                  : "no data sources configured — set PROPERTY_API_KEY or ATTOM_API_KEY in Railway";
+      res.status(503).json({ error: `Property lookup failed via ${tried}` });
       return;
     }
 
-    const data = await fetchPropertyData(address);
-    if (!data) {
-      res.status(503).json({
-        error: "PropertyAPI lookup failed — key may be exhausted or address not found in database"
-      });
-      return;
-    }
+    console.log(`[fetch-property-data] Source: ${source}`);
 
     // ── Record fetch only on success ───────────────────────────────────────
     if (!isSuperAdmin) recordFetch(id, campaignId);

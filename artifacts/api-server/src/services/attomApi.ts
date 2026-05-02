@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger";
+import type { PropertyApiData } from "./propertyApi";
 
 const ATTOM_BASE = "https://api.gateway.attomdata.com";
 
@@ -179,6 +180,68 @@ export async function fetchCompsViaAttom(
   }
 
   return comps;
+}
+
+export async function fetchPropertyDataViaAttom(
+  street: string,
+  city?: string | null,
+  state?: string | null,
+  zip?: string | null,
+): Promise<PropertyApiData | null> {
+  try {
+    const address2 = [city, state, zip].filter(Boolean).join(" ");
+    const data = await attomGet("/propertyapi/v1.0.0/property/detail", {
+      address1: street,
+      ...(address2 ? { address2 } : {}),
+    });
+
+    const prop = data?.property?.[0];
+    if (!prop) return null;
+
+    const num = (v: any): number | null => {
+      const n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    };
+    const str = (v: any): string | null =>
+      v && typeof v === "string" && v.trim() ? v.trim() : null;
+
+    const beds         = num(prop?.building?.rooms?.bedroomscount);
+    const baths        = num(prop?.building?.rooms?.bathstotal ?? prop?.building?.rooms?.bathscalculated);
+    const sqft         = num(prop?.building?.size?.livingsize ?? prop?.building?.size?.universalsize);
+    const yearBuilt    = num(prop?.summary?.yearbuilt);
+
+    const lotAcres     = num(prop?.lot?.lotsize1);
+    const lotSqft      = lotAcres != null ? Math.round(lotAcres * 43560)
+                       : num(prop?.lot?.lotsize2) ?? null;
+
+    const ownerName    = str(prop?.owner?.owner1?.fullname ?? prop?.owner?.owner1?.lastName);
+    const taxAssessed  = num(prop?.assessment?.assessed?.assdttlvalue);
+    const lastSalePrice = num(prop?.sale?.amount?.saleamt);
+    const lastSaleDateRaw = prop?.sale?.saleTransDate ?? prop?.sale?.salesearchdate;
+    const lastSaleDate = lastSaleDateRaw
+      ? new Date(lastSaleDateRaw).toISOString().split("T")[0]
+      : null;
+    const propertyType = str(prop?.summary?.proptype ?? prop?.summary?.propClass);
+    const lat          = num(prop?.location?.latitude);
+    const lng          = num(prop?.location?.longitude);
+
+    const prkgType     = str(prop?.building?.parking?.prkgtype);
+    const hasGarage    = prkgType != null && prkgType.toUpperCase() !== "NONE";
+    const poolStr      = str(prop?.utilities?.PoolInd ?? prop?.utilities?.poolInd);
+    const hasPool      = poolStr != null && poolStr.toUpperCase() === "YES";
+
+    logger.info({ street, city, state }, "[ATTOM] fetchPropertyDataViaAttom success");
+
+    return {
+      beds, baths, sqft, yearBuilt, ownerName, lotSqft, hasPool, hasGarage,
+      taxAssessedValue: taxAssessed, lastSalePrice, lastSaleDate, propertyType,
+      latitude: lat, longitude: lng,
+      avm: null, // AVM requires separate call — use "Get ATTOM AVM" button
+    };
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "[ATTOM] fetchPropertyDataViaAttom failed");
+    return null;
+  }
 }
 
 export async function fetchAttomAvm(
