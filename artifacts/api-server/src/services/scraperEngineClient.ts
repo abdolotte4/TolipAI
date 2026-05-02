@@ -270,6 +270,28 @@ export const scraperEngine = {
       timeoutMs: 30_000,
     });
   },
+
+  async satelliteDfd(req: {
+    zip?: string;
+    city?: string;
+    state?: string;
+    minScore?: number;
+    maxResults?: number;
+    useAiScoring?: boolean;
+  }) {
+    return request<any>("/ai/satellite-dfd", {
+      method: "POST",
+      body: JSON.stringify({
+        zip: req.zip || "",
+        city: req.city || "",
+        state: req.state || "",
+        min_score: req.minScore ?? 30,
+        max_results: req.maxResults ?? 50,
+        use_ai_scoring: req.useAiScoring ?? true,
+      }),
+      timeoutMs: 120_000,
+    });
+  },
 };
 
 export function logEngineConfig() {

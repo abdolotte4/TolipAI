@@ -417,6 +417,25 @@ router.post("/scraper-engine/ai/research", requirePin, async (req: Request, res:
   } catch (err) { handleEngineError(err, res); }
 });
 
+router.post("/scraper-engine/ai/satellite-dfd", requirePin, async (req: Request, res: Response) => {
+  const { zip, city, state, minScore, min_score, maxResults, max_results, useAiScoring, use_ai_scoring } =
+    (req.body ?? {}) as {
+      zip?: string; city?: string; state?: string;
+      minScore?: number; min_score?: number;
+      maxResults?: number; max_results?: number;
+      useAiScoring?: boolean; use_ai_scoring?: boolean;
+    };
+  try {
+    const out = await scraperEngine.satelliteDfd({
+      zip, city, state,
+      minScore: minScore ?? min_score,
+      maxResults: maxResults ?? max_results,
+      useAiScoring: useAiScoring ?? use_ai_scoring,
+    });
+    res.json(out);
+  } catch (err) { handleEngineError(err, res); }
+});
+
 // ─── Propelio (authenticated) — cash buyers panel ───────────────────────────
 router.post("/scraper-engine/propelio/cash-buyers", crmAuth, async (req: Request, res: Response) => {
   const user = (req as any).crmUser as CrmTokenPayload;

@@ -12,7 +12,7 @@ import {
   TrendingUp, Calendar, DollarSign, RefreshCw, ExternalLink, Info,
 } from "lucide-react";
 
-const ENGINE = import.meta.env.VITE_SCRAPER_ENGINE_URL ?? "";
+const API_BASE = "/api/scraper-engine";
 
 type DFDProperty = {
   address: string | null;
@@ -162,11 +162,11 @@ export default function SatelliteDFD() {
     abortRef.current = new AbortController();
 
     try {
-      const resp = await fetch(`${ENGINE}/ai/satellite-dfd`, {
+      const resp = await fetch(`${API_BASE}/ai/satellite-dfd`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-PIN": pin || "",
+          "X-Tools-Pin": pin || "",
         },
         body: JSON.stringify({
           zip: zip || "",
