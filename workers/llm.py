@@ -142,8 +142,33 @@ async def _chat(messages: List[Dict[str, str]], *, json_mode: bool = True,
                                  temperature=temperature, max_tokens=max_tokens)
 
 
+def _ensure_json_in_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Groq requires the word 'json' to appear in messages when json_object mode is used.
+
+    If no message contains the word 'json', append a short reminder to the
+    last system message (or the first user message as a fallback).
+    """
+    combined = " ".join(m.get("content", "") for m in messages).lower()
+    if "json" in combined:
+        return messages  # already compliant
+
+    result = list(messages)
+    for i, m in enumerate(result):
+        if m.get("role") == "system":
+            result[i] = {**m, "content": m["content"] + " Respond with valid JSON."}
+            return result
+    # No system message — append to first user message
+    if result:
+        result[0] = {**result[0], "content": result[0].get("content", "") + " Respond with valid JSON."}
+    return result
+
+
 async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                       temperature: float = 0.2, max_tokens: int = 1500) -> str:
+    # Ensure Groq's json_object requirement is satisfied before any provider call
+    if json_mode:
+        messages = _ensure_json_in_messages(messages)
+
     # Free-tier first, paid fallbacks last.
     providers = [
         ("groq",        _groq,        settings.groq_model),
@@ -181,6 +206,12 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                 return resp.choices[0].message.content or ""
             except Exception as e:
                 last_err = e
+                err_str = str(e)
+                # Groq-specific: json_object mode without 'json' in messages — permanent config error
+                if "must contain the word" in err_str and "json" in err_str.lower():
+                    _dead_providers.add(provider)
+                    log.warning("LLM provider %s permanently skipped: JSON mode misconfiguration — %s", provider, e)
+                    break
                 if _is_fatal(e):
                     _dead_providers.add(provider)
                     log.warning("LLM provider %s permanently dead: %s", provider, e)
@@ -188,8 +219,8 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                 if _is_rate_limited(e):
                     _rate_hits[provider] = hits + 1
                     if attempt == 0:
-                        backoff = 4.0 * (2 ** (hits + 1))  # 8s, 16s, 32s … per consecutive hit
-                        backoff = min(backoff, 60.0)
+                        backoff = 2.0 * (2 ** hits)  # 2s, 4s, 8s … (was 8s, 16s, 32s)
+                        backoff = min(backoff, 15.0)  # cap at 15s instead of 60s
                         log.info("LLM provider %s rate-limited (hit %d/%d), backing off %.1fs…",
                                  provider, hits + 1, _MAX_RATE_HITS, backoff)
                         await asyncio.sleep(backoff)

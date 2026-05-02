@@ -195,30 +195,41 @@ def _category(score: int) -> str:
 
 async def _fetch_listings(zip_code: str = "", city: str = "",
                           state: str = "") -> List[Dict[str, Any]]:
-    """Pull active + recently-sold listings from Zillow + Redfin."""
+    """Pull active + recently-sold listings from Zillow + Redfin (capped to keep latency low)."""
     results: List[Dict[str, Any]] = []
-    try:
-        fsbo = await zillow.fetch_fsbo(zip_code=zip_code, city=city, state=state, max_results=60)
-        for p in fsbo:
-            p["is_fsbo"] = True
-        results.extend(fsbo)
-    except Exception as e:
-        log.info("FSBO fetch failed: %s", e)
 
-    try:
-        sold = await zillow.fetch_recently_sold(zip_code=zip_code, city=city,
-                                                state=state, max_results=60)
-        results.extend(sold)
-    except Exception as e:
-        log.info("Zillow sold fetch failed: %s", e)
+    async def _safe_fsbo():
+        try:
+            fsbo = await zillow.fetch_fsbo(zip_code=zip_code, city=city, state=state, max_results=25)
+            for p in fsbo:
+                p["is_fsbo"] = True
+            return fsbo
+        except Exception as e:
+            log.info("FSBO fetch failed: %s", e)
+            return []
 
-    try:
-        r_sold = await redfin.fetch_recently_sold(zip_code=zip_code, city=city,
-                                                  state=state, max_results=60)
-        results.extend(r_sold)
-    except Exception as e:
-        log.info("Redfin sold fetch failed: %s", e)
+    async def _safe_zillow_sold():
+        try:
+            return await zillow.fetch_recently_sold(zip_code=zip_code, city=city,
+                                                    state=state, max_results=25)
+        except Exception as e:
+            log.info("Zillow sold fetch failed: %s", e)
+            return []
 
+    async def _safe_redfin_sold():
+        try:
+            return await redfin.fetch_recently_sold(zip_code=zip_code, city=city,
+                                                    state=state, max_results=25)
+        except Exception as e:
+            log.info("Redfin sold fetch failed: %s", e)
+            return []
+
+    fsbo_listings, zillow_sold, redfin_sold = await asyncio.gather(
+        _safe_fsbo(), _safe_zillow_sold(), _safe_redfin_sold()
+    )
+    results.extend(fsbo_listings)
+    results.extend(zillow_sold)
+    results.extend(redfin_sold)
     return results
 
 
@@ -243,7 +254,8 @@ async def scan_area(
     listings = await _fetch_listings(zip_code=zip_code, city=city, state=state)
     log.info("DFD: %d listings fetched for analysis", len(listings))
 
-    scored: List[Dict[str, Any]] = []
+    # Build candidate records with base (algorithmic) score first, filter before AI
+    candidates: List[Dict[str, Any]] = []
     for p in listings:
         try:
             year_built = None
@@ -263,13 +275,16 @@ async def scan_area(
                 "ownership_years": None,
             }
             base = _compute_score(signals)
-            if base < min_score and not use_ai_scoring:
+
+            # Skip entirely if algorithmic score is way below threshold and AI won't help
+            # (AI scoring can raise score, but rarely more than +20 pts from signals)
+            if base < max(0, min_score - 20):
                 continue
 
             lat = p.get("latitude")
             lon = p.get("longitude")
 
-            result: Dict[str, Any] = {
+            candidates.append({
                 "address": p.get("address"),
                 "city": p.get("city") or city,
                 "state": p.get("state") or state,
@@ -288,23 +303,34 @@ async def scan_area(
                 "sqft": p.get("sqft"),
                 "year_built": year_built,
                 "source": p.get("source", "zillow+redfin"),
-            }
-
-            if use_ai_scoring:
-                async with _get_ai_sem():
-                    ai = await _ai_distress_score(
-                        p.get("address") or "", signals, base
-                    )
-                result["distress_score"] = ai["score"]
-                result["distress_category"] = ai["category"]
-                result["rationale"] = ai["rationale"]
-
-            if result["distress_score"] >= min_score:
-                scored.append(result)
-
+                "_signals": signals,
+                "_base": base,
+            })
         except Exception as e:
             log.debug("Scoring error for listing: %s", e)
             continue
+
+    log.info("DFD: %d candidates pass pre-filter (min_score=%d)", len(candidates), min_score)
+
+    # Cap candidates to avoid overwhelming LLM when use_ai_scoring=True
+    candidates = candidates[:max_results * 3]
+
+    async def _score_one(rec: Dict[str, Any]) -> Dict[str, Any]:
+        signals = rec.pop("_signals")
+        base = rec.pop("_base")
+        if use_ai_scoring:
+            async with _get_ai_sem():
+                ai = await _ai_distress_score(rec.get("address") or "", signals, base)
+            rec["distress_score"] = ai["score"]
+            rec["distress_category"] = ai["category"]
+            rec["rationale"] = ai["rationale"]
+        return rec
+
+    scored_all = await asyncio.gather(*[_score_one(c) for c in candidates], return_exceptions=True)
+    scored = [
+        r for r in scored_all
+        if isinstance(r, dict) and r.get("distress_score", 0) >= min_score
+    ]
 
     scored.sort(key=lambda r: r.get("distress_score", 0), reverse=True)
     return {
