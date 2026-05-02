@@ -33,9 +33,12 @@ log = logging.getLogger("distressed")
 async def _scrape_source(src: Dict[str, Any], *, zip_code: str = "",
                          state: str = "") -> List[Dict[str, Any]]:
     """Fetch one source and ask the LLM to extract listings."""
+    from datetime import date
+    today = date.today().strftime("%m/%d/%Y")
     url = (src["url"]
            .replace("{zip}", zip_code or "")
-           .replace("{state}", (state or "").lower()))
+           .replace("{state}", (state or "").lower())
+           .replace("{date}", today))
     try:
         html = await fetch_html(url, render=src.get("render", False))
     except Exception as e:  # noqa: BLE001

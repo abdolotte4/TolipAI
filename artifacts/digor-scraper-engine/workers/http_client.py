@@ -75,28 +75,48 @@ def _scrapingbee_keys() -> list[str]:
 
 
 _key_403_hits: Dict[str, int] = {}
-_KEY_403_LIMIT = 1  # mark exhausted after the first 403 (ScraperAPI returns plain 403 on credit exhaustion)
+# ScraperAPI returns its own 403 JSON when a key's credits are truly exhausted.
+# A target site returning 403 (site-level block) is proxied through and should
+# NOT count toward key exhaustion.  We require 5 consecutive 403s AND check for
+# ScraperAPI's own quota body before marking a key exhausted.
+_KEY_403_LIMIT = 5
+
+# Keywords that appear in ScraperAPI's own quota / auth error bodies
+_SAPI_QUOTA_WORDS = ("exhausted", "quota", "credits", "out of", "limit",
+                     "insufficient", "upgrade", "billing", "payment")
+# Keywords that appear in ScrapingBee's own auth / quota error bodies
+_SBEE_QUOTA_WORDS = ("invalid api key", "quota", "credits", "insufficient",
+                     "upgrade", "billing", "payment", "unauthorized")
 
 
-def _is_exhausted(text: str, status: int, key: str = "") -> bool:
-    """A key is exhausted when:
-    - status 402 (explicit payment required), OR
-    - 403 with "exhausted"/"quota"/"credits" text, OR
-    - 403 received twice in a row (ScraperAPI returns plain 403 when out of credits)
+def _is_exhausted(text: str, status: int, key: str = "",
+                  provider: str = "scraperapi") -> bool:
+    """Determine whether an API key should be marked exhausted.
+
+    Rules:
+    - 402 Payment Required → always exhausted.
+    - 401 Unauthorized (ScrapingBee) → invalid key, always exhausted.
+    - 403 with provider-level quota/auth text → exhausted immediately.
+    - 403 without quota text → could be a site-level block.  Accumulate hits;
+      mark exhausted only after _KEY_403_LIMIT consecutive 403s.
+    - Any non-4xx response resets the hit counter.
     """
     t = (text or "").lower()
+    quota_words = _SBEE_QUOTA_WORDS if provider == "scrapingbee" else _SAPI_QUOTA_WORDS
+
     if status == 402:
         return True
+    if status == 401:
+        # ScrapingBee returns 401 for invalid/expired keys
+        return True
     if status == 403:
-        if any(w in t for w in ("exhausted", "quota", "credits", "out of", "limit")):
+        if any(w in t for w in quota_words):
             return True
         if key:
             hits = _key_403_hits.get(key, 0) + 1
             _key_403_hits[key] = hits
-            if hits >= _KEY_403_LIMIT:
-                return True
+            return hits >= _KEY_403_LIMIT
     else:
-        # Reset hit counter on any success or non-403 status
         if key and key in _key_403_hits:
             _key_403_hits[key] = 0
     return False
@@ -123,7 +143,7 @@ async def fetch_via_scraperapi(url: str, *, render: bool = False,
             params["premium"] = "true"
         try:
             r = await cli.get("https://api.scraperapi.com/", params=params)
-            if _is_exhausted(r.text, r.status_code, key):
+            if _is_exhausted(r.text, r.status_code, key, provider="scraperapi"):
                 _exhausted.add(key)
                 log.warning("ScraperAPI key …%s exhausted", key[-6:])
                 continue
@@ -165,7 +185,7 @@ async def fetch_via_scrapingbee(url: str, *, render: bool = True,
             params["custom_google"] = "true"
         try:
             r = await cli.get("https://app.scrapingbee.com/api/v1/", params=params)
-            if _is_exhausted(r.text, r.status_code, key):
+            if _is_exhausted(r.text, r.status_code, key, provider="scrapingbee"):
                 _exhausted.add(key)
                 log.warning("ScrapingBee key …%s exhausted", key[-6:])
                 continue

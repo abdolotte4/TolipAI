@@ -53,10 +53,10 @@ class Settings:
     together_model: str = _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
 
     # 4. NVIDIA NIM — free credits
-    #    Current models: nvidia/llama-3.1-nemotron-70b-instruct, meta/llama-3.1-8b-instruct
+    #    Confirmed available: meta/llama-3.3-70b-instruct, meta/llama-3.1-70b-instruct
     nvidia_api_key: Optional[str] = _env("NVIDIA_API_KEY")
     nvidia_base_url: str = _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
-    nvidia_model: str = _env("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct") or ""
+    nvidia_model: str = _env("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct") or ""
 
     # 5. OpenRouter — single key, rotates across many open models (free + paid)
     #    Sign up: https://openrouter.ai → Keys

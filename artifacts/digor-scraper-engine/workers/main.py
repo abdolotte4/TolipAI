@@ -11,8 +11,56 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import uuid
 from typing import Any, Dict, List, Optional
+
+
+def _patch_ld_library_path() -> None:
+    """Dynamically resolve Nix-store paths for Playwright system libs.
+
+    On Railway (nixpacks / Ubuntu) the libs are already on the standard path —
+    this is a no-op there.  On Replit (NixOS) the Nix store hashes change with
+    every package bump, so we find them at runtime instead of hardcoding hashes.
+    """
+    nix = "/nix/store"
+    if not os.path.isdir(nix):
+        return
+    needed = {
+        "libX11.so.6":        r"libX11-1\.",
+        "libXcomposite.so.1": r"libXcomposite-",
+        "libXdamage.so.1":    r"libx?Xdamage-",
+        "libXext.so.6":       r"libXext-",
+        "libXfixes.so.3":     r"libXfixes-",
+        "libXrandr.so.2":     r"libXrandr-|libxrandr-",
+        "libxcb.so.1":        r"libxcb-1\.",
+        "libgbm.so.1":        r"mesa-libgbm-|mesa-[0-9]",
+        "libexpat.so.1":      r"expat-2\.",
+        "libudev.so.1":       r"eudev-|libudev-zero-",
+    }
+    skip = {"-dev", "-man", "-doc", "-debug", "-spirv", "-opencl",
+            "-osmesa", "-opengl", "-driversdev"}
+    dirs: set[str] = set()
+    try:
+        entries = os.listdir(nix)
+    except OSError:
+        return
+    for soname, pattern in needed.items():
+        for entry in entries:
+            if re.search(pattern, entry) and not entry.endswith(".drv") and not any(
+                s in entry for s in skip
+            ):
+                lib_dir = f"{nix}/{entry}/lib"
+                if os.path.isdir(lib_dir) and os.path.exists(f"{lib_dir}/{soname}"):
+                    dirs.add(lib_dir)
+                    break
+    if dirs:
+        extra = ":".join(sorted(dirs))
+        existing = os.environ.get("LD_LIBRARY_PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = f"{extra}:{existing}" if existing else extra
+
+
+_patch_ld_library_path()
 
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
@@ -267,15 +315,21 @@ async def health() -> Dict[str, Any]:
             return {"status": "unconfigured", "reason": "no_api_key"}
         t0 = time.monotonic()
         try:
-            resp = await client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": "reply with the single word OK"}],
-                max_tokens=5,
-                temperature=0,
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "reply with the single word OK"}],
+                    max_tokens=5,
+                    temperature=0,
+                ),
+                timeout=8.0,
             )
             latency_ms = int((time.monotonic() - t0) * 1000)
             content = (resp.choices[0].message.content or "").strip()
             return {"status": "ok", "latency_ms": latency_ms, "response": content[:20]}
+        except asyncio.TimeoutError:
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            return {"status": "timeout", "latency_ms": latency_ms, "error": "probe timed out (>8s)"}
         except Exception as e:
             latency_ms = int((time.monotonic() - t0) * 1000)
             msg = str(e)
@@ -319,18 +373,22 @@ async def health() -> Dict[str, Any]:
             return {"status": "exhausted", "keys_total": total}
         return {"status": "ok", "keys_active": active, "keys_total": total}
 
-    from .llm import _groq, _nvidia, _moonshot
+    from .llm import _groq, _cerebras, _nvidia, _openrouter, _moonshot
 
-    llm_groq, llm_nvidia, llm_moon, db_result, sapi, sbee = await asyncio.gather(
-        _probe_llm("groq",     _groq,     settings.groq_model),
-        _probe_llm("nvidia",   _nvidia,   settings.nvidia_model),
-        _probe_llm("moonshot", _moonshot, settings.moonshot_model),
+    (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon,
+     db_result, sapi, sbee) = await asyncio.gather(
+        _probe_llm("groq",       _groq,       settings.groq_model),
+        _probe_llm("cerebras",   _cerebras,   settings.cerebras_model),
+        _probe_llm("nvidia",     _nvidia,     settings.nvidia_model),
+        _probe_llm("openrouter", _openrouter, settings.openrouter_model),
+        _probe_llm("moonshot",   _moonshot,   settings.moonshot_model),
         _probe_db(),
         _probe_scraperapi(),
         _probe_scrapingbee(),
     )
 
-    llm_ok = any(r["status"] == "ok" for r in (llm_groq, llm_nvidia, llm_moon))
+    llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon)
+    llm_ok = any(r["status"] == "ok" for r in llm_results)
     db_ok  = db_result.get("status") == "ok"
     overall = "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
 
@@ -338,10 +396,12 @@ async def health() -> Dict[str, Any]:
         "status": overall,
         "version": "0.1.0",
         "llm": {
-            "groq":     llm_groq,
-            "nvidia":   llm_nvidia,
-            "moonshot": llm_moon,
-            "any_ok":   llm_ok,
+            "groq":       llm_groq,
+            "cerebras":   llm_cerebras,
+            "nvidia":     llm_nvidia,
+            "openrouter": llm_openrouter,
+            "moonshot":   llm_moon,
+            "any_ok":     llm_ok,
         },
         "database": db_result,
         "scrapers": {
