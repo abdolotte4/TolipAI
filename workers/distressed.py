@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 
 from . import db
 from .http_client import fetch_html
-from .llm import parse_distressed_page
+from .llm import parse_distressed_page, suggest_distressed_sources
 from .scrapers import distressed_sources as ds
 
 log = logging.getLogger("distressed")
@@ -83,6 +83,9 @@ async def find_distressed(*, zip_code: str = "", county_key: str = "",
         # Always include the catch-all aggregators when state is provided
         if state and not categories:
             srcs += ds.list_sources(category="auction_aggregator")
+        if state and not any(src.get("state") == state.upper() for src in srcs):
+            for c in (categories or list(ds.CATEGORY_META.keys())):
+                srcs.extend(await suggest_distressed_sources(state=state, category=c))
 
     # de-dupe by key
     seen_keys: set[str] = set()
