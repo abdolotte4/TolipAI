@@ -55,7 +55,7 @@ def _aggregate_by_buyer(properties: List[Dict[str, Any]]) -> Dict[str, Dict[str,
     return by_buyer
 
 
-async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 25,
+async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 50,
                            job_id: Optional[str] = None,
                            progress_cb=None) -> List[Dict[str, Any]]:
     """Run the full cash-buyer discovery pipeline for a lead."""
