@@ -7,7 +7,7 @@
  */
 import { logger } from "../lib/logger";
 
-const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "http://localhost:8000").replace(/\/$/, "");
+const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app").replace(/\/$/, "");
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 export class ScraperEngineUnavailable extends Error {
