@@ -18,6 +18,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
 
+from playwright.async_api import ProxySettings
+
 
 def _ensure_nix_ld_path() -> None:
     """Resolve Playwright's required .so files from the Nix store and
@@ -132,7 +134,7 @@ async def browser_context(
     # prevent "Target page, context or browser has been closed" crashes.
     # --single-process keeps everything in one process (avoids /dev/shm issues).
     # --disable-dev-shm-usage reroutes shared memory to /tmp.
-    proxy_cfg = _proxy_settings()
+    proxy_cfg: Optional[ProxySettings] = _proxy_settings()  # type: ignore[assignment]
     browser = await pw.chromium.launch(
         headless=headless,
         proxy=proxy_cfg,

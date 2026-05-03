@@ -45,13 +45,6 @@ async def _do_login(page) -> None:
         raise RuntimeError("PROPELIO_EMAIL / PROPELIO_PASSWORD not set")
 
     log.info("Propelio: navigating to login page")
-    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-    try:
-        await page.wait_for_load_state("networkidle", timeout=15000)
-    except Exception:
-        pass
-
-    # Form selectors — try multiple variants in case Propelio updates their markup
     email_sel = (
         'input[type="email"], input[name="email"], input[name="username"], '
         'input[autocomplete="email"], input[id*="email" i], input[placeholder*="email" i]'
@@ -60,7 +53,13 @@ async def _do_login(page) -> None:
         'input[type="password"], input[name="password"], '
         'input[autocomplete="current-password"], input[autocomplete="password"]'
     )
+    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+    try:
+        await page.wait_for_selector(email_sel, timeout=25000)
+    except Exception:
+        pass
 
+    # Form selectors — try multiple variants in case Propelio updates their markup
     try:
         await page.wait_for_selector(email_sel, timeout=25000)
     except Exception:
@@ -211,7 +210,7 @@ async def fetch_comps(
         page = await ctx.new_page()
         comps: List[Dict[str, Any]] = []
         try:
-            await page.goto(url, wait_until="networkidle", timeout=45000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propelio session expired")
@@ -309,7 +308,7 @@ async def fetch_cash_buyers(
 
         page.on("response", _capture_response)
         try:
-            await page.goto(url, wait_until="networkidle", timeout=45000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propelio session expired")
@@ -368,7 +367,7 @@ async def fetch_cash_buyers(
             except Exception:
                 pass
 
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            await page.wait_for_load_state("domcontentloaded", timeout=15000)
 
             def _drain_xhr() -> List[Dict[str, Any]]:
                 """Consume all accumulated XHR responses and return normalised buyer rows."""
@@ -427,7 +426,7 @@ async def fetch_cash_buyers(
                     break
                 try:
                     await next_btn.click()
-                    await page.wait_for_load_state("networkidle", timeout=8000)
+                    await page.wait_for_load_state("domcontentloaded", timeout=8000)
                 except Exception:
                     break
                 seen_pages += 1
