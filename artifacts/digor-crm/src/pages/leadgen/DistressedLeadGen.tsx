@@ -28,7 +28,7 @@ const LEAD_TYPES = [
 export default function DistressedLeadGen() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const pin = localStorage.getItem("TOOLS_PIN") || "";
+  const pin = localStorage.getItem("TOOLS_PIN") || localStorage.getItem("crm_token") || "";
   const [selectedTypes, setSelectedTypes] = useState<Set<LeadTypeKey>>(new Set(["county_clerk", "public_trustee", "tax_assessor"]));
   const [isRunning, setIsRunning] = useState(false);
   const [importing, setImporting] = useState(false);
