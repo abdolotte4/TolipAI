@@ -24,6 +24,7 @@ import Pipeline from "@/pages/pipeline/Pipeline";
 import SequenceList from "@/pages/sequences/SequenceList";
 import BuyersList from "@/pages/buyers/BuyersList";
 import CashBuyersAll from "@/pages/buyers/CashBuyersAll";
+import DistressedLeadGen from "@/pages/leadgen/DistressedLeadGen";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -108,6 +109,12 @@ function Router() {
       <Route path="/cash-buyers">
         <AppLayout>
           <CashBuyersAll />
+        </AppLayout>
+      </Route>
+
+      <Route path="/lead-gen">
+        <AppLayout>
+          <DistressedLeadGen />
         </AppLayout>
       </Route>
 
