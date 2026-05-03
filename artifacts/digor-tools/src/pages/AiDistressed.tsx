@@ -38,6 +38,7 @@ export default function AiDistressed() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const toggle = (id: string) => setSelected(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]));
+  const normalizeListings = (data: any) => data?.result?.listings || data?.result?.results || data?.listings || data?.results || data?.data || [];
 
   useEffect(() => {
     if (!jobId) return;
@@ -47,7 +48,7 @@ export default function AiDistressed() {
       if (!res.ok) return;
       const data = await res.json();
       setJob(data);
-      if (data.result?.listings) setListings(data.result.listings);
+      setListings(normalizeListings(data));
       if (data.status === "completed" || data.status === "failed") { if (pollRef.current) clearInterval(pollRef.current); }
     }, 2500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -73,6 +74,7 @@ export default function AiDistressed() {
       const data = await res.json();
       setJobId(data.jobId || data.id);
       setJob({ id: data.jobId || data.id, status: data.status || "queued", progress: 0 });
+      setListings(normalizeListings(data));
     } catch (e: any) { setError(e?.message || "Could not start."); }
     finally { setStarting(false); }
   };
