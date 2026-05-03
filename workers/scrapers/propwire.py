@@ -42,7 +42,7 @@ async def _do_login(page) -> None:
 
     log.info("Propwire: navigating to login page")
     # networkidle gives React/Next.js time to fully render the login form
-    await page.goto(LOGIN_URL, wait_until="networkidle", timeout=60000)
+    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
 
     # Try multiple selector variants — Propwire periodically updates markup
     email_sel = (
@@ -54,7 +54,7 @@ async def _do_login(page) -> None:
         'input[autocomplete="current-password"]'
     )
 
-    await page.wait_for_selector(email_sel, timeout=30000)
+    await page.wait_for_selector(email_sel, timeout=45000)
 
     # Explicitly click then fill — Next.js/React forms need focus events for onChange
     email_el = page.locator(email_sel).first
@@ -122,7 +122,7 @@ async def _resolve_property_url(ctx, query_or_url: str) -> str:
         ).first
         await search.wait_for(state="visible", timeout=15000)
         await search.fill(query_or_url)
-        await page.wait_for_timeout(900)
+        await page.wait_for_timeout(1500)
 
         # Try to click first dropdown suggestion
         sugg = page.locator('[role="option"], li[role="option"], .suggestion-item').first
@@ -132,7 +132,7 @@ async def _resolve_property_url(ctx, query_or_url: str) -> str:
             await search.press("Enter")
 
         try:
-            await page.wait_for_url(re.compile(r"/realestate/"), timeout=20000)
+            await page.wait_for_url(re.compile(r"/realestate/"), timeout=30000)
         except Exception:
             pass
 
@@ -456,7 +456,7 @@ async def fetch_cash_buyers_nearby(
             if not chosen_url:
                 return []
 
-            await page.wait_for_load_state("networkidle", timeout=10000)
+            await page.wait_for_load_state("networkidle", timeout=20000)
 
             seen_pages = 0
             while len(buyers) < max_results and seen_pages < 30:
