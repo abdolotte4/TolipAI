@@ -41,7 +41,6 @@ async def _do_login(page) -> None:
         raise RuntimeError("PROPWIRE_EMAIL / PROPWIRE_PASSWORD not set")
 
     log.info("Propwire: navigating to login page")
-    # networkidle gives React/Next.js time to fully render the login form
     await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
 
     # Try multiple selector variants — Propwire periodically updates markup
@@ -86,7 +85,7 @@ async def _do_login(page) -> None:
             timeout=40000,
         )
     except Exception:
-        await page.wait_for_load_state("networkidle", timeout=15000)
+        await page.wait_for_load_state("domcontentloaded", timeout=15000)
 
     if "/login" in page.url:
         try:
@@ -155,7 +154,7 @@ async def fetch_property(query_or_url: str) -> Dict[str, Any]:
         prop_url = re.sub(r"/(comparable-sales|history|owner|market)$", "", url) or url
         page = await ctx.new_page()
         try:
-            await page.goto(prop_url, wait_until="networkidle", timeout=45000)
+            await page.goto(prop_url, wait_until="domcontentloaded", timeout=45000)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -253,7 +252,7 @@ async def fetch_comps(query_or_url: str, *, max_results: int = 50) -> List[Dict[
         comps_url = base.rstrip("/") + "/comparable-sales"
         page = await ctx.new_page()
         try:
-            await page.goto(comps_url, wait_until="networkidle", timeout=45000)
+            await page.goto(comps_url, wait_until="domcontentloaded", timeout=45000)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -325,7 +324,7 @@ async def fetch_history(query_or_url: str) -> Dict[str, Any]:
         url = base.rstrip("/") + "/history"
         page = await ctx.new_page()
         try:
-            await page.goto(url, wait_until="networkidle", timeout=45000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -363,7 +362,7 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
         prop_url = re.sub(r"/(comparable-sales|history|owner|market|comps|buyers)$", "", base) or base
         page = await ctx.new_page()
         try:
-            await page.goto(prop_url, wait_until="networkidle", timeout=45000)
+            await page.goto(prop_url, wait_until="domcontentloaded", timeout=45000)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -456,7 +455,7 @@ async def fetch_cash_buyers_nearby(
             if not chosen_url:
                 return []
 
-            await page.wait_for_load_state("networkidle", timeout=20000)
+            await page.wait_for_load_state("domcontentloaded", timeout=20000)
 
             seen_pages = 0
             while len(buyers) < max_results and seen_pages < 30:
@@ -517,7 +516,7 @@ async def fetch_cash_buyers_nearby(
                     break
                 try:
                     await next_btn.click()
-                    await page.wait_for_load_state("networkidle", timeout=8000)
+                    await page.wait_for_load_state("domcontentloaded", timeout=8000)
                 except Exception:
                     break
                 seen_pages += 1
