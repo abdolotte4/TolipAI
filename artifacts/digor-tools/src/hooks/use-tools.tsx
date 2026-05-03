@@ -2,24 +2,18 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./use-auth";
 import * as XLSX from "xlsx";
 
-// API Fetcher helper
 async function fetchApi(endpoint: string, options: RequestInit = {}, pin: string | null) {
   if (!pin) throw new Error("No PIN provided");
-  
   const headers = new Headers(options.headers);
   headers.set("X-Tools-Pin", pin);
-  
   if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-
   const res = await fetch(endpoint, { ...options, headers });
-  
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.error || `API Error: ${res.status}`);
   }
-  
   return res.json();
 }
 
@@ -27,12 +21,11 @@ export function useToolsStatus() {
   const { pin } = useAuth();
   return useQuery({
     queryKey: ["tools", "status"],
-    queryFn: () => fetchApi("/api/tools/status", {}, pin),
+    queryFn: () => fetchApi("/api/tools/auth/verify", {}, pin),
     enabled: !!pin,
   });
 }
 
-// Bulk Skip Trace
 export function useSkipTraceJobs() {
   const { pin } = useAuth();
   return useQuery({
@@ -62,10 +55,7 @@ async function parseFileToRecords(file: File): Promise<Record<string, string>[]>
   if (!sheetName) throw new Error("No sheets found in file");
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) throw new Error("Could not read sheet");
-  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, {
-    defval: "",
-    raw: false,
-  });
+  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "", raw: false });
   if (!rows.length) throw new Error("No data rows found in file");
   return rows;
 }
@@ -88,7 +78,6 @@ export function useUploadSkipTrace() {
   });
 }
 
-// Distressed Finder
 export function useDistressedJobs() {
   const { pin } = useAuth();
   return useQuery({
@@ -122,47 +111,5 @@ export function useSearchDistressed() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["distressed", "jobs"] });
     }
-  });
-}
-
-// ARV Calculator
-export function useArvConfig() {
-  const { pin } = useAuth();
-  return useQuery({
-    queryKey: ["arv", "config"],
-    queryFn: () => fetchApi("/api/tools/arv/config", {}, pin),
-    enabled: !!pin,
-  });
-}
-
-export function useCalculateArv() {
-  const { pin } = useAuth();
-  return useMutation({
-    mutationFn: (data: any) => fetchApi("/api/tools/arv/calculate", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }, pin)
-  });
-}
-
-export function useCalculateManualArv() {
-  const { pin } = useAuth();
-  return useMutation({
-    mutationFn: (data: any) => fetchApi("/api/tools/arv/calculate-manual", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }, pin)
-  });
-}
-
-// Property Lookup
-export function usePropertyLookup() {
-  const { pin } = useAuth();
-  return useMutation({
-    mutationFn: (data: { street: string; city?: string; state?: string; zip?: string }) =>
-      fetchApi("/api/tools/property-lookup/search", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }, pin),
   });
 }
