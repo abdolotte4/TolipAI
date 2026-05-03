@@ -292,6 +292,65 @@ export const scraperEngine = {
       timeoutMs: 180_000,
     });
   },
+
+  // ─── Distressed Lead-Gen (HomeHarvest + OSINT) ────────────────────────────
+
+  async startLeadGenForeclosure(req: {
+    city: string;
+    state: string;
+    listingType?: string;
+    site?: string;
+    limit?: number;
+    doSkipTrace?: boolean;
+    doDncCheck?: boolean;
+    saveToCrm?: boolean;
+    campaignId?: number;
+  }) {
+    return request<JobResponse>("/lead-gen/foreclosure", {
+      method: "POST",
+      body: JSON.stringify({
+        city: req.city,
+        state: req.state,
+        listing_type: req.listingType ?? "for_sale",
+        site: req.site ?? "zillow",
+        limit: req.limit ?? 10,
+        do_skip_trace: req.doSkipTrace ?? true,
+        do_dnc_check: req.doDncCheck ?? true,
+        save_to_crm: req.saveToCrm ?? false,
+        campaign_id: req.campaignId,
+      }),
+      timeoutMs: 30_000,
+    });
+  },
+
+  async getLeadGenResult(jobId: string) {
+    return request<any>(`/lead-gen/foreclosure/result/${encodeURIComponent(jobId)}`, {
+      method: "GET",
+    });
+  },
+
+  // ─── CRM-auth distressed (for lead gen tab) ───────────────────────────────
+  async startDistressedCrm(params: {
+    zip?: string;
+    city?: string;
+    countyKey?: string;
+    state?: string;
+    categories?: string[];
+    sourceKeys?: string[];
+    campaignId?: number;
+  }) {
+    return request<JobResponse>("/scrape/distressed", {
+      method: "POST",
+      body: JSON.stringify({
+        zip: params.zip || "",
+        county_key: params.countyKey || "",
+        state: params.state || "",
+        categories: params.categories || [],
+        source_keys: params.sourceKeys || [],
+        campaign_id: params.campaignId,
+      }),
+    });
+  },
 };
 
 export function logEngineConfig() {

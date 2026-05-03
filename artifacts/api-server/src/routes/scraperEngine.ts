@@ -523,6 +523,73 @@ router.post("/scraper-engine/propwire/cash-buyers-nearby", crmAuth, async (req: 
   } catch (err) { handleEngineError(err, res); }
 });
 
+// ─── Distressed Lead-Gen (CRM-authed) ────────────────────────────────────────
+
+router.get("/scraper-engine/lead-gen/sources", crmAuth, async (req: Request, res: Response) => {
+  const state = (req.query.state as string | undefined) ?? undefined;
+  try {
+    const out = await scraperEngine.listSources(state);
+    res.json(out);
+  } catch (err) { handleEngineError(err, res); }
+});
+
+router.post("/scraper-engine/lead-gen/distressed", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  const { zip, city, county, countyKey, state, categories, sourceKeys } = (req.body ?? {}) as {
+    zip?: string; city?: string; county?: string; countyKey?: string; state?: string;
+    categories?: string[]; sourceKeys?: string[];
+  };
+  try {
+    const job = await scraperEngine.startDistressedCrm({
+      zip, city, countyKey: countyKey || county, state, categories, sourceKeys,
+      campaignId: user.campaignId ?? undefined,
+    });
+    res.json(normalizeJob(job));
+  } catch (err) { handleEngineError(err, res); }
+});
+
+router.get("/scraper-engine/lead-gen/distressed/:jobId", crmAuth, async (req: Request, res: Response) => {
+  const jobId = req.params.jobId;
+  try {
+    const raw = await scraperEngine.getJob(jobId);
+    const status = normalizeStatus(raw);
+    let listings: any[] = [];
+    if (raw.status === "done" || raw.status === "completed") {
+      try {
+        const dbRows = await db.select().from(distressedListings).where(eq(distressedListings.jobId, jobId));
+        listings = dbRows;
+      } catch { /* ignore */ }
+      if (!listings.length && Array.isArray(raw.result)) listings = raw.result;
+    }
+    const result = { ...(status.result || {}), listings };
+    res.json({ ...status, result, listings });
+  } catch (err) { handleEngineError(err, res); }
+});
+
+router.post("/scraper-engine/lead-gen/foreclosure", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  const { city, state, listingType, site, limit, doSkipTrace, doDncCheck, saveToCrm } =
+    (req.body ?? {}) as {
+      city?: string; state?: string; listingType?: string; site?: string;
+      limit?: number; doSkipTrace?: boolean; doDncCheck?: boolean; saveToCrm?: boolean;
+    };
+  if (!city || !state) { res.status(400).json({ error: "city and state are required" }); return; }
+  try {
+    const job = await scraperEngine.startLeadGenForeclosure({
+      city, state, listingType, site, limit, doSkipTrace, doDncCheck, saveToCrm,
+      campaignId: user.campaignId ?? undefined,
+    });
+    res.json(normalizeJob(job));
+  } catch (err) { handleEngineError(err, res); }
+});
+
+router.get("/scraper-engine/lead-gen/foreclosure/result/:jobId", crmAuth, async (req: Request, res: Response) => {
+  try {
+    const raw = await scraperEngine.getLeadGenResult(req.params.jobId);
+    res.json(raw);
+  } catch (err) { handleEngineError(err, res); }
+});
+
 // ─── Skip-trace (CRM-authed, sync) ───────────────────────────────────────────
 router.post("/scraper-engine/skip-trace", crmAuth, async (req: Request, res: Response) => {
   const { name, llc, address, state } = (req.body ?? {}) as {
