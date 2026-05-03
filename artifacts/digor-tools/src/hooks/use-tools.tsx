@@ -113,3 +113,43 @@ export function useSearchDistressed() {
     }
   });
 }
+
+export function useArvConfig() {
+  const { pin } = useAuth();
+  return useQuery({
+    queryKey: ["arv", "config"],
+    queryFn: () => fetchApi("/api/tools/arv/config", {}, pin),
+    enabled: !!pin,
+  });
+}
+
+export function useCalculateArv() {
+  const { pin } = useAuth();
+  return useMutation({
+    mutationFn: (data: any) => fetchApi("/api/tools/arv/calculate", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, pin)
+  });
+}
+
+export function useCalculateManualArv() {
+  const { pin } = useAuth();
+  return useMutation({
+    mutationFn: (data: any) => fetchApi("/api/tools/arv/calculate-manual", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, pin)
+  });
+}
+
+export function usePropertyLookup() {
+  const { pin } = useAuth();
+  return useMutation({
+    mutationFn: (data: { street: string; city?: string; state?: string; zip?: string }) =>
+      fetchApi("/api/tools/property-lookup/search", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }, pin),
+  });
+}
