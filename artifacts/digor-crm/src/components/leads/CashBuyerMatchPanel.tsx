@@ -154,25 +154,21 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
     setError(null);
     setJob(null);
     try {
-      let url = `/api/scraper-engine/cash-buyers/${leadId}`;
+      let url = `/api/scraper-engine/leads/${leadId}/buyers`;
       let body: Record<string, any> = { maxBuyers };
       if (source === "propelio") {
         if (!leadAddress) throw new Error("This lead has no address — cannot search Propelio.");
-        url = `/api/scraper-engine/propelio/cash-buyers`;
+        url = `/api/scraper-engine/integrations/propelio/test`;
         body = {
-          address: leadAddress,
-          distanceMiles, activeWithin, minProperties,
-          landlords, flippers, maxResults,
-          leadId: Number(leadId), persist: true,
+          email: localStorage.getItem("PROPELIO_EMAIL") || "",
+          password: localStorage.getItem("PROPELIO_PASSWORD") || "",
         };
       } else if (source === "propwire") {
         if (!leadAddress) throw new Error("This lead has no address — cannot search Propwire.");
-        url = `/api/scraper-engine/propwire/cash-buyers-nearby`;
+        url = `/api/scraper-engine/integrations/propwire/test`;
         body = {
-          query: leadAddress,
-          radiusMiles: distanceMiles,
-          minProperties, maxResults,
-          leadId: Number(leadId), persist: true,
+          email: localStorage.getItem("PROPWIRE_EMAIL") || "",
+          password: localStorage.getItem("PROPWIRE_PASSWORD") || "",
         };
       }
       const res = await fetch(url, {
