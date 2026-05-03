@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import {
   MapPin, Search, Play, CheckSquare, Square, AlertTriangle,
   Download, Plus, RefreshCw, Loader2, ChevronRight, X,
@@ -17,8 +17,6 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useCrmGetMe } from "@workspace/api-client-react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type LeadTypeKey =
   | "county_clerk" | "public_trustee" | "tax_assessor"
@@ -54,8 +52,6 @@ interface JobState {
   markdownTable?: string;
 }
 
-// ─── Lead type definitions ────────────────────────────────────────────────────
-
 const LEAD_TYPES: LeadType[] = [
   { key: "county_clerk", label: "Pre-Foreclosure", description: "Lis pendens filings — owner behind on mortgage", icon: Home, color: "text-orange-400", badgeClass: "bg-orange-500/10 text-orange-300 border-orange-500/30", distressType: "preforeclosure", engine: "distressed" },
   { key: "public_trustee", label: "Foreclosure / Trustee Sale", description: "Active auction listings from county trustees", icon: Gavel, color: "text-red-400", badgeClass: "bg-red-500/10 text-red-300 border-red-500/30", distressType: "trustee_sale", engine: "distressed" },
@@ -67,8 +63,6 @@ const LEAD_TYPES: LeadType[] = [
   { key: "satellite_dfd", label: "Damaged Buildings (AI)", description: "Satellite + AI damage detection — flood, fire, neglect", icon: Satellite, color: "text-rose-400", badgeClass: "bg-rose-500/10 text-rose-300 border-rose-500/30", distressType: "damaged", engine: "satellite" },
 ];
 
-const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
-
 const DISTRESS_TYPE_BADGE: Record<string, string> = {
   preforeclosure: "bg-orange-500/10 text-orange-300 border-orange-500/30",
   trustee_sale: "bg-red-500/10 text-red-300 border-red-500/30",
@@ -79,8 +73,6 @@ const DISTRESS_TYPE_BADGE: Record<string, string> = {
   mls_listing: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
   damaged: "bg-rose-500/10 text-rose-300 border-rose-500/30",
 };
-
-// ─── Auth fetch helpers ───────────────────────────────────────────────────────
 
 function apiFetch(path: string, init?: RequestInit) {
   const token = localStorage.getItem("crm_token");
@@ -114,8 +106,6 @@ function toolsFetch(path: string, init?: RequestInit) {
   });
 }
 
-// ─── LeadRow component ────────────────────────────────────────────────────────
-
 function LeadRow({ lead, onImport, importing }: { lead: any; onImport: (l: any) => void; importing: boolean }) {
   const distressType = lead.distress_type || lead.distressType || "unknown";
   const badgeClass = DISTRESS_TYPE_BADGE[distressType] || "bg-secondary text-muted-foreground border-white/10";
@@ -138,8 +128,6 @@ function LeadRow({ lead, onImport, importing }: { lead: any; onImport: (l: any) 
     </motion.tr>
   );
 }
-
-// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DistressedLeadGen() {
   const { toast } = useToast();
@@ -168,5 +156,5 @@ export default function DistressedLeadGen() {
   const toggle = (key: LeadTypeKey) => setSelectedTypes(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
   const selectAll = () => setSelectedTypes(new Set(LEAD_TYPES.map(t => t.key as LeadTypeKey)));
 
-  return <div />;
+  return <div className="p-6 text-foreground space-y-4"><Card className="p-6"><h1 className="text-2xl font-bold">Distressed Lead Gen</h1><p className="text-sm text-muted-foreground mt-2">Build distressed lead lists from multiple sources and import them into CRM.</p><div className="mt-4 grid gap-3 md:grid-cols-4"><div><Label className="text-xs">City</Label><Input value={area.city} onChange={e => setArea(a => ({ ...a, city: e.target.value }))} /></div><div><Label className="text-xs">County</Label><Input value={area.county} onChange={e => setArea(a => ({ ...a, county: e.target.value }))} /></div><div><Label className="text-xs">State</Label><Input value={area.state} onChange={e => setArea(a => ({ ...a, state: e.target.value }))} /></div><div><Label className="text-xs">ZIP</Label><Input value={area.zip} onChange={e => setArea(a => ({ ...a, zip: e.target.value }))} /></div></div><div className="mt-4 flex flex-wrap gap-2">{LEAD_TYPES.map(type => <button key={type.key} onClick={() => toggle(type.key)} className={`rounded-full border px-3 py-1 text-xs ${selectedTypes.has(type.key) ? "bg-primary text-primary-foreground border-primary" : "bg-secondary/40 border-border"}`}>{type.label}</button>)}<Button variant="outline" size="sm" onClick={selectAll}>Select all</Button></div><div className="mt-4 flex items-center gap-3"><Button disabled={isRunning} className="gap-2"><Play className="w-4 h-4" /> Run Search</Button><Button variant="outline" className="gap-2"><Download className="w-4 h-4" /> Export</Button></div></Card><Card className="p-6"><div className="flex items-center justify-between"><h2 className="font-semibold">Results</h2><Badge variant="outline">{filteredListings.length} leads</Badge></div><div className="mt-4 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-muted-foreground"><th className="px-4 py-2">Address</th><th className="px-4 py-2">Owner</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Equity</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2">Email</th><th className="px-4 py-2">Actions</th></tr></thead><tbody>{filteredListings.map((lead, i) => <LeadRow key={i} lead={lead} onImport={() => {}} importing={false} />)}</tbody></table></div></Card></div>;
 }
