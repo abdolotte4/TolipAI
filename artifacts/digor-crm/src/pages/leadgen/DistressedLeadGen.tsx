@@ -50,9 +50,7 @@ export default function DistressedLeadGen() {
     setResults([]);
     setProgress(0);
     setStatusMsg("Starting…");
-    const token = localStorage.getItem("crm_token");
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
     try {
       const res = await fetch("/api/scraper-engine/scrape/distressed", {
         method: "POST",
