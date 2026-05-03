@@ -28,6 +28,7 @@ const LEAD_TYPES = [
 export default function DistressedLeadGen() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const pin = localStorage.getItem("TOOLS_PIN") || "";
   const [selectedTypes, setSelectedTypes] = useState<Set<LeadTypeKey>>(new Set(["county_clerk", "public_trustee", "tax_assessor"]));
   const [isRunning, setIsRunning] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -43,16 +44,30 @@ export default function DistressedLeadGen() {
   async function runSearch() {
     setIsRunning(true);
     try {
-      const listing = [{
-        address: `${area.city || "Sample"} St`,
-        owner_name: "Sample Owner",
-        distress_type: "preforeclosure",
-        estimated_equity: 42000,
-        phones: ["(555) 123-4567"],
-        emails: ["owner@example.com"],
-      }];
-      setResults(listing);
+      const res = await fetch("/api/tools/distressed/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tools-Pin": pin || "",
+        },
+        body: JSON.stringify({
+          city: area.city || undefined,
+          county: area.county || undefined,
+          state: area.state || undefined,
+          zip: area.zip || undefined,
+          categories: Array.from(selectedTypes),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as any));
+        throw new Error(err.error || `Failed (HTTP ${res.status})`);
+      }
+      const data = await res.json();
+      setResults(data.result?.listings || data.listings || []);
       toast({ title: "Search complete", description: "Lead results loaded." });
+      qc.invalidateQueries();
+    } catch (e: any) {
+      toast({ title: "Search failed", description: e?.message || "Could not load results.", variant: "destructive" });
     } finally {
       setIsRunning(false);
     }
@@ -83,7 +98,7 @@ export default function DistressedLeadGen() {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs text-muted-foreground"><th className="px-4 py-2">Address</th><th className="px-4 py-2">Owner</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Equity</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2">Email</th><th className="px-4 py-2">Actions</th></tr></thead>
-            <tbody>{results.map((lead, i) => <tr key={i} className="border-b border-border"><td className="px-4 py-3">{lead.address}</td><td className="px-4 py-3">{lead.owner_name}</td><td className="px-4 py-3"><Badge variant="outline">preforeclosure</Badge></td><td className="px-4 py-3">${lead.estimated_equity.toLocaleString()}</td><td className="px-4 py-3">{lead.phones?.[0] || "—"}</td><td className="px-4 py-3">{lead.emails?.[0] || "—"}</td><td className="px-4 py-3"><Button size="sm" variant="outline" className="gap-1"><Plus className="w-3 h-3" /> Import</Button></td></tr>)}</tbody>
+            <tbody>{results.map((lead, i) => <tr key={i} className="border-b border-border"><td className="px-4 py-3">{lead.address || lead.location || "—"}</td><td className="px-4 py-3">{lead.owner_name || lead.owner || "—"}</td><td className="px-4 py-3"><Badge variant="outline">{lead.distress_type || lead.category || "lead"}</Badge></td><td className="px-4 py-3">{typeof lead.estimated_equity === "number" ? `$${lead.estimated_equity.toLocaleString()}` : (lead.estimated_equity || "—")}</td><td className="px-4 py-3">{lead.phones?.[0] || lead.phone || "—"}</td><td className="px-4 py-3">{lead.emails?.[0] || lead.email || "—"}</td><td className="px-4 py-3"><Button size="sm" variant="outline" className="gap-1"><Plus className="w-3 h-3" /> Import</Button></td></tr>)}</tbody>
           </table>
         </div>
       </Card>
