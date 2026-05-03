@@ -86,7 +86,7 @@ export const scraperEngine = {
       method: "POST",
       body: JSON.stringify({
         lead_id: leadId,
-        max_buyers: opts.maxBuyers ?? 25,
+        max_buyers: opts.maxBuyers ?? 50,
         campaign_id: opts.campaignId,
       }),
     });

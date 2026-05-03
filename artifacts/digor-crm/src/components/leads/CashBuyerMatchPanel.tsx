@@ -102,6 +102,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
   const [landlords, setLandlords] = useState<boolean>(true);
   const [flippers, setFlippers] = useState<boolean>(true);
   const [maxResults, setMaxResults] = useState<number>(100);
+  const [maxBuyers, setMaxBuyers] = useState<number>(50);
 
   // ── Load existing matches on mount ──
   const refreshList = async () => {
@@ -154,7 +155,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
     setJob(null);
     try {
       let url = `/api/scraper-engine/cash-buyers/${leadId}`;
-      let body: Record<string, any> = {};
+      let body: Record<string, any> = { maxBuyers };
       if (source === "propelio") {
         if (!leadAddress) throw new Error("This lead has no address — cannot search Propelio.");
         url = `/api/scraper-engine/propelio/cash-buyers`;
@@ -236,57 +237,69 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
         </div>
       </div>
 
-      {/* Filters (visible for Propelio / Propwire) */}
-      {source !== "ai" && (
-        <div className="px-5 py-3 border-b border-border bg-secondary/10 grid grid-cols-2 sm:grid-cols-6 gap-3 text-xs">
-          <label className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Distance (mi)</span>
-            <input type="number" min={0.25} step={0.25} value={distanceMiles}
-              onChange={(e) => setDistanceMiles(Number(e.target.value))}
+      {/* Filters panel — always visible (AI gets max-buyers; Propelio/Propwire get distance etc.) */}
+      <div className="px-5 py-3 border-b border-border bg-secondary/10 grid grid-cols-2 sm:grid-cols-6 gap-3 text-xs">
+        {/* AI: max buyers control */}
+        {source === "ai" && (
+          <label className="flex flex-col gap-1 col-span-2 sm:col-span-2">
+            <span className="text-muted-foreground">Max buyers to profile</span>
+            <input type="number" min={10} max={200} step={10} value={maxBuyers}
+              onChange={(e) => setMaxBuyers(Number(e.target.value))}
               className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
           </label>
-          {source === "propelio" && (
+        )}
+        {/* Propelio / Propwire specific controls */}
+        {source !== "ai" && (
+          <>
             <label className="flex flex-col gap-1">
-              <span className="text-muted-foreground">Active within (mo)</span>
-              <select value={activeWithin}
-                onChange={(e) => setActiveWithin(e.target.value)}
-                className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none">
-                <option value="3">3</option>
-                <option value="6">6</option>
-                <option value="12">12</option>
-                <option value="24">24</option>
-                <option value="any">Any</option>
-              </select>
+              <span className="text-muted-foreground">Distance (mi)</span>
+              <input type="number" min={0.25} step={0.25} value={distanceMiles}
+                onChange={(e) => setDistanceMiles(Number(e.target.value))}
+                className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
             </label>
-          )}
-          <label className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Min properties</span>
-            <input type="number" min={1} step={1} value={minProperties}
-              onChange={(e) => setMinProperties(Number(e.target.value))}
-              className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Max results</span>
-            <input type="number" min={10} step={10} value={maxResults}
-              onChange={(e) => setMaxResults(Number(e.target.value))}
-              className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
-          </label>
-          {source === "propelio" && (
-            <>
-              <label className="flex items-center gap-2 mt-4">
-                <input type="checkbox" checked={landlords}
-                  onChange={(e) => setLandlords(e.target.checked)} />
-                <span>Landlords</span>
+            {source === "propelio" && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Active within (mo)</span>
+                <select value={activeWithin}
+                  onChange={(e) => setActiveWithin(e.target.value)}
+                  className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none">
+                  <option value="3">3</option>
+                  <option value="6">6</option>
+                  <option value="12">12</option>
+                  <option value="24">24</option>
+                  <option value="any">Any</option>
+                </select>
               </label>
-              <label className="flex items-center gap-2 mt-4">
-                <input type="checkbox" checked={flippers}
-                  onChange={(e) => setFlippers(e.target.checked)} />
-                <span>Flippers</span>
-              </label>
-            </>
-          )}
-        </div>
-      )}
+            )}
+            <label className="flex flex-col gap-1">
+              <span className="text-muted-foreground">Min properties</span>
+              <input type="number" min={1} step={1} value={minProperties}
+                onChange={(e) => setMinProperties(Number(e.target.value))}
+                className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted-foreground">Max results</span>
+              <input type="number" min={10} step={10} value={maxResults}
+                onChange={(e) => setMaxResults(Number(e.target.value))}
+                className="rounded-md bg-secondary/40 border border-white/10 px-2 py-1 outline-none" />
+            </label>
+            {source === "propelio" && (
+              <>
+                <label className="flex items-center gap-2 mt-4">
+                  <input type="checkbox" checked={landlords}
+                    onChange={(e) => setLandlords(e.target.checked)} />
+                  <span>Landlords</span>
+                </label>
+                <label className="flex items-center gap-2 mt-4">
+                  <input type="checkbox" checked={flippers}
+                    onChange={(e) => setFlippers(e.target.checked)} />
+                  <span>Flippers</span>
+                </label>
+              </>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Job progress */}
       {job && (
@@ -332,9 +345,20 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
                 <ScoreRing value={Number(b.matchScore ?? 0)} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <h4 className="font-semibold text-sm truncate">
-                      {b.llcName || b.buyerName}
-                    </h4>
+                    {(() => {
+                      const isGeneric = !b.buyerName || b.buyerName.startsWith("Investor —") || b.buyerName.startsWith("investor::");
+                      const name = isGeneric
+                        ? (b.llcName || b.mailingAddress || b.buyerName || "Unknown Investor")
+                        : (b.llcName || b.buyerName);
+                      return (
+                        <h4 className={`font-semibold text-sm truncate ${isGeneric && !b.llcName ? "text-muted-foreground italic" : ""}`}>
+                          {name}
+                          {isGeneric && !b.llcName && (
+                            <span className="ml-1.5 text-[10px] not-italic font-normal text-amber-400">(area investor)</span>
+                          )}
+                        </h4>
+                      );
+                    })()}
                     <Badge className={`text-[10px] border ${TYPE_STYLES[b.buyerType] ?? "bg-secondary"}`}>
                       {TYPE_LABELS[b.buyerType] ?? b.buyerType}
                     </Badge>

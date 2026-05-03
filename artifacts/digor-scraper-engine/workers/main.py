@@ -125,7 +125,7 @@ app = FastAPI(
 class CashBuyerRequest(BaseModel):
     lead_id: Optional[int] = Field(None, description="ID of crm_leads row (omit for ad-hoc / test calls)")
     address: Optional[str] = Field(None, description="Full address (used when lead_id is absent)")
-    max_buyers: int = 25
+    max_buyers: int = 50
     campaign_id: Optional[int] = None
 
 

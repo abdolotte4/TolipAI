@@ -198,9 +198,24 @@ export default function CashBuyersAll() {
             <Database className="w-7 h-7 text-primary" />
             Cash Buyer Database
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Every buyer your team has discovered across Propelio, Propwire, and AI scrapers.
-          </p>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <p className="text-muted-foreground text-sm">
+              {me?.role === "super_admin"
+                ? "All campaigns — every buyer discovered across Propelio, Propwire, and AI scrapers."
+                : `Showing buyers for your campaign only — discovered via Propelio, Propwire & AI.`}
+            </p>
+            {me?.role !== "super_admin" && me?.campaignName && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 border border-primary/20 text-primary">
+                <Database className="w-3 h-3" />
+                {me.campaignName}
+              </span>
+            )}
+            {me?.role === "super_admin" && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                Super Admin — All Campaigns
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -427,14 +442,30 @@ export default function CashBuyersAll() {
                     {/* Top row */}
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-foreground truncate">{b.buyerName}</h3>
-                          {b.llcName && b.llcName !== b.buyerName && (
-                            <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                              <Building2 className="w-3 h-3" /> {b.llcName}
-                            </span>
-                          )}
-                        </div>
+                        {(() => {
+                          const isGeneric = !b.buyerName || b.buyerName.startsWith("Investor —") || b.buyerName.startsWith("investor::");
+                          const displayName = isGeneric
+                            ? (b.llcName || b.mailingAddress || b.buyerName || "Unknown Investor")
+                            : (b.llcName && b.llcName !== b.buyerName ? b.llcName : b.buyerName);
+                          const subName = isGeneric ? null : (b.llcName && b.llcName !== b.buyerName ? b.buyerName : null);
+                          return (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className={`font-semibold truncate ${isGeneric ? "text-muted-foreground italic" : "text-foreground"}`}>
+                                {displayName}
+                              </h3>
+                              {subName && (
+                                <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                                  <Building2 className="w-3 h-3" /> {subName}
+                                </span>
+                              )}
+                              {isGeneric && !b.llcName && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                  No name (area investor)
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {(b.city || b.state) && (
                           <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                             <MapPin className="w-3 h-3" />
