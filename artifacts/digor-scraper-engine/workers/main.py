@@ -68,6 +68,8 @@ from pydantic import BaseModel, Field
 
 from . import db, cash_buyers, distressed, skip_trace, ai_research
 from . import http_client
+from . import osint_skip_trace
+from .scrapers import homeharvest_scraper
 from .config import settings
 from .retry_queue import retry_queue, is_transient
 from .scrapers import county, propelio, propelio_v2, propwire
@@ -833,6 +835,208 @@ async def manual_retry(job_id: str) -> Dict[str, Any]:
                         error="manual_retry_requested")
     return {"job_id": job_id, "status": "retry_pending",
             "message": "Job re-queued — will execute within 30 seconds"}
+
+
+# ─── Chained Foreclosure Lead-Gen workflow ───────────────────────────────────
+
+class ForeclosureLeadGenRequest(BaseModel):
+    city:           str   = Field(..., description="Target city, e.g. 'Orlando'")
+    state:          str   = Field(..., description="Two-letter state code, e.g. 'FL'")
+    listing_type:   str   = Field("for_sale", description="'for_sale' | 'sold' | 'pending'")
+    site:           str   = Field("zillow",   description="'zillow' | 'realtor.com' | 'redfin' | 'all'")
+    limit:          int   = Field(5, ge=1, le=20)
+    do_skip_trace:  bool  = Field(True,  description="Run free OSINT skip trace per property")
+    do_dnc_check:   bool  = Field(True,  description="Run Twilio Lookup for DNC/carrier flags")
+    save_to_crm:    bool  = Field(False, description="Persist results to cash_buyer_matches table")
+    campaign_id:    Optional[int] = None
+
+
+async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None:
+    """Full chained pipeline: scrape → equity → skip-trace → DNC → report → (optional) CRM sync."""
+    cb = await _make_progress_cb(job_id)
+
+    city          = params["city"]
+    state         = params["state"]
+    listing_type  = params.get("listing_type", "for_sale")
+    site          = params.get("site", "zillow")
+    limit         = int(params.get("limit", 5))
+    do_skip_trace = params.get("do_skip_trace", True)
+    do_dnc_check  = params.get("do_dnc_check", True)
+    save_to_crm   = params.get("save_to_crm", False)
+    campaign_id   = params.get("campaign_id")
+
+    try:
+        # ── Step 1: Scrape listings via HomeHarvest ──────────────────────────
+        await cb(5, f"Scraping {listing_type} listings in {city}, {state}…")
+        if site == "all":
+            listings = await homeharvest_scraper.scrape_multi_site(
+                city, state, listing_type=listing_type, limit_per_site=limit,
+            )
+        else:
+            listings = await homeharvest_scraper.scrape_foreclosures(
+                city, state, listing_type=listing_type, site=site, limit=limit,
+            )
+
+        if not listings:
+            _set_status(job_id, "done", progress=100,
+                        result={"count": 0, "listings": [], "markdown_table": "_No listings found._"})
+            await db.update_job(job_id, status="done", progress=100, result_count=0, completed=True)
+            return
+
+        await cb(25, f"Found {len(listings)} listings — estimating equity…")
+
+        # ── Step 2: Estimate equity for each property ────────────────────────
+        enriched: List[Dict[str, Any]] = []
+        for l in listings[:limit]:
+            est_value = l.get("estimated_value") or l.get("list_price") or 0
+            # Simple equity heuristic: estimated_value * 0.80 (assumes ~80% LTV)
+            # A real ARV calc needs comps; this is a directional filter only.
+            estimated_equity = round(float(est_value) * 0.80) if est_value else None
+            enriched.append({**l, "estimated_equity": estimated_equity})
+
+        # ── Step 3: Free OSINT skip trace per property ────────────────────────
+        results: List[Dict[str, Any]] = []
+        skip_step = 50 // max(len(enriched), 1)
+        for i, prop in enumerate(enriched):
+            pct = 30 + i * skip_step
+            street = prop.get("street") or prop.get("address", "").split(",")[0]
+            await cb(pct, f"Skip-tracing {street}… ({i+1}/{len(enriched)})")
+
+            if do_skip_trace and street:
+                try:
+                    trace = await osint_skip_trace.trace_by_address(
+                        street, prop.get("city", city), prop.get("state", state),
+                        owner_name=prop.get("owner_name"),
+                        do_dnc_check=do_dnc_check,
+                    )
+                    prop = {**prop, **trace}
+                except Exception as e:
+                    log.warning("OSINT skip-trace failed for %s: %s", street, e)
+                    prop = {**prop, "phones": [], "emails": [], "verified_mobile_count": 0,
+                            "verified_email_count": 0}
+            else:
+                prop = {**prop, "phones": [], "emails": [], "verified_mobile_count": 0,
+                        "verified_email_count": 0}
+
+            results.append(prop)
+
+        await cb(85, "Generating report…")
+
+        # ── Step 4: Format markdown table ─────────────────────────────────────
+        markdown_table = osint_skip_trace.format_markdown_table(results)
+
+        # ── Step 5: Optionally save to CRM cash_buyer_matches ─────────────────
+        saved_count = 0
+        if save_to_crm and results:
+            await cb(90, "Syncing to CRM Cash Buyers tab…")
+            import json as _json
+            for r in results:
+                try:
+                    phones = r.get("phones") or []
+                    emails = r.get("emails") or []
+                    await db.pool.execute(
+                        """INSERT INTO cash_buyer_matches
+                           (lead_id, job_id, buyer_name, buyer_type, match_score, match_reasons,
+                            city, state, zip, mailing_address, phones, emails, principals,
+                            classification_reason, source, raw_data)
+                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)""",
+                        None, job_id,
+                        r.get("owner_name") or "Unknown Owner",
+                        "pre_foreclosure",
+                        50,
+                        _json.dumps(["homeharvest_scrape", "osint_skip_trace"]),
+                        r.get("city", city), r.get("state", state), r.get("zip"),
+                        r.get("address"),
+                        _json.dumps([p["number"] for p in phones]),
+                        _json.dumps([e["email"] for e in emails]),
+                        _json.dumps(r.get("resident_names") or []),
+                        f"Pre-foreclosure listing in {city}, {state} via HomeHarvest",
+                        "homeharvest",
+                        _json.dumps({
+                            "list_price": r.get("list_price"),
+                            "estimated_equity": r.get("estimated_equity"),
+                            "beds": r.get("beds"), "baths": r.get("baths"),
+                            "sqft": r.get("sqft"), "year_built": r.get("year_built"),
+                            "listing_url": r.get("listing_url"),
+                            "days_on_mls": r.get("days_on_mls"),
+                        }),
+                    )
+                    saved_count += 1
+                except Exception as e:
+                    log.warning("CRM save failed for %s: %s", r.get("address"), e)
+
+        await cb(100, "Done")
+
+        summary = {
+            "count":          len(results),
+            "saved_to_crm":   saved_count,
+            "listings":       results,
+            "markdown_table": markdown_table,
+            "city":           city,
+            "state":          state,
+        }
+        _set_status(job_id, "done", progress=100, result=summary)
+        await db.update_job(job_id, status="done", progress=100,
+                            result_count=len(results), completed=True)
+
+    except Exception as e:
+        log.exception("Foreclosure lead-gen job %s failed: %s", job_id, e)
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
+
+
+@app.post("/lead-gen/foreclosure")
+async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
+    """
+    Chained foreclosure lead-gen workflow:
+      1. HomeHarvest → fetch listings (Zillow / Realtor.com / Redfin, no API key)
+      2. Equity estimate per property (list_price × 0.80 heuristic)
+      3. Free OSINT skip trace per address (TruePeopleSearch, FastPeopleSearch, CyberBgChecks)
+      4. Twilio Lookup DNC / carrier-type flag (if Twilio env vars configured)
+      5. Markdown table output
+      6. Optional sync to CRM cash_buyer_matches table
+
+    Returns immediately with a job_id — poll GET /jobs/{job_id} for progress + results.
+    The final result contains `listings` (JSON) and `markdown_table` (Markdown string).
+    """
+    params = req.model_dump()
+    job_id = _new_job("foreclosure_lead_gen", params)
+    await db.create_job(
+        job_id, "foreclosure_lead_gen", params,
+        campaign_id=req.campaign_id,
+    )
+    asyncio.create_task(_run_foreclosure_lead_gen(job_id, params))
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": f"Scraping {req.listing_type} listings in {req.city}, {req.state}. Poll /jobs/{job_id} for progress.",
+        "poll_url": f"/jobs/{job_id}",
+    }
+
+
+@app.get("/lead-gen/foreclosure/result/{job_id}")
+async def lead_gen_foreclosure_result(job_id: str) -> Dict[str, Any]:
+    """
+    Convenience endpoint — returns the completed job result including
+    both the structured `listings` array and the `markdown_table` string.
+    Useful when you want to download the leads_with_contacts.md report.
+    """
+    job = _jobs.get(job_id) or await db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != "done":
+        return {"job_id": job_id, "status": job.get("status"), "progress": job.get("progress", 0)}
+    result = job.get("result") or {}
+    return {
+        "job_id":         job_id,
+        "status":         "done",
+        "count":          result.get("count", 0),
+        "saved_to_crm":   result.get("saved_to_crm", 0),
+        "city":           result.get("city"),
+        "state":          result.get("state"),
+        "markdown_table": result.get("markdown_table", ""),
+        "listings":       result.get("listings", []),
+    }
 
 
 if __name__ == "__main__":
