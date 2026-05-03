@@ -8,8 +8,7 @@ import toolsRouter from "./tools";
 import stripeRouter from "./stripe";
 import scraperRouter from "./scraper";
 import scraperEngineRouter from "./scraperEngine";
-import openphoneRouter from "./openphone";
-import signalwireRouter from "./signalwire";
+import twilioRouter from "./twilio";
 
 const router: IRouter = Router();
 
@@ -22,7 +21,6 @@ router.use(toolsRouter);
 router.use(stripeRouter);
 router.use(scraperRouter);
 router.use(scraperEngineRouter);
-router.use(openphoneRouter);
-router.use(signalwireRouter);
+router.use(twilioRouter);
 
 export default router;

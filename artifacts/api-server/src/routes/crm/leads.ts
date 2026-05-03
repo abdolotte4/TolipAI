@@ -5,6 +5,7 @@ import { eq, desc, ilike, and, or, sql, ne } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { onLeadCreated, onLeadStatusChanged } from "../../services/automation";
 import { fetchPropertyData, checkCooldown, recordFetch, runSkipTrace, checkSkipTraceCooldown, recordSkipTrace, getLastSkipTraceError, calculateAdjustedComp, calculateArvFromComps, calculateMao, getMaoDiscount, checkFetchCompsCooldown, recordFetchComps, pollCompsExport, downloadComps, getKeyPoolSize } from "../../services/propertyApi";
+import { parseMoney } from "../../services/coreCalculations";
 import { getRentcastValuation } from "../../services/rentcastApi";
 import { geocodeViaAttom, fetchCompsViaAttom, hasAttomKey, fetchAttomAvm, fetchPropertyDataViaAttom } from "../../services/attomApi";
 
@@ -30,12 +31,6 @@ setInterval(() => {
 }, 60_000);
 
 const router = Router();
-
-function parseMoney(v: any): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = parseFloat(v);
-  return isNaN(n) ? null : n;
-}
 
 function formatLeadSummary(lead: any, assignedUser?: any, campaignName?: string | null) {
   return {
@@ -64,6 +59,7 @@ function formatLeadSummary(lead: any, assignedUser?: any, campaignName?: string 
     estimatedRepairCost: lead.estimatedRepairCost ? parseFloat(lead.estimatedRepairCost) : null,
     arv: lead.arv ? parseFloat(lead.arv) : null,
     mao: lead.mao ? parseFloat(lead.mao) : null,
+    maoDiscountOverride: lead.maoDiscountOverride ? parseFloat(lead.maoDiscountOverride) : null,
     status: lead.status,
     archived: lead.archived ?? false,
     archivedAt: lead.archivedAt ? lead.archivedAt.toISOString() : null,
@@ -238,7 +234,8 @@ router.post("/", crmAuth, async (req, res) => {
     const arv = parseMoney(data.arv);
     const erc = parseMoney(data.estimatedRepairCost);
     const conditionForMao = data.condition != null ? Number(data.condition) : null;
-    const mao = arv !== null && erc !== null ? calculateMao(arv, erc, conditionForMao) : parseMoney(data.mao);
+    const maoOverride = data.maoDiscountOverride != null ? parseMoney(data.maoDiscountOverride) : null;
+    const mao = arv !== null && erc !== null ? calculateMao(arv, erc, conditionForMao, maoOverride) : parseMoney(data.mao);
 
     const [lead] = await db.insert(crmLeads).values({
       campaignId: campaignId || (data.campaignId ? parseInt(data.campaignId) : null),
@@ -423,7 +420,12 @@ router.patch("/:id", crmAuth, async (req, res) => {
     const arv = data.arv !== undefined ? parseMoney(data.arv) : parseMoney(existing.arv);
     const erc = data.estimatedRepairCost !== undefined ? parseMoney(data.estimatedRepairCost) : parseMoney(existing.estimatedRepairCost);
     const conditionForMao = data.condition != null ? Number(data.condition) : (existing.condition ?? null);
-    const mao = arv !== null && erc !== null ? calculateMao(arv, erc, conditionForMao) : (data.mao !== undefined ? parseMoney(data.mao) : parseMoney(existing.mao));
+    const maoOverride = data.maoDiscountOverride !== undefined
+      ? parseMoney(data.maoDiscountOverride)
+      : parseMoney((existing as any).maoDiscountOverride);
+    const mao = arv !== null && erc !== null
+      ? calculateMao(arv, erc, conditionForMao, maoOverride)
+      : (data.mao !== undefined ? parseMoney(data.mao) : parseMoney(existing.mao));
 
     const updates: any = { updatedAt: new Date() };
     const fields = ["sellerName","phone","email","leadSource","address","city","state","zip","propertyType","status","occupancy","reasonForSelling","howSoon","notes","ownerName","lastSaleDate"];
@@ -440,6 +442,7 @@ router.patch("/:id", crmAuth, async (req, res) => {
     if (data.lastSalePrice !== undefined) updates.lastSalePrice = parseMoney(data.lastSalePrice)?.toString() || null;
     if (data.estimatedRepairCost !== undefined) updates.estimatedRepairCost = erc?.toString() || null;
     if (data.arv !== undefined) updates.arv = arv?.toString() || null;
+    if (data.maoDiscountOverride !== undefined) updates.maoDiscountOverride = maoOverride?.toString() || null;
     updates.mao = mao?.toString() || null;
     if (data.assignedTo !== undefined) updates.assignedTo = data.assignedTo || null;
 

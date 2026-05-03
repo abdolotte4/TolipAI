@@ -3,6 +3,7 @@ import { crmAuth } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { toE164 } from "../services/coreCalculations";
 
 const router: IRouter = Router();
 
@@ -32,14 +33,6 @@ async function swFetch(path: string, options: RequestInit = {}) {
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
   if (!res.ok) throw Object.assign(new Error(json?.message || "SignalWire error"), { status: res.status, body: json });
   return json;
-}
-
-function toE164(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  if (digits.length > 7) return `+${digits}`;
-  return phone;
 }
 
 // ── GET /api/signalwire/phone-numbers ────────────────────────────────────────

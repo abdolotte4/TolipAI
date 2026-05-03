@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { crmComps, crmLeads } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { crmAuth } from "./middleware";
-import { calculateAdjustedComp, calculateArvFromComps, estimateMarketPricePerSqft } from "../../services/propertyApi";
+import { calculateAdjustedComp, calculateArvFromComps, calculateMao, estimateMarketPricePerSqft } from "../../services/propertyApi";
 
 const router = Router();
 
@@ -177,10 +177,11 @@ async function recalculateAndUpdateArv(leadId: number, lead: any) {
     const arv = calculateArvFromComps(adjustedPrices);
     if (arv && arv > 0) {
       const erc = lead?.estimatedRepairCost ? parseFloat(lead.estimatedRepairCost as string) : 0;
-      const mao = arv * 0.80 - erc;
+      const override = lead?.maoDiscountOverride ? parseFloat(lead.maoDiscountOverride as string) : null;
+      const mao = calculateMao(arv, erc, lead?.condition ?? null, override);
       await db.update(crmLeads).set({
         arv: arv.toString(),
-        mao: Math.max(0, mao).toString(),
+        mao: (mao ?? 0).toString(),
         updatedAt: new Date(),
       }).where(eq(crmLeads.id, leadId));
     }

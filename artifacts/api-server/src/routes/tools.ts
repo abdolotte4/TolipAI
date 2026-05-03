@@ -15,7 +15,7 @@ import { db } from "@workspace/db";
 import { toolsSkipTraceJobs, toolsDistressedJobs } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import Papa from "papaparse";
-import { estimateMarketPricePerSqft, ADJUSTMENT_FACTORS } from "../services/propertyApi";
+import { estimateMarketPricePerSqft, ADJUSTMENT_FACTORS, calculateMao } from "../services/propertyApi";
 import { attomGet, hasAttomKey, fetchAttomAvm, geocodeViaAttom, fetchPropertyDataViaAttom } from "../services/attomApi";
 
 const router: Router = Router();
@@ -1159,8 +1159,8 @@ router.post("/tools/arv/calculate", requirePin, async (req, res) => {
 
     const arv = Math.round(comps.reduce((s, c) => s + c.adjustedPrice, 0) / comps.length);
     const arvPricePerSqft = subjectSqft ? +(arv / subjectSqft).toFixed(0) : 0;
-    const mao = Math.round(arv * 0.80 - repairCost);
-    const maxOffer = Math.round(arv * 0.75 - repairCost);
+    const mao = calculateMao(arv, repairCost, null) ?? 0;
+    const maxOffer = calculateMao(arv, repairCost, null, 0.75) ?? 0;
 
     // Fetch ATTOM AVM as a secondary valuation signal (non-blocking — null if it fails)
     const address2 = [city, state, zip].filter(Boolean).join(" ");
@@ -1191,8 +1191,8 @@ router.post("/tools/arv/calculate-manual", requirePin, async (req, res) => {
   };
   if (!comps?.length) { res.status(400).json({ error: "Provide at least one comp" }); return; }
   const arv = Math.round(comps.reduce((s, c) => s + c.salePrice, 0) / comps.length);
-  const mao = Math.round(arv * 0.70 - repairCost);
-  const maxOffer = Math.round(arv * 0.65 - repairCost);
+  const mao = calculateMao(arv, repairCost, null, 0.70) ?? 0;
+  const maxOffer = calculateMao(arv, repairCost, null, 0.65) ?? 0;
   const arvPricePerSqft = subjectSqft ? +(arv / subjectSqft).toFixed(0) : 0;
   res.json({ arv, arvPricePerSqft, mao, maxOffer, repairCost, compsUsed: comps.length, comps });
 });

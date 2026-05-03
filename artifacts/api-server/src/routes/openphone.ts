@@ -3,19 +3,11 @@ import { crmAuth } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmOpenPhoneMessages, crmLeads, crmCampaigns, crmUsers, crmNotifications } from "@workspace/db/schema";
 import { eq, desc, or } from "drizzle-orm";
+import { toE164 } from "../services/coreCalculations";
 
 const router: IRouter = Router();
 
 const OPENPHONE_BASE = "https://api.openphone.com/v1";
-
-// Convert any US phone number format to E.164 (+1XXXXXXXXXX)
-function toE164(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  if (digits.length > 7) return `+${digits}`;
-  return phone; // return as-is if can't normalize
-}
 
 function openphoneHeaders() {
   const key = process.env.OPENPHONE_API_KEY;

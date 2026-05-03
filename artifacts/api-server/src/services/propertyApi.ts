@@ -620,7 +620,12 @@ return Math.max(0, Math.round(capped));
  *  - Good / turnkey condition         (7-10) → 0.90 (competitive offer for retail-ready)
  * Defaults to 0.80 when condition is unknown.
  */
-export function getMaoDiscount(condition: number | null | undefined): number {
+export function getMaoDiscount(
+  condition: number | null | undefined,
+  overridePct?: number | null,
+): number {
+  // Per-lead override wins if it's a valid fraction (0.01 – 0.99)
+  if (overridePct != null && !isNaN(overridePct) && overridePct > 0 && overridePct < 1) return overridePct;
   if (condition == null || isNaN(condition)) return 0.80;
   if (condition <= 3) return 0.70;
   if (condition <= 6) return 0.80;
@@ -630,15 +635,17 @@ export function getMaoDiscount(condition: number | null | undefined): number {
 /**
  * Compute MAO from ARV, repair cost and condition.
  *   MAO = (ARV × discountFactor) − Repair Cost
- * Returns null if either input is missing.
+ * Pass `overridePct` (e.g. 0.75) to bypass the condition-based lookup.
+ * Returns null if either arv or repairCost is missing.
  */
 export function calculateMao(
   arv: number | null | undefined,
   repairCost: number | null | undefined,
   condition: number | null | undefined,
+  overridePct?: number | null,
 ): number | null {
   if (arv == null || repairCost == null) return null;
-  const discount = getMaoDiscount(condition);
+  const discount = getMaoDiscount(condition, overridePct);
   return Math.max(0, Math.round(arv * discount - repairCost));
 }
 

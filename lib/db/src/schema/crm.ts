@@ -13,6 +13,11 @@ export const crmCampaigns = pgTable("crm_campaigns", {
   openPhoneNumberId: text("openphone_number_id"),
   openPhoneNumber: text("openphone_number"),
   dialerEnabled: boolean("dialer_enabled").notNull().default(false),
+  // Twilio: per-campaign credentials so each campaign uses their own Twilio account
+  twilioAccountSid: text("twilio_account_sid"),
+  twilioAuthToken: text("twilio_auth_token"),  // stored AES-256 encrypted
+  twilioPhoneNumber: text("twilio_phone_number"),
+  twilioEnabled: boolean("twilio_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -58,6 +63,9 @@ export const crmLeads = pgTable("crm_leads", {
   estimatedRepairCost: numeric("estimated_repair_cost", { precision: 12, scale: 2 }),
   arv: numeric("arv", { precision: 12, scale: 2 }),
   mao: numeric("mao", { precision: 12, scale: 2 }),
+  // Per-lead MAO discount override: user can tune 0.70/0.80/0.90 thresholds per deal
+  // Value 0.01–0.99 overrides the condition-based default; null means use condition default
+  maoDiscountOverride: numeric("mao_discount_override", { precision: 5, scale: 2 }),
   occupancy: text("occupancy"),
   isRental: boolean("is_rental").notNull().default(false),
   rentalAmount: numeric("rental_amount", { precision: 12, scale: 2 }),

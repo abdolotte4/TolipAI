@@ -21,6 +21,8 @@ function validateMaxUsers(value: unknown): { value: number | null } | { error: s
 }
 
 function formatCampaign(c: CampaignWithCounts) {
+  const sid = (c as any).twilioAccountSid as string | null ?? null;
+  const encToken = (c as any).twilioAuthToken as string | null ?? null;
   return {
     id: c.id,
     name: c.name,
@@ -34,6 +36,12 @@ function formatCampaign(c: CampaignWithCounts) {
     openPhoneNumberId: (c as any).openPhoneNumberId ?? null,
     openPhoneNumber: (c as any).openPhoneNumber ?? null,
     dialerEnabled: (c as any).dialerEnabled ?? false,
+    // Twilio per-campaign config
+    twilioConfigured: !!(sid && encToken),
+    twilioEnabled: (c as any).twilioEnabled ?? false,
+    twilioAccountSid: sid,
+    twilioPhoneNumber: (c as any).twilioPhoneNumber ?? null,
+    // never expose the auth token — callers use /twilio/config for masked view
     createdAt: c.createdAt.toISOString(),
     userCount: c.userCount,
     leadCount: c.leadCount,
@@ -143,6 +151,14 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     const updates: Partial<typeof crmCampaigns.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
     if (active !== undefined) updates.active = active;
+
+    // Campaign admins can manage their own Twilio settings
+    if (crmUser.role === "admin" || crmUser.role === "super_admin") {
+      // Twilio config — campaign admin sets their own credentials
+      // Auth token is encrypted by the /twilio/config endpoint; campaigns.ts just passes through
+      if (req.body.twilioEnabled !== undefined) (updates as any).twilioEnabled = req.body.twilioEnabled === true || req.body.twilioEnabled === "true";
+    }
+
     // Only super admin can change governance settings
     if (crmUser.role === "super_admin") {
       if (maxUsers !== undefined) {

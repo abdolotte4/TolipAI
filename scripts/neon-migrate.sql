@@ -209,3 +209,13 @@ CREATE INDEX IF NOT EXISTS skip_trace_results_name_idx    ON skip_trace_results(
 
 -- ── Fix cash_buyer_matches lead_id nullable (allows lead-free scrapes) ────────
 ALTER TABLE cash_buyer_matches ALTER COLUMN lead_id DROP NOT NULL;
+
+-- ── Twilio per-campaign credentials (2026-05-03) ──────────────────────────────
+ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS twilio_account_sid  text;
+ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS twilio_auth_token   text;
+ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS twilio_phone_number text;
+ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS twilio_enabled      boolean NOT NULL DEFAULT false;
+
+-- ── Per-lead MAO discount override (2026-05-03) ───────────────────────────────
+-- Value 0.01–0.99 overrides condition-based 70/80/90% discount for this deal
+ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS mao_discount_override numeric(5,2);
