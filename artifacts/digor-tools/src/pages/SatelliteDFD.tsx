@@ -168,7 +168,7 @@ export default function SatelliteDFD() {
     abortRef.current = new AbortController();
 
     try {
-      const resp = await fetch(`${API_BASE}/distressed/search`, {
+      const resp = await fetch(`${API_BASE}/ai/satellite-dfd`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
