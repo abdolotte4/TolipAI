@@ -104,14 +104,18 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
   const [maxResults, setMaxResults] = useState<number>(100);
   const [maxBuyers, setMaxBuyers] = useState<number>(50);
 
-  // ── Load existing matches on mount ──
-  const refreshList = async () => {
+  // ── Load existing matches after a completed job ──
+  const refreshList = async (completedJobId?: string) => {
+    if (!completedJobId) {
+      setLoadingList(false);
+      return;
+    }
     setLoadingList(true);
     try {
-      const res = await fetch(`/api/scraper-engine/jobs/${leadId}`);
+      const res = await fetch(`/api/scraper-engine/jobs/${completedJobId}`);
       if (res.ok) {
         const data = await res.json();
-        setBuyers(data.result?.buyers ?? data.buyers ?? data.result?.listings ?? data.result?.results ?? data ?? []);
+        setBuyers(data.result?.buyers ?? data.buyers ?? data.result?.listings ?? data.result?.results ?? []);
       }
     } catch {
       /* noop */
@@ -119,7 +123,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
       setLoadingList(false);
     }
   };
-  useEffect(() => { refreshList(); /* eslint-disable-next-line */ }, [leadId]);
+  useEffect(() => { setLoadingList(false); /* eslint-disable-next-line */ }, [leadId]);
 
   // ── Poll job ──
   useEffect(() => {
@@ -136,7 +140,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
         setJob(data);
         if (data.status === "completed") {
           if (pollRef.current) clearInterval(pollRef.current);
-          await refreshList();
+          await refreshList(jobId);
         } else if (data.status === "failed") {
           if (pollRef.current) clearInterval(pollRef.current);
           setError(data.error || "Search failed.");

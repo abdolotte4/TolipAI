@@ -126,4 +126,51 @@ router.post("/scraper-engine/integrations/propwire/test", crmAuth, async (req: R
   } catch (err) { handleEngineError(err, res); }
 });
 
+// ─── Job status proxy (with done→completed normalisation) ────────────────────
+
+router.get("/scraper-engine/jobs/:jobId", async (req: Request, res: Response) => {
+  try {
+    const job = await scraperEngine.getJob(req.params.jobId);
+    if ((job as any).status === "done") (job as any).status = "completed";
+    res.json(job);
+  } catch (err) {
+    handleEngineError(err, res);
+  }
+});
+
+// ─── Catch-all proxy for every other /scraper-engine/* route ─────────────────
+// All routes not explicitly handled above (scrape/cash-buyers, ai/satellite-dfd,
+// lead-gen/*, sources, etc.) are forwarded transparently to the Python engine.
+
+const _ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app").replace(/\/$/, "");
+
+router.all("/scraper-engine/{*path}", async (req: Request, res: Response) => {
+  const subPath = req.path.slice("/scraper-engine".length) || "/";
+  const isBodyMethod = !["GET", "HEAD", "DELETE"].includes(req.method.toUpperCase());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 180_000);
+  try {
+    const upstream = await fetch(`${_ENGINE_URL}${subPath}`, {
+      method: req.method,
+      headers: { "content-type": "application/json" },
+      ...(isBodyMethod ? { body: JSON.stringify(req.body) } : {}),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const text = await upstream.text();
+    let body: any;
+    try { body = JSON.parse(text); } catch { body = { raw: text }; }
+    if (body && typeof body === "object" && body.status === "done") body.status = "completed";
+    res.status(upstream.status).json(body);
+  } catch (e: any) {
+    clearTimeout(timer);
+    if (e?.name === "AbortError") {
+      res.status(503).json({ error: "Scraper engine request timed out" });
+      return;
+    }
+    const isConn = e?.cause?.code === "ECONNREFUSED" || /ECONNREFUSED|fetch failed/i.test(e?.message || "");
+    res.status(503).json({ error: isConn ? "Scraper engine is not running or unreachable" : (e?.message || "Unknown engine error") });
+  }
+});
+
 export default router;

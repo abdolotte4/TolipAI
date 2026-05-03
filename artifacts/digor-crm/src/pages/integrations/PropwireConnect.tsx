@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2,
-  ExternalLink, RefreshCw, Trash2, Zap, Wifi, WifiOff, ShieldCheck, MonitorPlay,
+  ExternalLink, RefreshCw, Trash2, Zap, Wifi, WifiOff, ShieldCheck,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,6 @@ export default function PropwireConnect() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [embedded] = useState(true);
 
   const { data: config, isLoading } = useQuery<any>({
     queryKey: ["propwire-config"],

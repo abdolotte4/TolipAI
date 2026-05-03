@@ -279,7 +279,7 @@ export const scraperEngine = {
     maxResults?: number;
     useAiScoring?: boolean;
   }) {
-    return request<any>("/distressed/search", {
+    return request<any>("/ai/satellite-dfd", {
       method: "POST",
       body: JSON.stringify({
         zip: req.zip || "",

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2,
-  ExternalLink, RefreshCw, Trash2, Building2, Wifi, WifiOff, ShieldCheck, MonitorPlay,
+  ExternalLink, RefreshCw, Trash2, Building2, Wifi, WifiOff, ShieldCheck,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,6 @@ export default function ProperioConnect() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [embedded] = useState(true);
 
   const { data: config, isLoading } = useQuery<any>({
     queryKey: ["propelio-config"],

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 
 type LeadTypeKey = "county_clerk" | "public_trustee" | "tax_assessor" | "probate_court" | "government_reo" | "auction_aggregator" | "homeharvest" | "satellite_dfd";
@@ -28,12 +29,15 @@ const LEAD_TYPES = [
 export default function DistressedLeadGen() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const pin = localStorage.getItem("TOOLS_PIN") || localStorage.getItem("crm_token") || "";
   const [selectedTypes, setSelectedTypes] = useState<Set<LeadTypeKey>>(new Set(["county_clerk", "public_trustee", "tax_assessor"]));
   const [isRunning, setIsRunning] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<any[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState("");
   const [area, setArea] = useState({ city: "", county: "", state: "WY", zip: "" });
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const toggle = (key: LeadTypeKey) => setSelectedTypes(prev => {
     const next = new Set(prev);
@@ -43,31 +47,70 @@ export default function DistressedLeadGen() {
 
   async function runSearch() {
     setIsRunning(true);
+    setResults([]);
+    setProgress(0);
+    setStatusMsg("Starting…");
+    const token = localStorage.getItem("crm_token");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
     try {
-      const res = await fetch("/api/tools/distressed/search", {
+      const res = await fetch("/api/scraper-engine/scrape/distressed", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Tools-Pin": pin || "",
-        },
+        headers,
         body: JSON.stringify({
-          city: area.city || undefined,
-          county: area.county || undefined,
-          state: area.state || undefined,
-          zip: area.zip || undefined,
+          zip: area.zip || "",
+          county_key: area.county || "",
+          state: area.state || "",
           categories: Array.from(selectedTypes),
         }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({} as any));
-        throw new Error(err.error || `Failed (HTTP ${res.status})`);
+        throw new Error(err.error || err.detail || `Failed (HTTP ${res.status})`);
       }
       const data = await res.json();
-      setResults(data.result?.listings || data.listings || []);
-      toast({ title: "Search complete", description: "Lead results loaded." });
-      qc.invalidateQueries();
+      const jobId = data.job_id || data.id;
+      if (!jobId) throw new Error("No job ID returned from engine");
+
+      setStatusMsg("Scraping public records…");
+
+      // Poll for completion
+      await new Promise<void>((resolve, reject) => {
+        const deadline = Date.now() + 150_000;
+        pollRef.current = setInterval(async () => {
+          try {
+            if (Date.now() > deadline) {
+              clearInterval(pollRef.current!);
+              reject(new Error("Search timed out after 2.5 minutes."));
+              return;
+            }
+            const statusRes = await fetch(`/api/scraper-engine/jobs/${jobId}`, { headers });
+            if (!statusRes.ok) return;
+            const status = await statusRes.json();
+            if (typeof status.progress === "number") setProgress(status.progress);
+            if (status.message) setStatusMsg(status.message);
+            if (status.status === "completed" || status.status === "done") {
+              clearInterval(pollRef.current!);
+              const listings = status.result?.listings || status.result?.results || [];
+              setResults(listings);
+              setProgress(100);
+              setStatusMsg(`Done — ${listings.length} lead(s) found`);
+              qc.invalidateQueries();
+              resolve();
+            } else if (status.status === "failed") {
+              clearInterval(pollRef.current!);
+              reject(new Error(status.error || "Scrape job failed"));
+            }
+          } catch (e: any) {
+            /* keep polling on transient errors */
+          }
+        }, 3000);
+      });
+
+      toast({ title: "Search complete", description: `${results.length} lead(s) loaded.` });
     } catch (e: any) {
       toast({ title: "Search failed", description: e?.message || "Could not load results.", variant: "destructive" });
+      setStatusMsg("");
     } finally {
       setIsRunning(false);
     }
@@ -92,6 +135,15 @@ export default function DistressedLeadGen() {
           <Button disabled={isRunning} className="gap-2" onClick={runSearch}>{isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Run Search</Button>
           <Button variant="outline" className="gap-2" onClick={() => toast({ title: "Export ready", description: "Use the visible table to export leads." })}><Download className="w-4 h-4" /> Export</Button>
         </div>
+        {isRunning && (
+          <div className="mt-4 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{statusMsg || "Working…"}</span>
+              <span>{progress}%</span>
+            </div>
+            <Progress value={progress} className="h-1.5" />
+          </div>
+        )}
       </Card>
       <Card className="p-6">
         <div className="flex items-center justify-between"><h2 className="font-semibold">Results</h2><Badge variant="outline">{results.length} leads</Badge></div>
