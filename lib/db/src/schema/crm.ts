@@ -18,6 +18,12 @@ export const crmCampaigns = pgTable("crm_campaigns", {
   twilioAuthToken: text("twilio_auth_token"),  // stored AES-256 encrypted
   twilioPhoneNumber: text("twilio_phone_number"),
   twilioEnabled: boolean("twilio_enabled").notNull().default(false),
+  // Propelio: per-campaign login (AES-256 encrypted passwords)
+  scraperProperioEmail: text("scraper_propelio_email"),
+  scraperProperioPassword: text("scraper_propelio_password"),
+  // Propwire: per-campaign login (AES-256 encrypted passwords)
+  scraperPropwireEmail: text("scraper_propwire_email"),
+  scraperPropwirePassword: text("scraper_propwire_password"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

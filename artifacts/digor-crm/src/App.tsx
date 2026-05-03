@@ -25,6 +25,8 @@ import SequenceList from "@/pages/sequences/SequenceList";
 import BuyersList from "@/pages/buyers/BuyersList";
 import CashBuyersAll from "@/pages/buyers/CashBuyersAll";
 import DistressedLeadGen from "@/pages/leadgen/DistressedLeadGen";
+import ProperioConnect from "@/pages/integrations/ProperioConnect";
+import PropwireConnect from "@/pages/integrations/PropwireConnect";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -121,6 +123,18 @@ function Router() {
       <Route path="/admin/sequences">
         <AppLayout>
           <SequenceList />
+        </AppLayout>
+      </Route>
+
+      <Route path="/integrations/propelio">
+        <AppLayout>
+          <ProperioConnect />
+        </AppLayout>
+      </Route>
+
+      <Route path="/integrations/propwire">
+        <AppLayout>
+          <PropwireConnect />
         </AppLayout>
       </Route>
 

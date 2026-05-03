@@ -7,7 +7,7 @@
  */
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { cashBuyerMatches, distressedListings, crmLeads } from "@workspace/db/schema";
+import { cashBuyerMatches, distressedListings, crmLeads, crmCampaigns } from "@workspace/db/schema";
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { crmAuth, type CrmTokenPayload } from "./crm/middleware";
 import { scraperEngine, ScraperEngineUnavailable } from "../services/scraperEngineClient";
@@ -587,6 +587,148 @@ router.get("/scraper-engine/lead-gen/foreclosure/result/:jobId", crmAuth, async 
   try {
     const raw = await scraperEngine.getLeadGenResult(req.params.jobId);
     res.json(raw);
+  } catch (err) { handleEngineError(err, res); }
+});
+
+// ─── Propelio / Propwire credential management (CRM-authed, per-campaign) ────
+//
+// Credentials are stored AES-256 encrypted in the crm_campaigns table, just
+// like Twilio.  The scraper engine session status is proxied from the Python
+// service so the CRM can display "Session active / no session" in real-time.
+
+import { encryptPassword, decryptPassword } from "./crm/crypto-util";
+
+function maskEmail(email: string | null | undefined): string | null {
+  if (!email) return null;
+  const [user, domain] = email.split("@");
+  if (!domain) return email;
+  const masked = user.slice(0, 2) + "•".repeat(Math.max(2, user.length - 2));
+  return `${masked}@${domain}`;
+}
+
+async function getSessionStatus(service: string): Promise<boolean> {
+  try {
+    const r = await scraperEngine.sessionStatus(service);
+    return !!(r as any)?.active;
+  } catch {
+    return false;
+  }
+}
+
+// GET /api/scraper-engine/integrations/propelio
+router.get("/scraper-engine/integrations/propelio", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  if (!user.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  try {
+    const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, user.campaignId)).limit(1);
+    const rawEmail = (campaign as any)?.scraperProperioEmail as string | null;
+    const rawPass  = (campaign as any)?.scraperProperioPassword as string | null;
+    const configured = !!(rawEmail && rawPass);
+    const sessionActive = await getSessionStatus("propelio");
+    res.json({ configured, emailMasked: maskEmail(rawEmail), sessionActive });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/scraper-engine/integrations/propelio
+router.post("/scraper-engine/integrations/propelio", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  if (!user.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  if (user.role !== "admin" && user.role !== "super_admin") { res.status(403).json({ error: "Admin only" }); return; }
+  const { email, password } = req.body as { email?: string; password?: string };
+  try {
+    const encEmail = email ? encryptPassword(email) : null;
+    const encPass  = password ? encryptPassword(password) : null;
+    await db.update(crmCampaigns)
+      .set({ ...(({ scraperProperioEmail: encEmail, scraperProperioPassword: encPass }) as any) })
+      .where(eq(crmCampaigns.id, user.campaignId));
+    // Also update Railway env override so the scraper uses the new creds immediately
+    if (email && password) {
+      try { await scraperEngine.setSessionCreds("propelio", email, password); } catch { /* non-fatal */ }
+    }
+    res.json({ success: true, configured: !!(encEmail && encPass) });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/scraper-engine/integrations/propelio/session
+router.delete("/scraper-engine/integrations/propelio/session", crmAuth, async (req: Request, res: Response) => {
+  try {
+    await scraperEngine.invalidateSession("propelio");
+    res.json({ success: true });
+  } catch (err) { handleEngineError(err, res); }
+});
+
+// POST /api/scraper-engine/integrations/propelio/test
+router.post("/scraper-engine/integrations/propelio/test", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  if (!user.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  try {
+    const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, user.campaignId)).limit(1);
+    const rawEmail = (campaign as any)?.scraperProperioEmail as string | null;
+    const rawPass  = (campaign as any)?.scraperProperioPassword as string | null;
+    if (!rawEmail || !rawPass) { res.status(422).json({ success: false, error: "No credentials saved yet" }); return; }
+    let email: string, pass: string;
+    try { email = decryptPassword(rawEmail); pass = decryptPassword(rawPass); }
+    catch { email = rawEmail; pass = rawPass; }
+    const result = await scraperEngine.testSession("propelio", email, pass);
+    res.json(result);
+  } catch (err) { handleEngineError(err, res); }
+});
+
+// GET /api/scraper-engine/integrations/propwire
+router.get("/scraper-engine/integrations/propwire", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  if (!user.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  try {
+    const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, user.campaignId)).limit(1);
+    const rawEmail = (campaign as any)?.scraperPropwireEmail as string | null;
+    const rawPass  = (campaign as any)?.scraperPropwirePassword as string | null;
+    const configured = !!(rawEmail && rawPass);
+    const sessionActive = await getSessionStatus("propwire");
+    res.json({ configured, emailMasked: maskEmail(rawEmail), sessionActive });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/scraper-engine/integrations/propwire
+router.post("/scraper-engine/integrations/propwire", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  if (!user.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  if (user.role !== "admin" && user.role !== "super_admin") { res.status(403).json({ error: "Admin only" }); return; }
+  const { email, password } = req.body as { email?: string; password?: string };
+  try {
+    const encEmail = email ? encryptPassword(email) : null;
+    const encPass  = password ? encryptPassword(password) : null;
+    await db.update(crmCampaigns)
+      .set({ ...(({ scraperPropwireEmail: encEmail, scraperPropwirePassword: encPass }) as any) })
+      .where(eq(crmCampaigns.id, user.campaignId));
+    if (email && password) {
+      try { await scraperEngine.setSessionCreds("propwire", email, password); } catch { /* non-fatal */ }
+    }
+    res.json({ success: true, configured: !!(encEmail && encPass) });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/scraper-engine/integrations/propwire/session
+router.delete("/scraper-engine/integrations/propwire/session", crmAuth, async (req: Request, res: Response) => {
+  try {
+    await scraperEngine.invalidateSession("propwire");
+    res.json({ success: true });
+  } catch (err) { handleEngineError(err, res); }
+});
+
+// POST /api/scraper-engine/integrations/propwire/test
+router.post("/scraper-engine/integrations/propwire/test", crmAuth, async (req: Request, res: Response) => {
+  const user = (req as any).crmUser as CrmTokenPayload;
+  if (!user.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  try {
+    const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, user.campaignId)).limit(1);
+    const rawEmail = (campaign as any)?.scraperPropwireEmail as string | null;
+    const rawPass  = (campaign as any)?.scraperPropwirePassword as string | null;
+    if (!rawEmail || !rawPass) { res.status(422).json({ success: false, error: "No credentials saved yet" }); return; }
+    let email: string, pass: string;
+    try { email = decryptPassword(rawEmail); pass = decryptPassword(rawPass); }
+    catch { email = rawEmail; pass = rawPass; }
+    const result = await scraperEngine.testSession("propwire", email, pass);
+    res.json(result);
   } catch (err) { handleEngineError(err, res); }
 });
 

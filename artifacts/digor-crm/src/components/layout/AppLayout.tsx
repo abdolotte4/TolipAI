@@ -20,6 +20,7 @@ import {
   BookUser,
   Database,
   Zap,
+  Plug,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
@@ -323,6 +324,12 @@ export function AppLayout({ children }: AppLayoutProps) {
           {mainNavItems.map((item) => (
             <NavLink key={item.href} {...item} />
           ))}
+
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-8 mb-2 px-3">
+            Integrations
+          </div>
+          <NavLink href="/integrations/propelio" icon={Building} label="Propelio" />
+          <NavLink href="/integrations/propwire" icon={Plug} label="Propwire" />
 
           {isAdmin && (
             <>

@@ -329,7 +329,35 @@ export const scraperEngine = {
     });
   },
 
-  // ─── CRM-auth distressed (for lead gen tab) ───────────────────────────────
+  // ─── Session management ───────────────────────────────────────────────────
+
+  async sessionStatus(service: string) {
+    return request<{ service: string; active: boolean; state_file_bytes: number }>(
+      `/session/${encodeURIComponent(service)}/status`,
+      { method: "GET" },
+    );
+  },
+
+  async invalidateSession(service: string) {
+    return request<{ service: string; invalidated: boolean }>(
+      `/session/${encodeURIComponent(service)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async testSession(service: string, email: string, password: string) {
+    return request<{ success: boolean; detail?: string; error?: string }>(
+      `/session/${encodeURIComponent(service)}/test`,
+      { method: "POST", body: JSON.stringify({ email, password }) },
+    );
+  },
+
+  async setSessionCreds(_service: string, _email: string, _password: string) {
+    // No-op on the engine side — env vars are managed per-deployment.
+    // Credentials are passed at job-run time via the DB; this is a placeholder.
+    return Promise.resolve();
+  },
+
   async startDistressedCrm(params: {
     zip?: string;
     city?: string;
