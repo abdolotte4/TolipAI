@@ -154,12 +154,22 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
     setError(null);
     setJob(null);
     try {
-      let url = `/api/scraper-engine/scrape/cash-buyers`;
-      let body: Record<string, any> = { lead_id: Number(leadId), max_buyers: maxBuyers };
+      const startJob = async (path: string, body: Record<string, any>) => {
+        const res = await fetch(`/api/scraper-engine${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({} as any));
+          throw new Error(err.error || err.detail || `Failed (HTTP ${res.status})`);
+        }
+        return res.json();
+      };
+
       if (source === "propelio") {
         if (!leadAddress) throw new Error("This lead has no address — cannot search Propelio.");
-        url = `/api/scraper-engine/scrape/propelio/cash-buyers`;
-        body = {
+        const data = await startJob("/scrape/propelio/cash-buyers", {
           address: leadAddress,
           distance_miles: distanceMiles,
           active_within: activeWithin,
@@ -168,30 +178,29 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
           flippers,
           max_results: maxResults,
           lead_id: Number(leadId),
-        };
+        });
+        setJobId(data.job_id || data.id);
+        setJob({ id: data.job_id || data.id, status: "queued", progress: 0 });
+        return;
       } else if (source === "propwire") {
         if (!leadAddress) throw new Error("This lead has no address — cannot search Propwire.");
-        url = `/api/scraper-engine/scrape/propwire/cash-buyers`;
-        body = {
+        const data = await startJob("/scrape/propwire/cash-buyers-nearby", {
           query: leadAddress,
           radius_miles: distanceMiles,
           min_properties: minProperties,
           max_results: maxResults,
           lead_id: Number(leadId),
-        };
+        });
+        setJobId(data.job_id || data.id);
+        setJob({ id: data.job_id || data.id, status: "queued", progress: 0 });
+        return;
       }
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      const data = await startJob("/scrape/cash-buyers", {
+        lead_id: Number(leadId),
+        max_buyers: maxBuyers,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({} as any));
-        throw new Error(err.error || err.detail || `Failed (HTTP ${res.status})`);
-      }
-      const data = await res.json();
-      setJobId(data.jobId || data.id);
-      setJob({ id: data.jobId || data.id, status: "queued", progress: 0 });
+      setJobId(data.job_id || data.id);
+      setJob({ id: data.job_id || data.id, status: "queued", progress: 0 });
     } catch (e: any) {
       setError(e?.message || "Could not start search.");
     } finally {
