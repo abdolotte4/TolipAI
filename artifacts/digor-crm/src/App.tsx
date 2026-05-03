@@ -5,10 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { setupFetchInterceptor } from "./lib/api-setup";
 import { AppLayout } from "./components/layout/AppLayout";
 
-// Setup global fetch interceptor immediately
 setupFetchInterceptor();
 
-// Page Imports
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
@@ -27,6 +25,7 @@ import CashBuyersAll from "@/pages/buyers/CashBuyersAll";
 import DistressedLeadGen from "@/pages/leadgen/DistressedLeadGen";
 import ProperioConnect from "@/pages/integrations/ProperioConnect";
 import PropwireConnect from "@/pages/integrations/PropwireConnect";
+import IntegrationsDashboard from "@/pages/integrations/IntegrationsDashboard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,7 +33,7 @@ const queryClient = new QueryClient({
       retry: 3,
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
       refetchOnWindowFocus: false,
-      staleTime: 30_000, // data stays fresh 30s — no unnecessary refetches on re-mount
+      staleTime: 30_000,
     },
   },
 });
@@ -42,107 +41,25 @@ const queryClient = new QueryClient({
 function Router() {
   return (
     <Switch>
-      {/* Public Routes */}
       <Route path="/login" component={Login} />
       <Route path="/submit/:token" component={SubmitLead} />
-
-      {/* Super Admin: Campaigns */}
-      <Route path="/campaigns">
-        <AppLayout>
-          <CampaignList />
-        </AppLayout>
-      </Route>
-
-      {/* Dashboard */}
-      <Route path="/">
-        <AppLayout>
-          <Dashboard />
-        </AppLayout>
-      </Route>
-
-      <Route path="/leads">
-        <AppLayout>
-          <LeadList />
-        </AppLayout>
-      </Route>
-
-      <Route path="/leads/new">
-        <AppLayout>
-          <NewLead />
-        </AppLayout>
-      </Route>
-
-      <Route path="/leads/:id">
-        <AppLayout>
-          <LeadDetail />
-        </AppLayout>
-      </Route>
-
-      <Route path="/tasks">
-        <AppLayout>
-          <TaskList />
-        </AppLayout>
-      </Route>
-
-      <Route path="/admin/users">
-        <AppLayout>
-          <UserList />
-        </AppLayout>
-      </Route>
-
-      <Route path="/admin/links">
-        <AppLayout>
-          <LinkList />
-        </AppLayout>
-      </Route>
-
-      <Route path="/pipeline">
-        <AppLayout>
-          <Pipeline />
-        </AppLayout>
-      </Route>
-
-      <Route path="/buyers">
-        {() => (
-          <AppLayout><BuyersList /></AppLayout>
-        )}
-      </Route>
-
-      <Route path="/cash-buyers">
-        <AppLayout>
-          <CashBuyersAll />
-        </AppLayout>
-      </Route>
-
-      <Route path="/lead-gen">
-        <AppLayout>
-          <DistressedLeadGen />
-        </AppLayout>
-      </Route>
-
-      <Route path="/admin/sequences">
-        <AppLayout>
-          <SequenceList />
-        </AppLayout>
-      </Route>
-
-      <Route path="/integrations/propelio">
-        <AppLayout>
-          <ProperioConnect />
-        </AppLayout>
-      </Route>
-
-      <Route path="/integrations/propwire">
-        <AppLayout>
-          <PropwireConnect />
-        </AppLayout>
-      </Route>
-
-      <Route>
-        <AppLayout>
-          <NotFound />
-        </AppLayout>
-      </Route>
+      <Route path="/campaigns"><AppLayout><CampaignList /></AppLayout></Route>
+      <Route path="/"><AppLayout><Dashboard /></AppLayout></Route>
+      <Route path="/leads"><AppLayout><LeadList /></AppLayout></Route>
+      <Route path="/leads/new"><AppLayout><NewLead /></AppLayout></Route>
+      <Route path="/leads/:id"><AppLayout><LeadDetail /></AppLayout></Route>
+      <Route path="/tasks"><AppLayout><TaskList /></AppLayout></Route>
+      <Route path="/admin/users"><AppLayout><UserList /></AppLayout></Route>
+      <Route path="/admin/links"><AppLayout><LinkList /></AppLayout></Route>
+      <Route path="/pipeline"><AppLayout><Pipeline /></AppLayout></Route>
+      <Route path="/buyers">{() => (<AppLayout><BuyersList /></AppLayout>)}</Route>
+      <Route path="/cash-buyers"><AppLayout><CashBuyersAll /></AppLayout></Route>
+      <Route path="/lead-gen"><AppLayout><DistressedLeadGen /></AppLayout></Route>
+      <Route path="/admin/sequences"><AppLayout><SequenceList /></AppLayout></Route>
+      <Route path="/integrations"><AppLayout><IntegrationsDashboard /></AppLayout></Route>
+      <Route path="/integrations/propelio"><AppLayout><ProperioConnect /></AppLayout></Route>
+      <Route path="/integrations/propwire"><AppLayout><PropwireConnect /></AppLayout></Route>
+      <Route><AppLayout><NotFound /></AppLayout></Route>
     </Switch>
   );
 }
@@ -151,7 +68,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "") }>
           <Router />
         </WouterRouter>
         <Toaster />
