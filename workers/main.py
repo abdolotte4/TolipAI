@@ -298,6 +298,87 @@ async def _on_retry_exhausted(job_id: str, error: str) -> None:
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
+# ─── Session management endpoints ────────────────────────────────────────────
+
+from .scrapers._browser_session import invalidate_session as _invalidate_session, _state_path
+
+class SessionTestRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.get("/session/{service}/status")
+async def session_status(service: str) -> Dict[str, Any]:
+    """Return whether a cached browser session exists for a service."""
+    if service not in ("propelio", "propwire"):
+        raise HTTPException(status_code=400, detail="Unknown service")
+    p = _state_path(service)
+    active = p.exists()
+    size = p.stat().st_size if active else 0
+    return {"service": service, "active": active, "state_file_bytes": size}
+
+
+@app.delete("/session/{service}")
+async def invalidate_service_session(service: str) -> Dict[str, Any]:
+    """Delete the cached session so the next job re-authenticates."""
+    if service not in ("propelio", "propwire"):
+        raise HTTPException(status_code=400, detail="Unknown service")
+    await _invalidate_session(service)
+    return {"service": service, "invalidated": True}
+
+
+@app.post("/session/propelio/test")
+async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
+    """Test Propelio credentials by attempting a real login; returns success/error."""
+    import os as _os
+    # Temporarily override env so the login fn uses the provided creds
+    orig_email = _os.environ.get("PROPELIO_EMAIL")
+    orig_pw    = _os.environ.get("PROPELIO_PASSWORD")
+    _os.environ["PROPELIO_EMAIL"]    = req.email
+    _os.environ["PROPELIO_PASSWORD"] = req.password
+    # Clear any stale session so a fresh login runs
+    await _invalidate_session("propelio")
+    try:
+        result = await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
+        return {"success": True, "detail": "Login OK"}
+    except Exception as e:
+        return {"success": False, "error": str(e)[:300]}
+    finally:
+        if orig_email is not None:
+            _os.environ["PROPELIO_EMAIL"] = orig_email
+        elif "PROPELIO_EMAIL" in _os.environ:
+            del _os.environ["PROPELIO_EMAIL"]
+        if orig_pw is not None:
+            _os.environ["PROPELIO_PASSWORD"] = orig_pw
+        elif "PROPELIO_PASSWORD" in _os.environ:
+            del _os.environ["PROPELIO_PASSWORD"]
+
+
+@app.post("/session/propwire/test")
+async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
+    """Test Propwire credentials by attempting a real login; returns success/error."""
+    import os as _os
+    orig_email = _os.environ.get("PROPWIRE_EMAIL")
+    orig_pw    = _os.environ.get("PROPWIRE_PASSWORD")
+    _os.environ["PROPWIRE_EMAIL"]    = req.email
+    _os.environ["PROPWIRE_PASSWORD"] = req.password
+    await _invalidate_session("propwire")
+    try:
+        result = await propwire.fetch_property("123 Main St, Dallas, TX 75201")
+        return {"success": True, "detail": "Login OK"}
+    except Exception as e:
+        return {"success": False, "error": str(e)[:300]}
+    finally:
+        if orig_email is not None:
+            _os.environ["PROPWIRE_EMAIL"] = orig_email
+        elif "PROPWIRE_EMAIL" in _os.environ:
+            del _os.environ["PROPWIRE_EMAIL"]
+        if orig_pw is not None:
+            _os.environ["PROPWIRE_PASSWORD"] = orig_pw
+        elif "PROPWIRE_PASSWORD" in _os.environ:
+            del _os.environ["PROPWIRE_PASSWORD"]
+
+
 @app.get("/health")
 async def health() -> Dict[str, Any]:
     """Deep health-check: probes DB, each LLM provider, and each scraper tier."""
