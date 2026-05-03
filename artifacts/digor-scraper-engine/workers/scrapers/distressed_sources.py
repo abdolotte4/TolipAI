@@ -18,8 +18,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from ..llm import suggest_distressed_sources
-
 # ─── Category metadata (shown to the user in the UI) ─────────────────────────
 
 CATEGORY_META: Dict[str, Dict[str, str]] = {
@@ -767,4 +765,15 @@ def sources_for_request(*, categories: Optional[List[str]] = None,
     for c in cats:
         out.extend(list_sources(category=c, state=requested_state))
     # Always include nationwide aggregators last
+    return out
+
+
+async def sources_for_request_ai(*, categories: Optional[List[str]] = None,
+                                 state: str = "", county: str = "", city: str = "") -> List[Dict[str, Any]]:
+    out = sources_for_request(categories=categories, state=state)
+    requested_state = state.upper() if state else ""
+    if requested_state and not any(src.get("state") == requested_state for src in out):
+        from ..llm import suggest_distressed_sources
+        for c in (categories or list(CATEGORY_META.keys())):
+            out.extend(await suggest_distressed_sources(state=requested_state, category=c, county=county, city=city))
     return out
