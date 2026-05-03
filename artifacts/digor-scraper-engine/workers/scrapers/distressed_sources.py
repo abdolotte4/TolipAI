@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from ..llm import suggest_distressed_sources
+
 # ─── Category metadata (shown to the user in the UI) ─────────────────────────
 
 CATEGORY_META: Dict[str, Dict[str, str]] = {
@@ -760,10 +762,7 @@ def sources_for_request(*, categories: Optional[List[str]] = None,
     If `categories` is empty, return ALL categories (filtered by state).
     """
     cats = categories or list(CATEGORY_META.keys())
-    supported_states = {src["state"] for src in SOURCES}
     requested_state = state.upper() if state else ""
-    if requested_state and requested_state not in supported_states:
-        requested_state = ""
     out: List[Dict[str, Any]] = []
     for c in cats:
         out.extend(list_sources(category=c, state=requested_state))

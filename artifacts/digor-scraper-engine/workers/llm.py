@@ -330,3 +330,45 @@ async def parse_distressed_page(text: str, *, source: str) -> List[Dict[str, Any
     except Exception:
         log.warning("LLM distressed parse returned non-JSON")
         return []
+
+
+async def suggest_distressed_sources(*, state: str, category: str, county: str = "", city: str = "") -> List[Dict[str, Any]]:
+    """Suggest fallback source URLs for a state/category when registry coverage is thin."""
+    sys = (
+        "You discover free public-record or public-web distressed-property sources in the United States. "
+        "Return strictly JSON {sources:[...]} with 3-5 items. Each item must include: "
+        "name, url, render (boolean), notes, category, state, key. "
+        "Prefer official county clerk, trustee, assessor, probate, or state foreclosure pages. "
+        "If the exact county page is unknown, use the main metro county for the state. "
+        "Do not invent private paid services."
+    )
+    user = {
+        "state": state.upper(),
+        "category": category,
+        "county": county,
+        "city": city,
+    }
+    raw = await _chat(
+        [{"role": "system", "content": sys}, {"role": "user", "content": json.dumps(user)}],
+        json_mode=True, max_tokens=900, temperature=0.2,
+    )
+    try:
+        data = json.loads(raw)
+        sources = data.get("sources") or []
+        out: List[Dict[str, Any]] = []
+        for idx, src in enumerate(sources):
+            if not isinstance(src, dict) or not src.get("url"):
+                continue
+            out.append({
+                "key": src.get("key") or f"{state.lower()}-{category}-{idx+1}",
+                "category": src.get("category") or category,
+                "state": src.get("state") or state.upper(),
+                "name": src.get("name") or src.get("url"),
+                "url": src["url"],
+                "render": bool(src.get("render", True)),
+                "notes": src.get("notes") or "",
+            })
+        return out[:5]
+    except Exception:
+        log.warning("LLM source discovery returned non-JSON")
+        return []
