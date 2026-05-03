@@ -2,7 +2,7 @@
  * HTTP client for the Python digor-scraper-engine FastAPI service.
  *
  * The engine URL is configured via SCRAPER_ENGINE_URL (defaults to
- * http://localhost:8765 for local dev).  All calls fail soft — if the engine
+ * the Railway deployment).  All calls fail soft — if the engine
  * is unreachable, callers get a 503 with a clear message instead of a 500.
  */
 import { logger } from "../lib/logger";
@@ -279,7 +279,7 @@ export const scraperEngine = {
     maxResults?: number;
     useAiScoring?: boolean;
   }) {
-    return request<any>("/ai/satellite-dfd", {
+    return request<any>("/distressed/search", {
       method: "POST",
       body: JSON.stringify({
         zip: req.zip || "",
