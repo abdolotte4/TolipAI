@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 const API_BASE = "/api/scraper-engine";
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || import.meta.env.GOOGLE_MAPS_API_KEY || "";
 
 type DFDProperty = {
   address: string | null;
@@ -73,6 +74,11 @@ function ScoreBar({ score, category }: { score: number; category: string }) {
 
 function PropertyCard({ p }: { p: DFDProperty }) {
   const [expanded, setExpanded] = useState(false);
+  const satelliteHref = p.latitude && p.longitude
+    ? GOOGLE_MAPS_API_KEY
+      ? `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}&query_place_id=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
+      : `https://maps.google.com/?q=${p.latitude},${p.longitude}&t=k`
+    : null;
   return (
     <Card className="border-border bg-card hover:border-primary/40 transition-colors">
       <CardContent className="p-4">
@@ -106,8 +112,8 @@ function PropertyCard({ p }: { p: DFDProperty }) {
               <ExternalLink className="w-3 h-3" />View Listing
             </a>
           )}
-          {p.latitude && p.longitude && (
-            <a href={`https://maps.google.com/?q=${p.latitude},${p.longitude}&t=k`}
+          {satelliteHref && (
+            <a href={satelliteHref}
               target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-[11px] text-primary hover:underline">
               <Satellite className="w-3 h-3" />Satellite View
