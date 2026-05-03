@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.railway.txt .
+RUN pip install --no-cache-dir -r requirements.railway.txt
 
 RUN playwright install chromium --with-deps 2>/dev/null || \
     python -m playwright install chromium 2>/dev/null || true
