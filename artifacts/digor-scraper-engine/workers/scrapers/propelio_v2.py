@@ -45,8 +45,11 @@ async def _do_login(page) -> None:
         raise RuntimeError("PROPELIO_EMAIL / PROPELIO_PASSWORD not set")
 
     log.info("Propelio: navigating to login page")
-    # Use networkidle so React has time to render the form fields
-    await page.goto(LOGIN_URL, wait_until="networkidle", timeout=60000)
+    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+    try:
+        await page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
 
     # Form selectors — try multiple variants in case Propelio updates their markup
     email_sel = (
@@ -58,7 +61,11 @@ async def _do_login(page) -> None:
         'input[autocomplete="current-password"], input[autocomplete="password"]'
     )
 
-    await page.wait_for_selector(email_sel, timeout=25000)
+    try:
+        await page.wait_for_selector(email_sel, timeout=25000)
+    except Exception:
+        await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_selector(email_sel, timeout=25000)
 
     # Explicitly click then fill — React needs focus events to fire onChange handlers
     email_el = page.locator(email_sel).first
@@ -91,8 +98,10 @@ async def _do_login(page) -> None:
             timeout=40000,
         )
     except Exception:
-        # Last-chance fallback: wait for network to settle then re-check
-        await page.wait_for_load_state("networkidle", timeout=15000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
 
     if "/login" in page.url:
         # Capture any visible error message to help diagnose

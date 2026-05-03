@@ -1,14 +1,15 @@
 """Cash-buyer discovery orchestrator.
 
 Workflow per lead:
-  1. Pull recently-sold properties in the lead's ZIP / county (Zillow + Redfin).
-  2. Group by buyer (mailing address ≠ property address ⇒ likely investor).
+  1. Pull recent sold properties from ATTOM first.
+  2. Fall back to county deeds, then Zillow/Redfin backfill.
+  3. Group by buyer (mailing address ≠ property address ⇒ likely investor).
      Each unique buyer becomes a candidate.
-  3. Skip-trace each candidate (LLC → officers → phones/emails).
-  4. Use Kimi to classify each candidate (flipper/landlord/hedge_fund/lender/
+  4. Skip-trace each candidate (LLC → officers → phones/emails).
+  5. Use Kimi to classify each candidate (flipper/landlord/hedge_fund/lender/
      wholesaler) based on portfolio behaviour.
-  5. Use Kimi to score how well each buyer matches THIS lead.
-  6. Persist matches sorted by score.
+  6. Use Kimi to score how well each buyer matches THIS lead.
+  7. Persist matches sorted by score.
 """
 from __future__ import annotations
 
@@ -63,7 +64,7 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 50,
     city = lead.get("city") or ""
     state = lead.get("state") or ""
 
-    # ── Tier 1: ATTOM (paid, accurate — has real owner names) ───────────────
+    # ── Tier 1: ATTOM (paid, accurate — preferred source) ──────────────────
     sold_attom: List[Dict[str, Any]] = []
     if progress_cb:
         await progress_cb(5, "Trying ATTOM Data API for recent sales…")
@@ -71,7 +72,7 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 50,
         sold_attom = await attom.recent_sales(zip_code=zip_code, city=city,
                                               state=state, max_results=80)
     except Exception as e:  # noqa: BLE001
-        log.info("ATTOM unavailable / exhausted, falling back to free scrape: %s", e)
+        log.info("ATTOM unavailable / exhausted, falling back to county deeds/free scrape: %s", e)
 
     # ── Tier 2: County deed records (real grantee/buyer names from public records)
     sold_deeds: List[Dict[str, Any]] = []
