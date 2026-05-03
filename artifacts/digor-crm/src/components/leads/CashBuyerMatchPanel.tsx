@@ -108,10 +108,10 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
   const refreshList = async () => {
     setLoadingList(true);
     try {
-      const res = await fetch(`/api/scraper-engine/leads/${leadId}/buyers`);
+      const res = await fetch(`/api/scraper-engine/jobs/${leadId}`);
       if (res.ok) {
         const data = await res.json();
-        setBuyers(data.buyers ?? data ?? []);
+        setBuyers(data.result?.buyers ?? data.buyers ?? data.result?.listings ?? data.result?.results ?? data ?? []);
       }
     } catch {
       /* noop */
@@ -154,21 +154,30 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
     setError(null);
     setJob(null);
     try {
-      let url = `/api/scraper-engine/leads/${leadId}/buyers`;
-      let body: Record<string, any> = { maxBuyers };
+      let url = `/api/scraper-engine/scrape/cash-buyers`;
+      let body: Record<string, any> = { lead_id: Number(leadId), max_buyers: maxBuyers };
       if (source === "propelio") {
         if (!leadAddress) throw new Error("This lead has no address — cannot search Propelio.");
-        url = `/api/scraper-engine/integrations/propelio/test`;
+        url = `/api/scraper-engine/scrape/propelio/cash-buyers`;
         body = {
-          email: localStorage.getItem("PROPELIO_EMAIL") || "",
-          password: localStorage.getItem("PROPELIO_PASSWORD") || "",
+          address: leadAddress,
+          distance_miles: distanceMiles,
+          active_within: activeWithin,
+          min_properties: minProperties,
+          landlords,
+          flippers,
+          max_results: maxResults,
+          lead_id: Number(leadId),
         };
       } else if (source === "propwire") {
         if (!leadAddress) throw new Error("This lead has no address — cannot search Propwire.");
-        url = `/api/scraper-engine/integrations/propwire/test`;
+        url = `/api/scraper-engine/scrape/propwire/cash-buyers`;
         body = {
-          email: localStorage.getItem("PROPWIRE_EMAIL") || "",
-          password: localStorage.getItem("PROPWIRE_PASSWORD") || "",
+          query: leadAddress,
+          radius_miles: distanceMiles,
+          min_properties: minProperties,
+          max_results: maxResults,
+          lead_id: Number(leadId),
         };
       }
       const res = await fetch(url, {
@@ -178,7 +187,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({} as any));
-        throw new Error(err.error || `Failed (HTTP ${res.status})`);
+        throw new Error(err.error || err.detail || `Failed (HTTP ${res.status})`);
       }
       const data = await res.json();
       setJobId(data.jobId || data.id);
