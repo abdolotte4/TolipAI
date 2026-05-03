@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -45,8 +45,6 @@ export default function PropwireConnect() {
     queryFn: () => apiFetch("/scraper-engine/integrations/propwire"),
     retry: false,
   });
-
-  const embedUrl = useMemo(() => "/integrations/propwire", []);
 
   const saveMutation = useMutation({
     mutationFn: (body: { email: string; password: string }) =>
@@ -103,7 +101,7 @@ export default function PropwireConnect() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <a href={embedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <a href="https://propwire.com" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               Open Propwire <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
@@ -131,13 +129,20 @@ export default function PropwireConnect() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
             <div>
               <div className="font-semibold text-sm">Propwire CRM window</div>
-              <div className="text-xs text-muted-foreground">Use this embedded view after saving credentials.</div>
+              <div className="text-xs text-muted-foreground">This site blocks iframe embedding, so use the direct open link instead.</div>
             </div>
-            <a href={embedUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+            <a href="https://propwire.com" target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
               Pop out <ExternalLink className="w-3 h-3" />
             </a>
           </div>
-          <iframe title="Propwire CRM Window" src={embedUrl} className="w-full h-[calc(88vh-48px)] bg-background" referrerPolicy="no-referrer" />
+          <div className="h-[calc(88vh-48px)] flex items-center justify-center p-6">
+            <div className="max-w-md text-center space-y-3">
+              <div className="text-sm font-medium">Embedded view unavailable</div>
+              <p className="text-xs text-muted-foreground">
+                Propwire blocks being loaded inside an iframe. Use the open link above, then save credentials here for scraper jobs.
+              </p>
+            </div>
+          </div>
       </Card>
 
       {isAdmin && (
