@@ -38,7 +38,7 @@ export default function PropwireConnect() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [embedded, setEmbedded] = useState(false);
+  const [embedded] = useState(true);
 
   const { data: config, isLoading } = useQuery<any>({
     queryKey: ["propwire-config"],
@@ -46,7 +46,7 @@ export default function PropwireConnect() {
     retry: false,
   });
 
-  const embedUrl = useMemo(() => "https://www.propwire.com", []);
+  const embedUrl = useMemo(() => "/integrations/propwire", []);
 
   const saveMutation = useMutation({
     mutationFn: (body: { email: string; password: string }) =>
@@ -90,7 +90,7 @@ export default function PropwireConnect() {
   const emailMasked = config?.emailMasked;
 
   return (
-    <div className="space-y-6 pb-20 max-w-4xl">
+    <div className="space-y-6 pb-20 w-full max-w-none">
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
@@ -103,9 +103,6 @@ export default function PropwireConnect() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="rounded-xl gap-1.5 border-white/10 text-xs h-8" onClick={() => setEmbedded(v => !v)}>
-              <MonitorPlay className="w-3.5 h-3.5" /> {embedded ? "Hide CRM window" : "Open CRM window"}
-            </Button>
             <a href={embedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               Open Propwire <ExternalLink className="w-3.5 h-3.5" />
             </a>
@@ -130,8 +127,7 @@ export default function PropwireConnect() {
         </div>
       </Card>
 
-      {embedded && (
-        <Card className="rounded-2xl border-white/5 bg-card overflow-hidden min-h-[720px]">
+      <Card className="rounded-2xl border-white/5 bg-card overflow-hidden min-h-[88vh]">
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
             <div>
               <div className="font-semibold text-sm">Propwire CRM window</div>
@@ -141,9 +137,8 @@ export default function PropwireConnect() {
               Pop out <ExternalLink className="w-3 h-3" />
             </a>
           </div>
-          <iframe title="Propwire CRM Window" src={embedUrl} className="w-full h-[680px] bg-background" referrerPolicy="no-referrer" />
-        </Card>
-      )}
+          <iframe title="Propwire CRM Window" src={embedUrl} className="w-full h-[calc(88vh-48px)] bg-background" referrerPolicy="no-referrer" />
+      </Card>
 
       {isAdmin && (
         <Card className="rounded-2xl border-white/5 bg-card p-6 space-y-5">
