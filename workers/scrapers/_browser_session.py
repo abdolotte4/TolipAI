@@ -13,9 +13,63 @@ import asyncio
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
+
+
+def _ensure_nix_ld_path() -> None:
+    """Resolve Playwright's required .so files from the Nix store and
+    prepend them to LD_LIBRARY_PATH.  This is a no-op on Railway/Ubuntu
+    where the system linker already finds the libs."""
+    NIX = "/nix/store"
+    if not os.path.isdir(NIX):
+        return
+    needed = {
+        "libX11.so.6":        r"libX11-1\.[0-9]",
+        "libXcomposite.so.1": r"libXcomposite-",
+        "libXdamage.so.1":    r"libx?Xdamage-",
+        "libXext.so.6":       r"libXext-",
+        "libXfixes.so.3":     r"libXfixes-",
+        "libXrandr.so.2":     r"libXrandr-|libxrandr-",
+        "libxcb.so.1":        r"libxcb-1\.",
+        "libgbm.so.1":        r"mesa-libgbm-|mesa-[0-9]",
+        "libexpat.so.1":      r"expat-2\.",
+        "libudev.so.1":       r"eudev-|libudev-zero-",
+        "libxkbcommon.so.0":  r"libxkbcommon-[0-9]",
+        "libXau.so.6":        r"libXau-",
+        "libxshmfence.so.1":  r"libxshmfence-",
+    }
+    dirs: set[str] = set()
+    try:
+        entries = os.listdir(NIX)
+    except OSError:
+        return
+    for soname, pattern in needed.items():
+        for entry in entries:
+            if (re.search(pattern, entry)
+                    and not entry.endswith(".drv")
+                    and not any(s in entry for s in (
+                        "-dev", "-man", "-doc", "-debug",
+                        "-spirv", "-opencl", "-osmesa", "-opengl", "-driversdev"))):
+                lib_dir = f"{NIX}/{entry}/lib"
+                if os.path.isdir(lib_dir) and os.path.exists(f"{lib_dir}/{soname}"):
+                    dirs.add(lib_dir)
+                    break
+    if dirs:
+        existing = os.environ.get("LD_LIBRARY_PATH", "")
+        existing_set = set(existing.split(":")) if existing else set()
+        new_dirs = dirs - existing_set
+        if new_dirs:
+            combined = ":".join(sorted(new_dirs))
+            os.environ["LD_LIBRARY_PATH"] = (
+                f"{combined}:{existing}" if existing else combined
+            )
+
+
+# Run once at import time — safe to call multiple times (set arithmetic prevents dups)
+_ensure_nix_ld_path()
 
 log = logging.getLogger("browser")
 
