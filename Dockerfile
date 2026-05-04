@@ -16,7 +16,9 @@ WORKDIR /app
 
 # ─── Python dependencies ──────────────────────────────────────────────
 COPY requirements.railway.txt .
+# Use PyTorch CPU wheel index for torch/torchvision
 RUN pip install --no-cache-dir -r requirements.railway.txt \
+    -f https://download.pytorch.org/whl/cpu/torch_stable.html \
     && rm -rf /root/.cache/pip /root/.cache/ms-playwright
 
 # ─── Playwright Chromium (headless shell) ─────────────────────────────
