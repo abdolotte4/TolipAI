@@ -1,78 +1,49 @@
-"""HTTP fetcher: direct (residential proxy) → Crawl4AI (JS rendering).
+"""HTTP fetcher: direct (residential proxy) → Crawl4AI (JS rendering + PDF support).
 
 ScraperAPI and ScrapingBee are PERMANENTLY REMOVED — credits exhausted.
 
 Tier order per fetch_html() call:
   1. Direct httpx with residential proxy + browser-like headers (fast)
   2. Crawl4AI Playwright rendering (only when render=True and direct fails)
+  3. PDF detection: return raw bytes if response is a PDF
 
 A single persistent httpx.AsyncClient is reused for all API calls to avoid
-per-request TCP handshake overhead.  Call init_client() at startup and
+per-request TCP handshake overhead. Call init_client() at startup and
 close_client() at shutdown (done automatically by the FastAPI lifespan).
 """
+
 from __future__ import annotations
-
-import asyncio
-import logging
-import random
-import ssl
+import asyncio, logging, random, ssl, io
 from typing import Any, Optional
-
 import httpx
-from tenacity import (
-    AsyncRetrying,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from .config import settings
 
 log = logging.getLogger("http")
 
-# Government / county sites that block residential proxies (return 502 / ERR_HTTP_RESPONSE_CODE_FAILURE).
-# Crawl4AI should use direct access for these.
+# Government / county sites that block residential proxies
 _PROXY_BLOCKED_DOMAINS = (
-    "treasurer.cuyahoga",
-    "auditor.cuyahoga",
-    "probate.cuyahoga",
-    "cuyahogacounty.us",
-    "sheriffsaleauction.ohio.gov",
-    ".state.oh.us",
-    ".state.nc.us",
-    ".state.tx.us",
-    ".state.fl.us",
-    "hctax.net",
-    "lacounty.gov",
-    "ttc.lacounty",
-    "cclerk.hctx",
-    "octaxcol.com",
-    "broward.county-taxes",
+    "treasurer.cuyahoga", "auditor.cuyahoga", "probate.cuyahoga", "cuyahogacounty.us",
+    "sheriffsaleauction.ohio.gov", ".state.oh.us", ".state.nc.us", ".state.tx.us", ".state.fl.us",
+    "hctax.net", "lacounty.gov", "ttc.lacounty", "cclerk.hctx", "octaxcol.com", "broward.county-taxes",
 )
 
-
 def _should_skip_proxy(url: str) -> bool:
-    """Return True for government/county URLs that block residential proxy traffic."""
     u = url.lower()
     return any(d in u for d in _PROXY_BLOCKED_DOMAINS)
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36 Edg/123",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
 ]
 
-# Per-domain header overrides (Zillow, Redfin, etc. check Referer/Accept)
 _DOMAIN_HEADERS: dict[str, dict[str, str]] = {
     "zillow.com": {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
         "Cache-Control": "no-cache",
     },
     "redfin.com": {
@@ -80,34 +51,25 @@ _DOMAIN_HEADERS: dict[str, dict[str, str]] = {
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.redfin.com/",
         "Origin": "https://www.redfin.com",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
     },
 }
 
-# Persistent shared client — initialised in lifespan, shared across all requests.
+# Persistent shared client
 _persistent_client: Optional[httpx.AsyncClient] = None
 
-
 async def init_client() -> None:
-    """Create the module-level persistent client. Call once at startup."""
     global _persistent_client
     if _persistent_client is None or _persistent_client.is_closed:
         _persistent_client = httpx.AsyncClient(timeout=settings.request_timeout)
     log.info("Persistent HTTP client initialised")
 
-
 async def close_client() -> None:
-    """Gracefully close the persistent client. Call once at shutdown."""
     global _persistent_client
     if _persistent_client and not _persistent_client.is_closed:
         await _persistent_client.aclose()
         log.info("Persistent HTTP client closed")
 
-
 def _build_headers(url: str) -> dict[str, str]:
-    """Return browser-like headers, with domain-specific overrides when available."""
     base = {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -118,24 +80,20 @@ def _build_headers(url: str) -> dict[str, str]:
         if domain in url:
             base.update(overrides)
             break
-    # Always rotate User-Agent even with domain overrides
     base["User-Agent"] = random.choice(USER_AGENTS)
     return base
 
-
 def _ssl_ctx() -> Any:
-    """SSL context that ignores cert errors (needed for residential proxy MITM)."""
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     return ctx
 
-
+# ─── Direct fetch ────────────────────────────────────────────────────────────
 async def fetch_direct(url: str, *, use_proxy: bool = True,
-                       verify_ssl: bool = False) -> str:
+                       verify_ssl: bool = False) -> Any:
     """Plain httpx fetch with rotating UA + optional residential proxy.
-
-    verify_ssl defaults to False because residential proxies use MITM certs.
+       Returns .text for HTML, raw bytes for PDFs.
     """
     proxy = settings.proxy_url() if use_proxy else None
     headers = _build_headers(url)
@@ -157,33 +115,27 @@ async def fetch_direct(url: str, *, use_proxy: bool = True,
             with attempt:
                 r = await cli.get(url)
                 r.raise_for_status()
+                ctype = r.headers.get("Content-Type", "").lower()
+                if "pdf" in ctype or url.lower().endswith(".pdf"):
+                    return r.content  # raw bytes
                 return r.text
-    return ""  # unreachable
+    return ""
 
-
+# ─── Tiered fetch ────────────────────────────────────────────────────────────
 async def fetch_html(url: str, *, render: bool = False,
-                     country: str = "us", is_google: bool = False) -> str:
+                     country: str = "us", is_google: bool = False) -> Any:
     """Tiered fetch: direct proxy → Crawl4AI (render-only fallback).
-
-    ScraperAPI and ScrapingBee are permanently disabled.
-    - Tier 1: direct httpx with residential proxy (works for Zillow, most JSON APIs)
-    - Tier 2: Crawl4AI Playwright (only when render=True and direct fails — JS-heavy SPAs)
-
-    Government/county sites skip the residential proxy — they block BrightData
-    and return 502 Proxy Connect Timeout.
+       Returns HTML text or raw PDF bytes.
     """
     errors: list[str] = []
     gov_site = _should_skip_proxy(url)
 
-    # Tier 1: Direct fetch — skip proxy for government sites that block it
     try:
         return await fetch_direct(url, use_proxy=not gov_site, verify_ssl=False)
     except Exception as e:
         errors.append(f"direct: {e}")
         log.debug("Direct fetch failed for %s: %s", url, e)
 
-    # Tier 2: Crawl4AI — Playwright rendering (JS-heavy sites, when direct is blocked)
-    # Government sites also skip proxy here to avoid 502 Proxy Connect Timeout.
     if render:
         try:
             return await fetch_crawl4ai(url, use_proxy=not gov_site)
@@ -193,18 +145,9 @@ async def fetch_html(url: str, *, render: bool = False,
 
     raise RuntimeError(f"All fetch tiers failed for {url}: {'; '.join(errors)}")
 
-
-# ─── Crawl4AI rendered fetch (Playwright, slowest but strongest) ─────────────
-
+# ─── Crawl4AI rendered fetch ─────────────────────────────────────────────────
 async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
-                         use_proxy: bool = True) -> str:
-    """Crawl4AI headless Playwright — for JS-heavy sites that block direct fetches.
-
-    use_proxy=False skips the residential proxy (needed for government/county sites
-    that return 502 Proxy Connect Timeout when accessed via BrightData).
-
-    Raises RuntimeError if Playwright is unavailable so callers can fall through.
-    """
+                         use_proxy: bool = True) -> Any:
     try:
         from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
     except (ImportError, OSError) as e:
@@ -227,14 +170,64 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
             result = await crawler.arun(url=url, config=run_cfg)
             if not result.success:
                 raise RuntimeError(f"Crawl4AI failed: {result.error_message}")
-            return result.markdown or result.html or ""
+            return result.markdown or result.html or result.binary or ""
     except RuntimeError:
         raise
     except OSError as e:
         raise RuntimeError(f"Crawl4AI system dependency missing: {e}") from e
 
-
 # ─── Small helpers ────────────────────────────────────────────────────────────
-
 async def polite_sleep(min_ms: int = 250, max_ms: int = 800) -> None:
     await asyncio.sleep(random.randint(min_ms, max_ms) / 1000)
+
+# ─── PDF fetch + extraction ──────────────────────────────────────────────────
+import fitz  # PyMuPDF
+import pdfplumber
+import io
+from PIL import Image
+import pytesseract
+
+async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
+    """Fetch a PDF and extract text/tables using PyMuPDF → pdfplumber → OCR fallback."""
+    try:
+        proxy = settings.proxy_url() if use_proxy else None
+        headers = _build_headers(url)
+        async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout) as cli:
+            r = await cli.get(url)
+            r.raise_for_status()
+            pdf_bytes = r.content
+    except Exception as e:
+        log.warning("PDF fetch failed for %s: %s", url, str(e)[:120])
+        return ""
+
+    # 1. Try PyMuPDF (fast text)
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text = "\n".join(page.get_text("text") for page in doc)
+        if text.strip():
+            return " ".join(text.split())
+    except Exception as e:
+        log.debug("PyMuPDF failed: %s", e)
+
+    # 2. Try pdfplumber (structured tables)
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+            if text.strip():
+                return " ".join(text.split())
+    except Exception as e:
+        log.debug("pdfplumber failed: %s", e)
+
+    # 3. OCR fallback (scanned images)
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text_blocks = []
+        for page in doc:
+            pix = page.get_pixmap(dpi=150)  # lower DPI for speed/memory
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            text_blocks.append(pytesseract.image_to_string(img))
+        return " ".join(" ".join(text_blocks).split())
+    except Exception as e:
+        log.warning("OCR failed: %s", e)
+
+    return ""

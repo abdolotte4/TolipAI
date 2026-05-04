@@ -96,30 +96,18 @@ DEFAULT_UA = (
 
 
 def _proxy_settings() -> Optional[Dict[str, str]]:
-    """Return a Playwright proxy dict if a residential proxy is configured.
-
-    Prefer Bright Data–style envs; fall back to generic PROXY_* if present.
-    """
-    # Bright Data style
+    """Return a Playwright proxy dict if Bright Data is configured."""
     bd_user = os.getenv("BRIGHTDATA_USERNAME")
     bd_pass = os.getenv("BRIGHTDATA_PASSWORD")
     if bd_user and bd_pass:
-        # Example username should already include zone/country/state/session
-        # e.g. myuser-zone-DOMESTIC-country-us-state-tx-session-12345
+        # Username must already include zone/country/state/session
         return {
-            "server": "http://brd.superproxy.io:22225",
+            "server": "http://brd.superproxy.io:33335",
             "username": bd_user,
             "password": bd_pass,
         }
 
-    # Generic host/user/pass (kept for backwards compatibility)
-    host = os.getenv("PROXY_HOST")
-    user = os.getenv("PROXY_USER")
-    pw = os.getenv("PROXY_PASS")
-    if host and user and pw:
-        return {"server": f"http://{host}", "username": user, "password": pw}
-
-    # Optional Oxylabs unblocker
+    # Optional Oxylabs unblocker (secondary fallback)
     oxu = os.getenv("OXYLABS_USERNAME")
     oxp = os.getenv("OXYLABS_PASSWORD")
     if oxu and oxp:
@@ -200,7 +188,7 @@ async def browser_context(
             ignore_https_errors=True,
         )
 
-        # Stealth-ish patches: remove webdriver, spoof plugins/languages/permissions
+        # Stealth patches
         await ctx.add_init_script(
             """
 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -225,7 +213,6 @@ Object.defineProperty(navigator, 'languages', {
         # First-time login (or session expired) flow
         if not storage_state and login_fn is not None:
             async with _state_lock(service):
-                # Re-check after acquiring lock — another task may have logged in.
                 if not state_file.exists():
                     log.info("[%s] no saved session — performing login", service)
                     page = await ctx.new_page()
@@ -236,7 +223,6 @@ Object.defineProperty(navigator, 'languages', {
                     finally:
                         await page.close()
                 else:
-                    # Recreate context with the now-saved state
                     await ctx.close()
                     ctx = await browser.new_context(
                         storage_state=str(state_file),
@@ -251,21 +237,14 @@ Object.defineProperty(navigator, 'languages', {
                     await ctx.add_init_script(
                         """
 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-
 const originalQuery = window.navigator.permissions.query;
 window.navigator.permissions.query = (parameters) => (
   parameters.name === 'notifications'
     ? Promise.resolve({ state: Notification.permission })
     : originalQuery(parameters)
 );
-
-Object.defineProperty(navigator, 'plugins', {
-  get: () => [1, 2, 3],
-});
-
-Object.defineProperty(navigator, 'languages', {
-  get: () => ['en-US', 'en'],
-});
+Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
 """
                     )
 

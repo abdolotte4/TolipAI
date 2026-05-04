@@ -777,3 +777,20 @@ async def sources_for_request_ai(*, categories: Optional[List[str]] = None,
         for c in (categories or list(CATEGORY_META.keys())):
             out.extend(await suggest_distressed_sources(state=requested_state, category=c, county=county, city=city))
     return out
+
+# ─── Deed Registry (curated stable sources) ──────────────────────────────────
+# Maps (STATE, county/city) → official deed/transfer search URL.
+# Used by county_deeds.py before falling back to AI discovery.
+
+DEED_REGISTRY: Dict[tuple[str, str], str] = {
+    ("OH", "cuyahoga"): "https://auditor.cuyahogacounty.us/en-US/property-search.aspx",
+    ("NC", "cumberland"): "https://rodweb.cumberlandcountync.gov/RodWeb/search.do",
+    ("NC", "wake"): "https://services.wakegov.com/realestate/SearchDeed.asp",
+    ("TX", "harris"): "https://hcad.org/hcad-resources/hcad-appraisal-codes-and-definitions/real-estate-transaction-data/",
+    ("FL", "orange"): "https://or.occompt.com/recorder/eagleweb/docIndex.jsp",
+    ("FL", "miami-dade"): "https://www2.miami-dadeclerk.com/ocs/Search.aspx",
+    ("FL", "hillsborough"): "https://pubrec2.hillsclerk.com/pubrec/docIndex.jsp",
+    ("GA", "fulton"): "https://search.gsccca.org/RealEstate/index.asp?County=60&DocType=WD",
+    ("GA", "dekalb"): "https://search.gsccca.org/RealEstate/index.asp?County=44&DocType=WD",
+    # Add more counties/states here as needed
+}

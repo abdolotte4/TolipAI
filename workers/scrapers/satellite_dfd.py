@@ -1,38 +1,21 @@
-"""Satellite Drive-For-Dollars engine.
+"""Satellite Drive-For-Dollars engine (rebuilt).
 
-Mimics XLeads SkyDrive AI: scores property distress 0-100 using:
-  1. Property data signals (age, tax status, days-listed, price-cuts)
-  2. Neighborhood vacancy / delinquency data (from county scraping)
-  3. AI reasoning over the combined signals
-
-For visual satellite analysis (actual image AI), set GOOGLE_MAPS_API_KEY —
-the engine will embed a Maps Static satellite URL in the payload and use
-a multimodal model when available.  Without the key the scoring is still
-useful because it fuses 8+ data signals.
+Fuses property signals + Google Maps imagery + YOLO visual detections +
+LLM reasoning to score property distress 0-100.
 """
+
 from __future__ import annotations
-
-import asyncio
-import json
-import logging
-import os
-import re
+import asyncio, json, logging, os, httpx
 from typing import Any, Dict, List, Optional
-
-from bs4 import BeautifulSoup
-
+from ultralytics import YOLO
 from ..http_client import fetch_html
 from ..llm import _chat
 from . import zillow, redfin
 
 log = logging.getLogger("satellite_dfd")
 
-# Cap concurrent AI distress-scoring calls to avoid LLM rate-limit storms.
-# Each listing calls the LLM once; without a cap, 60+ concurrent calls will
-# hammer Groq's free tier and trigger cascading 429s.
+# ─── Concurrency guard for AI calls ───────────────────────────────────────────
 _AI_SCORE_SEM: Optional[asyncio.Semaphore] = None
-
-
 def _get_ai_sem() -> asyncio.Semaphore:
     global _AI_SCORE_SEM
     if _AI_SCORE_SEM is None:
@@ -40,80 +23,26 @@ def _get_ai_sem() -> asyncio.Semaphore:
         _AI_SCORE_SEM = asyncio.Semaphore(limit)
     return _AI_SCORE_SEM
 
-
 # ─── Distress signal weights ──────────────────────────────────────────────────
-# Each signal contributes to the 0-100 distress score.
-# Positive = adds distress; we clamp total to [0, 100].
-
 def _age_score(year_built: Optional[int]) -> int:
-    if not year_built:
-        return 0
+    if not year_built: return 0
     age = max(0, 2025 - int(year_built))
-    if age >= 80:
-        return 20
-    if age >= 50:
-        return 15
-    if age >= 30:
-        return 10
-    if age >= 15:
-        return 5
-    return 0
-
+    return 20 if age >= 80 else 15 if age >= 50 else 10 if age >= 30 else 5 if age >= 15 else 0
 
 def _days_listed_score(days: Optional[int]) -> int:
-    if not days:
-        return 0
-    if days >= 180:
-        return 20
-    if days >= 90:
-        return 15
-    if days >= 45:
-        return 10
-    if days >= 21:
-        return 5
-    return 0
+    if not days: return 0
+    return 20 if days >= 180 else 15 if days >= 90 else 10 if days >= 45 else 5 if days >= 21 else 0
 
-
-def _price_reduction_score(has_cut: bool) -> int:
-    return 10 if has_cut else 0
-
-
-def _fsbo_score(is_fsbo: bool) -> int:
-    return 10 if is_fsbo else 0
-
-
-def _vacancy_score(vacant: bool) -> int:
-    return 15 if vacant else 0
-
-
+def _price_reduction_score(has_cut: bool) -> int: return 10 if has_cut else 0
+def _fsbo_score(is_fsbo: bool) -> int: return 10 if is_fsbo else 0
+def _vacancy_score(vacant: bool) -> int: return 15 if vacant else 0
 def _equity_score(equity_pct: Optional[float]) -> int:
-    if equity_pct is None:
-        return 0
-    if equity_pct >= 50:
-        return 15
-    if equity_pct >= 30:
-        return 10
-    if equity_pct >= 15:
-        return 5
-    return 0
-
-
-def _tax_delinquent_score(delinquent: bool) -> int:
-    return 20 if delinquent else 0
-
-
+    if equity_pct is None: return 0
+    return 15 if equity_pct >= 50 else 10 if equity_pct >= 30 else 5 if equity_pct >= 15 else 0
+def _tax_delinquent_score(delinquent: bool) -> int: return 20 if delinquent else 0
 def _ownership_years_score(years: Optional[float]) -> int:
-    """Long ownership → more deferred maintenance."""
-    if years is None:
-        return 0
-    if years >= 20:
-        return 10
-    if years >= 10:
-        return 7
-    if years >= 5:
-        return 3
-    return 0
-
+    if years is None: return 0
+    return 10 if years >= 20 else 7 if years >= 10 else 3 if years >= 5 else 0
 
 def _compute_score(signals: Dict[str, Any]) -> int:
     score = (
@@ -128,8 +57,22 @@ def _compute_score(signals: Dict[str, Any]) -> int:
     )
     return max(0, min(100, score))
 
+# ─── Google Maps satellite URL + download ─────────────────────────────────────
+def _satellite_url(lat: float, lon: float, zoom: int = 20) -> Optional[str]:
+    key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not key: return None
+    return f"https://maps.googleapis.com/maps/api/staticmap?center={lat},{lon}&zoom={zoom}&size=640x640&maptype=satellite&key={key}"
 
-# ─── Google Maps satellite URL helper ─────────────────────────────────────────
+async def _download_satellite(lat: float, lon: float) -> Optional[str]:
+    url = _satellite_url(lat, lon)
+    if not url: return None
+    fname = f"/tmp/sat_{lat}_{lon}.png"
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url)
+        with open(fname, "wb") as f: f.write(r.content)
+    return fname
+
+# ─── Google Maps satellite + street view URL helpers ──────────────────────────
 
 def _satellite_url(lat: float, lon: float, zoom: int = 20) -> Optional[str]:
     key = os.getenv("GOOGLE_MAPS_API_KEY")
@@ -141,29 +84,42 @@ def _satellite_url(lat: float, lon: float, zoom: int = 20) -> Optional[str]:
         f"&maptype=satellite&key={key}"
     )
 
+def _streetview_url(lat: float, lon: float, heading: int = 0, pitch: int = 0) -> Optional[str]:
+    key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not key:
+        return None
+    return (
+        f"https://maps.googleapis.com/maps/api/streetview"
+        f"?size=640x640&location={lat},{lon}&heading={heading}&pitch={pitch}&key={key}"
+    )
 
-# ─── AI distress reasoning ─────────────────────────────────────────────────────
 
-async def _ai_distress_score(address: str, signals: Dict[str, Any],
-                             base_score: int) -> Dict[str, Any]:
-    """Ask LLM to reason over the signals and return refined score + rationale."""
+# ─── YOLO visual distress detection ──────────────────────────────────────────
+_yolo_model = YOLO("yolov8n.pt")  # swap for yolov9 if installed
+
+def _yolo_signals(image_path: str) -> Dict[str, bool]:
+    results = _yolo_model(image_path)
+    detections = [results[0].names[int(cls)] for cls in results[0].boxes.cls]
+    return {
+        "tall_grass": "grass" in detections,
+        "broken_windows": "window_broken" in detections,
+        "roof_damage": "roof_damage" in detections,
+        "boarded_doors": "boarded_door" in detections,
+        "trash": "trash" in detections,
+        "abandoned_car": "car_abandoned" in detections,
+    }
+
+# ─── AI distress reasoning ───────────────────────────────────────────────────
+def _category(score: int) -> str:
+    return "severe" if score >= 70 else "high" if score >= 50 else "medium" if score >= 30 else "low"
+
+async def _ai_distress_score(address: str, signals: Dict[str, Any], base_score: int) -> Dict[str, Any]:
     sys_msg = (
-        "You are a real estate distress analyst. Given property signals, "
-        "return a distress score 0-100 (0=perfect, 100=severely distressed) "
-        "and a one-sentence rationale. "
-        "REPLY ONLY with: {\"score\": integer, \"rationale\": \"...\", "
-        "\"category\": \"low\"|\"medium\"|\"high\"|\"severe\"}"
+        "You are a real estate distress analyst. Fuse property signals + YOLO detections. "
+        "Return JSON: {\"score\": int, \"rationale\": str, \"category\": str}"
     )
-    sig_lines = "\n".join(
-        f"- {k.replace('_', ' ').title()}: {v}"
-        for k, v in signals.items()
-        if v is not None and v is not False
-    )
-    user_msg = (
-        f"Property: {address}\n"
-        f"Algorithmic base score: {base_score}/100\n"
-        f"Signals:\n{sig_lines or '(none detected)'}"
-    )
+    sig_lines = "\n".join(f"- {k}: {v}" for k, v in signals.items() if v)
+    user_msg = f"Property: {address}\nBase score: {base_score}\nSignals:\n{sig_lines}"
     try:
         raw = await _chat(
             [{"role": "system", "content": sys_msg},
@@ -180,202 +136,37 @@ async def _ai_distress_score(address: str, signals: Dict[str, Any],
         log.debug("AI distress score failed for %s: %s", address, e)
         return {"score": base_score, "rationale": "", "category": _category(base_score)}
 
-
-def _category(score: int) -> str:
-    if score >= 70:
-        return "severe"
-    if score >= 50:
-        return "high"
-    if score >= 30:
-        return "medium"
-    return "low"
-
-
-# ─── Zillow listing enrichment (days on market, price cuts, FSBO) ──────────────
-
-async def _fetch_listings(zip_code: str = "", city: str = "",
-                          state: str = "") -> List[Dict[str, Any]]:
-    """Pull active for-sale + FSBO + recently-sold listings from Zillow + Redfin.
-
-    Active for-sale listings carry the richest distress signals (days on market,
-    price reductions, FSBO status). Recently-sold are included as supplementary
-    volume but contribute fewer real-time signals.
-    """
+# ─── Zillow/Redfin listing enrichment ────────────────────────────────────────
+async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
-
-    async def _safe_active():
-        try:
-            return await zillow.fetch_active_listings(zip_code=zip_code, city=city,
-                                                      state=state, max_results=40)
-        except Exception as e:
-            log.info("Zillow active listings fetch failed: %s", e)
-            return []
-
-    async def _safe_fsbo():
-        try:
-            fsbo = await zillow.fetch_fsbo(zip_code=zip_code, city=city, state=state, max_results=25)
-            for p in fsbo:
-                p["is_fsbo"] = True
-            return fsbo
-        except Exception as e:
-            log.info("FSBO fetch failed: %s", e)
-            return []
-
-    async def _safe_zillow_sold():
-        try:
-            return await zillow.fetch_recently_sold(zip_code=zip_code, city=city,
-                                                    state=state, max_results=20)
-        except Exception as e:
-            log.info("Zillow sold fetch failed: %s", e)
-            return []
-
-    async def _safe_redfin_sold():
-        try:
-            return await redfin.fetch_recently_sold(zip_code=zip_code, city=city,
-                                                    state=state, max_results=20)
-        except Exception as e:
-            log.info("Redfin sold fetch failed: %s", e)
-            return []
-
-    active_listings, fsbo_listings, zillow_sold, redfin_sold = await asyncio.gather(
-        _safe_active(), _safe_fsbo(), _safe_zillow_sold(), _safe_redfin_sold()
+    async def _safe(fn, **kwargs): 
+        try: return await fn(**kwargs)
+        except Exception as e: log.info("%s failed: %s", fn.__name__, e); return []
+    active, fsbo, zsold, rsold = await asyncio.gather(
+        _safe(zillow.fetch_active_listings, zip_code=zip_code, city=city, state=state, max_results=40),
+        _safe(zillow.fetch_fsbo, zip_code=zip_code, city=city, state=state, max_results=25),
+        _safe(zillow.fetch_recently_sold, zip_code=zip_code, city=city, state=state, max_results=20),
+        _safe(redfin.fetch_recently_sold, zip_code=zip_code, city=city, state=state, max_results=20),
     )
-    # Active listings first — they have the best distress signals
-    results.extend(active_listings)
-    results.extend(fsbo_listings)
-    results.extend(zillow_sold)
-    results.extend(redfin_sold)
-
-    # De-dupe by address so FSBO / active duplicates don't double-count
-    seen_addrs: set[str] = set()
-    deduped: List[Dict[str, Any]] = []
+    for p in fsbo: p["is_fsbo"] = True
+    results.extend(active + fsbo + zsold + rsold)
+    seen, deduped = set(), []
     for p in results:
-        addr_key = (p.get("address") or "").strip().lower()
-        if addr_key and addr_key in seen_addrs:
-            continue
-        if addr_key:
-            seen_addrs.add(addr_key)
+        addr = (p.get("address") or "").strip().lower()
+        if addr and addr in seen: continue
+        if addr: seen.add(addr)
         deduped.append(p)
     return deduped
 
-
-# ─── Public entrypoint ────────────────────────────────────────────────────────
-
-async def scan_area(
-    *,
-    zip_code: str = "",
-    city: str = "",
-    state: str = "",
-    min_score: int = 30,
-    max_results: int = 50,
-    use_ai_scoring: bool = True,
-) -> Dict[str, Any]:
-    """Scan an area for distressed properties — the SkyDrive DFD engine.
-
-    Returns a ranked list of properties with a distress score 0-100,
-    map coordinates, and a short rationale.
-    """
+# ─── Public entrypoint ───────────────────────────────────────────────────────
+async def scan_area(zip_code: str = "", city: str = "", state: str = "",
+                    min_score: int = 30, max_results: int = 50,
+                    use_ai_scoring: bool = True) -> Dict[str, Any]:
     log.info("Satellite DFD scan: zip=%s city=%s state=%s", zip_code, city, state)
-
     listings = await _fetch_listings(zip_code=zip_code, city=city, state=state)
-    log.info("DFD: %d listings fetched for analysis", len(listings))
-
-    # Build candidate records with base (algorithmic) score first, filter before AI
     candidates: List[Dict[str, Any]] = []
     for p in listings:
         try:
-            year_built = None
-            try:
-                year_built = int(p.get("year_built") or 0) or None
-            except (TypeError, ValueError):
-                pass
-
-            # Map actual listing fields → distress signals
-            dom_raw = p.get("days_on_market")
-            try:
-                dom_val = int(dom_raw) if dom_raw is not None else None
-            except (TypeError, ValueError):
-                dom_val = None
-
-            signals = {
-                "year_built": year_built,
-                "days_on_market": dom_val,
-                "price_reduction": bool(p.get("price_reduction")),
-                "is_fsbo": bool(p.get("is_fsbo")),
-                # vacant: explicit flag OR home status suggests unoccupied
-                "vacant": bool(
-                    p.get("vacant")
-                    or (p.get("home_status") or "").upper() in ("VACANT", "FOR_RENT", "RECENTLY_SOLD")
-                ),
-                "equity_pct": p.get("equity_pct"),
-                "tax_delinquent": bool(p.get("tax_delinquent")),
-                "ownership_years": p.get("ownership_years"),
-            }
-            base = _compute_score(signals)
-
-            # Skip entirely if algorithmic score is way below threshold and AI won't help
-            # (AI scoring can raise score, but rarely more than +20 pts from signals)
-            if base < max(0, min_score - 20):
-                continue
-
-            lat = p.get("latitude")
-            lon = p.get("longitude")
-
-            candidates.append({
-                "address": p.get("address"),
-                "city": p.get("city") or city,
-                "state": p.get("state") or state,
-                "zip": p.get("zip") or zip_code,
-                "distress_score": base,
-                "distress_category": _category(base),
-                "rationale": "",
-                "signals": signals,
-                "latitude": lat,
-                "longitude": lon,
-                "satellite_url": _satellite_url(lat, lon) if (lat and lon) else None,
-                "zillow_url": p.get("zillow_url") or p.get("redfin_url"),
-                "estimated_value": p.get("estimated_value") or p.get("price"),
-                "beds": p.get("beds"),
-                "baths": p.get("baths"),
-                "sqft": p.get("sqft"),
-                "year_built": year_built,
-                "source": p.get("source", "zillow+redfin"),
-                "_signals": signals,
-                "_base": base,
-            })
-        except Exception as e:
-            log.debug("Scoring error for listing: %s", e)
-            continue
-
-    log.info("DFD: %d candidates pass pre-filter (min_score=%d)", len(candidates), min_score)
-
-    # Cap candidates to avoid overwhelming LLM when use_ai_scoring=True
-    candidates = candidates[:max_results * 3]
-
-    async def _score_one(rec: Dict[str, Any]) -> Dict[str, Any]:
-        signals = rec.pop("_signals")
-        base = rec.pop("_base")
-        if use_ai_scoring:
-            async with _get_ai_sem():
-                ai = await _ai_distress_score(rec.get("address") or "", signals, base)
-            rec["distress_score"] = ai["score"]
-            rec["distress_category"] = ai["category"]
-            rec["rationale"] = ai["rationale"]
-        return rec
-
-    scored_all = await asyncio.gather(*[_score_one(c) for c in candidates], return_exceptions=True)
-    scored = [
-        r for r in scored_all
-        if isinstance(r, dict) and r.get("distress_score", 0) >= min_score
-    ]
-
-    scored.sort(key=lambda r: r.get("distress_score", 0), reverse=True)
-    return {
-        "zip": zip_code,
-        "city": city,
-        "state": state,
-        "total_scanned": len(listings),
-        "total_above_threshold": len(scored),
-        "min_score_filter": min_score,
-        "results": scored[:max_results],
-    }
+            year_built = int(p.get("year_built") or 0) or None
+        except: year_built = None
+        dom_raw =
