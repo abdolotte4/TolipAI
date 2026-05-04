@@ -97,8 +97,10 @@ async def fetch_recently_sold(zip_code: Optional[str] = None,
         except (TypeError, ValueError):
             price_cut = False
         try:
-            lat = float(r.get("LATITUDE")) if r.get("LATITUDE") else None
-            lon = float(r.get("LONGITUDE")) if r.get("LONGITUDE") else None
+            lat_raw = r.get("LATITUDE")
+            lon_raw = r.get("LONGITUDE")
+            lat = float(str(lat_raw)) if lat_raw is not None else None
+            lon = float(str(lon_raw)) if lon_raw is not None else None
         except ValueError:
             lat, lon = None, None
         out.append({
