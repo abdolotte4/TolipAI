@@ -84,6 +84,18 @@ log = logging.getLogger("main")
 # In-memory job index — persistent state lives in scraper_jobs table.
 _jobs: Dict[str, Dict[str, Any]] = {}
 
+# ─── Structured Metrics ──────────────────────────────────────────────────────
+METRICS = {
+    "cash_buyers_success": 0,
+    "cash_buyers_failed": 0,
+    "cash_buyers_timeout": 0,
+    "distressed_success": 0,
+    "distressed_failed": 0,
+    "distressed_timeout": 0,
+    "foreclosure_success": 0,
+    "foreclosure_failed": 0,
+    "foreclosure_timeout": 0,
+}
 
 # ─── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -386,83 +398,45 @@ async def invalidate_service_session(service: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Failed to invalidate session")
 
 
-@app.post("/session/propelio/test")
-async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
-    """Test Propelio credentials by attempting a real login; returns success/error."""
-    import os as _os
-    orig_email = _os.environ.get("PROPELIO_EMAIL")
-    orig_pw    = _os.environ.get("PROPELIO_PASSWORD")
-    _os.environ["PROPELIO_EMAIL"]    = req.email
-    _os.environ["PROPELIO_PASSWORD"] = req.password
-    await _invalidate_session("propelio")
-    try:
-        await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
-        return {"success": True, "detail": "Login OK"}
-    except Exception as e:
-        log.warning("Propelio login test failed: %s", str(e)[:120])
-        return {"success": False, "error": str(e)[:300]}
-    finally:
-        if orig_email is not None:
-            _os.environ["PROPELIO_EMAIL"] = orig_email
-        elif "PROPELIO_EMAIL" in _os.environ:
-            del _os.environ["PROPELIO_EMAIL"]
-        if orig_pw is not None:
-            _os.environ["PROPELIO_PASSWORD"] = orig_pw
-        elif "PROPELIO_PASSWORD" in _os.environ:
-            del _os.environ["PROPELIO_PASSWORD"]
+
 
    # ─── Session login tests ─────────────────────────────────────────────────────
 
 @app.post("/session/propelio/test")
 async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
     """Test Propelio credentials by attempting a real login; returns success/error."""
-    import os as _os
-    orig_email = _os.environ.get("PROPELIO_EMAIL")
-    orig_pw    = _os.environ.get("PROPELIO_PASSWORD")
-    _os.environ["PROPELIO_EMAIL"]    = req.email
-    _os.environ["PROPELIO_PASSWORD"] = req.password
-    await _invalidate_session("propelio")
     try:
-        await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
+        # Pass credentials directly instead of mutating env vars
+        await propelio_v2.search_property(
+            "123 Main St, Dallas, TX 75201",
+            email=req.email,
+            password=req.password,
+        )
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
         log.warning("Propelio login test failed: %s", str(e)[:120])
         return {"success": False, "error": str(e)[:300]}
-    finally:
-        if orig_email is not None:
-            _os.environ["PROPELIO_EMAIL"] = orig_email
-        else:
-            _os.environ.pop("PROPELIO_EMAIL", None)
-        if orig_pw is not None:
-            _os.environ["PROPELIO_PASSWORD"] = orig_pw
-        else:
-            _os.environ.pop("PROPELIO_PASSWORD", None)
 
 
 @app.post("/session/propwire/test")
 async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
     """Test Propwire credentials by attempting a real login; returns success/error."""
-    import os as _os
-    orig_email = _os.environ.get("PROPWIRE_EMAIL")
-    orig_pw    = _os.environ.get("PROPWIRE_PASSWORD")
-    _os.environ["PROPWIRE_EMAIL"]    = req.email
-    _os.environ["PROPWIRE_PASSWORD"] = req.password
-    await _invalidate_session("propwire")
     try:
-        await propwire.fetch_property("123 Main St, Dallas, TX 75201")
+        await propwire.fetch_property(
+            "123 Main St, Dallas, TX 75201",
+            email=req.email,
+            password=req.password,
+        )
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
         log.warning("Propwire login test failed: %s", str(e)[:120])
         return {"success": False, "error": str(e)[:300]}
-    finally:
-        if orig_email is not None:
-            _os.environ["PROPWIRE_EMAIL"] = orig_email
-        else:
-            _os.environ.pop("PROPWIRE_EMAIL", None)
-        if orig_pw is not None:
-            _os.environ["PROPWIRE_PASSWORD"] = orig_pw
-        else:
-            _os.environ.pop("PROPWIRE_PASSWORD", None)
+
+
+@app.get("/metrics")
+async def metrics() -> Dict[str, Any]:
+    """Return structured counters for monitoring."""
+    return METRICS
 
 
 # ─── Health check ───────────────────────────────────────────────────────────
@@ -845,12 +819,23 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
     async def runner() -> None:
         try:
             cb = await _make_progress_cb(job_id)
-            results = await cash_buyers.find_cash_buyers(
-                lead, max_buyers=req.max_buyers, job_id=job_id, progress_cb=cb,
-            )
-            _set_status(job_id, "done", progress=100, result=results)
-            await db.update_job(job_id, status="done", progress=100,
-                                result_count=len(results), completed=True)
+            try:
+    results = await asyncio.wait_for(
+        cash_buyers.find_cash_buyers(
+            lead, max_buyers=req.max_buyers, job_id=job_id, progress_cb=cb,
+        ),
+        timeout=900,  # 15 minute cap
+    )
+    _set_status(job_id, "done", progress=100, result=results)
+    await db.update_job(job_id, status="done", progress=100,
+                        result_count=len(results), completed=True)
+    METRICS["cash_buyers_success"] += 1
+except asyncio.TimeoutError:
+    log.error("cash_buyers job %s timed out after 900s", job_id)
+    _set_status(job_id, "failed", error="timeout_exceeded")
+    await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+    METRICS["cash_buyers_timeout"] += 1
+
         except Exception as e:  # noqa: BLE001
             err = str(e)
             if is_transient(e) and retry_queue.enqueue(job_id, "cash_buyers",
@@ -914,15 +899,25 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
     async def runner() -> None:
         try:
             cb = await _make_progress_cb(job_id)
-            listings = await distressed.find_distressed(
-                zip_code=req.zip, county_key=req.county_key, state=req.state,
-                categories=req.categories, source_keys=req.source_keys,
-                job_id=job_id, campaign_id=req.campaign_id,
-                progress_cb=cb,
+            # Runtime cap: 15 minutes
+            listings = await asyncio.wait_for(
+                distressed.find_distressed(
+                    zip_code=req.zip, county_key=req.county_key, state=req.state,
+                    categories=req.categories, source_keys=req.source_keys,
+                    job_id=job_id, campaign_id=req.campaign_id,
+                    progress_cb=cb,
+                ),
+                timeout=900,
             )
             _set_status(job_id, "done", progress=100, result=listings)
             await db.update_job(job_id, status="done", progress=100,
                                 result_count=len(listings), completed=True)
+            METRICS["distressed_success"] += 1
+        except asyncio.TimeoutError:
+            log.error("Distressed job %s timed out after 900s", job_id)
+            _set_status(job_id, "failed", error="timeout_exceeded")
+            await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+            METRICS["distressed_timeout"] += 1
         except Exception as e:
             err = str(e)
             if is_transient(e) and retry_queue.enqueue(job_id, "distressed",
@@ -934,9 +929,11 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
                 log.exception("Distressed job %s failed (fatal)", job_id)
                 _set_status(job_id, "failed", error=err)
                 await db.update_job(job_id, status="failed", error=err, completed=True)
+                METRICS["distressed_failed"] += 1
 
     asyncio.create_task(runner())
     return {"job_id": job_id, "status": "queued"}
+
 
 
 # ─── Skip-trace ──────────────────────────────────────────────────────────────
@@ -1047,17 +1044,28 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
     campaign_id = params.get("campaign_id")
 
     try:
-        # Step 1: Scrape listings
+        # Step 1: Scrape listings with runtime cap
         await cb(5, f"Scraping {listing_type} listings in {city}, {state}…")
         if site == "all":
-            listings = await homeharvest_scraper.scrape_multi_site(city, state, listing_type=listing_type, limit_per_site=limit)
+            listings = await asyncio.wait_for(
+                homeharvest_scraper.scrape_multi_site(
+                    city, state, listing_type=listing_type, limit_per_site=limit
+                ),
+                timeout=900,
+            )
         else:
-            listings = await homeharvest_scraper.scrape_foreclosures(city, state, listing_type=listing_type, site=site, limit=limit)
+            listings = await asyncio.wait_for(
+                homeharvest_scraper.scrape_foreclosures(
+                    city, state, listing_type=listing_type, site=site, limit=limit
+                ),
+                timeout=900,
+            )
 
         if not listings:
             summary = {"count": 0, "listings": [], "markdown_table": "_No listings found._"}
             _set_status(job_id, "done", progress=100, result=summary)
             await db.update_job(job_id, status="done", progress=100, result_count=0, completed=True)
+            METRICS["foreclosure_success"] += 1
             return
 
         await cb(25, f"Found {len(listings)} listings — estimating equity…")
@@ -1140,33 +1148,15 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                    "markdown_table": markdown_table, "city": city, "state": state}
         _set_status(job_id, "done", progress=100, result=summary)
         await db.update_job(job_id, status="done", progress=100, result_count=len(results), completed=True)
+        METRICS["foreclosure_success"] += 1
 
+    except asyncio.TimeoutError:
+        log.error("Foreclosure job %s timed out after 900s", job_id)
+        _set_status(job_id, "failed", error="timeout_exceeded")
+        await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+        METRICS["foreclosure_timeout"] += 1
     except Exception as e:
         log.exception("Foreclosure lead-gen job %s failed: %s", job_id, e)
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
-
-
-@app.post("/lead-gen/foreclosure")
-async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
-    """Start a foreclosure lead-gen job. Returns immediately with job_id; poll /jobs/{job_id} for progress + results."""
-    params = req.model_dump()
-    job_id = _new_job("foreclosure_lead_gen", params)
-    await db.create_job(job_id, "foreclosure_lead_gen", params, campaign_id=req.campaign_id)
-    asyncio.create_task(_run_foreclosure_lead_gen(job_id, params))
-    return {
-        "job_id": job_id,
-        "status": "queued",
-        "message": f"Scraping {req.listing_type} listings in {req.city}, {req.state}. Poll /jobs/{job_id} for progress.",
-        "poll_url": f"/jobs/{job_id}",
-    }
-
-
-@app.get("/lead-gen/foreclosure/result/{job_id}")
-async def lead_gen_foreclosure_result(job_id: str) -> Dict[str, Any]:
-    """Return the completed foreclosure job result including listings + markdown_table."""
-    job = _jobs.get(job_id) or await db.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job.get("status") != "done":
-        return {"job_id": job_id, "status": job.get("status"), "progress": job.get("
+        METRICS["foreclosure_failed"] += 1
