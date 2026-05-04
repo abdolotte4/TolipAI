@@ -60,7 +60,7 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 50,
                            job_id: Optional[str] = None,
                            progress_cb=None) -> List[Dict[str, Any]]:
     """Run the full cash-buyer discovery pipeline for a lead."""
-    zip_code = lead.get("zip")
+    zip_code = lead.get("zip") or ""
     city = lead.get("city") or ""
     state = lead.get("state") or ""
 
