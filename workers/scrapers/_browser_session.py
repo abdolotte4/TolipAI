@@ -10,7 +10,6 @@ which is fine: we just re-login on cold start.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import re
@@ -50,11 +49,24 @@ def _ensure_nix_ld_path() -> None:
         return
     for soname, pattern in needed.items():
         for entry in entries:
-            if (re.search(pattern, entry)
-                    and not entry.endswith(".drv")
-                    and not any(s in entry for s in (
-                        "-dev", "-man", "-doc", "-debug",
-                        "-spirv", "-opencl", "-osmesa", "-opengl", "-driversdev"))):
+            if (
+                re.search(pattern, entry)
+                and not entry.endswith(".drv")
+                and not any(
+                    s in entry
+                    for s in (
+                        "-dev",
+                        "-man",
+                        "-doc",
+                        "-debug",
+                        "-spirv",
+                        "-opencl",
+                        "-osmesa",
+                        "-opengl",
+                        "-driversdev",
+                    )
+                )
+            ):
                 lib_dir = f"{NIX}/{entry}/lib"
                 if os.path.isdir(lib_dir) and os.path.exists(f"{lib_dir}/{soname}"):
                     dirs.add(lib_dir)
@@ -75,19 +87,50 @@ _ensure_nix_ld_path()
 
 log = logging.getLogger("browser")
 
+# Reasonable Chrome UA matching modern Chromium
+DEFAULT_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.6099.71 Safari/537.36"
+)
+
 
 def _proxy_settings() -> Optional[Dict[str, str]]:
-    """Return a Playwright proxy dict if BrightData / residential proxy is configured."""
+    """Return a Playwright proxy dict if a residential proxy is configured.
+
+    Prefer Bright Data–style envs; fall back to generic PROXY_* if present.
+    """
+    # Bright Data style
+    bd_user = os.getenv("BRIGHTDATA_USERNAME")
+    bd_pass = os.getenv("BRIGHTDATA_PASSWORD")
+    if bd_user and bd_pass:
+        # Example username should already include zone/country/state/session
+        # e.g. myuser-zone-DOMESTIC-country-us-state-tx-session-12345
+        return {
+            "server": "http://brd.superproxy.io:22225",
+            "username": bd_user,
+            "password": bd_pass,
+        }
+
+    # Generic host/user/pass (kept for backwards compatibility)
     host = os.getenv("PROXY_HOST")
     user = os.getenv("PROXY_USER")
-    pw   = os.getenv("PROXY_PASS")
+    pw = os.getenv("PROXY_PASS")
     if host and user and pw:
         return {"server": f"http://{host}", "username": user, "password": pw}
+
+    # Optional Oxylabs unblocker
     oxu = os.getenv("OXYLABS_USERNAME")
     oxp = os.getenv("OXYLABS_PASSWORD")
     if oxu and oxp:
-        return {"server": "http://unblock.oxylabs.io:60000", "username": oxu, "password": oxp}
+        return {
+            "server": "http://unblock.oxylabs.io:60000",
+            "username": oxu,
+            "password": oxp,
+        }
+
     return None
+
 
 _STATE_DIR = Path(os.getenv("BROWSER_STATE_DIR", "/tmp")).resolve()
 _STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -130,10 +173,7 @@ async def browser_context(
     storage_state: Optional[str] = str(state_file) if state_file.exists() else None
 
     pw = await async_playwright().start()
-    # Container-hardened flags — Railway/Docker environments need these to
-    # prevent "Target page, context or browser has been closed" crashes.
-    # --single-process keeps everything in one process (avoids /dev/shm issues).
-    # --disable-dev-shm-usage reroutes shared memory to /tmp.
+
     proxy_cfg: Optional[ProxySettings] = _proxy_settings()  # type: ignore[assignment]
     browser = await pw.chromium.launch(
         headless=headless,
@@ -142,29 +182,46 @@ async def browser_context(
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-software-rasterizer",
-            "--disable-extensions",
-            "--disable-background-networking",
-            "--no-first-run",
             "--no-zygote",
-            "--single-process",
-            "--disable-blink-features=AutomationControlled",
         ],
     )
     if proxy_cfg:
-        log.info("[%s] using residential proxy %s", service, proxy_cfg["server"])
+        log.info("[%s] using proxy %s", service, proxy_cfg["server"])
+
     try:
         ctx = await browser.new_context(
             storage_state=storage_state,
-            user_agent=user_agent or (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
-            ),
+            user_agent=user_agent or DEFAULT_UA,
             viewport={"width": 1440, "height": 900},
             locale="en-US",
+            timezone_id="America/New_York",
+            geolocation={"latitude": 32.7767, "longitude": -96.7970},
+            permissions=["geolocation"],
             ignore_https_errors=True,
         )
+
+        # Stealth-ish patches: remove webdriver, spoof plugins/languages/permissions
+        await ctx.add_init_script(
+            """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+const originalQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (parameters) => (
+  parameters.name === 'notifications'
+    ? Promise.resolve({ state: Notification.permission })
+    : originalQuery(parameters)
+);
+
+Object.defineProperty(navigator, 'plugins', {
+  get: () => [1, 2, 3],
+});
+
+Object.defineProperty(navigator, 'languages', {
+  get: () => ['en-US', 'en'],
+});
+"""
+        )
+
         # First-time login (or session expired) flow
         if not storage_state and login_fn is not None:
             async with _state_lock(service):
@@ -183,20 +240,40 @@ async def browser_context(
                     await ctx.close()
                     ctx = await browser.new_context(
                         storage_state=str(state_file),
-                        user_agent=(
-                            user_agent or
-                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
-                        ),
+                        user_agent=user_agent or DEFAULT_UA,
                         viewport={"width": 1440, "height": 900},
                         locale="en-US",
+                        timezone_id="America/New_York",
+                        geolocation={"latitude": 32.7767, "longitude": -96.7970},
+                        permissions=["geolocation"],
                         ignore_https_errors=True,
                     )
+                    await ctx.add_init_script(
+                        """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+const originalQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (parameters) => (
+  parameters.name === 'notifications'
+    ? Promise.resolve({ state: Notification.permission })
+    : originalQuery(parameters)
+);
+
+Object.defineProperty(navigator, 'plugins', {
+  get: () => [1, 2, 3],
+});
+
+Object.defineProperty(navigator, 'languages', {
+  get: () => ['en-US', 'en'],
+});
+"""
+                    )
+
         yield ctx
     finally:
         try:
             await ctx.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         await browser.close()
         await pw.stop()
@@ -209,7 +286,7 @@ async def invalidate_session(service: str) -> None:
         try:
             p.unlink()
             log.info("[%s] session invalidated", service)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning("[%s] failed to invalidate session: %s", service, e)
 
 

@@ -1,19 +1,19 @@
-"""PDF fetching + text extraction utility.
+"""Enhanced PDF fetching + text extraction utility.
 
-Used for county/court websites that publish foreclosure schedules as PDFs
-(Cuyahoga Sheriff sale schedules, HUD bid lists, probate court indexes, etc.).
+Handles county/court foreclosure schedules, HUD bid lists, probate indexes.
 
 Flow:
-  1. Download PDF bytes (via httpx + BrightData proxy if configured)
-  2. Extract text with pdfplumber (preferred) → PyMuPDF fallback
-  3. Return plain text ready for LLM parsing
+  1. Download PDF bytes (via httpx + BrightData/Oxylabs proxy if configured)
+  2. Extract text with pdfplumber (preferred) → PyMuPDF fallback → OCR fallback
+  3. Optionally extract tables + metadata
+  4. Return plain text (chunked if large) ready for LLM parsing
 """
 from __future__ import annotations
 
 import io
 import logging
 import re
-from typing import Optional
+from typing import Optional, List, Dict
 
 import httpx
 
@@ -25,12 +25,18 @@ log = logging.getLogger("pdf_parser")
 def _pdf_text_pdfplumber(data: bytes) -> str:
     try:
         import pdfplumber
+        pages = []
         with pdfplumber.open(io.BytesIO(data)) as pdf:
-            pages = []
             for page in pdf.pages:
                 text = page.extract_text() or ""
+                # Try table extraction if text is empty
+                if not text.strip():
+                    tables = page.extract_tables()
+                    for tbl in tables or []:
+                        rows = [" | ".join(cell or "" for cell in row) for row in tbl]
+                        text += "\n".join(rows)
                 pages.append(text)
-            return "\n".join(pages)
+        return "\n".join(pages)
     except Exception as e:
         log.debug("pdfplumber failed: %s", e)
         return ""
@@ -41,26 +47,38 @@ def _pdf_text_pymupdf(data: bytes) -> str:
         import fitz  # PyMuPDF
         doc = fitz.open(stream=data, filetype="pdf")
         pages = [page.get_text() for page in doc]
+        meta = doc.metadata or {}
         doc.close()
-        return "\n".join(pages)
+        text = "\n".join(pages)
+        if meta:
+            text = f"[META: {meta}]\n{text}"
+        return text
     except Exception as e:
         log.debug("PyMuPDF failed: %s", e)
         return ""
 
 
-async def fetch_pdf_text(url: str, *, timeout: float = 45.0) -> str:
-    """Download a PDF from `url` and return its extracted plain text.
+def _pdf_text_ocr(data: bytes) -> str:
+    """OCR fallback for scanned PDFs."""
+    try:
+        import pdf2image
+        import pytesseract
+        images = pdf2image.convert_from_bytes(data)
+        text = []
+        for img in images:
+            text.append(pytesseract.image_to_string(img))
+        return "\n".join(text)
+    except Exception as e:
+        log.debug("OCR fallback failed: %s", e)
+        return ""
 
-    Uses the BrightData/Oxylabs proxy if configured.  Falls back to a
-    direct unproxied request if the proxy fails or is not set.
 
-    Returns empty string on failure so callers can fall through gracefully.
-    """
+async def fetch_pdf_text(url: str, *, timeout: float = 45.0, chunk_size: int = 50000) -> str:
+    """Download a PDF from `url` and return extracted text (chunked if large)."""
     proxy = settings.proxy_url()
     data: Optional[bytes] = None
 
-    async def _download(use_proxy: bool) -> Optional[bytes]:
-        p = proxy if use_proxy else None
+    async def _download(p: Optional[str]) -> Optional[bytes]:
         try:
             async with httpx.AsyncClient(
                 timeout=timeout, proxy=p, follow_redirects=True,
@@ -76,32 +94,43 @@ async def fetch_pdf_text(url: str, *, timeout: float = 45.0) -> str:
                 ct = r.headers.get("content-type", "")
                 if "pdf" not in ct.lower() and not url.lower().endswith(".pdf"):
                     log.warning("pdf_parser: unexpected content-type %s for %s", ct, url)
+                    return None
                 r.raise_for_status()
                 return r.content
         except Exception as e:
-            log.info("pdf_parser download failed (proxy=%s): %s", use_proxy, e)
+            log.info("pdf_parser download failed (proxy=%s): %s", p, e)
             return None
 
-    if proxy:
-        data = await _download(use_proxy=True)
-    if data is None:
-        data = await _download(use_proxy=False)
+    # Adaptive proxy retry
+    for p in (proxy, None):
+        if data:
+            break
+        data = await _download(p)
     if not data:
         return ""
 
-    # Extract text — pdfplumber first, PyMuPDF as fallback
+    # Extraction pipeline
     text = _pdf_text_pdfplumber(data)
     if not text.strip():
         text = _pdf_text_pymupdf(data)
+    if not text.strip():
+        text = _pdf_text_ocr(data)
 
-    # Normalise whitespace
+    # Normalize whitespace
     text = re.sub(r"\r\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # Chunk output if very large
+    if len(text) > chunk_size:
+        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+        log.info("pdf_parser: extracted %d chars in %d chunks from %s", len(text), len(chunks), url)
+        return "\n\n---CHUNK_BREAK---\n\n".join(chunks)
+
     log.info("pdf_parser: extracted %d chars from %s", len(text), url)
     return text.strip()
 
 
-async def discover_pdfs_on_page(page_url: str) -> list[str]:
+async def discover_pdfs_on_page(page_url: str) -> List[str]:
     """Fetch a page and return all absolute PDF link URLs found on it."""
     try:
         async with httpx.AsyncClient(
