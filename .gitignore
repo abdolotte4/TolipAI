@@ -73,3 +73,26 @@ attached_assets/
 # Exclude Replit Agent sandbox
 artifacts/mockup-sandbox/
 .aider*
+
+# Deployment configs not needed
+Dockerfile
+Procfile
+railway.json
+railpack.json
+nixpacks.toml
+
+# Local dev / env
+.python-version
+.replit*
+.dockerignore
+uv.lock
+
+# Runtime / cache
+__pycache__/
+*.pyc
+node_modules/
+dist/
+tmp/
+out-tsc/
+*.tsbuildinfo
+.replit-artifact/
