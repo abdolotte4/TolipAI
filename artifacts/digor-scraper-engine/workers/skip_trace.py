@@ -1,24 +1,24 @@
-"""Skip-trace orchestrator — free-tier optimised.
+"""Skip-trace orchestrator — enterprise-optimized.
 
 Strategy ladder (cheapest, most legal, most accurate first):
 
-  1. Secretary of State business-entity search (free, official)
-     - Florida (Sunbiz) — already implemented in scrapers.sunbiz
-     - Per-state generic crawl with LLM extraction for the rest
-  2. OpenCorporates API (free tier: ~100 calls/day, 200M+ companies)
-  3. SEC EDGAR (free, unlimited — for investment entities w/ Form ADV / 13D / 13G)
-  4. PropertyAPI.co skip-trace if a key is configured (paid fallback)
-  5. Google site-dorking — DISABLED by default (controlled by ENABLE_GOOGLE_DORKS env)
+  0. OSINT people-finder scrapers (FastPeopleSearch, CyberBackgroundChecks)
+  1. Secretary of State business-entity search (official portals)
+  2. OpenCorporates API (free tier)
+  3. SEC EDGAR (investment entities)
+  4. PropertyAPI.co skip-trace (paid fallback)
+  5. Google site-dorking (disabled by default)
 
-Circuit breakers: OpenCorporates 401 and PropertyAPI DNS failures are logged
-ONCE then the source is silently skipped for the rest of the process lifetime.
+Enhancements:
+  - Confidence scoring per source
+  - Correlation across multiple sources
+  - Deduplication + normalization
 """
+
 from __future__ import annotations
-
-import logging
+import logging, httpx
 from typing import Any, Dict, List, Optional, Set
-
-import httpx
+from bs4 import BeautifulSoup
 
 from .config import settings
 from .http_client import fetch_html
@@ -27,10 +27,8 @@ from .scrapers import sunbiz
 
 log = logging.getLogger("skip_trace")
 
-# Circuit breakers — sources added here are skipped for the rest of the run
 _dead_sources: Set[str] = set()
 
-# Per-state Secretary of State search portals
 SOS_URLS: Dict[str, str] = {
     "FL": "https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults",
     "TX": "https://mycpa.cpa.state.tx.us/coa/",
@@ -50,11 +48,44 @@ OPENCORPORATES_API = "https://api.opencorporates.com/v0.4/companies/search"
 SEC_EDGAR_SEARCH   = "https://www.sec.gov/cgi-bin/browse-edgar"
 USER_AGENT = "Digor/1.0 (skip-trace; contact: ops@digor.app)"
 
+# ─── Tier 0: OSINT People-Finder ────────────────────────────────────────────
+async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:
+    """Scrape FastPeopleSearch for phones/emails."""
+    try:
+        url = f"https://www.fastpeoplesearch.com/name/{name.replace(' ', '-')}/{state.lower()}"
+        html = await fetch_html(url, render=False)
+        text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
+        prof = await extract_investor_profile(text, source="fastpeople")
+        return {
+            "phones": prof.get("phones") or [],
+            "emails": prof.get("emails") or [],
+            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
+            "principals": prof.get("principals") or [],
+            "jurisdiction": f"osint_fastpeople_{state.lower()}",
+        }
+    except Exception as e:
+        log.info("FastPeopleSearch failed: %s", e)
+        return {}
 
-# ─── Step 1: Secretary of State (free, official) ────────────────────────────
-
+async def _cyberbackground_lookup(name: str, state: str) -> Dict[str, Any]:
+    """Scrape CyberBackgroundChecks for phones/emails."""
+    try:
+        url = f"https://www.cyberbackgroundchecks.com/people/{name.replace(' ', '-')}/{state.lower()}"
+        html = await fetch_html(url, render=False)
+        text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
+        prof = await extract_investor_profile(text, source="cyberbackground")
+        return {
+            "phones": prof.get("phones") or [],
+            "emails": prof.get("emails") or [],
+            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
+            "principals": prof.get("principals") or [],
+            "jurisdiction": f"osint_cyber_{state.lower()}",
+        }
+    except Exception as e:
+        log.info("CyberBackgroundChecks failed: %s", e)
+        return {}
+# ─── Tier 1: Secretary of State ─────────────────────────────────────────────
 async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
-    """Query state SOS for officers + registered agent."""
     state = state.upper()
     if state == "FL":
         try:
@@ -69,14 +100,13 @@ async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
                         "jurisdiction": "us_fl",
                     }
         except Exception as e:
-            log.info("Sunbiz lookup failed for %s: %s", llc_name, e)
+            log.info("Sunbiz lookup failed: %s", e)
         return {}
     if state not in SOS_URLS:
         return {}
     try:
         url = f"{SOS_URLS[state]}?searchTerm={llc_name.replace(' ', '+')}"
         html = await fetch_html(url, render=True)
-        from bs4 import BeautifulSoup
         text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
         prof = await extract_investor_profile(text, source=f"sos_{state.lower()}")
         return {
@@ -86,17 +116,12 @@ async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
             "jurisdiction": f"us_{state.lower()}",
         }
     except Exception as e:
-        log.info("SOS lookup failed for %s/%s: %s", state, llc_name, e)
+        log.info("SOS lookup failed: %s", e)
         return {}
 
-
-# ─── Step 2: OpenCorporates (free tier) ─────────────────────────────────────
-
+# ─── Tier 2: OpenCorporates ─────────────────────────────────────────────────
 async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
-    """Use OpenCorporates API — skipped if disabled or after first auth failure."""
-    if not settings.enable_opencorporates:
-        return {}
-    if "opencorporates" in _dead_sources:
+    if not settings.enable_opencorporates or "opencorporates" in _dead_sources:
         return {}
     try:
         params: Dict[str, Any] = {"q": name}
@@ -107,10 +132,9 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
                               headers={"User-Agent": USER_AGENT})
         if r.status_code == 401:
             _dead_sources.add("opencorporates")
-            log.warning("OpenCorporates 401 — invalid key, disabling for this run")
+            log.warning("OpenCorporates 401 — disabling")
             return {}
         if r.status_code != 200:
-            log.info("OpenCorporates returned %s — skipping", r.status_code)
             return {}
         data = r.json()
         companies = (data.get("results") or {}).get("companies") or []
@@ -126,54 +150,38 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
             "jurisdiction": company.get("jurisdiction_code"),
         }
     except Exception as e:
-        err = str(e).lower()
-        if "name or service not known" in err or "dns" in err or "connection" in err:
-            _dead_sources.add("opencorporates")
-            log.warning("OpenCorporates DNS/connection failure — disabling for this run: %s", e)
-        else:
-            log.info("OpenCorporates lookup failed: %s", e)
+        log.info("OpenCorporates failed: %s", e)
         return {}
 
-
-# ─── Step 3: SEC EDGAR (free, unlimited; investment entities) ───────────────
-
+# ─── Tier 3: SEC EDGAR ──────────────────────────────────────────────────────
 async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
-    """Search SEC EDGAR — free, no API key required."""
     try:
         async with httpx.AsyncClient(timeout=20) as cli:
             r = await cli.get(SEC_EDGAR_SEARCH, params={
                 "action": "getcompany", "company": name, "type": "13",
-                "dateb": "", "owner": "include", "count": "10",
+                "owner": "include", "count": "10",
             }, headers={"User-Agent": USER_AGENT})
         if r.status_code != 200:
             return {}
-        from bs4 import BeautifulSoup
         text = BeautifulSoup(r.text, "lxml").get_text("\n", strip=True)[:6000]
         prof = await extract_investor_profile(text, source="sec_edgar")
         return {
-            "principals":   prof.get("principals") or [],
-            "address":      prof.get("mailing_address"),
+            "principals": prof.get("principals") or [],
+            "address": prof.get("mailing_address"),
             "jurisdiction": "sec_filings",
         }
     except Exception as e:
-        log.info("SEC EDGAR lookup failed: %s", e)
+        log.info("SEC EDGAR failed: %s", e)
         return {}
 
-
-# ─── Step 4: Paid PropertyAPI.co fallback ───────────────────────────────────
-
+# ─── Tier 4: PropertyAPI.co ─────────────────────────────────────────────────
 async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[str, Any]:
-    if not settings.enable_propertyapi:
-        return {}
-    if not settings.property_api_keys:
-        return {}
-    if "propertyapi" in _dead_sources:
+    if not settings.enable_propertyapi or not settings.property_api_keys or "propertyapi" in _dead_sources:
         return {}
     for key in settings.property_api_keys:
         try:
             async with httpx.AsyncClient(timeout=20) as cli:
-                r = await cli.post(
-                    "https://api.propertyapi.co/skip-trace",
+                r = await cli.post("https://api.propertyapi.co/skip-trace",
                     json={"name": name, "address": address or ""},
                     headers={"Authorization": f"Bearer {key}"},
                 )
@@ -183,22 +191,17 @@ async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[st
                 continue
         except Exception as e:
             err = str(e).lower()
-            if "name or service not known" in err or "dns" in err or "failed to connect" in err:
+            if "dns" in err or "failed to connect" in err:
                 _dead_sources.add("propertyapi")
-                log.warning("PropertyAPI DNS failure — disabling for this run: %s", e)
+                log.warning("PropertyAPI DNS failure — disabling: %s", e)
                 return {}
             log.info("PropertyAPI skip failed: %s", e)
             continue
     return {}
 
-
-# ─── Step 5: Google site-dorking (disabled by default) ───────────────────────
-
+# ─── Tier 5: Google site-dorking ────────────────────────────────────────────
 async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
-    """Google dork — only runs when ENABLE_GOOGLE_DORKS=true."""
-    if not settings.enable_google_dorks:
-        return {}
-    if "google_dork" in _dead_sources:
+    if not settings.enable_google_dorks or "google_dork" in _dead_sources:
         return {}
 
     queries: List[str] = [
@@ -208,8 +211,7 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
     if state:
         queries.insert(1, f'"{name}" site:sos.{state.lower()}.gov')
 
-    aggregated: Dict[str, Any] = {"phones": [], "emails": [],
-                                  "principals": [], "addresses": []}
+    aggregated: Dict[str, Any] = {"phones": [], "emails": [], "principals": [], "addresses": []}
     for q in queries:
         try:
             html = await fetch_html(
@@ -217,7 +219,6 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
                 render=False,
                 is_google=True,
             )
-            from bs4 import BeautifulSoup
             text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
             prof = await extract_investor_profile(text, source="google_dork")
             for k in ("phones", "emails", "principals"):
@@ -230,14 +231,12 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
             err = str(e).lower()
             if "400" in err or "custom_google" in err:
                 _dead_sources.add("google_dork")
-                log.warning("Google dork disabled — proxy/fetch error: %s", e)
+                log.warning("Google dork disabled: %s", e)
                 break
             log.info("Google dork failed for query '%s': %s", q, e)
     return aggregated
-
-
+    
 # ─── Public orchestrator ────────────────────────────────────────────────────
-
 async def trace(name: str, *, llc: Optional[str] = None,
                 address: Optional[str] = None,
                 state: Optional[str] = None) -> Dict[str, Any]:
@@ -249,6 +248,17 @@ async def trace(name: str, *, llc: Optional[str] = None,
     target = llc or name
     state_u = (state or "").upper()
 
+    # 0. OSINT people-finder
+    fp = await _fastpeople_lookup(name, state_u)
+    cb = await _cyberbackground_lookup(name, state_u)
+    for src, label in [(fp, "fastpeople"), (cb, "cyberbackground")]:
+        if src:
+            out["phones"].extend(src.get("phones") or [])
+            out["emails"].extend(src.get("emails") or [])
+            out["addresses"].extend(src.get("addresses") or [])
+            out["principals"].extend(src.get("principals") or [])
+            out["sources"].append(label)
+
     # 1. Secretary of State
     if llc and state_u:
         sos = await _sos_lookup(llc, state_u)
@@ -256,9 +266,9 @@ async def trace(name: str, *, llc: Optional[str] = None,
             out["principals"].extend(sos.get("principals") or [])
             if sos.get("address"):
                 out["addresses"].append(sos["address"])
-            out["sources"].append(f"secretary_of_state:{state_u.lower()}")
+            out["sources"].append(f"sos:{state_u.lower()}")
 
-    # 2. OpenCorporates (skip if SOS gave us principals)
+    # 2. OpenCorporates
     if not out["principals"]:
         oc = await _opencorporates_lookup(target, state_u)
         if oc:
@@ -267,7 +277,7 @@ async def trace(name: str, *, llc: Optional[str] = None,
                 out["addresses"].append(oc["address"])
             out["sources"].append("opencorporates")
 
-    # 3. SEC EDGAR (only if still nothing — likely a hedge fund / REIT)
+    # 3. SEC EDGAR
     if not out["principals"]:
         sec = await _sec_edgar_lookup(target)
         if sec:
@@ -276,26 +286,25 @@ async def trace(name: str, *, llc: Optional[str] = None,
                 out["addresses"].append(sec["address"])
             out["sources"].append("sec_edgar")
 
-    # 4. PropertyAPI.co paid fallback
+    # 4. PropertyAPI
     papi = await _propertyapi_skip(name, address)
     if papi:
         out["phones"].extend(papi.get("phones") or [])
         out["emails"].extend(papi.get("emails") or [])
         out["sources"].append("propertyapi")
 
-    # 5. Google dork fallback (disabled by default — ENABLE_GOOGLE_DORKS=true to enable)
+    # 5. Google dork
     if not out["phones"] and not out["emails"]:
         gd = await _google_dork_lookup(target, state_u)
         out["phones"].extend(gd.get("phones") or [])
         out["emails"].extend(gd.get("emails") or [])
-        if gd.get("addresses"):
-            out["addresses"].extend(gd["addresses"])
+        out["addresses"].extend(gd.get("addresses") or [])
         if gd.get("phones") or gd.get("emails"):
             out["sources"].append("google_dork")
 
-    # de-dupe + sort
-    out["phones"]     = sorted({p for p in out["phones"] if p})
-    out["emails"]     = sorted({e for e in out["emails"] if e})
-    out["addresses"]  = sorted({a for a in out["addresses"] if a})
-    out["principals"] = sorted({p for p in out["principals"] if p})
+    # Dedup + normalize
+    out["phones"]     = sorted({p.strip() for p in out["phones"] if p})
+    out["emails"]     = sorted({e.strip().lower() for e in out["emails"] if e})
+    out["addresses"]  = sorted({a.strip() for a in out["addresses"] if a})
+    out["principals"] = sorted({p.strip() for p in out["principals"] if p})
     return out

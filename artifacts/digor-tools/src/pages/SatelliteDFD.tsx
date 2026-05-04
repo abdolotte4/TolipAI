@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import {
   Satellite, Search, MapPin, Home, AlertTriangle, CheckCircle2,
-  TrendingUp, Calendar, DollarSign, RefreshCw, ExternalLink, Info,
+  TrendingUp, Calendar, DollarSign, RefreshCw, ExternalLink, Info, Camera,
 } from "lucide-react";
 
 const API_BASE = "/api/scraper-engine";
@@ -26,6 +26,7 @@ type DFDProperty = {
   latitude: number | null;
   longitude: number | null;
   satellite_url: string | null;
+  streetview_url: string | null;
   zillow_url: string | null;
   estimated_value: number | null;
   beds: number | null;
@@ -34,6 +35,7 @@ type DFDProperty = {
   year_built: number | null;
   source: string;
   signals: Record<string, any>;
+  yolo_signals?: Record<string, boolean>;
 };
 
 type ScanResult = {
@@ -76,9 +78,10 @@ function PropertyCard({ p }: { p: DFDProperty }) {
   const [expanded, setExpanded] = useState(false);
   const satelliteHref = p.latitude && p.longitude
     ? GOOGLE_MAPS_API_KEY
-      ? `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}&query_place_id=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
+      ? `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`
       : `https://maps.google.com/?q=${p.latitude},${p.longitude}&t=k`
     : null;
+
   return (
     <Card className="border-border bg-card hover:border-primary/40 transition-colors">
       <CardContent className="p-4">
@@ -98,6 +101,16 @@ function PropertyCard({ p }: { p: DFDProperty }) {
           <p className="text-xs text-muted-foreground mt-2 italic leading-relaxed">{p.rationale}</p>
         )}
 
+        {/* Satellite + Street View thumbnails */}
+        <div className="flex gap-2 mt-3">
+          {p.satellite_url && (
+            <img src={p.satellite_url} alt="Satellite view" className="w-1/2 h-32 object-cover rounded-md border" />
+          )}
+          {p.streetview_url && (
+            <img src={p.streetview_url} alt="Street view" className="w-1/2 h-32 object-cover rounded-md border" />
+          )}
+        </div>
+
         <div className="flex flex-wrap gap-3 mt-3 text-xs text-muted-foreground">
           {p.year_built && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Built {p.year_built}</span>}
           {p.estimated_value && <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />${Number(p.estimated_value).toLocaleString()}</span>}
@@ -116,7 +129,7 @@ function PropertyCard({ p }: { p: DFDProperty }) {
             <a href={satelliteHref}
               target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-[11px] text-primary hover:underline">
-              <Satellite className="w-3 h-3" />Satellite View
+              <Satellite className="w-3 h-3" />Google Maps
             </a>
           )}
           <button
@@ -134,6 +147,14 @@ function PropertyCard({ p }: { p: DFDProperty }) {
                 <div key={k} className="flex justify-between text-xs">
                   <span className="text-muted-foreground capitalize">{k.replace(/_/g, " ")}</span>
                   <span className="text-foreground font-mono">{String(v)}</span>
+                </div>
+              ) : null
+            ))}
+            {p.yolo_signals && Object.entries(p.yolo_signals).map(([k, v]) => (
+              v ? (
+                <div key={k} className="flex justify-between text-xs">
+                  <span className="text-muted-foreground capitalize">{k.replace(/_/g, " ")}</span>
+                  <Camera className="w-3 h-3 text-primary" />
                 </div>
               ) : null
             ))}
@@ -220,8 +241,8 @@ export default function SatelliteDFD() {
         <Info className="w-4 h-4 text-primary" />
         <AlertDescription className="text-xs text-muted-foreground">
           Scores are calculated from property age, days listed, FSBO status, price reductions, equity,
-          tax status and ownership duration. Add <code className="text-primary">GOOGLE_MAPS_API_KEY</code> to
-          unlock satellite imagery links. Higher score = more distressed.
+          tax status, ownership duration, plus YOLO visual detections. Add <code className="text-primary">GOOGLE_MAPS_API_KEY</code> to
+          unlock satellite and street view imagery. Higher score = more distressed.
         </AlertDescription>
       </Alert>
 

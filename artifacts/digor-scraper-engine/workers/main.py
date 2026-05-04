@@ -103,9 +103,12 @@ async def lifespan(app: FastAPI):
         on_exhaust=_on_retry_exhausted,
     )
 
-    log.info("Engine ready on port %s (LLM=%s, proxies=%s)",
-             os.getenv("PORT", str(settings.port)),
-             settings.has_llm(), bool(settings.proxy_url()))
+    log.info(
+        "Engine ready on port %s (LLM=%s, proxies_configured=%s)",
+        os.getenv("PORT", str(settings.port)),
+        settings.has_llm(),
+        bool(settings.proxy_url()),
+    )
     yield
     retry_queue.stop()
     await http_client.close_client()
@@ -133,12 +136,15 @@ class DistressedRequest(BaseModel):
     zip: str = ""
     county_key: str = ""
     state: str = ""
-    categories: List[str] = Field(default_factory=list,
+    categories: List[str] = Field(
+        default_factory=list,
         description="Subset of: county_clerk, public_trustee, probate_court, "
-                    "tax_assessor, government_reo, auction_aggregator. "
-                    "Empty = all categories.")
-    source_keys: List[str] = Field(default_factory=list,
-        description="Pin to specific sources by key (overrides categories).")
+                    "tax_assessor, government_reo, auction_aggregator. Empty = all categories."
+    )
+    source_keys: List[str] = Field(
+        default_factory=list,
+        description="Pin to specific sources by key (overrides categories)."
+    )
     campaign_id: Optional[int] = None
 
 
@@ -154,8 +160,13 @@ class SkipTraceRequest(BaseModel):
 def _new_job(job_type: str, params: Dict[str, Any]) -> str:
     jid = uuid.uuid4().hex[:12]
     _jobs[jid] = {
-        "id": jid, "type": job_type, "status": "queued", "progress": 0,
-        "params": params, "result": None, "error": None,
+        "id": jid,
+        "type": job_type,
+        "status": "queued",
+        "progress": 0,
+        "params": params,
+        "result": None,
+        "error": None,
     }
     return jid
 
@@ -165,7 +176,11 @@ async def _make_progress_cb(job_id: str):
         if job_id in _jobs:
             _jobs[job_id]["progress"] = pct
             _jobs[job_id]["message"] = message
-        await db.update_job(job_id, progress=pct, status="running")
+        try:
+            await db.update_job(job_id, progress=pct, status="running")
+        except Exception as e:
+            # Prevent noisy stack traces in logs
+            log.warning("Progress update failed for job %s: %s", job_id, str(e)[:120])
     return cb
 
 
@@ -175,125 +190,161 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             _jobs[job_id][k] = v
 
-
 # ─── Retry-queue standalone runners ─────────────────────────────────────────
 # Each runner receives (job_id, params) and runs the full job logic again.
 # They are called by the retry queue after the backoff period expires.
 
 async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    lead = await db.get_lead(params["lead_id"])
-    if not lead:
-        raise RuntimeError(f"Lead {params['lead_id']} not found — cannot retry")
-    _jobs.setdefault(job_id, {"id": job_id, "type": "cash_buyers",
-                               "status": "retrying", "progress": 0,
-                               "params": params, "result": None, "error": None})
-    _set_status(job_id, "retrying")
-    await db.update_job(job_id, status="running", progress=0)
-    cb = await _make_progress_cb(job_id)
-    results = await cash_buyers.find_cash_buyers(
-        lead, max_buyers=params.get("max_buyers", 25),
-        job_id=job_id, progress_cb=cb,
-    )
-    _set_status(job_id, "done", progress=100, result=results)
-    await db.update_job(job_id, status="done", progress=100,
-                        result_count=len(results), completed=True)
-    return {"count": len(results)}
+    try:
+        lead = await db.get_lead(params["lead_id"])
+        if not lead:
+            raise RuntimeError(f"Lead {params['lead_id']} not found — cannot retry")
+        _jobs.setdefault(job_id, {"id": job_id, "type": "cash_buyers",
+                                   "status": "retrying", "progress": 0,
+                                   "params": params, "result": None, "error": None})
+        _set_status(job_id, "retrying")
+        await db.update_job(job_id, status="running", progress=0)
+        cb = await _make_progress_cb(job_id)
+        results = await cash_buyers.find_cash_buyers(
+            lead, max_buyers=params.get("max_buyers", 25),
+            job_id=job_id, progress_cb=cb,
+        )
+        _set_status(job_id, "done", progress=100, result=results)
+        await db.update_job(job_id, status="done", progress=100,
+                            result_count=len(results), completed=True)
+        return {"count": len(results)}
+    except Exception as e:
+        log.error("cash_buyers job %s failed: %s", job_id, str(e)[:120])
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
+        return {"count": 0}
 
 
 async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    _jobs.setdefault(job_id, {"id": job_id, "type": "distressed",
-                               "status": "retrying", "progress": 0,
-                               "params": params, "result": None, "error": None})
-    _set_status(job_id, "retrying")
-    await db.update_job(job_id, status="running", progress=0)
-    cb = await _make_progress_cb(job_id)
-    listings = await distressed.find_distressed(
-        zip_code=params.get("zip", ""),
-        county_key=params.get("county_key", ""),
-        state=params.get("state", ""),
-        categories=params.get("categories"),
-        source_keys=params.get("source_keys"),
-        job_id=job_id,
-        campaign_id=params.get("campaign_id"),
-        progress_cb=cb,
-    )
-    _set_status(job_id, "done", progress=100, result=listings)
-    await db.update_job(job_id, status="done", progress=100,
-                        result_count=len(listings), completed=True)
-    return {"count": len(listings)}
+    try:
+        _jobs.setdefault(job_id, {"id": job_id, "type": "distressed",
+                                   "status": "retrying", "progress": 0,
+                                   "params": params, "result": None, "error": None})
+        _set_status(job_id, "retrying")
+        await db.update_job(job_id, status="running", progress=0)
+        cb = await _make_progress_cb(job_id)
+        listings = await distressed.find_distressed(
+            zip_code=params.get("zip", ""),
+            county_key=params.get("county_key", ""),
+            state=params.get("state", ""),
+            categories=params.get("categories"),
+            source_keys=params.get("source_keys"),
+            job_id=job_id,
+            campaign_id=params.get("campaign_id"),
+            progress_cb=cb,
+        )
+        _set_status(job_id, "done", progress=100, result=listings)
+        await db.update_job(job_id, status="done", progress=100,
+                            result_count=len(listings), completed=True)
+        return {"count": len(listings)}
+    except Exception as e:
+        log.error("distressed job %s failed: %s", job_id, str(e)[:120])
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
+        return {"count": 0}
 
 
 async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    _jobs.setdefault(job_id, {"id": job_id, "type": "propelio_cash_buyers",
-                               "status": "retrying", "progress": 0,
-                               "params": params, "result": None, "error": None})
-    _set_status(job_id, "retrying")
-    await db.update_job(job_id, status="running", progress=0)
-    cb = await _make_progress_cb(job_id)
-    result = await propelio_v2.cash_buyers_for_address(
-        params["address"],
-        distance_miles=params.get("distance_miles", 10),
-        active_within=params.get("active_within", "ANY_TIME"),
-        min_properties=params.get("min_properties", 3),
-        landlords=params.get("landlords", True),
-        flippers=params.get("flippers", True),
-        max_results=params.get("max_results", 500),
-        progress_cb=cb,
-    )
-    buyers = result.get("buyers") or []
-    if params.get("persist") and params.get("lead_id"):
-        for b in buyers:
-            try:
-                await db.insert_cash_buyer(params["lead_id"], job_id, b)
-            except Exception as e:
-                log.debug("persist buyer failed on retry: %s", e)
-    _set_status(job_id, "done", progress=100, result=result)
-    await db.update_job(job_id, status="done", progress=100,
-                        result_count=len(buyers), completed=True)
-    return {"count": len(buyers)}
+    try:
+        _jobs.setdefault(job_id, {"id": job_id, "type": "propelio_cash_buyers",
+                                   "status": "retrying", "progress": 0,
+                                   "params": params, "result": None, "error": None})
+        _set_status(job_id, "retrying")
+        await db.update_job(job_id, status="running", progress=0)
+        cb = await _make_progress_cb(job_id)
+        result = await propelio_v2.cash_buyers_for_address(
+            params["address"],
+            distance_miles=params.get("distance_miles", 10),
+            active_within=params.get("active_within", "ANY_TIME"),
+            min_properties=params.get("min_properties", 3),
+            landlords=params.get("landlords", True),
+            flippers=params.get("flippers", True),
+            max_results=params.get("max_results", 500),
+            progress_cb=cb,
+        )
+        buyers = result.get("buyers") or []
+        if params.get("persist") and params.get("lead_id"):
+            for b in buyers:
+                try:
+                    await db.insert_cash_buyer(params["lead_id"], job_id, b)
+                except Exception as e:
+                    log.debug("persist buyer failed on retry: %s", str(e)[:120])
+        _set_status(job_id, "done", progress=100, result=result)
+        await db.update_job(job_id, status="done", progress=100,
+                            result_count=len(buyers), completed=True)
+        return {"count": len(buyers)}
+    except Exception as e:
+        log.error("propelio_cash_buyers job %s failed: %s", job_id, str(e)[:120])
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
+        return {"count": 0}
 
 
 async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    _jobs.setdefault(job_id, {"id": job_id, "type": "propwire_cash_buyers",
-                               "status": "retrying", "progress": 0,
-                               "params": params, "result": None, "error": None})
-    _set_status(job_id, "retrying")
-    await db.update_job(job_id, status="running", progress=0)
-    cb = await _make_progress_cb(job_id)
-    buyers = await propwire.fetch_cash_buyers_nearby(
-        params["query"],
-        radius_miles=params.get("radius_miles", 1.0),
-        min_properties=params.get("min_properties", 3),
-        max_results=params.get("max_results", 200),
-        progress_cb=cb,
-    )
-    if params.get("persist") and params.get("lead_id"):
-        for b in buyers:
-            try:
-                await db.insert_cash_buyer(params["lead_id"], job_id, b)
-            except Exception as e:
-                log.debug("persist buyer failed on retry: %s", e)
-    result = {"count": len(buyers), "buyers": buyers}
-    _set_status(job_id, "done", progress=100, result=result)
-    await db.update_job(job_id, status="done", progress=100,
-                        result_count=len(buyers), completed=True)
-    return {"count": len(buyers)}
+    try:
+        _jobs.setdefault(job_id, {"id": job_id, "type": "propwire_cash_buyers",
+                                   "status": "retrying", "progress": 0,
+                                   "params": params, "result": None, "error": None})
+        _set_status(job_id, "retrying")
+        await db.update_job(job_id, status="running", progress=0)
+        cb = await _make_progress_cb(job_id)
+        buyers = await propwire.fetch_cash_buyers_nearby(
+            params["query"],
+            radius_miles=params.get("radius_miles", 1.0),
+            min_properties=params.get("min_properties", 3),
+            max_results=params.get("max_results", 200),
+            progress_cb=cb,
+        )
+        if params.get("persist") and params.get("lead_id"):
+            for b in buyers:
+                try:
+                    await db.insert_cash_buyer(params["lead_id"], job_id, b)
+                except Exception as e:
+                    log.debug("persist buyer failed on retry: %s", str(e)[:120])
+        result = {"count": len(buyers), "buyers": buyers}
+        _set_status(job_id, "done", progress=100, result=result)
+        await db.update_job(job_id, status="done", progress=100,
+                            result_count=len(buyers), completed=True)
+        return {"count": len(buyers)}
+    except Exception as e:
+        log.error("propwire_cash_buyers job %s failed: %s", job_id, str(e)[:120])
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
+        return {"count": 0}
 
 
 # ─── Retry-queue DB callbacks ────────────────────────────────────────────────
 
 async def _on_retry_success(job_id: str, result: Any) -> None:
     """Called by the retry queue when a retry succeeds."""
-    log.info("Job %s recovered via retry → result: %s", job_id, str(result)[:60])
+    try:
+        log.info("Job %s recovered via retry → result: %s", job_id, str(result)[:60])
+        _set_status(job_id, "done", result=result, progress=100)
+        await db.update_job(job_id, status="done", progress=100, completed=True)
+    except Exception as e:
+        log.error("Failed to mark job %s as success: %s", job_id, str(e)[:120])
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
 
 
 async def _on_retry_exhausted(job_id: str, error: str) -> None:
     """Called when all retry attempts are exhausted — mark job as permanently failed."""
-    log.error("Job %s permanently failed after %d retries: %s",
-              job_id, 3, error[:120])
-    _set_status(job_id, "failed", error=f"exhausted_retries: {error}")
-    await db.update_job(job_id, status="failed",
-                        error=f"exhausted_retries: {error[:200]}", completed=True)
+    try:
+        max_attempts = getattr(settings, "max_retry_attempts", 3)
+        log.error("Job %s permanently failed after %d retries: %s",
+                  job_id, max_attempts, error[:120])
+        _set_status(job_id, "failed", error=f"exhausted_retries: {error}")
+        await db.update_job(job_id, status="failed",
+                            error=f"exhausted_retries: {error[:200]}", completed=True)
+    except Exception as e:
+        log.error("Failed to mark job %s as exhausted: %s", job_id, str(e)[:120])
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -312,10 +363,14 @@ async def session_status(service: str) -> Dict[str, Any]:
     """Return whether a cached browser session exists for a service."""
     if service not in ("propelio", "propwire"):
         raise HTTPException(status_code=400, detail="Unknown service")
-    p = _state_path(service)
-    active = p.exists()
-    size = p.stat().st_size if active else 0
-    return {"service": service, "active": active, "state_file_bytes": size}
+    try:
+        p = _state_path(service)
+        active = p.exists()
+        size = p.stat().st_size if active else 0
+        return {"service": service, "active": active, "state_file_bytes": size}
+    except Exception as e:
+        log.error("Session status check failed for %s: %s", service, str(e)[:120])
+        raise HTTPException(status_code=500, detail="Session status check failed")
 
 
 @app.delete("/session/{service}")
@@ -323,25 +378,28 @@ async def invalidate_service_session(service: str) -> Dict[str, Any]:
     """Delete the cached session so the next job re-authenticates."""
     if service not in ("propelio", "propwire"):
         raise HTTPException(status_code=400, detail="Unknown service")
-    await _invalidate_session(service)
-    return {"service": service, "invalidated": True}
+    try:
+        await _invalidate_session(service)
+        return {"service": service, "invalidated": True}
+    except Exception as e:
+        log.error("Failed to invalidate session for %s: %s", service, str(e)[:120])
+        raise HTTPException(status_code=500, detail="Failed to invalidate session")
 
 
 @app.post("/session/propelio/test")
 async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
     """Test Propelio credentials by attempting a real login; returns success/error."""
     import os as _os
-    # Temporarily override env so the login fn uses the provided creds
     orig_email = _os.environ.get("PROPELIO_EMAIL")
     orig_pw    = _os.environ.get("PROPELIO_PASSWORD")
     _os.environ["PROPELIO_EMAIL"]    = req.email
     _os.environ["PROPELIO_PASSWORD"] = req.password
-    # Clear any stale session so a fresh login runs
     await _invalidate_session("propelio")
     try:
-        result = await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
+        await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
+        log.warning("Propelio login test failed: %s", str(e)[:120])
         return {"success": False, "error": str(e)[:300]}
     finally:
         if orig_email is not None:
@@ -352,6 +410,33 @@ async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
             _os.environ["PROPELIO_PASSWORD"] = orig_pw
         elif "PROPELIO_PASSWORD" in _os.environ:
             del _os.environ["PROPELIO_PASSWORD"]
+
+   # ─── Session login tests ─────────────────────────────────────────────────────
+
+@app.post("/session/propelio/test")
+async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
+    """Test Propelio credentials by attempting a real login; returns success/error."""
+    import os as _os
+    orig_email = _os.environ.get("PROPELIO_EMAIL")
+    orig_pw    = _os.environ.get("PROPELIO_PASSWORD")
+    _os.environ["PROPELIO_EMAIL"]    = req.email
+    _os.environ["PROPELIO_PASSWORD"] = req.password
+    await _invalidate_session("propelio")
+    try:
+        await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
+        return {"success": True, "detail": "Login OK"}
+    except Exception as e:
+        log.warning("Propelio login test failed: %s", str(e)[:120])
+        return {"success": False, "error": str(e)[:300]}
+    finally:
+        if orig_email is not None:
+            _os.environ["PROPELIO_EMAIL"] = orig_email
+        else:
+            _os.environ.pop("PROPELIO_EMAIL", None)
+        if orig_pw is not None:
+            _os.environ["PROPELIO_PASSWORD"] = orig_pw
+        else:
+            _os.environ.pop("PROPELIO_PASSWORD", None)
 
 
 @app.post("/session/propwire/test")
@@ -364,20 +449,23 @@ async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
     _os.environ["PROPWIRE_PASSWORD"] = req.password
     await _invalidate_session("propwire")
     try:
-        result = await propwire.fetch_property("123 Main St, Dallas, TX 75201")
+        await propwire.fetch_property("123 Main St, Dallas, TX 75201")
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
+        log.warning("Propwire login test failed: %s", str(e)[:120])
         return {"success": False, "error": str(e)[:300]}
     finally:
         if orig_email is not None:
             _os.environ["PROPWIRE_EMAIL"] = orig_email
-        elif "PROPWIRE_EMAIL" in _os.environ:
-            del _os.environ["PROPWIRE_EMAIL"]
+        else:
+            _os.environ.pop("PROPWIRE_EMAIL", None)
         if orig_pw is not None:
             _os.environ["PROPWIRE_PASSWORD"] = orig_pw
-        elif "PROPWIRE_PASSWORD" in _os.environ:
-            del _os.environ["PROPWIRE_PASSWORD"]
+        else:
+            _os.environ.pop("PROPWIRE_PASSWORD", None)
 
+
+# ─── Health check ───────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health() -> Dict[str, Any]:
@@ -414,12 +502,7 @@ async def health() -> Dict[str, Any]:
             return {"status": "timeout", "latency_ms": latency_ms, "error": "probe timed out (>8s)"}
         except Exception as e:
             latency_ms = int((time.monotonic() - t0) * 1000)
-            msg = str(e)
-            return {
-                "status": "error",
-                "latency_ms": latency_ms,
-                "error": msg[:120],
-            }
+            return {"status": "error", "latency_ms": latency_ms, "error": str(e)[:120]}
 
     async def _probe_db() -> Dict[str, Any]:
         t0 = time.monotonic()
@@ -489,13 +572,13 @@ async def health_keys() -> Dict[str, Any]:
         "scraperapi": {
             "status": "disabled",
             "reason": "permanently_removed_use_crawl4ai",
-            "keys_total": 0,
+            "keys_total": len(settings.scraperapi_keys),
             "keys_active": 0,
         },
         "scrapingbee": {
             "status": "disabled",
             "reason": "permanently_removed_use_crawl4ai",
-            "keys_total": 0,
+            "keys_total": len(settings.scrapingbee_keys),
             "keys_active": 0,
         },
         "llm": {
@@ -507,8 +590,9 @@ async def health_keys() -> Dict[str, Any]:
             "moonshot_configured": bool(settings.moonshot_api_key),
         },
         "proxy": {
-            "brightdata_configured": bool(settings.proxy_host and settings.proxy_user and settings.proxy_pass),
-            "proxy_host": settings.proxy_host or None,
+            "brightdata_configured": settings.brightdata_configured(),
+            "proxy_host": "brd.superproxy.io",
+            "proxy_port": 33335,
         },
         "attom": {
             "keys_total": len(settings.attom_keys) + len(settings.property_api_keys),
@@ -517,182 +601,195 @@ async def health_keys() -> Dict[str, Any]:
         },
     }
 
+           # ─── Session login tests ─────────────────────────────────────────────────────
 
-@app.get("/sources")
-async def list_sources(state: Optional[str] = None) -> Dict[str, Any]:
-    """All free public-record distressed sources, optionally filtered by state."""
-    sources = distressed.list_sources(state=state)
-    cats = distressed.list_categories()
-    return {"categories": cats, "sources": sources, "count": len(sources)}
+@app.post("/session/propelio/test")
+async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
+    """Test Propelio credentials by attempting a real login; returns success/error."""
+    import os as _os
+    orig_email = _os.environ.get("PROPELIO_EMAIL")
+    orig_pw    = _os.environ.get("PROPELIO_PASSWORD")
+    _os.environ["PROPELIO_EMAIL"]    = req.email
+    _os.environ["PROPELIO_PASSWORD"] = req.password
+    await _invalidate_session("propelio")
+    try:
+        await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
+        return {"success": True, "detail": "Login OK"}
+    except Exception as e:
+        log.warning("Propelio login test failed: %s", str(e)[:120])
+        return {"success": False, "error": str(e)[:300]}
+    finally:
+        if orig_email is not None:
+            _os.environ["PROPELIO_EMAIL"] = orig_email
+        else:
+            _os.environ.pop("PROPELIO_EMAIL", None)
+        if orig_pw is not None:
+            _os.environ["PROPELIO_PASSWORD"] = orig_pw
+        else:
+            _os.environ.pop("PROPELIO_PASSWORD", None)
 
 
-# ─── Comps (Propelio scrape) ────────────────────────────────────────────────
+@app.post("/session/propwire/test")
+async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
+    """Test Propwire credentials by attempting a real login; returns success/error."""
+    import os as _os
+    orig_email = _os.environ.get("PROPWIRE_EMAIL")
+    orig_pw    = _os.environ.get("PROPWIRE_PASSWORD")
+    _os.environ["PROPWIRE_EMAIL"]    = req.email
+    _os.environ["PROPWIRE_PASSWORD"] = req.password
+    await _invalidate_session("propwire")
+    try:
+        await propwire.fetch_property("123 Main St, Dallas, TX 75201")
+        return {"success": True, "detail": "Login OK"}
+    except Exception as e:
+        log.warning("Propwire login test failed: %s", str(e)[:120])
+        return {"success": False, "error": str(e)[:300]}
+    finally:
+        if orig_email is not None:
+            _os.environ["PROPWIRE_EMAIL"] = orig_email
+        else:
+            _os.environ.pop("PROPWIRE_EMAIL", None)
+        if orig_pw is not None:
+            _os.environ["PROPWIRE_PASSWORD"] = orig_pw
+        else:
+            _os.environ.pop("PROPWIRE_PASSWORD", None)
 
-class CompsRequest(BaseModel):
-    address: str
-    radius_miles: float = 0.5
-    max_results: int = 12
 
+# ─── Health check ───────────────────────────────────────────────────────────
 
-@app.post("/scrape/comps")
-async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
-    """Pull MLS-quality comps for an address.
+@app.get("/health")
+async def health() -> Dict[str, Any]:
+    """Deep health-check: probes DB, each LLM provider, and each scraper tier."""
+    import time
+    from .llm import _dead_providers, _rate_hits, _MAX_RATE_HITS
+    from .skip_trace import _dead_sources
 
-    Tries authenticated Propelio first (richer data), falls back to the
-    free public viewer if credentials aren't set or the auth flow fails.
-    """
-    if os.getenv("PROPELIO_EMAIL") and os.getenv("PROPELIO_PASSWORD"):
+    async def _probe_llm(name: str, client_fn, model: str) -> Dict[str, Any]:
+        if name in _dead_providers:
+            return {"status": "dead", "reason": "circuit_breaker_open"}
+        hits = _rate_hits.get(name, 0)
+        if hits >= _MAX_RATE_HITS:
+            return {"status": "rate_limited", "consecutive_hits": hits}
+        client = client_fn()
+        if client is None:
+            return {"status": "unconfigured", "reason": "no_api_key"}
+        t0 = time.monotonic()
         try:
-            return await propelio_v2.estimate_arv(req.address, radius_miles=req.radius_miles)
-        except Exception as e:  # noqa: BLE001
-            log.warning("propelio_v2 failed, falling back to public: %s", e)
-    return await propelio.estimate_arv(req.address, radius_miles=req.radius_miles)
-
-
-# ─── Propelio (authenticated) ───────────────────────────────────────────────
-
-
-class PropelioCashBuyersRequest(BaseModel):
-    address: str
-    distance_miles: int = 10
-    active_within: str = "ANY_TIME"  # ANY_TIME | LAST_6M | LAST_1Y | LAST_2Y
-    min_properties: int = 3
-    landlords: bool = True
-    flippers: bool = True
-    max_results: int = 500
-    lead_id: Optional[int] = None
-    campaign_id: Optional[int] = None
-    persist: bool = True
-
-
-@app.post("/scrape/propelio/cash-buyers")
-async def scrape_propelio_cash_buyers(req: PropelioCashBuyersRequest) -> Dict[str, Any]:
-    """Async: scrape Propelio's cash-buyer panel for an address."""
-    job_id = _new_job("propelio_cash_buyers", req.model_dump())
-    await db.create_job(job_id, "propelio_cash_buyers", req.model_dump(),
-                        lead_id=req.lead_id, campaign_id=req.campaign_id)
-
-    async def runner() -> None:
-        try:
-            cb = await _make_progress_cb(job_id)
-            result = await propelio_v2.cash_buyers_for_address(
-                req.address,
-                distance_miles=req.distance_miles,
-                active_within=req.active_within,
-                min_properties=req.min_properties,
-                landlords=req.landlords,
-                flippers=req.flippers,
-                max_results=req.max_results,
-                progress_cb=cb,
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "reply with the single word OK"}],
+                    max_tokens=5,
+                    temperature=0,
+                ),
+                timeout=8.0,
             )
-            buyers = result.get("buyers") or []
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            content = (resp.choices[0].message.content or "").strip()
+            return {"status": "ok", "latency_ms": latency_ms, "response": content[:20]}
+        except asyncio.TimeoutError:
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            return {"status": "timeout", "latency_ms": latency_ms, "error": "probe timed out (>8s)"}
+        except Exception as e:
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            return {"status": "error", "latency_ms": latency_ms, "error": str(e)[:120]}
 
-            if req.persist and req.lead_id:
-                for b in buyers:
-                    try:
-                        await db.insert_cash_buyer(req.lead_id, job_id, b)
-                    except Exception as e:  # noqa: BLE001
-                        log.debug("persist buyer failed: %s", e)
-
-            _set_status(job_id, "done", progress=100, result=result)
-            await db.update_job(job_id, status="done", progress=100,
-                                result_count=len(buyers), completed=True)
-        except Exception as e:  # noqa: BLE001
-            err = str(e)
-            if is_transient(e) and retry_queue.enqueue(job_id, "propelio_cash_buyers",
-                                                        req.model_dump(), last_error=err):
-                log.warning("propelio_cash_buyers job %s failed (transient) — queued for retry: %s", job_id, err[:80])
-                _set_status(job_id, "retry_pending", error=err)
-                await db.update_job(job_id, status="retry_pending", error=err)
-            else:
-                log.exception("propelio cash-buyers job %s failed (fatal)", job_id)
-                _set_status(job_id, "failed", error=err)
-                await db.update_job(job_id, status="failed", error=err, completed=True)
-
-    asyncio.create_task(runner())
-    return {"job_id": job_id, "status": "queued", "address": req.address}
-
-
-# ─── Propwire (authenticated) ───────────────────────────────────────────────
-
-
-class PropwireQueryRequest(BaseModel):
-    query: str  # address or full propwire URL
-
-
-class PropwireCashBuyersRequest(BaseModel):
-    query: str
-    radius_miles: float = 1.0
-    min_properties: int = 3
-    max_results: int = 200
-    lead_id: Optional[int] = None
-    campaign_id: Optional[int] = None
-    persist: bool = True
-
-
-@app.post("/scrape/propwire/property")
-async def scrape_propwire_property(req: PropwireQueryRequest) -> Dict[str, Any]:
-    return await propwire.fetch_property(req.query)
-
-
-@app.post("/scrape/propwire/comps")
-async def scrape_propwire_comps(req: PropwireQueryRequest) -> Dict[str, Any]:
-    rows = await propwire.fetch_comps(req.query)
-    return {"query": req.query, "count": len(rows), "comps": rows}
-
-
-@app.post("/scrape/propwire/history")
-async def scrape_propwire_history(req: PropwireQueryRequest) -> Dict[str, Any]:
-    return await propwire.fetch_history(req.query)
-
-
-@app.post("/scrape/propwire/tax")
-async def scrape_propwire_tax(req: PropwireQueryRequest) -> Dict[str, Any]:
-    """Scrape tax assessment + tax history from the Propwire Property tab."""
-    return await propwire.fetch_tax(req.query)
-
-
-@app.post("/scrape/propwire/cash-buyers-nearby")
-async def scrape_propwire_cash_buyers(req: PropwireCashBuyersRequest) -> Dict[str, Any]:
-    job_id = _new_job("propwire_cash_buyers", req.model_dump())
-    await db.create_job(job_id, "propwire_cash_buyers", req.model_dump(),
-                        lead_id=req.lead_id, campaign_id=req.campaign_id)
-
-    async def runner() -> None:
+    async def _probe_db() -> Dict[str, Any]:
+        t0 = time.monotonic()
         try:
-            cb = await _make_progress_cb(job_id)
-            buyers = await propwire.fetch_cash_buyers_nearby(
-                req.query,
-                radius_miles=req.radius_miles,
-                min_properties=req.min_properties,
-                max_results=req.max_results,
-                progress_cb=cb,
-            )
-            if req.persist and req.lead_id:
-                for b in buyers:
-                    try:
-                        await db.insert_cash_buyer(req.lead_id, job_id, b)
-                    except Exception as e:  # noqa: BLE001
-                        log.debug("persist buyer failed: %s", e)
+            pool = await db.init_pool()
+            if pool is None:
+                return {"status": "unconfigured", "reason": "no_DATABASE_URL"}
+            async with pool.acquire() as c:
+                await c.fetchval("SELECT 1")
+            return {"status": "ok", "latency_ms": int((time.monotonic() - t0) * 1000)}
+        except Exception as e:
+            return {"status": "error", "error": str(e)[:120]}
 
-            _set_status(job_id, "done", progress=100,
-                        result={"count": len(buyers), "buyers": buyers})
-            await db.update_job(job_id, status="done", progress=100,
-                                result_count=len(buyers), completed=True)
-        except Exception as e:  # noqa: BLE001
-            err = str(e)
-            if is_transient(e) and retry_queue.enqueue(job_id, "propwire_cash_buyers",
-                                                        req.model_dump(), last_error=err):
-                log.warning("propwire_cash_buyers job %s failed (transient) — queued for retry: %s", job_id, err[:80])
-                _set_status(job_id, "retry_pending", error=err)
-                await db.update_job(job_id, status="retry_pending", error=err)
-            else:
-                log.exception("propwire cash-buyers job %s failed (fatal)", job_id)
-                _set_status(job_id, "failed", error=err)
-                await db.update_job(job_id, status="failed", error=err, completed=True)
+    from .llm import _groq, _cerebras, _nvidia, _openrouter, _moonshot
 
-    asyncio.create_task(runner())
-    return {"job_id": job_id, "status": "queued", "query": req.query}
+    (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon,
+     db_result) = await asyncio.gather(
+        _probe_llm("groq",       _groq,       settings.groq_model),
+        _probe_llm("cerebras",   _cerebras,   settings.cerebras_model),
+        _probe_llm("nvidia",     _nvidia,     settings.nvidia_model),
+        _probe_llm("openrouter", _openrouter, settings.openrouter_model),
+        _probe_llm("moonshot",   _moonshot,   settings.moonshot_model),
+        _probe_db(),
+    )
+    sapi = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
+    sbee = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
+
+    llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon)
+    llm_ok = any(r["status"] == "ok" for r in llm_results)
+    db_ok  = db_result.get("status") == "ok"
+    overall = "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
+
+    return {
+        "status": overall,
+        "version": "0.1.0",
+        "llm": {
+            "groq":       llm_groq,
+            "cerebras":   llm_cerebras,
+            "nvidia":     llm_nvidia,
+            "openrouter": llm_openrouter,
+            "moonshot":   llm_moon,
+            "any_ok":     llm_ok,
+        },
+        "database": db_result,
+        "scrapers": {
+            "scraperapi":  sapi,
+            "scrapingbee": sbee,
+            "residential_proxy": bool(settings.proxy_url()),
+            "google_dorks_enabled": settings.enable_google_dorks,
+        },
+        "skip_trace": {
+            "opencorporates_enabled": settings.enable_opencorporates,
+            "propertyapi_enabled":    settings.enable_propertyapi,
+            "dead_sources": sorted(_dead_sources),
+        },
+        "distressed_sources": {
+            "total": len(distressed.list_sources()),
+            "categories": len(distressed.list_categories()),
+        },
+    }
+
+
+@app.get("/health/keys")
+async def health_keys() -> Dict[str, Any]:
+    """Per-key status for all scraping providers — shows active vs exhausted keys."""
+    return {
+        "scraperapi": {
+            "status": "disabled",
+            "reason": "permanently_removed_use_crawl4ai",
+            "keys_total": len(settings.scraperapi_keys),
+            "keys_active": 0,
+        },
+        "scrapingbee": {
+            "status": "disabled",
+            "reason": "permanently_removed_use_crawl4ai",
+            "keys_total": len(settings.scrapingbee_keys),
+            "keys_active": 0,
+        },
+        "llm": {
+            "groq_configured": bool(settings.groq_api_key),
+            "cerebras_configured": bool(settings.cerebras_api_key),
+            "together_configured": bool(settings.together_api_key),
+            "nvidia_configured": bool(settings.nvidia_api_key),
+            "openrouter_configured": bool(settings.openrouter_api_key),
+            "moonshot_configured": bool(settings.moonshot_api_key),
+        },
+        "proxy": {
+            "brightdata_configured": settings.brightdata_configured(),
+            "proxy_host": "brd.superproxy.io",
+            "proxy_port": 33335,
+        },
+        "attom": {
+            "keys_total": len(settings.attom_keys) + len(settings.property_api_keys),
+            "attom_keys": len(settings.attom_keys),
+            "property_api_keys": len(settings.property_api_keys),
+        },
+    }
 
 
 # ─── AI Research ────────────────────────────────────────────────────────────
@@ -787,7 +884,7 @@ async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
     """SkyDrive-style AI distress scan for an area.
 
     Returns properties ranked by distress score (0-100) with coordinates,
-    reasoning, and optional satellite imagery URL (when GOOGLE_MAPS_API_KEY set).
+    reasoning, and optional satellite + street view imagery URLs (when GOOGLE_MAPS_API_KEY set).
     """
     if not (req.zip or (req.city and req.state)):
         raise HTTPException(status_code=400, detail="Provide zip or city+state")
@@ -800,9 +897,11 @@ async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
             max_results=req.max_results,
             use_ai_scoring=req.use_ai_scoring,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ─── Distressed scraping jobs ────────────────────────────────────────────────
 
 @app.post("/scrape/distressed")
 async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
@@ -824,15 +923,15 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
             _set_status(job_id, "done", progress=100, result=listings)
             await db.update_job(job_id, status="done", progress=100,
                                 result_count=len(listings), completed=True)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             err = str(e)
             if is_transient(e) and retry_queue.enqueue(job_id, "distressed",
                                                         req.model_dump(), last_error=err):
-                log.warning("distressed job %s failed (transient) — queued for retry: %s", job_id, err[:80])
+                log.warning("Distressed job %s transient failure — queued for retry: %s", job_id, err[:80])
                 _set_status(job_id, "retry_pending", error=err)
                 await db.update_job(job_id, status="retry_pending", error=err)
             else:
-                log.exception("distressed job %s failed (fatal)", job_id)
+                log.exception("Distressed job %s failed (fatal)", job_id)
                 _set_status(job_id, "failed", error=err)
                 await db.update_job(job_id, status="failed", error=err, completed=True)
 
@@ -840,33 +939,35 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
     return {"job_id": job_id, "status": "queued"}
 
 
+# ─── Skip-trace ──────────────────────────────────────────────────────────────
+
 @app.post("/scrape/skip-trace")
 async def scrape_skip_trace(req: SkipTraceRequest) -> Dict[str, Any]:
-    """Synchronous — small + fast."""
+    """Synchronous skip-trace — small + fast."""
     try:
         return await skip_trace.trace(
             req.name, llc=req.llc, address=req.address, state=req.state,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ─── Jobs + retries ─────────────────────────────────────────────────────────
 
 @app.get("/jobs/retries")
 async def list_retries_early() -> Dict[str, Any]:
     """Return the current in-memory retry queue (survives only while the process is up)."""
-    pending = retry_queue.pending()
     return {
         "queue_size": retry_queue.size(),
         "poll_interval_seconds": 30,
         "max_attempts": 3,
         "backoff_seconds": [60, 300, 900],
-        "pending": pending,
+        "pending": retry_queue.pending(),
     }
-
 
 @app.get("/jobs/{job_id}")
 async def get_job(job_id: str) -> Dict[str, Any]:
-    # Prefer in-memory state (full results), fall back to DB
+    """Return job details, preferring in-memory state over DB."""
     if job_id in _jobs:
         return _jobs[job_id]
     row = await db.get_job(job_id)
@@ -874,29 +975,13 @@ async def get_job(job_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Job not found")
     return row
 
-
-@app.get("/leads/{lead_id}/buyers")
-async def list_buyers(lead_id: int, limit: int = 100) -> Dict[str, Any]:
-    rows = await db.list_cash_buyers_for_lead(lead_id, limit=limit)
-    return {"lead_id": lead_id, "count": len(rows), "buyers": rows}
-
-
-@app.get("/distressed/{job_id}/listings")
-async def list_distressed(job_id: str, limit: int = 500) -> Dict[str, Any]:
-    rows = await db.list_distressed_for_job(job_id, limit=limit)
-    return {"job_id": job_id, "count": len(rows), "listings": rows}
-
-
 @app.post("/jobs/{job_id}/retry")
 async def manual_retry(job_id: str) -> Dict[str, Any]:
-    """Force-enqueue a job for immediate retry regardless of its current status.
-
-    Useful after fixing a config issue (e.g. adding a new API key) when you
-    want to retry a permanently-failed job without waiting for the backoff.
-    """
+    """Force-enqueue a job for immediate retry regardless of its current status."""
     row = _jobs.get(job_id) or await db.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
+
     job_type = row.get("type") or row.get("job_type")
     params   = row.get("params") or {}
     if isinstance(params, str):
@@ -905,78 +990,87 @@ async def manual_retry(job_id: str) -> Dict[str, Any]:
             params = _json.loads(params)
         except Exception:
             params = {}
+
     if job_type not in ("cash_buyers", "distressed",
                         "propelio_cash_buyers", "propwire_cash_buyers"):
         raise HTTPException(status_code=400,
                             detail=f"Manual retry not supported for job_type={job_type}")
+
     retry_queue.enqueue(job_id, job_type, params, attempt=0,
                         last_error="manual_retry_requested")
     _set_status(job_id, "retry_pending")
     await db.update_job(job_id, status="retry_pending",
                         error="manual_retry_requested")
+
     return {"job_id": job_id, "status": "retry_pending",
             "message": "Job re-queued — will execute within 30 seconds"}
+
+
+# ─── Buyers + distressed listings ────────────────────────────────────────────
+
+@app.get("/leads/{lead_id}/buyers")
+async def list_buyers(lead_id: int, limit: int = 100) -> Dict[str, Any]:
+    rows = await db.list_cash_buyers_for_lead(lead_id, limit=limit)
+    return {"lead_id": lead_id, "count": len(rows), "buyers": rows}
+
+@app.get("/distressed/{job_id}/listings")
+async def list_distressed(job_id: str, limit: int = 500) -> Dict[str, Any]:
+    rows = await db.list_distressed_for_job(job_id, limit=limit)
+    return {"job_id": job_id, "count": len(rows), "listings": rows}
 
 
 # ─── Chained Foreclosure Lead-Gen workflow ───────────────────────────────────
 
 class ForeclosureLeadGenRequest(BaseModel):
-    city:           str   = Field(..., description="Target city, e.g. 'Orlando'")
-    state:          str   = Field(..., description="Two-letter state code, e.g. 'FL'")
-    listing_type:   str   = Field("for_sale", description="'for_sale' | 'sold' | 'pending'")
-    site:           str   = Field("zillow",   description="'zillow' | 'realtor.com' | 'redfin' | 'all'")
-    limit:          int   = Field(5, ge=1, le=20)
-    do_skip_trace:  bool  = Field(True,  description="Run free OSINT skip trace per property")
-    do_dnc_check:   bool  = Field(True,  description="Run Twilio Lookup for DNC/carrier flags")
-    save_to_crm:    bool  = Field(False, description="Persist results to cash_buyer_matches table")
-    campaign_id:    Optional[int] = None
+    city: str   = Field(..., description="Target city, e.g. 'Orlando'")
+    state: str  = Field(..., description="Two-letter state code, e.g. 'FL'")
+    listing_type: str = Field("for_sale", description="'for_sale' | 'sold' | 'pending'")
+    site: str   = Field("zillow", description="'zillow' | 'realtor.com' | 'redfin' | 'all'")
+    limit: int  = Field(5, ge=1, le=20)
+    do_skip_trace: bool = Field(True, description="Run free OSINT skip trace per property")
+    do_dnc_check: bool  = Field(True, description="Run Twilio Lookup for DNC/carrier flags")
+    save_to_crm: bool   = Field(False, description="Persist results to cash_buyer_matches table")
+    campaign_id: Optional[int] = None
 
 
 async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None:
     """Full chained pipeline: scrape → equity → skip-trace → DNC → report → (optional) CRM sync."""
     cb = await _make_progress_cb(job_id)
 
-    city          = params["city"]
-    state         = params["state"]
-    listing_type  = params.get("listing_type", "for_sale")
-    site          = params.get("site", "zillow")
-    limit         = int(params.get("limit", 5))
+    city, state = params["city"], params["state"]
+    listing_type = params.get("listing_type", "for_sale")
+    site = params.get("site", "zillow")
+    limit = int(params.get("limit", 5))
     do_skip_trace = params.get("do_skip_trace", True)
-    do_dnc_check  = params.get("do_dnc_check", True)
-    save_to_crm   = params.get("save_to_crm", False)
-    campaign_id   = params.get("campaign_id")
+    do_dnc_check = params.get("do_dnc_check", True)
+    save_to_crm = params.get("save_to_crm", False)
+    campaign_id = params.get("campaign_id")
 
     try:
-        # ── Step 1: Scrape listings via HomeHarvest ──────────────────────────
+        # Step 1: Scrape listings
         await cb(5, f"Scraping {listing_type} listings in {city}, {state}…")
         if site == "all":
-            listings = await homeharvest_scraper.scrape_multi_site(
-                city, state, listing_type=listing_type, limit_per_site=limit,
-            )
+            listings = await homeharvest_scraper.scrape_multi_site(city, state, listing_type=listing_type, limit_per_site=limit)
         else:
-            listings = await homeharvest_scraper.scrape_foreclosures(
-                city, state, listing_type=listing_type, site=site, limit=limit,
-            )
+            listings = await homeharvest_scraper.scrape_foreclosures(city, state, listing_type=listing_type, site=site, limit=limit)
 
         if not listings:
-            _set_status(job_id, "done", progress=100,
-                        result={"count": 0, "listings": [], "markdown_table": "_No listings found._"})
+            summary = {"count": 0, "listings": [], "markdown_table": "_No listings found._"}
+            _set_status(job_id, "done", progress=100, result=summary)
             await db.update_job(job_id, status="done", progress=100, result_count=0, completed=True)
             return
 
         await cb(25, f"Found {len(listings)} listings — estimating equity…")
 
-        # ── Step 2: Estimate equity for each property ────────────────────────
-        enriched: List[Dict[str, Any]] = []
+        # Step 2: Estimate equity
+        enriched = []
         for l in listings[:limit]:
             est_value = l.get("estimated_value") or l.get("list_price") or 0
-            # Simple equity heuristic: estimated_value * 0.80 (assumes ~80% LTV)
-            # A real ARV calc needs comps; this is a directional filter only.
             estimated_equity = round(float(est_value) * 0.80) if est_value else None
             enriched.append({**l, "estimated_equity": estimated_equity})
 
-        # ── Step 3: Free OSINT skip trace per property ────────────────────────
-        results: List[Dict[str, Any]] = []
+        # Step 3: Skip-trace + DNC
+        results = []
         skip_step = 50 // max(len(enriched), 1)
         for i, prop in enumerate(enriched):
             pct = 30 + i * skip_step
@@ -987,26 +1081,21 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                 try:
                     trace = await osint_skip_trace.trace_by_address(
                         street, prop.get("city", city), prop.get("state", state),
-                        owner_name=prop.get("owner_name"),
-                        do_dnc_check=do_dnc_check,
+                        owner_name=prop.get("owner_name"), do_dnc_check=do_dnc_check,
                     )
                     prop = {**prop, **trace}
                 except Exception as e:
-                    log.warning("OSINT skip-trace failed for %s: %s", street, e)
-                    prop = {**prop, "phones": [], "emails": [], "verified_mobile_count": 0,
-                            "verified_email_count": 0}
+                    log.warning("Skip-trace failed for %s: %s", street, e)
+                    prop = {**prop, "phones": [], "emails": [], "verified_mobile_count": 0, "verified_email_count": 0}
             else:
-                prop = {**prop, "phones": [], "emails": [], "verified_mobile_count": 0,
-                        "verified_email_count": 0}
+                prop = {**prop, "phones": [], "emails": [], "verified_mobile_count": 0, "verified_email_count": 0}
 
             results.append(prop)
 
         await cb(85, "Generating report…")
-
-        # ── Step 4: Format markdown table ─────────────────────────────────────
         markdown_table = osint_skip_trace.format_markdown_table(results)
 
-        # ── Step 5: Optionally save to CRM cash_buyer_matches ─────────────────
+        # Step 4: Optional CRM sync
         saved_count = 0
         if save_to_crm and results:
             await cb(90, "Syncing to CRM Cash Buyers tab…")
@@ -1047,18 +1136,10 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                     log.warning("CRM save failed for %s: %s", r.get("address"), e)
 
         await cb(100, "Done")
-
-        summary = {
-            "count":          len(results),
-            "saved_to_crm":   saved_count,
-            "listings":       results,
-            "markdown_table": markdown_table,
-            "city":           city,
-            "state":          state,
-        }
+        summary = {"count": len(results), "saved_to_crm": saved_count, "listings": results,
+                   "markdown_table": markdown_table, "city": city, "state": state}
         _set_status(job_id, "done", progress=100, result=summary)
-        await db.update_job(job_id, status="done", progress=100,
-                            result_count=len(results), completed=True)
+        await db.update_job(job_id, status="done", progress=100, result_count=len(results), completed=True)
 
     except Exception as e:
         log.exception("Foreclosure lead-gen job %s failed: %s", job_id, e)
@@ -1068,24 +1149,10 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
 
 @app.post("/lead-gen/foreclosure")
 async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
-    """
-    Chained foreclosure lead-gen workflow:
-      1. HomeHarvest → fetch listings (Zillow / Realtor.com / Redfin, no API key)
-      2. Equity estimate per property (list_price × 0.80 heuristic)
-      3. Free OSINT skip trace per address (TruePeopleSearch, FastPeopleSearch, CyberBgChecks)
-      4. Twilio Lookup DNC / carrier-type flag (if Twilio env vars configured)
-      5. Markdown table output
-      6. Optional sync to CRM cash_buyer_matches table
-
-    Returns immediately with a job_id — poll GET /jobs/{job_id} for progress + results.
-    The final result contains `listings` (JSON) and `markdown_table` (Markdown string).
-    """
+    """Start a foreclosure lead-gen job. Returns immediately with job_id; poll /jobs/{job_id} for progress + results."""
     params = req.model_dump()
     job_id = _new_job("foreclosure_lead_gen", params)
-    await db.create_job(
-        job_id, "foreclosure_lead_gen", params,
-        campaign_id=req.campaign_id,
-    )
+    await db.create_job(job_id, "foreclosure_lead_gen", params, campaign_id=req.campaign_id)
     asyncio.create_task(_run_foreclosure_lead_gen(job_id, params))
     return {
         "job_id": job_id,
@@ -1097,34 +1164,9 @@ async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]
 
 @app.get("/lead-gen/foreclosure/result/{job_id}")
 async def lead_gen_foreclosure_result(job_id: str) -> Dict[str, Any]:
-    """
-    Convenience endpoint — returns the completed job result including
-    both the structured `listings` array and the `markdown_table` string.
-    Useful when you want to download the leads_with_contacts.md report.
-    """
+    """Return the completed foreclosure job result including listings + markdown_table."""
     job = _jobs.get(job_id) or await db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.get("status") != "done":
-        return {"job_id": job_id, "status": job.get("status"), "progress": job.get("progress", 0)}
-    result = job.get("result") or {}
-    return {
-        "job_id":         job_id,
-        "status":         "done",
-        "count":          result.get("count", 0),
-        "saved_to_crm":   result.get("saved_to_crm", 0),
-        "city":           result.get("city"),
-        "state":          result.get("state"),
-        "markdown_table": result.get("markdown_table", ""),
-        "listings":       result.get("listings", []),
-    }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "workers.main:app",
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", "8765")),
-        log_level=settings.log_level,
-    )
+        return {"job_id": job_id, "status": job.get("status"), "progress": job.get("
