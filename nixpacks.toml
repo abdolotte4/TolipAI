@@ -1,9 +1,0 @@
-# Root nixpacks config — Node.js CRM API server (Replit deployment).
-# The Python scraper engine has its own nixpacks.toml inside
-# artifacts/digor-scraper-engine/ and is deployed separately to Railway.
-
-[phases.build]
-cmds = ["node artifacts/api-server/build.mjs"]
-
-[start]
-cmd = "node --enable-source-maps artifacts/api-server/dist/index.mjs"
