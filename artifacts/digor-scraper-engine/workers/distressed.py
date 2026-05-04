@@ -10,8 +10,8 @@ Replaces the paid ATTOM/PropertyAPI "Distressed Lead Finder" by scraping
   5. Government REO Portals     — HUD / Fannie / Freddie / VA / USDA
   6. Auction aggregators        — Auction.com, Hubzu, Xome (+Zillow FSBO)
 
-Each source is fetched through the tiered http_client (ScraperAPI →
-ScrapingBee → direct/proxy), then Kimi K2 extracts structured rows from
+Each source is fetched through the tiered http_client (direct/residential-proxy →
+Crawl4AI JS rendering fallback), then the LLM extracts structured rows from
 the markdown.  Results are de-duped, geo-tagged, and persisted.
 """
 from __future__ import annotations

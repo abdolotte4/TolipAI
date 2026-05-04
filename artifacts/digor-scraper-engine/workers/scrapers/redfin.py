@@ -26,7 +26,7 @@ async def _resolve_region(zip_code: Optional[str] = None,
     url = f"https://www.redfin.com/stingray/do/location-autocomplete?location={q}&v=2"
     for attempt in range(retries):
         try:
-            text = await fetch_html(url, render=False, headers={"User-Agent": "Mozilla/5.0"})
+            text = await fetch_html(url, render=False)
             payload = text.split("&&", 1)[-1]
             data = _json.loads(payload)
             sections = data.get("payload", {}).get("sections") or []
@@ -58,7 +58,7 @@ async def _gis_csv(region_id: str, region_type: int, *,
         f"&sf={sf}&status=9{sold_within}&uipt=1,2,3,4,5,6,7,8&v=8"
     )
     try:
-        text = await fetch_html(url, render=False, headers={"User-Agent": "Mozilla/5.0"})
+        text = await fetch_html(url, render=False)
     except Exception as e:
         log.error("Redfin gis-csv fetch failed: %s", str(e)[:120])
         return []
