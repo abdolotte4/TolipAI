@@ -168,5 +168,61 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
     for p in listings:
         try:
             year_built = int(p.get("year_built") or 0) or None
-        except: year_built = None
-        dom_raw =
+        except:
+            year_built = None
+
+        dom_raw = p.get("days_on_market") or p.get("days") or 0
+        try:
+            days_on_market: Optional[int] = int(dom_raw) or None
+        except:
+            days_on_market = None
+
+        signals: Dict[str, Any] = {
+            "year_built":       year_built,
+            "days_on_market":   days_on_market,
+            "price_reduction":  bool(p.get("price_reduction") or p.get("price_reduced")),
+            "is_fsbo":          bool(p.get("is_fsbo")),
+            "vacant":           bool(p.get("vacant") or p.get("vacancy")),
+            "equity_pct":       p.get("equity_pct"),
+            "tax_delinquent":   bool(p.get("tax_delinquent")),
+            "ownership_years":  p.get("ownership_years"),
+        }
+        base_score = _compute_score(signals)
+        if base_score < min_score:
+            continue
+
+        if use_ai_scoring:
+            async with _get_ai_sem():
+                scored = await _ai_distress_score(
+                    p.get("address", ""), signals, base_score
+                )
+        else:
+            scored = {
+                "score": base_score,
+                "rationale": "",
+                "category": _category(base_score),
+            }
+
+        if scored["score"] < min_score:
+            continue
+
+        candidates.append({
+            **p,
+            "distress_score":    scored["score"],
+            "distress_category": scored["category"],
+            "distress_rationale": scored["rationale"],
+            "signals": signals,
+        })
+
+        if len(candidates) >= max_results:
+            break
+
+    candidates.sort(key=lambda x: x.get("distress_score", 0), reverse=True)
+    return {
+        "zip":           zip_code,
+        "city":          city,
+        "state":         state,
+        "total_scanned": len(listings),
+        "results":       candidates[:max_results],
+        "count":         len(candidates[:max_results]),
+    }
