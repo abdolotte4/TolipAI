@@ -1,0 +1,24 @@
+fastapi>=0.115
+uvicorn[standard]>=0.29
+httpx>=0.28
+asyncpg>=0.30
+pydantic>=2.7
+python-dotenv==1.0.1
+openai>=1.32
+beautifulsoup4>=4.12.3
+lxml>=5.3.1,<6
+usaddress>=0.5.10
+pdfplumber>=0.11.4
+pymupdf>=1.24.2
+tenacity>=8.3
+playwright>=1.46
+crawl4ai>=0.8.6
+ultralytics==8.2.15
+torch==2.2.2+cpu
+torchvision==0.17.2+cpu
+pillow>=10.0
+pytesseract>=0.3.10
+pdf2image>=1.17
+# ── Free open-source lead-gen stack ──────────────────────────────────────────
+homeharvest>=0.3.7
+pandas>=2.2
