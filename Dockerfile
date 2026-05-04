@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
-# Install system dependencies including Playwright/Chromium libs and Tesseract OCR
+# ─── System dependencies ──────────────────────────────────────────────
+# Includes Playwright/Chromium libs and Tesseract OCR
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates curl \
     libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
@@ -13,17 +14,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# ─── Python dependencies ──────────────────────────────────────────────
 COPY requirements.railway.txt .
-RUN pip install --no-cache-dir -r requirements.railway.txt
+RUN pip install --no-cache-dir -r requirements.railway.txt \
+    && rm -rf /root/.cache/pip /root/.cache/ms-playwright
 
-# Install Playwright Chromium with dependencies
-RUN playwright install chromium --with-deps 2>/dev/null || \
-    python -m playwright install chromium 2>/dev/null || true
+# ─── Playwright Chromium (headless shell) ─────────────────────────────
+RUN playwright install --with-deps chromium-headless-shell
 
+# ─── Application code ─────────────────────────────────────────────────
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 CMD ["bash", "start.sh"]
-
