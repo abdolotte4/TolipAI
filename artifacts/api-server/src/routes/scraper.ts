@@ -306,3 +306,11 @@ async function scrapingBeeGet(url: string, opts: Record<string, string> = {}): P
 async function scraperApiStructured(endpoint: "local" | "search", params: Record<string, string>): Promise<any> {
   const key = process.env.SCRAPERAPI_KEY;
   if (!key) throw new Error("ScraperAPI key missing");
+
+  const url = `https://api.scraperapi.com/${endpoint}?api_key=${key}&${new URLSearchParams(params).toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`ScraperAPI error: ${res.status} ${res.statusText}`);
+  }
+  return await res.json();
+}
