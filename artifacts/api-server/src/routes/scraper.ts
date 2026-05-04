@@ -143,42 +143,7 @@ router.post("/scraper/google-search", requirePin, async (req: Request, res: Resp
 });
 
 
-    // 1. Try Python engine first
-    try {
-      const pyRes = await fetch(`${ENGINE_URL}/google-search`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords, locations, maxResults }),
-      });
-      const data = await pyRes.json();
-      if (pyRes.ok && data.results?.length) results = data.results;
-    } catch (err: any) {
-      logger.warn("Python engine failed for Google Search", err.message);
-    }
-
-    // 2. Fallback
-    if (!results.length) {
-      try {
-        const data = await scraperApiStructured("search", { query: `${keywords[0]} ${locations[0] || "United States"}`, country_code: "us", num: "20" });
-        results = data?.organic_results || [];
-      } catch (err: any) {
-        creditExhausted = true;
-        apiErrorMsg = "ScraperAPI exhausted — switched to ScrapingBee fallback";
-        try {
-          const { organic } = await scrapingBeeGoogleSearch(`${keywords[0]} ${locations[0] || "United States"}`);
-          results = organic || [];
-        } catch (beeErr: any) {
-          logger.warn("ScrapingBee fallback failed", beeErr.message);
-        }
-      }
-    }
-
-    res.json({ count: results.length, csv: toCSV(results), results, ...(creditExhausted && { creditExhausted: true, apiError: apiErrorMsg }) });
-  } catch (err: any) {
-    logger.error({ err: err.message }, "Google Search scraper error");
-    res.status(500).json({ error: err.message });
-  }
-});
-
+    
 // ─── POST /scraper/nar-directory ──────────────────────────────────────────
 router.post("/scraper/nar-directory", requirePin, async (req: Request, res: Response) => {
   try {
@@ -310,6 +275,32 @@ router.post("/scraper/bulk", requirePin, async (req: Request, res: Response) => 
     res.status(500).json({ error: err.message });
   }
 });
+
+async function scrapingBeeGoogleSearch(query: string): Promise<any> {
+  const key = process.env.SCRAPINGBEE_KEY;
+  if (!key) throw new Error("ScrapingBee key missing");
+
+  const params = new URLSearchParams({
+    api_key: key,
+    url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+    render_js: "false",
+  });
+
+  const res = await fetch(`https://app.scrapingbee.com/api/v1?${params.toString()}`);
+  if (!res.ok) throw new Error(`ScrapingBee error: ${res.status}`);
+  return await res.text(); // Google search returns HTML, not JSON
+}
+
+async function scrapingBeeGet(url: string, opts: Record<string, string> = {}): Promise<string> {
+  const key = process.env.SCRAPINGBEE_KEY;
+  if (!key) throw new Error("ScrapingBee key missing");
+
+  const params = new URLSearchParams({ api_key: key, url, ...opts });
+  const res = await fetch(`https://app.scrapingbee.com/api/v1?${params.toString()}`);
+  if (!res.ok) throw new Error(`ScrapingBee error: ${res.status}`);
+  return await res.text();
+}
+
 
 // ─── Utility: ScraperAPI structured fallback ───────────────────────────────
 async function scraperApiStructured(endpoint: "local" | "search", params: Record<string, string>): Promise<any> {
