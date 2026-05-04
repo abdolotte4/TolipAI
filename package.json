@@ -10,7 +10,8 @@
     "build": "pnpm --filter @workspace/api-server run build:prod",
     "build:all": "pnpm -r run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "echo 'typecheck skipped (production build uses esbuild)'"
+    "typecheck": "echo 'typecheck skipped (production build uses esbuild)'",
+    "start": "node --enable-source-maps artifacts/api-server/dist/index.mjs"
   },
   "pnpm": {
     "frozen-lockfile": false
