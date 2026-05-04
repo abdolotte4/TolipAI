@@ -817,36 +817,53 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
                         lead_id=req.lead_id, campaign_id=req.campaign_id)
 
     async def runner() -> None:
+    try:
+        cb = await _make_progress_cb(job_id)
         try:
-            cb = await _make_progress_cb(job_id)
-            try:
-    results = await asyncio.wait_for(
-        cash_buyers.find_cash_buyers(
-            lead, max_buyers=req.max_buyers, job_id=job_id, progress_cb=cb,
-        ),
-        timeout=900,  # 15 minute cap
-    )
-    _set_status(job_id, "done", progress=100, result=results)
-    await db.update_job(job_id, status="done", progress=100,
-                        result_count=len(results), completed=True)
-    METRICS["cash_buyers_success"] += 1
-except asyncio.TimeoutError:
-    log.error("cash_buyers job %s timed out after 900s", job_id)
-    _set_status(job_id, "failed", error="timeout_exceeded")
-    await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
-    METRICS["cash_buyers_timeout"] += 1
+            results = await asyncio.wait_for(
+                cash_buyers.find_cash_buyers(
+                    lead, max_buyers=req.max_buyers, job_id=job_id, progress_cb=cb,
+                ),
+                timeout=900,  # 15 minute cap
+            )
+            _set_status(job_id, "done", progress=100, result=results)
+            await db.update_job(
+                job_id,
+                status="done",
+                progress=100,
+                result_count=len(results),
+                completed=True,
+            )
+            METRICS["cash_buyers_success"] += 1
 
-        except Exception as e:  # noqa: BLE001
-            err = str(e)
-            if is_transient(e) and retry_queue.enqueue(job_id, "cash_buyers",
-                                                        req.model_dump(), last_error=err):
-                log.warning("cash_buyers job %s failed (transient) — queued for retry: %s", job_id, err[:80])
-                _set_status(job_id, "retry_pending", error=err)
-                await db.update_job(job_id, status="retry_pending", error=err)
-            else:
-                log.exception("cash_buyers job %s failed (fatal)", job_id)
-                _set_status(job_id, "failed", error=err)
-                await db.update_job(job_id, status="failed", error=err, completed=True)
+        except asyncio.TimeoutError:
+            log.error("cash_buyers job %s timed out after 900s", job_id)
+            _set_status(job_id, "failed", error="timeout_exceeded")
+            await db.update_job(
+                job_id,
+                status="failed",
+                error="timeout_exceeded",
+                completed=True,
+            )
+            METRICS["cash_buyers_timeout"] += 1
+
+    except Exception as e:  # noqa: BLE001
+        err = str(e)
+        if is_transient(e) and retry_queue.enqueue(
+            job_id, "cash_buyers", req.model_dump(), last_error=err
+        ):
+            log.warning(
+                "cash_buyers job %s failed (transient) — queued for retry: %s",
+                job_id,
+                err[:80],
+            )
+            _set_status(job_id, "retry_pending", error=err)
+            await db.update_job(job_id, status="retry_pending", error=err)
+        else:
+            log.exception("cash_buyers job %s failed (fatal)", job_id)
+            _set_status(job_id, "failed", error=err)
+            await db.update_job(job_id, status="failed", error=err, completed=True)
+
 
     asyncio.create_task(runner())
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
