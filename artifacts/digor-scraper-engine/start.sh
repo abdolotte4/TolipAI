@@ -59,8 +59,10 @@ if [ -n "$NIX_LIBS" ]; then
   export LD_LIBRARY_PATH="${NIX_LIBS}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
 
-# ── Install Playwright Chromium browser if missing ──────────────────────────
-python3 -m playwright install chromium 2>/dev/null || true
+# ── Install Playwright Chromium browser in the background ───────────────────
+# Run in background so the server port opens immediately (avoids workflow
+# startup timeout when browsers need to be downloaded for the first time).
+python3 -m playwright install chromium >/tmp/playwright_install.log 2>&1 &
 
 # ── Launch server ────────────────────────────────────────────────────────────
 exec python3 -m uvicorn workers.main:app \

@@ -549,8 +549,10 @@ async def health_keys() -> Dict[str, Any]:
         },
         "proxy": {
             "brightdata_configured": settings.brightdata_configured(),
-            "proxy_host": "brd.superproxy.io",
-            "proxy_port": 33335,
+            "proxy_host": settings.brightdata_host,
+            "proxy_port": settings.brightdata_port,
+            "zone": settings.brightdata_zone or "(embedded in username)",
+            "browser_max_concurrent": int(os.getenv("BROWSER_MAX_CONCURRENT", "2")),
         },
         "attom": {
             "keys_total": len(settings.attom_keys) + len(settings.property_api_keys),
@@ -611,143 +613,6 @@ async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
             _os.environ["PROPWIRE_PASSWORD"] = orig_pw
         else:
             _os.environ.pop("PROPWIRE_PASSWORD", None)
-
-
-# ─── Health check ───────────────────────────────────────────────────────────
-
-@app.get("/health")
-async def health() -> Dict[str, Any]:
-    """Deep health-check: probes DB, each LLM provider, and each scraper tier."""
-    import time
-    from .llm import _dead_providers, _rate_hits, _MAX_RATE_HITS
-    from .skip_trace import _dead_sources
-
-    async def _probe_llm(name: str, client_fn, model: str) -> Dict[str, Any]:
-        if name in _dead_providers:
-            return {"status": "dead", "reason": "circuit_breaker_open"}
-        hits = _rate_hits.get(name, 0)
-        if hits >= _MAX_RATE_HITS:
-            return {"status": "rate_limited", "consecutive_hits": hits}
-        client = client_fn()
-        if client is None:
-            return {"status": "unconfigured", "reason": "no_api_key"}
-        t0 = time.monotonic()
-        try:
-            resp = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": "reply with the single word OK"}],
-                    max_tokens=5,
-                    temperature=0,
-                ),
-                timeout=8.0,
-            )
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            content = (resp.choices[0].message.content or "").strip()
-            return {"status": "ok", "latency_ms": latency_ms, "response": content[:20]}
-        except asyncio.TimeoutError:
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            return {"status": "timeout", "latency_ms": latency_ms, "error": "probe timed out (>8s)"}
-        except Exception as e:
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            return {"status": "error", "latency_ms": latency_ms, "error": str(e)[:120]}
-
-    async def _probe_db() -> Dict[str, Any]:
-        t0 = time.monotonic()
-        try:
-            pool = await db.init_pool()
-            if pool is None:
-                return {"status": "unconfigured", "reason": "no_DATABASE_URL"}
-            async with pool.acquire() as c:
-                await c.fetchval("SELECT 1")
-            return {"status": "ok", "latency_ms": int((time.monotonic() - t0) * 1000)}
-        except Exception as e:
-            return {"status": "error", "error": str(e)[:120]}
-
-    from .llm import _groq, _cerebras, _nvidia, _openrouter, _moonshot
-
-    (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon,
-     db_result) = await asyncio.gather(
-        _probe_llm("groq",       _groq,       settings.groq_model),
-        _probe_llm("cerebras",   _cerebras,   settings.cerebras_model),
-        _probe_llm("nvidia",     _nvidia,     settings.nvidia_model),
-        _probe_llm("openrouter", _openrouter, settings.openrouter_model),
-        _probe_llm("moonshot",   _moonshot,   settings.moonshot_model),
-        _probe_db(),
-    )
-    sapi = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
-    sbee = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
-
-    llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon)
-    llm_ok = any(r["status"] == "ok" for r in llm_results)
-    db_ok  = db_result.get("status") == "ok"
-    overall = "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
-
-    return {
-        "status": overall,
-        "version": "0.1.0",
-        "llm": {
-            "groq":       llm_groq,
-            "cerebras":   llm_cerebras,
-            "nvidia":     llm_nvidia,
-            "openrouter": llm_openrouter,
-            "moonshot":   llm_moon,
-            "any_ok":     llm_ok,
-        },
-        "database": db_result,
-        "scrapers": {
-            "scraperapi":  sapi,
-            "scrapingbee": sbee,
-            "residential_proxy": bool(settings.proxy_url()),
-            "google_dorks_enabled": settings.enable_google_dorks,
-        },
-        "skip_trace": {
-            "opencorporates_enabled": settings.enable_opencorporates,
-            "propertyapi_enabled":    settings.enable_propertyapi,
-            "dead_sources": sorted(_dead_sources),
-        },
-        "distressed_sources": {
-            "total": len(distressed.list_sources()),
-            "categories": len(distressed.list_categories()),
-        },
-    }
-
-
-@app.get("/health/keys")
-async def health_keys() -> Dict[str, Any]:
-    """Per-key status for all scraping providers — shows active vs exhausted keys."""
-    return {
-        "scraperapi": {
-            "status": "disabled",
-            "reason": "permanently_removed_use_crawl4ai",
-            "keys_total": len(settings.scraperapi_keys),
-            "keys_active": 0,
-        },
-        "scrapingbee": {
-            "status": "disabled",
-            "reason": "permanently_removed_use_crawl4ai",
-            "keys_total": len(settings.scrapingbee_keys),
-            "keys_active": 0,
-        },
-        "llm": {
-            "groq_configured": bool(settings.groq_api_key),
-            "cerebras_configured": bool(settings.cerebras_api_key),
-            "together_configured": bool(settings.together_api_key),
-            "nvidia_configured": bool(settings.nvidia_api_key),
-            "openrouter_configured": bool(settings.openrouter_api_key),
-            "moonshot_configured": bool(settings.moonshot_api_key),
-        },
-        "proxy": {
-            "brightdata_configured": settings.brightdata_configured(),
-            "proxy_host": "brd.superproxy.io",
-            "proxy_port": 33335,
-        },
-        "attom": {
-            "keys_total": len(settings.attom_keys) + len(settings.property_api_keys),
-            "attom_keys": len(settings.attom_keys),
-            "property_api_keys": len(settings.property_api_keys),
-        },
-    }
 
 
 # ─── AI Research ────────────────────────────────────────────────────────────

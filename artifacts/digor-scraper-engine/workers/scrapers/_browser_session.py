@@ -96,28 +96,13 @@ DEFAULT_UA = (
 
 
 def _proxy_settings() -> Optional[Dict[str, str]]:
-    """Return a Playwright proxy dict if Bright Data is configured."""
-    bd_user = os.getenv("BRIGHTDATA_USERNAME")
-    bd_pass = os.getenv("BRIGHTDATA_PASSWORD")
-    if bd_user and bd_pass:
-        # Username must already include zone/country/state/session
-        return {
-            "server": "http://brd.superproxy.io:33335",
-            "username": bd_user,
-            "password": bd_pass,
-        }
+    """Return a Playwright proxy dict using the centralised settings.proxy_dict().
 
-    # Optional Oxylabs unblocker (secondary fallback)
-    oxu = os.getenv("OXYLABS_USERNAME")
-    oxp = os.getenv("OXYLABS_PASSWORD")
-    if oxu and oxp:
-        return {
-            "server": "http://unblock.oxylabs.io:60000",
-            "username": oxu,
-            "password": oxp,
-        }
-
-    return None
+    This ensures the proxy host, port, and zone suffix are all consistent with
+    the rest of the engine (config.py) rather than being duplicated here.
+    """
+    from ..config import settings
+    return settings.proxy_dict()
 
 
 _STATE_DIR = Path(os.getenv("BROWSER_STATE_DIR", "/tmp")).resolve()

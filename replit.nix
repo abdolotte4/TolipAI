@@ -1,5 +1,7 @@
 { pkgs }: {
   deps = [
+    pkgs.poppler
+    pkgs.tesseract
     pkgs.eudev
     pkgs.libGL
     pkgs.xorg.libxcb

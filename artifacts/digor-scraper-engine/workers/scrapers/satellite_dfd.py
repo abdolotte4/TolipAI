@@ -130,19 +130,39 @@ _COCO_DISTRESS_MAP: Dict[str, str] = {
 # Threshold: if ≥ N vehicles detected, flag vehicle clutter
 _VEHICLE_CLUTTER_MIN = 3
 
-_yolo_model = None  # lazy-loaded to avoid OOM at startup
+_yolo_model = None  # lazy-loaded singleton to avoid OOM at startup
+_yolo_lock: Optional[asyncio.Lock] = None  # protects concurrent model-load races
+
+
+def _get_yolo_lock() -> asyncio.Lock:
+    global _yolo_lock
+    if _yolo_lock is None:
+        _yolo_lock = asyncio.Lock()
+    return _yolo_lock
+
 
 def _get_yolo():
+    """Synchronous getter — only call from non-async context or after lock acquired."""
     global _yolo_model
     if _yolo_model is None:
         if not _YOLO_AVAILABLE:
             return None
         try:
             _yolo_model = _YOLO_CLASS("yolov8n.pt")
+            log.info("YOLOv8n model loaded (%.1f MB)", _yolo_model_size_mb())
         except Exception as e:
             log.warning("YOLO model load failed: %s", e)
             return None
     return _yolo_model
+
+
+def _yolo_model_size_mb() -> float:
+    try:
+        import os as _os
+        p = "yolov8n.pt"
+        return _os.path.getsize(p) / 1024 / 1024 if _os.path.exists(p) else 0.0
+    except Exception:
+        return 0.0
 
 def _yolo_signals(image_path: str) -> Dict[str, bool]:
     """Run YOLOv8n on an image and return distress signal dict."""
@@ -312,7 +332,12 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
             fname = f"/tmp/sv_{lat}_{lon}.jpg"
             img_path = await _download_image(sv_url, fname)
             if img_path:
-                yolo_sigs = _yolo_signals(img_path)
+                # Serialize YOLO inference — the model is a singleton and
+                # torch is not thread-safe for concurrent model.forward() calls.
+                async with _get_yolo_lock():
+                    yolo_sigs = await asyncio.get_event_loop().run_in_executor(
+                        None, _yolo_signals, img_path
+                    )
                 # Each confirmed visual signal bumps score by 5 pts
                 yolo_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
                 base_score = min(100, base_score + yolo_boost)

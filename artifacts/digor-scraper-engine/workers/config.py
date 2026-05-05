@@ -72,6 +72,12 @@ class Settings:
     # ── Residential proxy ───────────────────────────────────────────────────
     brightdata_username: Optional[str] = _env("BRIGHTDATA_USERNAME")
     brightdata_password: Optional[str] = _env("BRIGHTDATA_PASSWORD")
+    # Zone name appended to username: brd-customer-XXXXXX-zone-<zone>
+    # If BRIGHTDATA_USERNAME already contains "-zone-" leave this empty.
+    brightdata_zone: Optional[str] = _env("BRIGHTDATA_ZONE")
+    brightdata_host: str = _env("BRIGHTDATA_HOST", "brd.superproxy.io") or "brd.superproxy.io"
+    # 22225 = residential/ISP proxy  |  33335 = datacenter  |  24000 = scraping browser
+    brightdata_port: int = int(os.getenv("BRIGHTDATA_PORT", "22225"))
     oxylabs_user: Optional[str] = _env("OXYLABS_USERNAME")
     oxylabs_pass: Optional[str] = _env("OXYLABS_PASSWORD")
 
@@ -98,12 +104,45 @@ class Settings:
     def brightdata_configured(self) -> bool:
         return bool(self.brightdata_username and self.brightdata_password)
 
+    def _brightdata_username_full(self) -> str:
+        """Return the complete Bright Data username, appending zone if needed.
+
+        Bright Data format: brd-customer-XXXXXX-zone-ZONE_NAME
+        If BRIGHTDATA_USERNAME already contains '-zone-', use it as-is.
+        If BRIGHTDATA_ZONE is set and the username doesn't have a zone suffix,
+        append it automatically.
+        """
+        user = self.brightdata_username or ""
+        if self.brightdata_zone and "-zone-" not in user:
+            user = f"{user}-zone-{self.brightdata_zone}"
+        return user
+
     def proxy_url(self) -> Optional[str]:
         """Return a residential proxy URL if configured."""
         if self.brightdata_configured():
-            return f"http://{self.brightdata_username}:{self.brightdata_password}@brd.superproxy.io:33335"
+            user = self._brightdata_username_full()
+            return (
+                f"http://{user}:{self.brightdata_password}"
+                f"@{self.brightdata_host}:{self.brightdata_port}"
+            )
         if self.oxylabs_user and self.oxylabs_pass:
             return f"http://{self.oxylabs_user}:{self.oxylabs_pass}@unblock.oxylabs.io:60000"
+        return None
+
+    def proxy_dict(self) -> Optional[dict]:
+        """Return a {'server', 'username', 'password'} dict for Playwright / Crawl4AI."""
+        if self.brightdata_configured():
+            return {
+                "server":   f"http://{self.brightdata_host}:{self.brightdata_port}",
+                "username": self._brightdata_username_full(),
+                "password": self.brightdata_password or "",
+            }
+        if self.oxylabs_user and self.oxylabs_pass:
+            return {
+                "server":   "http://unblock.oxylabs.io:60000",
+                "username": self.oxylabs_user,
+                "password": self.oxylabs_pass,
+            }
         return None
 
     def has_llm(self) -> bool:

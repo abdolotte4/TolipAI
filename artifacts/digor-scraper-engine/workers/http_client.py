@@ -10,16 +10,33 @@ Tier order per fetch_html() call:
 A single persistent httpx.AsyncClient is reused for all API calls to avoid
 per-request TCP handshake overhead. Call init_client() at startup and
 close_client() at shutdown (done automatically by the FastAPI lifespan).
+
+OOM protection: at most BROWSER_MAX_CONCURRENT Playwright/Crawl4AI browser
+contexts run simultaneously. Excess requests wait on the semaphore.
 """
 
 from __future__ import annotations
-import asyncio, logging, random, ssl, io
+import asyncio, logging, os, random, ssl, io
 from typing import Any, Dict, Optional
 import httpx
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from .config import settings
 
 log = logging.getLogger("http")
+
+# ─── Browser concurrency guard (OOM prevention) ───────────────────────────────
+# Default 2 concurrent Playwright/Crawl4AI sessions.  Each Chromium instance
+# can consume 200-400 MB; keep this low on Railway Hobby (512 MB) or Starter
+# (1 GB).  Set BROWSER_MAX_CONCURRENT=1 on very memory-constrained plans.
+_BROWSER_SEM: Optional[asyncio.Semaphore] = None
+
+def _browser_sem() -> asyncio.Semaphore:
+    global _BROWSER_SEM
+    if _BROWSER_SEM is None:
+        limit = int(os.getenv("BROWSER_MAX_CONCURRENT", "2"))
+        _BROWSER_SEM = asyncio.Semaphore(limit)
+    return _BROWSER_SEM
+
 
 # Government / county sites that block residential proxies
 _PROXY_BLOCKED_DOMAINS = (
@@ -33,10 +50,11 @@ def _should_skip_proxy(url: str) -> bool:
     return any(d in u for d in _PROXY_BLOCKED_DOMAINS)
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36 Edg/123",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
 ]
 
 _DOMAIN_HEADERS: dict[str, dict[str, str]] = {
@@ -45,6 +63,12 @@ _DOMAIN_HEADERS: dict[str, dict[str, str]] = {
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
         "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
     },
     "redfin.com": {
         "Accept": "application/json, text/plain, */*",
@@ -53,6 +77,51 @@ _DOMAIN_HEADERS: dict[str, dict[str, str]] = {
         "Origin": "https://www.redfin.com",
     },
 }
+
+# Stealth JS injected into every Crawl4AI page before navigation.
+# Hides headless signals that Zillow/Cloudflare use to detect bots.
+_STEALTH_JS = """
+// Remove webdriver flag
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+
+// Realistic plugin list
+Object.defineProperty(navigator, 'plugins', {
+    get: () => {
+        const arr = [
+            {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format'},
+            {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: ''},
+            {name: 'Native Client', filename: 'internal-nacl-plugin', description: ''},
+        ];
+        arr.__proto__ = PluginArray.prototype;
+        return arr;
+    }
+});
+
+// Realistic language list
+Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+
+// Permissions API — spoof notifications query
+const _origQuery = window.navigator.permissions.query.bind(navigator.permissions);
+window.navigator.permissions.query = (params) =>
+    params.name === 'notifications'
+        ? Promise.resolve({state: Notification.permission})
+        : _origQuery(params);
+
+// Hide automation-related Chrome properties
+try {
+    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+} catch(_) {}
+
+// Spoof hardware concurrency (bots often show 1)
+Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+
+// Spoof screen size
+Object.defineProperty(screen, 'width',      {get: () => 1920});
+Object.defineProperty(screen, 'height',     {get: () => 1080});
+Object.defineProperty(screen, 'colorDepth', {get: () => 24});
+"""
 
 # Persistent shared client
 _persistent_client: Optional[httpx.AsyncClient] = None
@@ -148,43 +217,105 @@ async def fetch_html(url: str, *, render: bool = False,
 # ─── Crawl4AI rendered fetch ─────────────────────────────────────────────────
 async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
                          use_proxy: bool = True) -> Any:
+    """Playwright-based render with stealth patches.
+
+    Guarded by _browser_sem() so at most BROWSER_MAX_CONCURRENT Chromium
+    instances run concurrently — prevents OOM kills on Railway.
+    """
     try:
         from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
     except (ImportError, OSError) as e:
         raise RuntimeError(f"Crawl4AI unavailable: {e}") from e
 
-    try:
-        proxy = settings.proxy_url() if use_proxy else None
-        # Build proxy_config dict (proxy= is deprecated in crawl4ai>=0.4)
-        _proxy_cfg: Optional[Dict[str, str]] = None
-        if proxy:
+    # Determine proxy config dict
+    _proxy_cfg: Optional[Dict[str, str]] = None
+    if use_proxy:
+        _proxy_cfg = settings.proxy_dict()
+        if _proxy_cfg is None and settings.proxy_url():
+            # Fallback: parse proxy_url() manually
             from urllib.parse import urlparse as _urlparse
-            _u = _urlparse(proxy)
+            _u = _urlparse(settings.proxy_url() or "")
             _proxy_cfg = {"server": f"{_u.scheme}://{_u.hostname}:{_u.port}"}
             if _u.username:
                 _proxy_cfg["username"] = _u.username
             if _u.password:
                 _proxy_cfg["password"] = _u.password
-        cfg = BrowserConfig(
-            headless=True,
-            proxy_config=_proxy_cfg,
-            user_agent=random.choice(USER_AGENTS),
-            ignore_https_errors=True,
-        )
-        run_cfg = CrawlerRunConfig(
-            cache_mode=CacheMode.BYPASS,
-            word_count_threshold=10,
-            wait_for=wait_for,
-        )
-        async with AsyncWebCrawler(config=cfg) as crawler:
-            result = await crawler.arun(url=url, config=run_cfg)
-            if not result.success:
-                raise RuntimeError(f"Crawl4AI failed: {result.error_message}")
-            return result.markdown or result.html or result.binary or ""
-    except RuntimeError:
-        raise
-    except OSError as e:
-        raise RuntimeError(f"Crawl4AI system dependency missing: {e}") from e
+
+    # Extra Chromium args for stealth + memory efficiency
+    extra_args = [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-infobars",
+        "--window-size=1920,1080",
+        "--start-maximized",
+        "--disable-extensions",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+    ]
+
+    # Zillow-specific: wait for the listing grid before returning
+    _wait_for = wait_for
+    if _wait_for is None and "zillow.com" in url:
+        # Wait for either the listing cards or the __NEXT_DATA__ script
+        _wait_for = "css:#__NEXT_DATA__"
+
+    # BrowserConfig — only pass well-known stable kwargs
+    _browser_kwargs: Dict[str, Any] = dict(
+        headless=True,
+        proxy_config=_proxy_cfg,
+        user_agent=random.choice(USER_AGENTS),
+        ignore_https_errors=True,
+        extra_args=extra_args,
+        java_script_enabled=True,
+    )
+    cfg = BrowserConfig(**_browser_kwargs)
+
+    # CrawlerRunConfig — build defensively; newer crawl4ai features are
+    # injected only when the constructor accepts them.
+    import inspect as _inspect
+    _run_params = set(_inspect.signature(CrawlerRunConfig.__init__).parameters)
+
+    _run_kwargs: Dict[str, Any] = dict(
+        cache_mode=CacheMode.BYPASS,
+        word_count_threshold=10,
+        wait_for=_wait_for,
+    )
+    # page_timeout: 60 s — available in crawl4ai >= 0.3
+    if "page_timeout" in _run_params:
+        _run_kwargs["page_timeout"] = 60000
+    # js_code: injected after page load for stealth
+    if "js_code" in _run_params:
+        _run_kwargs["js_code"] = _STEALTH_JS
+    # delay_before_return_html: let SPA hydrate
+    if "delay_before_return_html" in _run_params:
+        _run_kwargs["delay_before_return_html"] = 2.5
+    # simulate_user: jitter mouse/scroll to beat behavioural fingerprinting
+    if "simulate_user" in _run_params:
+        _run_kwargs["simulate_user"] = True
+    # override_navigator: crawl4ai built-in webdriver spoof
+    if "override_navigator" in _run_params:
+        _run_kwargs["override_navigator"] = True
+    # magic: crawl4ai comprehensive anti-bot mode
+    if "magic" in _run_params:
+        _run_kwargs["magic"] = True
+    run_cfg = CrawlerRunConfig(**_run_kwargs)
+
+    async with _browser_sem():
+        try:
+            async with AsyncWebCrawler(config=cfg) as crawler:
+                result = await crawler.arun(url=url, config=run_cfg)
+                if not result.success:
+                    raise RuntimeError(f"Crawl4AI failed: {result.error_message}")
+                return result.html or result.markdown or result.binary or ""
+        except RuntimeError:
+            raise
+        except OSError as e:
+            raise RuntimeError(f"Crawl4AI system dependency missing: {e}") from e
 
 # ─── Small helpers ────────────────────────────────────────────────────────────
 async def polite_sleep(min_ms: int = 250, max_ms: int = 800) -> None:
