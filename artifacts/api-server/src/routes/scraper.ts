@@ -16,7 +16,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { logger } from "../lib/logger";
 
 const router: Router = Router();
-const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "").replace(/\/$/, "");
+const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app").replace(/\/$/, "");
 
 // ─── PIN Auth ─────────────────────────────────────────────────────────────────
 

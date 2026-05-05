@@ -398,9 +398,7 @@ async def invalidate_service_session(service: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Failed to invalidate session")
 
 
-
-
-   # ─── Session login tests ─────────────────────────────────────────────────────
+# ─── Session login tests ─────────────────────────────────────────────────────
 
 @app.post("/session/propelio/test")
 async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:

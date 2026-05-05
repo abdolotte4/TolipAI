@@ -606,11 +606,10 @@ export function calculateAdjustedComp(subject: SubjectProperty, comp: CompProper
     }
   }
 
-// CHANGE TO:
-const netAdj = adjusted - comp.salePrice;
-const maxNetAdj = comp.salePrice * 0.30;  // ±30% cap (USPAP standard)
-const capped = comp.salePrice + Math.max(-maxNetAdj, Math.min(maxNetAdj, netAdj));
-return Math.max(0, Math.round(capped));
+  const netAdj = adjusted - comp.salePrice;
+  const maxNetAdj = comp.salePrice * 0.30;
+  const capped = comp.salePrice + Math.max(-maxNetAdj, Math.min(maxNetAdj, netAdj));
+  return Math.max(0, Math.round(capped));
 }
 
 /**

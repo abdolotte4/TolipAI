@@ -20,7 +20,11 @@ router.post("/tools/auth/verify", (req, res) => {
   if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured" }); return; }
   const provided = req.headers["x-tools-pin"] as string | undefined;
   if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN" }); return; }
-  res.json({ success: true });
+  res.json({
+    success: true,
+    attomConfigured: !!process.env.ATTOM_API_KEY,
+    engineConfigured: !!(process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app"),
+  });
 });
 
 router.post("/tools/distressed/search", requirePin, async (req: Request, res: Response) => {
