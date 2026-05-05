@@ -238,15 +238,19 @@ async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -
     all_listings: List[Dict[str, Any]] = []
 
     # ── HomeHarvest: primary source (zip or city+state) ───────────────────────
-    hh_location = zip_code if zip_code else (f"{city}, {state}" if city and state else "")
-    if hh_location:
+    # scrape_foreclosures takes (city, state) — HomeHarvest also accepts a zip
+    # code in the city field when state is left blank.
+    hh_city  = zip_code if zip_code else city
+    hh_state = "" if zip_code else state
+
+    if hh_city:
         hh_active, hh_sold = await asyncio.gather(
             _safe(homeharvest_scraper.scrape_foreclosures,
-                  city="", state="", location=hh_location,
-                  listing_type="for_sale", site="zillow", limit=50),
+                  hh_city, hh_state,
+                  listing_type="for_sale", limit=50),
             _safe(homeharvest_scraper.scrape_foreclosures,
-                  city="", state="", location=hh_location,
-                  listing_type="sold", site="realtor.com", limit=30),
+                  hh_city, hh_state,
+                  listing_type="sold", limit=30),
         )
         all_listings.extend(hh_active + hh_sold)
         log.info("DFD: HomeHarvest returned %d listings", len(all_listings))

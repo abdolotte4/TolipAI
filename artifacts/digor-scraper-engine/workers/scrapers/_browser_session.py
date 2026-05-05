@@ -17,60 +17,49 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
 
+import glob as _glob
+
 from playwright.async_api import ProxySettings
 
 
 def _ensure_nix_ld_path() -> None:
     """Resolve Playwright's required .so files from the Nix store and
     prepend them to LD_LIBRARY_PATH.  This is a no-op on Railway/Ubuntu
-    where the system linker already finds the libs."""
+    where the system linker already finds the libs.
+
+    Uses direct glob-based .so searching instead of package-name pattern
+    matching — this is immune to Nix hash/version changes and correctly
+    handles split packages like mesa-drivers vs mesa-dev.
+    """
     NIX = "/nix/store"
     if not os.path.isdir(NIX):
         return
-    needed = {
-        "libX11.so.6":        r"libX11-1\.[0-9]",
-        "libXcomposite.so.1": r"libXcomposite-",
-        "libXdamage.so.1":    r"libx?Xdamage-",
-        "libXext.so.6":       r"libXext-",
-        "libXfixes.so.3":     r"libXfixes-",
-        "libXrandr.so.2":     r"libXrandr-|libxrandr-",
-        "libxcb.so.1":        r"libxcb-1\.",
-        "libgbm.so.1":        r"mesa-libgbm-|mesa-[0-9]",
-        "libexpat.so.1":      r"expat-2\.",
-        "libudev.so.1":       r"eudev-|libudev-zero-",
-        "libxkbcommon.so.0":  r"libxkbcommon-[0-9]",
-        "libXau.so.6":        r"libXau-",
-        "libxshmfence.so.1":  r"libxshmfence-",
-    }
+
+    needed_sonames = [
+        "libgbm.so.1",
+        "libX11.so.6",
+        "libXcomposite.so.1",
+        "libXdamage.so.1",
+        "libXext.so.6",
+        "libXfixes.so.3",
+        "libXrandr.so.2",
+        "libxcb.so.1",
+        "libexpat.so.1",
+        "libudev.so.1",
+        "libxkbcommon.so.0",
+        "libXau.so.6",
+        "libxshmfence.so.1",
+    ]
+
     dirs: set[str] = set()
-    try:
-        entries = os.listdir(NIX)
-    except OSError:
-        return
-    for soname, pattern in needed.items():
-        for entry in entries:
-            if (
-                re.search(pattern, entry)
-                and not entry.endswith(".drv")
-                and not any(
-                    s in entry
-                    for s in (
-                        "-dev",
-                        "-man",
-                        "-doc",
-                        "-debug",
-                        "-spirv",
-                        "-opencl",
-                        "-osmesa",
-                        "-opengl",
-                        "-driversdev",
-                    )
-                )
-            ):
-                lib_dir = f"{NIX}/{entry}/lib"
-                if os.path.isdir(lib_dir) and os.path.exists(f"{lib_dir}/{soname}"):
-                    dirs.add(lib_dir)
-                    break
+    for soname in needed_sonames:
+        # Search /lib and /lib64 subdirs — takes the first match per soname
+        for pattern in (f"{NIX}/*/lib/{soname}", f"{NIX}/*/lib64/{soname}"):
+            matches = _glob.glob(pattern)
+            if matches:
+                dirs.add(os.path.dirname(matches[0]))
+                break
+
     if dirs:
         existing = os.environ.get("LD_LIBRARY_PATH", "")
         existing_set = set(existing.split(":")) if existing else set()
@@ -86,6 +75,38 @@ def _ensure_nix_ld_path() -> None:
 _ensure_nix_ld_path()
 
 log = logging.getLogger("browser")
+
+
+def _find_chromium_executable() -> Optional[str]:
+    """Return the path to the installed Playwright Chromium binary.
+
+    Prefers the full Chromium over the headless shell because the full build
+    ships its own GPU/mesa shims and does not need libgbm.so.1 from the host.
+    Falls back to the headless shell if the full build is absent.
+    Returns None so the caller can let Playwright pick its own default.
+    """
+    # Full Chromium (Chrome for Testing) — works headlessly without host libgbm
+    for pattern in (
+        "/home/runner/workspace/.cache/ms-playwright/chromium-*/chrome-linux64/chrome",
+        os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome"),
+        "/root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome",
+    ):
+        hits = sorted(_glob.glob(pattern))
+        if hits:
+            return hits[-1]  # latest version
+
+    # Headless shell fallback — needs host libgbm.so.1
+    for pattern in (
+        "/home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-*"
+        "/chrome-headless-shell-linux64/chrome-headless-shell",
+        os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-*"
+                           "/chrome-headless-shell-linux64/chrome-headless-shell"),
+    ):
+        hits = sorted(_glob.glob(pattern))
+        if hits:
+            return hits[-1]
+
+    return None
 
 # Reasonable Chrome UA matching modern Chromium
 DEFAULT_UA = (
@@ -148,14 +169,26 @@ async def browser_context(
     pw = await async_playwright().start()
 
     proxy_cfg: Optional[ProxySettings] = _proxy_settings()  # type: ignore[assignment]
+
+    # Prefer the full Chromium binary over the headless shell.
+    # The headless shell (chromium_headless_shell-*) requires libgbm.so.1 from
+    # mesa, which is not always present on NixOS Replit containers.  The full
+    # Chrome binary ships its own GPU/mesa shims and works headlessly without it.
+    _exec_path: Optional[str] = _find_chromium_executable()
+    if _exec_path:
+        log.debug("[%s] using chromium executable: %s", service, _exec_path)
+
     browser = await pw.chromium.launch(
         headless=headless,
+        executable_path=_exec_path,
         proxy=proxy_cfg,
         args=[
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--no-zygote",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
         ],
     )
     if proxy_cfg:

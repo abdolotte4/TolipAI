@@ -1205,8 +1205,8 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                             _json.dumps(["homeharvest_scrape", "osint_skip_trace"]),
                             r.get("city", city), r.get("state", state), r.get("zip"),
                             r.get("address"),
-                            _json.dumps([p["number"] for p in phones]),
-                            _json.dumps([e["email"] for e in emails]),
+                            _json.dumps([p["number"] if isinstance(p, dict) else str(p) for p in phones]),
+                            _json.dumps([e["email"] if isinstance(e, dict) else str(e) for e in emails]),
                             _json.dumps(r.get("resident_names") or []),
                             f"Pre-foreclosure listing in {city}, {state} via HomeHarvest",
                             "homeharvest",
@@ -1240,6 +1240,115 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
         METRICS["foreclosure_failed"] += 1
+
+
+# ─── Foreclosure Lead-Gen result alias ───────────────────────────────────────
+
+@app.get("/lead-gen/foreclosure/result/{job_id}")
+async def get_lead_gen_result(job_id: str) -> Dict[str, Any]:
+    """Alias for /jobs/{job_id} — returns a foreclosure lead-gen job result."""
+    job = await job_store.get_job(job_id)
+    if job:
+        return job
+    row = await db.get_job(job_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return dict(row)
+
+
+# ─── Playwright smoke-test endpoint ──────────────────────────────────────────
+
+@app.get("/debug/playwright")
+async def debug_playwright() -> Dict[str, Any]:
+    """Smoke-test Playwright by opening example.com headlessly.
+
+    Returns the browser executable path, page title, and any errors so you can
+    quickly confirm Chromium is working inside this container.
+    """
+    import time as _time
+    from .scrapers._browser_session import _find_chromium_executable, _ensure_nix_ld_path
+
+    _ensure_nix_ld_path()
+    exec_path = _find_chromium_executable()
+    result: Dict[str, Any] = {
+        "executable_path": exec_path,
+        "ld_library_path_set": bool(os.environ.get("LD_LIBRARY_PATH")),
+    }
+
+    t0 = _time.monotonic()
+    try:
+        from playwright.async_api import async_playwright as _ap
+        pw = await _ap().start()
+        try:
+            browser = await pw.chromium.launch(
+                headless=True,
+                executable_path=exec_path,
+                args=["--no-sandbox", "--disable-setuid-sandbox",
+                      "--disable-dev-shm-usage", "--no-zygote",
+                      "--disable-gpu", "--disable-software-rasterizer"],
+            )
+            page = await browser.new_page()
+            await page.goto("https://example.com", wait_until="domcontentloaded", timeout=20000)
+            title = await page.title()
+            await browser.close()
+            result.update({
+                "status": "ok",
+                "title": title,
+                "latency_ms": int((_time.monotonic() - t0) * 1000),
+            })
+        finally:
+            await pw.stop()
+    except Exception as e:
+        result.update({
+            "status": "error",
+            "error": str(e)[:500],
+            "latency_ms": int((_time.monotonic() - t0) * 1000),
+        })
+
+    return result
+
+
+@app.get("/debug/satellite")
+async def debug_satellite() -> Dict[str, Any]:
+    """Show satellite DFD config: Google Maps API status, YOLO availability."""
+    from .scrapers.satellite_dfd import _google_key, _YOLO_AVAILABLE
+
+    gkey = _google_key()
+    return {
+        "google_maps_configured": bool(gkey),
+        "google_maps_key_prefix": (gkey[:8] + "…") if gkey else None,
+        "yolo_available": _YOLO_AVAILABLE,
+        "yolo_note": "Install ultralytics to enable YOLO visual distress detection" if not _YOLO_AVAILABLE else "YOLO ready",
+        "satellite_endpoint": "POST /ai/satellite-dfd",
+        "required_params": {"city": "str", "state": "str (or zip: str)"},
+    }
+
+
+@app.get("/debug/env")
+async def debug_env() -> Dict[str, Any]:
+    """Show all configured env vars with values masked — useful for verifying Railway secrets."""
+    def _check(name: str) -> Dict[str, Any]:
+        val = os.environ.get(name, "")
+        return {"set": bool(val), "length": len(val)}
+
+    return {
+        "database_url":         _check("DATABASE_URL"),
+        "brightdata_username":  _check("BRIGHTDATA_USERNAME"),
+        "brightdata_password":  _check("BRIGHTDATA_PASSWORD"),
+        "google_maps_api_key":  _check("GOOGLE_MAPS_API_KEY"),
+        "groq_api_key":         _check("GROQ_API_KEY"),
+        "cerebras_api_key":     _check("CEREBRAS_API_KEY"),
+        "nvidia_api_key":       _check("NVIDIA_API_KEY"),
+        "openrouter_api_key":   _check("OPENROUTER_API_KEY"),
+        "propelio_email":       _check("PROPELIO_EMAIL"),
+        "propelio_password":    _check("PROPELIO_PASSWORD"),
+        "propwire_email":       _check("PROPWIRE_EMAIL"),
+        "propwire_password":    _check("PROPWIRE_PASSWORD"),
+        "twilio_account_sid":   _check("TWILIO_ACCOUNT_SID"),
+        "twilio_auth_token":    _check("TWILIO_AUTH_TOKEN"),
+        "redis_url":            _check("REDIS_URL"),
+        "port":                 os.environ.get("PORT", "8765"),
+    }
 
 
 # ─── Foreclosure Lead-Gen route ───────────────────────────────────────────────
