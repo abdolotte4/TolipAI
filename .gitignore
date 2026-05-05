@@ -57,7 +57,6 @@ artifacts/**/dist/
 artifacts/**/.vite/
 artifacts/**/.next/
 lib/**/dist/
-.replit-artifact/
 
 # Database Backups (Don't push your user data to GitHub!)
 backup.sql
@@ -74,10 +73,11 @@ attached_assets/
 artifacts/mockup-sandbox/
 .aider*
 
-# Deployment configs not needed
-Dockerfile
-Procfile
-railpack.json
+# Deployment configs — root level only (scraper engine has its own Dockerfile)
+/Dockerfile
+/Procfile
+/railpack.json
+nixpacks.toml
 
 # Local dev / env
 .python-version
@@ -93,5 +93,4 @@ dist/
 tmp/
 out-tsc/
 *.tsbuildinfo
-.replit-artifact/
 push_github.sh
