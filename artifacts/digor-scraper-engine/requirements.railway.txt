@@ -26,3 +26,5 @@ pdf2image>=1.17
 # ── Free open-source lead-gen stack ──────────────────────────────────────────
 homeharvest>=0.3.7
 pandas>=2.2
+# Redis-backed job store (asyncio client)
+redis[asyncio]>=5.0

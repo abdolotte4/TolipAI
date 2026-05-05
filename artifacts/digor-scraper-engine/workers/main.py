@@ -68,6 +68,7 @@ from pydantic import BaseModel, Field
 
 from . import db, cash_buyers, distressed, skip_trace, ai_research
 from . import http_client
+from . import job_store
 from . import osint_skip_trace
 from .scrapers import homeharvest_scraper
 from .config import settings
@@ -81,8 +82,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("main")
 
-# In-memory job index — persistent state lives in scraper_jobs table.
-_jobs: Dict[str, Dict[str, Any]] = {}
+# Job state — aliased to job_store._memory so sync helpers (_set_status,
+# _new_job) work unchanged while async paths also persist to Redis.
+_jobs: Dict[str, Dict[str, Any]] = job_store._memory
 
 # ─── Structured Metrics ──────────────────────────────────────────────────────
 METRICS = {
@@ -103,6 +105,12 @@ METRICS = {
 async def lifespan(app: FastAPI):
     await db.init_pool()
     await http_client.init_client()
+    await job_store.init()
+
+    # Mark any jobs that were mid-flight when the container last OOM-crashed.
+    recovered = await job_store.recover_interrupted_jobs()
+    if recovered:
+        log.warning("Startup: reset %d interrupted job(s) from previous run", recovered)
 
     # Register retry runners (see _run_* functions below).
     retry_queue.register("cash_buyers",          _run_cash_buyers)
@@ -116,13 +124,15 @@ async def lifespan(app: FastAPI):
     )
 
     log.info(
-        "Engine ready on port %s (LLM=%s, proxies_configured=%s)",
+        "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s)",
         os.getenv("PORT", str(settings.port)),
         settings.has_llm(),
         bool(settings.proxy_url()),
+        job_store._redis is not None,
     )
     yield
     retry_queue.stop()
+    await job_store.close()
     await http_client.close_client()
     await db.close_pool()
 
@@ -188,6 +198,8 @@ async def _make_progress_cb(job_id: str):
         if job_id in _jobs:
             _jobs[job_id]["progress"] = pct
             _jobs[job_id]["message"] = message
+            # Persist progress to Redis so status polls survive restarts
+            await job_store.set_job(job_id, _jobs[job_id])
         try:
             await db.update_job(job_id, progress=pct, status="running")
         except Exception as e:
@@ -201,6 +213,13 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
         _jobs[job_id]["status"] = status
         for k, v in kwargs.items():
             _jobs[job_id][k] = v
+        # Fire-and-forget Redis write from sync context
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(job_store.set_job(job_id, _jobs[job_id]))
+        except Exception:
+            pass
 
 # ─── Retry-queue standalone runners ─────────────────────────────────────────
 # Each runner receives (job_id, params) and runs the full job logic again.
@@ -979,18 +998,19 @@ async def list_retries_early() -> Dict[str, Any]:
 
 @app.get("/jobs/{job_id}")
 async def get_job(job_id: str) -> Dict[str, Any]:
-    """Return job details, preferring in-memory state over DB."""
-    if job_id in _jobs:
-        return _jobs[job_id]
+    """Return job details — checks memory, then Redis (survives restarts), then Postgres."""
+    job = await job_store.get_job(job_id)
+    if job:
+        return job
     row = await db.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
-    return row
+    return dict(row)
 
 @app.post("/jobs/{job_id}/retry")
 async def manual_retry(job_id: str) -> Dict[str, Any]:
     """Force-enqueue a job for immediate retry regardless of its current status."""
-    row = _jobs.get(job_id) or await db.get_job(job_id)
+    row = await job_store.get_job(job_id) or await db.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
 

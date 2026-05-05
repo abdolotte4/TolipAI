@@ -10,6 +10,7 @@
     "build:prod": "pnpm run build:frontends && node ./build.mjs",
     "build:prod:with-db": "pnpm --filter @workspace/db run push && pnpm run build:frontends && node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
+    "start:fast": "[ -f dist/index.mjs ] && node --enable-source-maps ./dist/index.mjs || (pnpm run build:prod && node --enable-source-maps ./dist/index.mjs)",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed:demo": "tsx src/seed-demo.ts"
   },
