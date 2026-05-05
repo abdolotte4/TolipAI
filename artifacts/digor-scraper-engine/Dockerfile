@@ -34,6 +34,11 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY requirements.railway.txt .
 RUN pip install --no-cache-dir -r requirements.railway.txt
 
+# Pre-download YOLOv8n weights so the first scan doesn't stall waiting for a
+# 6 MB internet download at runtime.  The model is cached to ~/.cache/ultralytics
+# inside the image layer and reused on every container start.
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')" 2>/dev/null || true
+
 COPY workers/ ./workers/
 COPY start.sh .
 RUN chmod +x start.sh

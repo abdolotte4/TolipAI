@@ -77,6 +77,27 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
     zestimate  = _num(raw.get("zestimate"))
     est_value  = zestimate or list_price
 
+    # Lat/lon come directly from the HomeHarvest DataFrame
+    def _coord(key: str) -> Optional[float]:
+        v = raw.get(key)
+        if v is None:
+            return None
+        try:
+            f = float(v)
+            return f if f != 0.0 else None
+        except (ValueError, TypeError):
+            return None
+
+    latitude  = _coord("latitude")
+    longitude = _coord("longitude")
+
+    # Price-reduction signal
+    reduced_amount = _num(raw.get("price_reduced_amount") or raw.get("price_change_amount"))
+    price_reduction = bool(reduced_amount and reduced_amount < 0)
+
+    # Source-specific listing URL
+    listing_url = str(raw.get("property_url") or raw.get("listing_url") or "").strip() or None
+
     return {
         "address":         address,
         "street":          street,
@@ -84,6 +105,8 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
         "state":           state,
         "zip":             zip_,
         "county":          str(raw.get("county") or "").strip() or None,
+        "latitude":        latitude,
+        "longitude":       longitude,
         "list_price":      list_price,
         "zestimate":       zestimate,
         "estimated_value": est_value,
@@ -94,9 +117,12 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
         "lot_sqft":        int(raw["lot_sqft"]) if raw.get("lot_sqft") else None,
         "property_type":   str(raw.get("style") or raw.get("property_type") or "").strip() or None,
         "status":          str(raw.get("status") or "").strip() or None,
+        "days_on_market":  int(raw["days_on_mls"]) if raw.get("days_on_mls") else None,
         "days_on_mls":     int(raw["days_on_mls"]) if raw.get("days_on_mls") else None,
+        "price_reduction": price_reduction,
         "mls_id":          str(raw.get("mls_id") or "").strip() or None,
-        "listing_url":     str(raw.get("property_url") or "").strip() or None,
+        "zillow_url":      listing_url,
+        "listing_url":     listing_url,
         "agent":           str(raw.get("agent_name") or "").strip() or None,
         "agent_email":     str(raw.get("agent_email") or "").strip() or None,
         "agent_phones":    [str(raw["agent_phones"]).strip()] if raw.get("agent_phones") else [],
@@ -107,21 +133,23 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 async def scrape_foreclosures(
     city: str,
-    state: str,
+    state: str = "",
     *,
     listing_type: str = "for_sale",
     site: str = "zillow",
     limit: int = 20,
+    location: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Async wrapper around HomeHarvest's synchronous scrape_property().
 
     Args:
-        city:         Target city (e.g. "Orlando")
-        state:        Two-letter state code (e.g. "FL")
+        city:         Target city (e.g. "Orlando") OR a ZIP code (e.g. "32808")
+        state:        Two-letter state code (e.g. "FL") — omit when city is a ZIP
         listing_type: "for_sale" | "sold" | "for_rent" | "pending"
         site:         "zillow" | "realtor.com" | "redfin"
         limit:        Maximum rows to return (HomeHarvest may return fewer)
+        location:     Override full location string (takes priority over city+state)
 
     Returns list of normalised listing dicts.
     """
@@ -129,8 +157,20 @@ async def scrape_foreclosures(
     if not scrape_property:
         return []
 
-    location = f"{city}, {state}"
-    log.info("HomeHarvest: scraping %s listings in %s via %s", listing_type, location, site)
+    if not location:
+        # ZIP code: pass as-is; city+state: combine
+        city_clean  = (city or "").strip()
+        state_clean = (state or "").strip()
+        if state_clean:
+            location = f"{city_clean}, {state_clean}"
+        else:
+            location = city_clean  # bare ZIP or city name
+
+    if not location:
+        log.warning("HomeHarvest: no location provided, skipping")
+        return []
+
+    log.info("HomeHarvest: scraping %s listings in %r via %s", listing_type, location, site)
 
     def _run() -> List[Dict[str, Any]]:
         try:
