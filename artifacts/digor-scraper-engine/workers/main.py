@@ -417,39 +417,6 @@ async def invalidate_service_session(service: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Failed to invalidate session")
 
 
-# ─── Session login tests ─────────────────────────────────────────────────────
-
-@app.post("/session/propelio/test")
-async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
-    """Test Propelio credentials by attempting a real login; returns success/error."""
-    try:
-        # Pass credentials directly instead of mutating env vars
-        await propelio_v2.search_property(
-            "123 Main St, Dallas, TX 75201",
-            email=req.email,
-            password=req.password,
-        )
-        return {"success": True, "detail": "Login OK"}
-    except Exception as e:
-        log.warning("Propelio login test failed: %s", str(e)[:120])
-        return {"success": False, "error": str(e)[:300]}
-
-
-@app.post("/session/propwire/test")
-async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
-    """Test Propwire credentials by attempting a real login; returns success/error."""
-    try:
-        await propwire.fetch_property(
-            "123 Main St, Dallas, TX 75201",
-            email=req.email,
-            password=req.password,
-        )
-        return {"success": True, "detail": "Login OK"}
-    except Exception as e:
-        log.warning("Propwire login test failed: %s", str(e)[:120])
-        return {"success": False, "error": str(e)[:300]}
-
-
 @app.get("/metrics")
 async def metrics() -> Dict[str, Any]:
     """Return structured counters for monitoring."""
@@ -592,7 +559,7 @@ async def health_keys() -> Dict[str, Any]:
         },
     }
 
-           # ─── Session login tests ─────────────────────────────────────────────────────
+# ─── Session login tests ─────────────────────────────────────────────────────
 
 @app.post("/session/propelio/test")
 async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
@@ -1226,33 +1193,35 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                 try:
                     phones = r.get("phones") or []
                     emails = r.get("emails") or []
-                    await db.pool.execute(
-                        """INSERT INTO cash_buyer_matches
-                           (lead_id, job_id, buyer_name, buyer_type, match_score, match_reasons,
-                            city, state, zip, mailing_address, phones, emails, principals,
-                            classification_reason, source, raw_data)
-                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)""",
-                        None, job_id,
-                        r.get("owner_name") or "Unknown Owner",
-                        "pre_foreclosure",
-                        50,
-                        _json.dumps(["homeharvest_scrape", "osint_skip_trace"]),
-                        r.get("city", city), r.get("state", state), r.get("zip"),
-                        r.get("address"),
-                        _json.dumps([p["number"] for p in phones]),
-                        _json.dumps([e["email"] for e in emails]),
-                        _json.dumps(r.get("resident_names") or []),
-                        f"Pre-foreclosure listing in {city}, {state} via HomeHarvest",
-                        "homeharvest",
-                        _json.dumps({
-                            "list_price": r.get("list_price"),
-                            "estimated_equity": r.get("estimated_equity"),
-                            "beds": r.get("beds"), "baths": r.get("baths"),
-                            "sqft": r.get("sqft"), "year_built": r.get("year_built"),
-                            "listing_url": r.get("listing_url"),
-                            "days_on_mls": r.get("days_on_mls"),
-                        }),
-                    )
+                    _pool = await db.init_pool()
+                    async with _pool.acquire() as _conn:
+                        await _conn.execute(
+                            """INSERT INTO cash_buyer_matches
+                               (lead_id, job_id, buyer_name, buyer_type, match_score, match_reasons,
+                                city, state, zip, mailing_address, phones, emails, principals,
+                                classification_reason, source, raw_data)
+                               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)""",
+                            None, job_id,
+                            r.get("owner_name") or "Unknown Owner",
+                            "pre_foreclosure",
+                            50,
+                            _json.dumps(["homeharvest_scrape", "osint_skip_trace"]),
+                            r.get("city", city), r.get("state", state), r.get("zip"),
+                            r.get("address"),
+                            _json.dumps([p["number"] for p in phones]),
+                            _json.dumps([e["email"] for e in emails]),
+                            _json.dumps(r.get("resident_names") or []),
+                            f"Pre-foreclosure listing in {city}, {state} via HomeHarvest",
+                            "homeharvest",
+                            _json.dumps({
+                                "list_price": r.get("list_price"),
+                                "estimated_equity": r.get("estimated_equity"),
+                                "beds": r.get("beds"), "baths": r.get("baths"),
+                                "sqft": r.get("sqft"), "year_built": r.get("year_built"),
+                                "listing_url": r.get("listing_url"),
+                                "days_on_mls": r.get("days_on_mls"),
+                            }),
+                        )
                     saved_count += 1
                 except Exception as e:
                     log.warning("CRM save failed for %s: %s", r.get("address"), e)
@@ -1274,3 +1243,16 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
         METRICS["foreclosure_failed"] += 1
+
+
+# ─── Foreclosure Lead-Gen route ───────────────────────────────────────────────
+
+@app.post("/lead-gen/foreclosure")
+async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
+    """Start chained foreclosure lead-gen pipeline. Returns job_id immediately."""
+    job_id = _new_job("foreclosure_lead_gen", req.model_dump())
+    await db.create_job(job_id, "foreclosure_lead_gen", req.model_dump(),
+                        campaign_id=req.campaign_id)
+    asyncio.create_task(_run_foreclosure_lead_gen(job_id, req.model_dump()))
+    return {"job_id": job_id, "status": "queued", "city": req.city, "state": req.state}
+

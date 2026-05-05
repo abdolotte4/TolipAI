@@ -193,7 +193,6 @@ async def polite_sleep(min_ms: int = 250, max_ms: int = 800) -> None:
 # ─── PDF fetch + extraction ──────────────────────────────────────────────────
 import fitz  # PyMuPDF
 import pdfplumber
-import io
 from PIL import Image
 import pytesseract
 
