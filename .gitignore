@@ -76,7 +76,6 @@ artifacts/mockup-sandbox/
 # Deployment configs — root level only (scraper engine has its own Dockerfile)
 /Dockerfile
 /Procfile
-/railpack.json
 nixpacks.toml
 
 # Local dev / env

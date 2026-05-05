@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     tesseract-ocr \
     libgomp1 \
+    libgl1 \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
