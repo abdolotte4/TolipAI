@@ -561,6 +561,138 @@ async def health_keys() -> Dict[str, Any]:
         },
     }
 
+# ─── Proxy diagnostics ───────────────────────────────────────────────────────
+
+@app.get("/debug/proxy")
+async def debug_proxy() -> Dict[str, Any]:
+    """Show constructed proxy config (password masked) and run a live test request.
+
+    Hits https://api.ipify.org through the residential proxy so you can verify:
+      - The zone suffix is being appended correctly
+      - The proxy host/port are reachable
+      - The IP returned is a residential US IP (not the container's datacenter IP)
+
+    On 407 errors the response will include the raw error detail to help diagnose
+    zone-name mismatches.
+    """
+    import re as _re
+    import httpx as _httpx
+
+    # Build masked proxy URL for display  (mask password only, preserve username)
+    proxy_url = settings.proxy_url()
+    if proxy_url:
+        # Format is http://user:password@host:port — mask only the password segment
+        masked = _re.sub(r'(?<=:)[^/:@]+(?=@)', '***', proxy_url)
+    else:
+        masked = None
+
+    proxy_dict = settings.proxy_dict()
+
+    result: Dict[str, Any] = {
+        "brightdata_configured": settings.brightdata_configured(),
+        "proxy_url_masked": masked,
+        "proxy_host": settings.brightdata_host,
+        "proxy_port": settings.brightdata_port,
+        "username_full": settings.brightdata_username or "(not set)",
+        "username_has_zone": "-zone-" in (settings.brightdata_username or ""),
+        "zone_env_var": settings.brightdata_zone or "(not set — must be embedded in username)",
+        "test": None,
+    }
+
+    if not proxy_url:
+        result["test"] = {"status": "skipped", "reason": "no_proxy_configured"}
+        return result
+
+    # Live probe through the proxy
+    try:
+        async with _httpx.AsyncClient(
+            proxy=proxy_url,
+            timeout=20.0,
+            follow_redirects=True,
+            verify=False,
+        ) as cli:
+            r = await cli.get("https://api.ipify.org?format=json")
+            if r.status_code == 407:
+                result["test"] = {
+                    "status": "407_zone_not_found",
+                    "detail": r.text[:300],
+                    "hint": (
+                        "Your Bright Data zone name is wrong or the port doesn't match the zone type. "
+                        "Check: 22225=residential, 33335=datacenter, 24000=scraping_browser. "
+                        f"Current username: {settings.brightdata_username}"
+                    ),
+                }
+            elif r.status_code == 200:
+                result["test"] = {
+                    "status": "ok",
+                    "egress_ip": r.json().get("ip"),
+                    "http_status": 200,
+                }
+            else:
+                result["test"] = {
+                    "status": f"unexpected_{r.status_code}",
+                    "body": r.text[:300],
+                }
+    except Exception as e:
+        result["test"] = {"status": "error", "error": str(e)[:300]}
+
+    return result
+
+
+@app.post("/debug/proxy/zone")
+async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Temporarily override the proxy zone for one test request (does NOT persist).
+
+    Body: {"zone": "residential_1", "port": 22225}
+
+    Useful for trying different zone names without an env restart.
+    """
+    import re as _re
+    import httpx as _httpx
+
+    zone = (body.get("zone") or "").strip()
+    port = int(body.get("port") or settings.brightdata_port)
+    if not zone:
+        return {"error": "zone is required"}
+
+    base_user = settings.brightdata_username or ""
+    # Strip any existing zone suffix first
+    base_user = _re.sub(r'-zone-.*', '', base_user)
+    test_user = f"{base_user}-zone-{zone}"
+    test_pw   = settings.brightdata_password or ""
+    test_url  = f"http://{test_user}:{test_pw}@{settings.brightdata_host}:{port}"
+    masked    = f"http://{test_user}:***@{settings.brightdata_host}:{port}"
+
+    try:
+        async with _httpx.AsyncClient(
+            proxy=test_url,
+            timeout=20.0,
+            follow_redirects=True,
+            verify=False,
+        ) as cli:
+            r = await cli.get("https://api.ipify.org?format=json")
+            if r.status_code == 407:
+                return {
+                    "proxy_tested": masked,
+                    "status": "407_zone_not_found",
+                    "detail": r.text[:300],
+                }
+            elif r.status_code == 200:
+                return {
+                    "proxy_tested": masked,
+                    "status": "ok",
+                    "egress_ip": r.json().get("ip"),
+                }
+            else:
+                return {
+                    "proxy_tested": masked,
+                    "status": f"http_{r.status_code}",
+                    "body": r.text[:200],
+                }
+    except Exception as e:
+        return {"proxy_tested": masked, "status": "error", "error": str(e)[:300]}
+
+
 # ─── Session login tests ─────────────────────────────────────────────────────
 
 @app.post("/session/propelio/test")

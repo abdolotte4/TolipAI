@@ -53,18 +53,38 @@ async def _do_login(page) -> None:
         'input[type="password"], input[name="password"], '
         'input[autocomplete="current-password"], input[autocomplete="password"]'
     )
-    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-    try:
-        await page.wait_for_selector(email_sel, timeout=25000)
-    except Exception:
-        pass
+
+    # Use "commit" (fires as soon as the server starts sending bytes) instead of
+    # "domcontentloaded" — the latter waits for the full DOM parse which can
+    # time out on slow proxy routes.  We then wait explicitly for the email input.
+    for attempt in range(2):
+        try:
+            await page.goto(LOGIN_URL, wait_until="commit", timeout=30000)
+            break
+        except Exception as nav_err:
+            if attempt == 0:
+                log.warning("Propelio: first navigation attempt failed (%s), retrying…", nav_err)
+                await page.wait_for_timeout(2000)
+            else:
+                # Last resort: try domcontentloaded with shorter budget
+                log.warning("Propelio: fallback navigation with domcontentloaded")
+                await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=20000)
+
+    # Capture a screenshot for debug if something goes wrong later
+    _screenshot_path = "/tmp/propelio_login_debug.png"
 
     # Form selectors — try multiple variants in case Propelio updates their markup
     try:
-        await page.wait_for_selector(email_sel, timeout=25000)
+        await page.wait_for_selector(email_sel, timeout=20000)
     except Exception:
-        await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_selector(email_sel, timeout=25000)
+        try:
+            await page.screenshot(path=_screenshot_path)
+            log.warning("Propelio: email selector not found — screenshot saved to %s", _screenshot_path)
+        except Exception:
+            pass
+        # One more navigation attempt
+        await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
+        await page.wait_for_selector(email_sel, timeout=15000)
 
     # Explicitly click then fill — React needs focus events to fire onChange handlers
     email_el = page.locator(email_sel).first

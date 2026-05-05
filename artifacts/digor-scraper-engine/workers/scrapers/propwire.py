@@ -41,7 +41,6 @@ async def _do_login(page) -> None:
         raise RuntimeError("PROPWIRE_EMAIL / PROPWIRE_PASSWORD not set")
 
     log.info("Propwire: navigating to login page")
-    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
 
     # Try multiple selector variants — Propwire periodically updates markup
     email_sel = (
@@ -53,7 +52,31 @@ async def _do_login(page) -> None:
         'input[autocomplete="current-password"]'
     )
 
-    await page.wait_for_selector(email_sel, timeout=45000)
+    # Use "commit" so navigation completes as soon as the server starts sending
+    # bytes — "domcontentloaded" can timeout on slow proxy routes.
+    _screenshot_path = "/tmp/propwire_login_debug.png"
+    for attempt in range(2):
+        try:
+            await page.goto(LOGIN_URL, wait_until="commit", timeout=30000)
+            break
+        except Exception as nav_err:
+            if attempt == 0:
+                log.warning("Propwire: navigation attempt %d failed (%s), retrying…", attempt + 1, nav_err)
+                await page.wait_for_timeout(2000)
+            else:
+                log.warning("Propwire: fallback navigation with domcontentloaded")
+                await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=20000)
+
+    try:
+        await page.wait_for_selector(email_sel, timeout=20000)
+    except Exception:
+        try:
+            await page.screenshot(path=_screenshot_path)
+            log.warning("Propwire: email selector not found — screenshot at %s", _screenshot_path)
+        except Exception:
+            pass
+        await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
+        await page.wait_for_selector(email_sel, timeout=15000)
 
     # Explicitly click then fill — Next.js/React forms need focus events for onChange
     email_el = page.locator(email_sel).first

@@ -310,7 +310,19 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
             async with AsyncWebCrawler(config=cfg) as crawler:
                 result = await crawler.arun(url=url, config=run_cfg)
                 if not result.success:
-                    raise RuntimeError(f"Crawl4AI failed: {result.error_message}")
+                    # ERR_HTTP_RESPONSE_CODE_FAILURE means the server returned a non-2xx
+                    # status but Playwright may still have captured the response body.
+                    # Return whatever HTML we got rather than hard-failing — downstream
+                    # parsers will receive empty content if the page was truly blank.
+                    err = result.error_message or ""
+                    html_fallback = result.html or result.markdown or ""
+                    if "ERR_HTTP_RESPONSE_CODE_FAILURE" in err and html_fallback:
+                        log.info("Crawl4AI got non-2xx response for %s — returning partial HTML (%d chars)",
+                                 url, len(html_fallback))
+                        return html_fallback
+                    if "ERR_HTTP_RESPONSE_CODE_FAILURE" in err:
+                        raise RuntimeError(f"Crawl4AI: server returned error HTTP status for {url}")
+                    raise RuntimeError(f"Crawl4AI failed: {err}")
                 return result.html or result.markdown or result.binary or ""
         except RuntimeError:
             raise
