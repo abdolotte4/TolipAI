@@ -22,6 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libcairo2 \
     libexpat1 \
+    libxkbcommon0 \
+    libx11-6 \
+    libxcomposite1 \
+    libxext6 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

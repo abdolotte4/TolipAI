@@ -7,7 +7,12 @@ LLM reasoning to score property distress 0-100.
 from __future__ import annotations
 import asyncio, json, logging, os, httpx
 from typing import Any, Dict, List, Optional
-from ultralytics import YOLO
+try:
+    from ultralytics import YOLO as _YOLO_CLASS
+    _YOLO_AVAILABLE = True
+except ImportError:
+    _YOLO_CLASS = None  # type: ignore
+    _YOLO_AVAILABLE = False
 from ..http_client import fetch_html
 from ..llm import _chat
 from . import zillow, redfin
@@ -95,10 +100,21 @@ def _streetview_url(lat: float, lon: float, heading: int = 0, pitch: int = 0) ->
 
 
 # ─── YOLO visual distress detection ──────────────────────────────────────────
-_yolo_model = YOLO("yolov8n.pt")  # swap for yolov9 if installed
+_yolo_model = None  # loaded lazily on first use to avoid OOM at startup
+
+def _get_yolo():
+    global _yolo_model
+    if _yolo_model is None:
+        if not _YOLO_AVAILABLE:
+            return None
+        _yolo_model = _YOLO_CLASS("yolov8n.pt")
+    return _yolo_model
 
 def _yolo_signals(image_path: str) -> Dict[str, bool]:
-    results = _yolo_model(image_path)
+    model = _get_yolo()
+    if model is None:
+        return {}
+    results = model(image_path)
     detections = [results[0].names[int(cls)] for cls in results[0].boxes.cls]
     return {
         "tall_grass": "grass" in detections,

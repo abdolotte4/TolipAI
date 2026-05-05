@@ -15,7 +15,7 @@ function requirePin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-router.post("/tools/auth/verify", (req, res) => {
+router.get("/tools/auth/verify", (req, res) => {
   const toolsPin = process.env.TOOLS_PIN;
   if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured" }); return; }
   const provided = req.headers["x-tools-pin"] as string | undefined;
