@@ -886,6 +886,85 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
 
 
+# ─── Propelio authenticated cash buyers ──────────────────────────────────────
+
+class PropelioCashBuyersRequest(BaseModel):
+    address: str
+    distance_miles: float = 10.0
+    active_within: str = "ANY_TIME"
+    min_properties: int = 3
+    landlords: bool = True
+    flippers: bool = True
+    max_results: int = 500
+    lead_id: Optional[int] = None
+    campaign_id: Optional[int] = None
+    persist: bool = True
+
+
+@app.post("/scrape/propelio/cash-buyers")
+async def scrape_propelio_cash_buyers(req: PropelioCashBuyersRequest) -> Dict[str, Any]:
+    """Start an authenticated Propelio cash-buyer search. Returns job_id immediately."""
+    job_id = _new_job("propelio_cash_buyers", req.model_dump())
+    await db.create_job(job_id, "propelio_cash_buyers", req.model_dump(),
+                        lead_id=req.lead_id, campaign_id=req.campaign_id)
+    asyncio.create_task(_run_propelio_cash_buyers(job_id, req.model_dump()))
+    return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
+
+
+# ─── Propwire authenticated endpoints ────────────────────────────────────────
+
+class PropwireQueryRequest(BaseModel):
+    query: str
+
+
+class PropwireCashBuyersNearbyRequest(BaseModel):
+    query: str
+    radius_miles: float = 1.0
+    min_properties: int = 3
+    max_results: int = 200
+    lead_id: Optional[int] = None
+    campaign_id: Optional[int] = None
+    persist: bool = True
+
+
+@app.post("/scrape/propwire/property")
+async def scrape_propwire_property(req: PropwireQueryRequest) -> Dict[str, Any]:
+    """Fetch Propwire property details for an address or URL."""
+    try:
+        return await propwire.fetch_property(req.query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)[:300])
+
+
+@app.post("/scrape/propwire/comps")
+async def scrape_propwire_comps(req: PropwireQueryRequest) -> Dict[str, Any]:
+    """Fetch Propwire comparable sales for an address or URL."""
+    try:
+        comps = await propwire.fetch_comps(req.query)
+        return {"query": req.query, "count": len(comps), "comps": comps}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)[:300])
+
+
+@app.post("/scrape/propwire/history")
+async def scrape_propwire_history(req: PropwireQueryRequest) -> Dict[str, Any]:
+    """Fetch Propwire sales + mortgage history for an address or URL."""
+    try:
+        return await propwire.fetch_history(req.query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)[:300])
+
+
+@app.post("/scrape/propwire/cash-buyers-nearby")
+async def scrape_propwire_cash_buyers_nearby(req: PropwireCashBuyersNearbyRequest) -> Dict[str, Any]:
+    """Start an authenticated Propwire cash-buyer search nearby an address. Returns job_id."""
+    job_id = _new_job("propwire_cash_buyers", req.model_dump())
+    await db.create_job(job_id, "propwire_cash_buyers", req.model_dump(),
+                        lead_id=req.lead_id, campaign_id=req.campaign_id)
+    asyncio.create_task(_run_propwire_cash_buyers(job_id, req.model_dump()))
+    return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
+
+
 # ─── Satellite Drive-For-Dollars ─────────────────────────────────────────────
 
 class SatelliteDFDRequest(BaseModel):

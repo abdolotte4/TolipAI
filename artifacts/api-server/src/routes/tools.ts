@@ -15,10 +15,13 @@ function requirePin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-router.get("/tools/auth/verify", (req, res) => {
+router.post("/tools/auth/verify", (req, res) => {
   const toolsPin = process.env.TOOLS_PIN;
   if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured" }); return; }
-  const provided = req.headers["x-tools-pin"] as string | undefined;
+  // Accept PIN from header (primary) or request body (fallback)
+  const fromHeader = req.headers["x-tools-pin"] as string | undefined;
+  const fromBody   = (req.body as any)?.pin as string | undefined;
+  const provided   = fromHeader || fromBody;
   if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN" }); return; }
   res.json({
     success: true,

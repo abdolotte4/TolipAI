@@ -14,7 +14,7 @@ close_client() at shutdown (done automatically by the FastAPI lifespan).
 
 from __future__ import annotations
 import asyncio, logging, random, ssl, io
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 import httpx
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from .config import settings
@@ -155,9 +155,19 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
 
     try:
         proxy = settings.proxy_url() if use_proxy else None
+        # Build proxy_config dict (proxy= is deprecated in crawl4ai>=0.4)
+        _proxy_cfg: Optional[Dict[str, str]] = None
+        if proxy:
+            from urllib.parse import urlparse as _urlparse
+            _u = _urlparse(proxy)
+            _proxy_cfg = {"server": f"{_u.scheme}://{_u.hostname}:{_u.port}"}
+            if _u.username:
+                _proxy_cfg["username"] = _u.username
+            if _u.password:
+                _proxy_cfg["password"] = _u.password
         cfg = BrowserConfig(
             headless=True,
-            proxy=proxy,
+            proxy_config=_proxy_cfg,
             user_agent=random.choice(USER_AGENTS),
             ignore_https_errors=True,
         )
