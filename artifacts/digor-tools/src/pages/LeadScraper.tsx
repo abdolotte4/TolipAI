@@ -986,7 +986,7 @@ export default function LeadScraper() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-primary" /> NAR Realtor Directory Scraper
-                <Badge variant="outline" className="text-xs ml-auto">ScrapingBee</Badge>
+                <Badge variant="outline" className="text-xs ml-auto">Engine / API</Badge>
               </CardTitle>
               <CardDescription>
                 Scrape REALTOR® member profiles from directories.apps.realtor by state/city. Extracts name, phone, and location.
@@ -996,8 +996,7 @@ export default function LeadScraper() {
               <Alert className="border-blue-500/30 bg-blue-500/5">
                 <Info className="w-4 h-4 text-blue-400" />
                 <AlertDescription className="text-blue-300 text-xs">
-                  NAR limits results to 1,000 per search. Profile-level phone extraction visits each profile page individually — this uses more ScrapingBee credits.
-                  Start with a small max (10–20) to test.
+                  Attempts NAR's member search API directly (no credits used). If the API is unavailable, falls back to ScrapingBee. Start with a small max (10–20) to verify results first.
                 </AlertDescription>
               </Alert>
 
@@ -1085,7 +1084,7 @@ export default function LeadScraper() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Home className="w-4 h-4 text-primary" /> Zillow Scraper
-                <Badge variant="outline" className="text-xs ml-auto">ScrapingBee</Badge>
+                <Badge variant="outline" className="text-xs ml-auto">Engine / ScrapingBee</Badge>
               </CardTitle>
               <CardDescription>
                 Scrape Zillow for real estate agents, active property listings, or FSBO listings by city and state.

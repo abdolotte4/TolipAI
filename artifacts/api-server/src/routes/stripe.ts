@@ -114,7 +114,7 @@ router.post("/stripe/checkout", async (req: Request, res: Response) => {
 router.get("/stripe/session/:sessionId", async (req: Request, res: Response) => {
   try {
     const stripe = getStripe();
-    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId, {
+    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId as string, {
       expand: ["subscription", "customer"],
     });
     res.json({ session });
@@ -158,8 +158,8 @@ router.get("/stripe/subscriptions", authMiddleware, async (req: Request, res: Re
         planAmount: planInfo.amount,
         priceId,
         status: sub.status,
-        currentPeriodStart: new Date(sub.current_period_start * 1000).toISOString(),
-        currentPeriodEnd: new Date(sub.current_period_end * 1000).toISOString(),
+        currentPeriodStart: new Date(((sub as any).current_period_start ?? 0) * 1000).toISOString(),
+        currentPeriodEnd: new Date(((sub as any).current_period_end ?? 0) * 1000).toISOString(),
         cancelAtPeriodEnd: sub.cancel_at_period_end,
         createdAt: new Date(sub.created * 1000).toISOString(),
         stripeUrl: `https://dashboard.stripe.com/customers/${customer.id}`,

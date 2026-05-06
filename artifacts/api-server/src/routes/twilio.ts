@@ -191,7 +191,7 @@ router.get("/twilio/messages", crmAuth, async (req, res) => {
 // ── GET /api/twilio/lead-messages/:leadId ─────────────────────────────────────
 
 router.get("/twilio/lead-messages/:leadId", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.leadId);
+  const leadId = parseInt(req.params.leadId as string);
   if (isNaN(leadId)) { res.status(400).json({ error: "Invalid leadId" }); return; }
   try {
     const messages = await db

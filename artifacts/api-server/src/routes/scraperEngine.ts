@@ -268,7 +268,7 @@ router.get("/scraper-engine/buyers", crmAuth, async (req: Request, res: Response
 
 router.get("/scraper-engine/jobs/:jobId", async (req: Request, res: Response) => {
   try {
-    const job = await scraperEngine.getJob(req.params.jobId);
+    const job = await scraperEngine.getJob(req.params.jobId as string);
     if ((job as any).status === "done") (job as any).status = "completed";
     res.json(job);
   } catch (err) {

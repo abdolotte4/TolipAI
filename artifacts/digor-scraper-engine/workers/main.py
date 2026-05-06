@@ -1078,6 +1078,280 @@ async def google_search_scrape(req: GoogleSearchRequest) -> Dict[str, Any]:
     return {"count": len(results), "results": results}
 
 
+# ─── NAR Directory Scraper ───────────────────────────────────────────────────
+
+class NARDirectoryRequest(BaseModel):
+    state: str
+    city: str = ""
+    maxResults: int = 50
+
+
+@app.post("/nar-directory")
+async def nar_directory_scrape(req: NARDirectoryRequest) -> Dict[str, Any]:
+    """Scrape the NAR Realtor Directory using their public member search JSON API.
+
+    Tries three documented endpoint patterns in order. Returns structured member records
+    without any third-party scraping service.
+    """
+    import httpx as _httpx
+
+    state = req.state.upper().strip()
+    city  = (req.city or "").strip()
+    limit = min(int(req.maxResults), 200)
+
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://directories.apps.realtor/memberResults",
+        "Origin": "https://directories.apps.realtor",
+    }
+
+    api_patterns = [
+        (
+            "GET",
+            "https://directories.apps.realtor/api/v1/search/realtor",
+            {"stateAbbreviation": state, **({"city": city} if city else {}),
+             "pageSize": min(limit, 100), "pageNumber": 1},
+        ),
+        (
+            "GET",
+            "https://directories.apps.realtor/api/memberSearch",
+            {"stateAbbreviation": state, **({"city": city} if city else {}),
+             "pageSize": min(limit, 100)},
+        ),
+        (
+            "GET",
+            "https://directories.apps.realtor/api/v1/members",
+            {"stateAbbreviation": state, **({"city": city} if city else {}),
+             "take": min(limit, 100), "skip": 0},
+        ),
+    ]
+
+    results: List[Dict[str, Any]] = []
+
+    async with _httpx.AsyncClient(timeout=25, headers=headers,
+                                   follow_redirects=True) as client:
+        for method, url, params in api_patterns:
+            try:
+                r = await client.request(method, url, params=params)
+                if r.status_code != 200:
+                    log.debug("NAR API %s → HTTP %d", url, r.status_code)
+                    continue
+                data = r.json()
+                # Various key names seen across NAR API versions
+                members: List[Any] = (
+                    data.get("members")
+                    or data.get("results")
+                    or data.get("data")
+                    or data.get("items")
+                    or []
+                )
+                if not members:
+                    continue
+                for m in members[:limit]:
+                    first = m.get("firstName", "")
+                    last  = m.get("lastName", "")
+                    full  = m.get("fullName") or m.get("name") or (
+                        f"{first} {last}".strip() if first or last else ""
+                    )
+                    results.append({
+                        "name":       full,
+                        "state":      state,
+                        "city":       m.get("city") or m.get("officeCity") or city,
+                        "phone":      m.get("phoneNumber") or m.get("phone") or m.get("cellPhone") or "",
+                        "email":      m.get("email") or m.get("emailAddress") or "",
+                        "office":     m.get("officeName") or m.get("brokerage") or "",
+                        "memberType": m.get("memberType") or m.get("designations") or "REALTOR®",
+                        "nrdsId":     m.get("nrdsId") or m.get("memberId") or "",
+                        "profileUrl": (
+                            f"https://directories.apps.realtor/memberProfile?nrdsId={m['nrdsId']}"
+                            if m.get("nrdsId") else ""
+                        ),
+                        "source": "NAR Directory (Python Engine)",
+                    })
+                log.info("NAR API hit on %s — %d members returned", url, len(results))
+                break  # Success — no need to try next pattern
+            except Exception as e:
+                log.debug("NAR API attempt failed (%s): %s", url, str(e)[:120])
+                continue
+
+    if not results:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "NAR directory API returned no members — "
+                "all endpoint patterns failed (state=%s, city=%s)" % (state, city)
+            ),
+        )
+
+    return {"count": len(results), "results": results}
+
+
+# ─── Zillow Scraper ───────────────────────────────────────────────────────────
+
+class ZillowRequest(BaseModel):
+    mode: str = "agents"     # agents | listings | fsbo
+    city: str
+    state: str
+    maxResults: int = 40
+
+
+@app.post("/zillow")
+async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
+    """Scrape Zillow using Playwright (residential proxy) to bypass DataDome.
+
+    Returns structured agent/listing/FSBO records by extracting __NEXT_DATA__
+    from the server-side-rendered page.
+    """
+    from .scrapers._browser_session import browser_context
+    import json as _json
+
+    city     = req.city.strip()
+    state    = req.state.upper().strip()
+    mode     = req.mode.lower()
+    limit    = min(int(req.maxResults), 100)
+
+    # Build the Zillow URL slug and target
+    slug     = f"{city.lower().replace(' ', '-')}-{state.lower()}"
+    url_map  = {
+        "agents":   f"https://www.zillow.com/professionals/real-estate-agents/{slug}/",
+        "listings": f"https://www.zillow.com/homes/for_sale/{slug}_rb/",
+        "fsbo":     f"https://www.zillow.com/homes/fsbo/{slug}_rb/",
+    }
+    target_url = url_map.get(mode, url_map["agents"])
+
+    results: List[Dict[str, Any]] = []
+
+    try:
+        async with browser_context("zillow") as ctx:
+            page = await ctx.new_page()
+            await page.set_extra_http_headers({
+                "Accept-Language": "en-US,en;q=0.9",
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                ),
+            })
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+            await page.wait_for_timeout(2500)
+
+            # Extract __NEXT_DATA__ JSON (Zillow is Next.js)
+            next_data_raw = await page.evaluate(
+                "() => { const el = document.getElementById('__NEXT_DATA__'); "
+                "return el ? el.textContent : null; }"
+            )
+            if not next_data_raw:
+                # Fall back: try window.__PRELOADED_STATE__
+                next_data_raw = await page.evaluate(
+                    "() => JSON.stringify(window.__PRELOADED_STATE__ || null)"
+                )
+            await page.close()
+
+    except Exception as e:
+        log.warning("Zillow Playwright failed: %s", str(e)[:200])
+        raise HTTPException(
+            status_code=503,
+            detail=f"Zillow Playwright scrape failed: {str(e)[:200]}"
+        )
+
+    if not next_data_raw:
+        raise HTTPException(status_code=503, detail="Zillow returned no __NEXT_DATA__ — possibly blocked by DataDome")
+
+    try:
+        next_data = _json.loads(next_data_raw) if isinstance(next_data_raw, str) else next_data_raw
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=503, detail="Zillow __NEXT_DATA__ could not be parsed as JSON")
+
+    page_props = next_data.get("props", {}).get("pageProps", {})
+
+    if mode == "agents":
+        # New card format (2024+)
+        new_cards: List[Any] = (
+            page_props.get("displayData", {})
+            .get("agentDirectoryFinderDisplay", {})
+            .get("searchResults", {})
+            .get("results", {})
+            .get("resultsCards", [])
+        )
+        legacy: List[Any] = (
+            page_props.get("searchResultsProps", {}).get("agentResults", [])
+            or page_props.get("agents", [])
+            or page_props.get("agentList", {}).get("agents", [])
+        )
+        cards = new_cards or legacy
+        for c in cards[:limit]:
+            if new_cards:
+                pd = c.get("profileData", [])
+                def _stat(label: str) -> str:
+                    return next(
+                        (x.get("formattedData", "") for x in pd
+                         if label in (x.get("label") or "").lower()),
+                        ""
+                    )
+                results.append({
+                    "name":       c.get("cardTitle", ""),
+                    "sales12mo":  _stat("sales last 12"),
+                    "priceRange": _stat("price range"),
+                    "profileUrl": c.get("cardActionLink", ""),
+                    "isTopAgent": "Yes" if c.get("isTopAgent") else "No",
+                    "city": city, "state": state,
+                    "source": "Zillow Agents (Python Engine)",
+                })
+            else:
+                results.append({
+                    "name":           c.get("fullName") or c.get("displayName") or c.get("name", ""),
+                    "brokerage":      c.get("businessName") or c.get("brokerageName", ""),
+                    "phone":          c.get("phone") or c.get("phoneNumber", ""),
+                    "city":           c.get("location", {}).get("city", city),
+                    "state":          c.get("location", {}).get("stateCode", state),
+                    "rating":         str(c.get("rating") or c.get("reviewStats", {}).get("averageRating", "")),
+                    "reviews":        str(c.get("reviewCount") or c.get("reviewStats", {}).get("totalReviewCount", "")),
+                    "activeListings": str(c.get("activeListingCount", "")),
+                    "profileUrl":     ("https://www.zillow.com" + c["profileUrl"]) if c.get("profileUrl") else "",
+                    "source": "Zillow Agents (Python Engine)",
+                })
+
+    elif mode in ("listings", "fsbo"):
+        # __NEXT_DATA__ listing results
+        search_results = (
+            page_props.get("searchPageState", {})
+            .get("cat1", {})
+            .get("searchResults", {})
+            .get("listResults", [])
+        ) or page_props.get("searchResults", {}).get("listResults", [])
+
+        for prop in search_results[:limit]:
+            results.append({
+                "address":      prop.get("address", ""),
+                "price":        prop.get("price") or prop.get("unformattedPrice", ""),
+                "beds":         str(prop.get("beds", "")),
+                "baths":        str(prop.get("baths", "")),
+                "sqft":         str(prop.get("area", "")),
+                "daysOnMarket": str(prop.get("daysOnMarket", "")),
+                "city":         city,
+                "state":        state,
+                "zillowUrl":    prop.get("detailUrl", ""),
+                "zpid":         str(prop.get("zpid", "")),
+                "source":       f"Zillow {mode.upper()} (Python Engine)",
+            })
+
+    if not results:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Zillow scrape succeeded but returned 0 results — "
+                "DataDome may have served a challenge page or the slug is incorrect. "
+                f"URL: {target_url}"
+            ),
+        )
+
+    return {"count": len(results), "results": results}
+
+
 @app.post("/bulk")
 async def bulk_scrape(req: BulkRequest) -> Dict[str, Any]:
     """Bulk keyword × location scrape — delegates to /google-maps or /google-search."""

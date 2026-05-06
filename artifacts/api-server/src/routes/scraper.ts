@@ -229,22 +229,86 @@ async function scrapingBeeGet(url: string, extraParams: Record<string, string> =
 // Returns the results array on success, null if engine is unavailable or returns nothing.
 
 async function tryEngine(path: string, body: Record<string, any>): Promise<any[] | null> {
-  if (!ENGINE_URL) return null;
+  if (!ENGINE_URL) {
+    logger.warn({ path }, "SCRAPER_ENGINE_URL not set — skipping engine, falling back to API");
+    return null;
+  }
   try {
+    logger.info({ path, engineUrl: ENGINE_URL }, "Calling Python scraper engine");
     const res = await fetch(`${ENGINE_URL}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(90_000),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const rows: any[] = data?.results || data?.businesses || data?.organic_results || [];
-    return rows.length ? rows : null;
+    if (!res.ok) {
+      let errText = "";
+      try { errText = await res.text(); } catch {}
+      logger.warn({ path, status: res.status, body: errText.slice(0, 300) }, "Engine returned non-200 — falling back");
+      return null;
+    }
+    const data = await res.json() as any;
+    logger.info({ path, keys: Object.keys(data || {}) }, "Engine raw response shape");
+    const rows: any[] = data?.results || data?.businesses || data?.organic_results || data?.listings || [];
+    if (!rows.length) {
+      logger.warn({ path, data: JSON.stringify(data).slice(0, 200) }, "Engine returned 0 rows — falling back");
+      return null;
+    }
+    logger.info({ path, count: rows.length }, "Engine returned results — using engine data");
+    return rows;
   } catch (err: any) {
-    logger.warn({ path, err: err.message }, "Python scraper engine unavailable — falling back to ScraperAPI/ScrapingBee");
+    const isConn = /ECONNREFUSED|fetch failed|network/i.test(err.message || "");
+    logger.warn({ path, err: err.message, isConnError: isConn }, isConn
+      ? "Python scraper engine unreachable (ECONNREFUSED) — check SCRAPER_ENGINE_URL"
+      : "Python scraper engine error — falling back to ScraperAPI/ScrapingBee");
     return null;
   }
+}
+
+// ─── Helper: call NAR directory JSON API directly ─────────────────────────────
+// NAR exposes a JSON search API — we call it without any third-party service.
+
+async function narDirectApi(state: string, city: string, limit: number): Promise<Record<string, any>[] | null> {
+  const headers = {
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Referer": "https://directories.apps.realtor/memberResults",
+    "Origin": "https://directories.apps.realtor",
+  };
+
+  const apiEndpoints = [
+    `https://directories.apps.realtor/api/v1/search/realtor?stateAbbreviation=${state}${city ? `&city=${encodeURIComponent(city)}` : ""}&pageSize=${Math.min(limit, 100)}&pageNumber=1`,
+    `https://directories.apps.realtor/api/memberSearch?stateAbbreviation=${state}${city ? `&city=${encodeURIComponent(city)}` : ""}&pageSize=${Math.min(limit, 100)}`,
+    `https://directories.apps.realtor/api/v1/members?stateAbbreviation=${state}${city ? `&city=${encodeURIComponent(city)}` : ""}&take=${Math.min(limit, 100)}&skip=0`,
+  ];
+
+  for (const endpoint of apiEndpoints) {
+    try {
+      const res = await fetch(endpoint, { headers, signal: AbortSignal.timeout(20_000) });
+      if (!res.ok) continue;
+      const data = await res.json() as any;
+      const members: any[] = data?.members || data?.results || data?.data || data?.items || [];
+      if (members.length > 0) {
+        logger.info({ endpoint, count: members.length }, "NAR API endpoint succeeded");
+        return members.slice(0, limit).map((m: any) => ({
+          name: m.fullName || m.name || m.firstName && `${m.firstName} ${m.lastName}` || "",
+          state,
+          city: m.city || m.officecity || city || "",
+          phone: m.phoneNumber || m.phone || m.cellPhone || "",
+          email: m.email || m.emailAddress || "",
+          office: m.officeName || m.brokerage || "",
+          memberType: m.memberType || m.designations || "REALTOR®",
+          nrdsId: m.nrdsId || m.memberId || "",
+          profileUrl: m.nrdsId ? `https://directories.apps.realtor/memberProfile?nrdsId=${m.nrdsId}` : "",
+          source: "NAR Directory (Direct API)",
+        }));
+      }
+    } catch (err: any) {
+      logger.debug({ endpoint, err: err.message }, "NAR API endpoint failed");
+    }
+  }
+  return null;
 }
 
 // ─── POST /scraper/google-maps ────────────────────────────────────────────────
@@ -461,22 +525,29 @@ router.post("/scraper/nar-directory", requirePin, async (req: Request, res: Resp
       return;
     }
 
-    // 1. Python engine
-    const engineRows = await tryEngine("/nar-directory", { state, city, maxResults });
+    const limit = Math.min(Number(maxResults) || 50, 300);
+
+    // 1. Python engine (uses httpx + residential proxy)
+    const engineRows = await tryEngine("/nar-directory", { state, city, maxResults: limit });
     if (engineRows) {
       res.json({ count: engineRows.length, csv: toCSV(engineRows), results: engineRows });
       return;
     }
 
-    // 2. ScrapingBee fallback
-    const limit = Math.min(Number(maxResults) || 50, 300);
+    // 2. Direct NAR API (no third-party service)
+    const directRows = await narDirectApi(state, city, limit);
+    if (directRows && directRows.length > 0) {
+      res.json({ count: directRows.length, csv: toCSV(directRows), results: directRows });
+      return;
+    }
+
+    // 3. ScrapingBee fallback (last resort)
+    logger.info({ state, city }, "Falling back to ScrapingBee for NAR directory");
     const allResults: Record<string, any>[] = [];
 
     const params = new URLSearchParams({ stateAbbreviation: state });
     if (city) params.set("city", city);
     const listUrl = `https://directories.apps.realtor/memberResults?${params.toString()}`;
-
-    logger.info({ listUrl }, "Scraping NAR directory listing");
 
     const html = await scrapingBeeGet(listUrl, {
       render_js: "true",
@@ -504,7 +575,7 @@ router.post("/scraper/nar-directory", requirePin, async (req: Request, res: Resp
         });
       }
     } else {
-      for (const link of profileLinks.slice(0, limit)) {
+      for (const link of profileLinks.slice(0, Math.min(limit, 20))) {
         try {
           const profileUrl = `https://directories.apps.realtor${link}`;
           const profileHtml = await scrapingBeeGet(profileUrl, {
@@ -521,7 +592,7 @@ router.post("/scraper/nar-directory", requirePin, async (req: Request, res: Resp
             phone: phoneM ? phoneM[1] : "",
             memberType: typeM ? typeM[0] : "REALTOR®",
             profileUrl,
-            source: "NAR Directory",
+            source: "NAR Directory (ScrapingBee)",
           });
         } catch (err: any) {
           logger.warn({ link, err: err.message }, "NAR profile scrape failed");

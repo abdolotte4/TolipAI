@@ -167,7 +167,7 @@ router.post("/upload", crmAuth, async (req, res) => {
 // DELETE /api/crm/buyers/:id
 router.delete("/:id", crmAuth, async (req, res) => {
   const crmUser = (req as any).crmUser;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   try {
     const [buyer] = await db.select().from(crmBuyers).where(eq(crmBuyers.id, id)).limit(1);
     if (!buyer) { res.status(404).json({ error: "Buyer not found" }); return; }

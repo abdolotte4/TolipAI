@@ -708,7 +708,7 @@ export async function estimateMarketPricePerSqft(
       return null;
     }
 
-    const json = await aiRes.json();
+    const json = await aiRes.json() as any;
     const content = json?.choices?.[0]?.message?.content ?? "";
     const parsed = JSON.parse(content);
     const rate = Number(parsed?.pricePerSqft);

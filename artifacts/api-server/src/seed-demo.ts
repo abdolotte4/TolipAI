@@ -592,9 +592,9 @@ async function run() {
         baths: comp.baths,
         sqft: comp.sqft,
         adjustedPrice: comp.adjustedPrice,
-        distanceMiles: comp.distanceMiles,
+        distanceMiles: comp.distanceMiles as string,
         saleDate: "2024-09-15",
-      });
+      } as any);
     }
 
     console.log(`  ✓ Inserted 5 comps for closed lead`);
