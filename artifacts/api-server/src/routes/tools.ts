@@ -109,6 +109,7 @@ router.post("/tools/distressed/search", requirePin, async (req: Request, res: Re
         categories: categories || [],
       });
       jobIds.push(job.job_id);
+      distressedJobIds.push({ jobId: job.job_id, createdAt: new Date().toISOString() });
     }
 
     // Return first jobId for backward compat; also include full list
@@ -130,7 +131,7 @@ router.post("/tools/distressed/search", requirePin, async (req: Request, res: Re
 
 router.get("/tools/distressed/status/:jobId", requirePin, async (req: Request, res: Response) => {
   try {
-    const job = await scraperEngine.getJob(req.params.jobId);
+    const job = await scraperEngine.getJob(String(req.params.jobId));
     if ((job as any).status === "done") (job as any).status = "completed";
     res.json(job);
   } catch (err: any) {
@@ -142,8 +143,221 @@ router.get("/tools/distressed/status/:jobId", requirePin, async (req: Request, r
   }
 });
 
-router.get("/tools/distressed/jobs", requirePin, async (_req, res) => {
-  res.json([]);
+// ─── In-memory distressed job tracker ────────────────────────────────────────
+// Keeps the ordered list of job IDs created via /tools/distressed/search so the
+// History panel can display them.  The engine holds the actual job state.
+
+interface DistressedJobEntry {
+  jobId: string;
+  createdAt: string;
+}
+
+const distressedJobIds: DistressedJobEntry[] = [];
+
+// Auto-expire entries older than 24 h to prevent unbounded growth.
+setInterval(() => {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  let i = 0;
+  while (i < distressedJobIds.length && new Date(distressedJobIds[i]!.createdAt).getTime() < cutoff) i++;
+  if (i > 0) distressedJobIds.splice(0, i);
+}, 60 * 60 * 1000).unref();
+
+router.get("/tools/distressed/jobs", requirePin, (_req, res) => {
+  res.json({ jobs: [...distressedJobIds].reverse() });
+});
+
+// ─── In-memory distressed enrich job store ────────────────────────────────────
+
+interface EnrichJob {
+  enrichJobId: string;
+  sourceJobId: string;
+  status: "running" | "completed" | "failed";
+  total: number;
+  processed: number;
+  results: any[];
+  startedAt: string;
+  error?: string;
+}
+
+const enrichJobs = new Map<string, EnrichJob>();
+
+// Auto-expire enrich jobs older than 8 h.
+setInterval(() => {
+  const cutoff = Date.now() - 8 * 60 * 60 * 1000;
+  for (const [id, job] of enrichJobs) {
+    if (new Date(job.startedAt).getTime() < cutoff) enrichJobs.delete(id);
+  }
+}, 30 * 60 * 1000).unref();
+
+// ─── GET /tools/distressed/download/:jobId ─────────────────────────────────
+// Fetches the completed distressed listings from the engine and returns a CSV.
+
+router.get("/tools/distressed/download/:jobId", requirePin, async (req: Request, res: Response) => {
+  try {
+    const jobId = String(req.params.jobId);
+    const data = await scraperEngine.listDistressedForJob(jobId);
+    const listings: any[] = data.listings || [];
+
+    if (!listings.length) {
+      res.status(404).json({ error: "No listings found for this job" });
+      return;
+    }
+
+    const COLS = [
+      "address", "city", "state", "zip", "county",
+      "property_type", "year_built", "sqft", "beds", "baths", "lot_size",
+      "apn", "owner_name", "estimated_value", "opening_bid", "mortgage_balance",
+      "distress_type", "source", "source_url",
+    ];
+
+    const esc = (v: any) => {
+      const s = v == null ? "" : String(v);
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+
+    const header = COLS.join(",");
+    const rows = listings.map(r =>
+      COLS.map(col => esc(r[col] ?? r[col.replace(/_([a-z])/g, (_, c) => c.toUpperCase())] ?? "")).join(",")
+    );
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="distressed_${jobId.substring(0, 8)}_${new Date().toISOString().slice(0, 10)}.csv"`
+    );
+    res.send([header, ...rows].join("\n"));
+  } catch (err: any) {
+    if (err instanceof ScraperEngineUnavailable) { res.status(503).json({ error: err.message }); return; }
+    res.status(500).json({ error: err?.message || "Download failed" });
+  }
+});
+
+// ─── POST /tools/distressed/enrich/:jobId ─────────────────────────────────
+// Fetches distressed listings from the engine, runs skip-trace on each record,
+// and stores the enriched results in-memory for later download.
+
+router.post("/tools/distressed/enrich/:jobId", requirePin, async (req: Request, res: Response) => {
+  try {
+    const jobId = String(req.params.jobId);
+    const data = await scraperEngine.listDistressedForJob(jobId);
+    const listings: any[] = data.listings || [];
+
+    if (!listings.length) {
+      res.status(404).json({ error: "No listings found for this job — nothing to enrich" });
+      return;
+    }
+
+    const enrichJobId = randomUUID();
+    const enrichJob: EnrichJob = {
+      enrichJobId,
+      sourceJobId: jobId,
+      status: "running",
+      total: listings.length,
+      processed: 0,
+      results: [],
+      startedAt: new Date().toISOString(),
+    };
+    enrichJobs.set(enrichJobId, enrichJob);
+
+    // Run enrichment in the background — do not await.
+    setImmediate(async () => {
+      for (const listing of listings) {
+        try {
+          const street    = listing.address || listing.street || "";
+          const city      = listing.city || "";
+          const state     = listing.state || "";
+          const zip       = listing.zip || listing.zip_code || "";
+          const ownerName = listing.owner_name || listing.ownerName || "";
+          const parts     = ownerName.trim().split(/\s+/);
+          const firstName = parts[0] || null;
+          const lastName  = parts.length > 1 ? parts.slice(1).join(" ") : null;
+
+          const st = await runSkipTrace(
+            street, city || null, state || null, zip || null,
+            firstName, lastName,
+          );
+
+          enrichJob.results.push({
+            ...listing,
+            phones: st ? st.phones.map((p: any) => p.number || p) : [],
+            emails: st ? st.emails : [],
+            skip_trace_status: st ? "found" : "not_found",
+          });
+        } catch {
+          enrichJob.results.push({
+            ...listing,
+            phones: [],
+            emails: [],
+            skip_trace_status: "error",
+          });
+        }
+
+        enrichJob.processed++;
+        // Throttle ~2 records/sec to respect API rate limits
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      enrichJob.status = "completed";
+    });
+
+    logger.info({ enrichJobId, sourceJobId: req.params.jobId, total: listings.length }, "[distressed] enrich job started");
+    res.json({ enrichJobId, total: listings.length, status: "running" });
+  } catch (err: any) {
+    if (err instanceof ScraperEngineUnavailable) { res.status(503).json({ error: err.message }); return; }
+    res.status(500).json({ error: err?.message || "Failed to start enrichment" });
+  }
+});
+
+// ─── GET /tools/distressed/enrich-status/:enrichJobId ────────────────────
+// Poll the progress of an enrichment job.
+
+router.get("/tools/distressed/enrich-status/:enrichJobId", requirePin, (req: Request, res: Response) => {
+  const job = enrichJobs.get(String(req.params.enrichJobId));
+  if (!job) { res.status(404).json({ error: "Enrich job not found" }); return; }
+  res.json({
+    enrichJobId: job.enrichJobId,
+    sourceJobId: job.sourceJobId,
+    status:      job.status,
+    total:       job.total,
+    processed:   job.processed,
+    error:       job.error ?? null,
+  });
+});
+
+// ─── GET /tools/distressed/download-enriched/:enrichJobId ─────────────────
+// Download the completed enriched CSV (includes phones + emails from skip-trace).
+
+router.get("/tools/distressed/download-enriched/:enrichJobId", requirePin, (req: Request, res: Response) => {
+  const job = enrichJobs.get(String(req.params.enrichJobId));
+  if (!job) { res.status(404).json({ error: "Enrich job not found" }); return; }
+  if (job.status !== "completed") { res.status(409).json({ error: "Enrichment not yet completed" }); return; }
+  if (!job.results.length) { res.status(404).json({ error: "No enriched results to download" }); return; }
+
+  const COLS = [
+    "address", "city", "state", "zip", "county",
+    "property_type", "year_built", "sqft", "beds", "baths",
+    "owner_name", "estimated_value", "distress_type", "source",
+    "phones", "emails", "skip_trace_status",
+  ];
+
+  const esc = (v: any) => {
+    const s = Array.isArray(v) ? v.join(" | ") : v == null ? "" : String(v);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const header = COLS.join(",");
+  const rows = job.results.map(r =>
+    COLS.map(col => esc(r[col] ?? r[col.replace(/_([a-z])/g, (_, c) => c.toUpperCase())] ?? "")).join(",")
+  );
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="distressed-enriched_${job.sourceJobId.substring(0, 8)}_${new Date().toISOString().slice(0, 10)}.csv"`
+  );
+  res.send([header, ...rows].join("\n"));
 });
 
 // ─── GET /tools/arv/config ────────────────────────────────────────────────────
@@ -772,7 +986,7 @@ router.post("/tools/skip-trace/upload", requirePin, async (req: Request, res: Re
 // ─── GET /tools/skip-trace/status/:jobId ─────────────────────────────────────
 
 router.get("/tools/skip-trace/status/:jobId", requirePin, (req: Request, res: Response) => {
-  const job = skipTraceJobs.get(req.params.jobId);
+  const job = skipTraceJobs.get(String(req.params.jobId));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   res.json({
     jobId:           job.jobId,
@@ -790,7 +1004,7 @@ router.get("/tools/skip-trace/status/:jobId", requirePin, (req: Request, res: Re
 // ─── GET /tools/skip-trace/download/:jobId ────────────────────────────────────
 
 router.get("/tools/skip-trace/download/:jobId", requirePin, (req: Request, res: Response) => {
-  const job = skipTraceJobs.get(req.params.jobId);
+  const job = skipTraceJobs.get(String(req.params.jobId));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status !== "completed") { res.status(409).json({ error: "Job not yet completed" }); return; }
   if (!job.results.length) { res.status(404).json({ error: "No results to download" }); return; }

@@ -159,6 +159,17 @@ app.use("/api/admin/login", authRateLimit);
 
 app.use("/api", router);
 
+// Global error handler — catches any unhandled errors thrown by route handlers
+// Must be defined with 4 parameters so Express recognises it as an error middleware
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logger.error({ err: msg }, "Unhandled Express error");
+  if (!res.headersSent) {
+    res.status(500).json({ error: msg || "Internal server error" });
+  }
+});
+
 // Serve static frontend builds in production
 if (process.env.NODE_ENV === "production") {
   const cwd = process.cwd();

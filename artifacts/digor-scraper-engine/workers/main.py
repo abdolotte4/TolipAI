@@ -1068,7 +1068,12 @@ async def google_search_scrape(req: GoogleSearchRequest) -> Dict[str, Any]:
                         break
             except Exception as e:
                 log.warning("Google Search Playwright failed for '%s %s': %s", keyword, location, e)
-                raise HTTPException(status_code=503, detail=f"Browser scrape failed: {e}")
+                # Continue to next keyword/location — don't abort the whole request.
+                # A 503 here would break the tryEngine() null-check in the Node server.
+                continue
+
+    if not results:
+        raise HTTPException(status_code=503, detail="Browser scrape returned no results — Playwright may be unavailable")
 
     return {"count": len(results), "results": results}
 
