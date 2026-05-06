@@ -69,15 +69,56 @@ router.post("/tools/auth/verify", (req, res) => {
 
 router.post("/tools/distressed/search", requirePin, async (req: Request, res: Response) => {
   try {
-    const { state, city, county, zip, categories } = req.body || {};
-    const job = await scraperEngine.startDistressed({
-      zip: zip || "",
-      countyKey: county || "",
-      state: state || "",
-      categories: categories || [],
+    const { state, city, county, zip, categories, locations, locationType } = req.body || {};
+
+    // Support both legacy single-field format and new locations[]+locationType format
+    const locArr: string[] = Array.isArray(locations) ? locations : (locations ? [locations] : []);
+
+    // Map each location to the correct engine field based on locationType
+    const resolveFields = (loc: string) => {
+      const t = locationType || "zip";
+      if (t === "city") {
+        // "Baltimore, MD" → extract state abbreviation for engine filtering
+        const parts = loc.split(",").map((s: string) => s.trim());
+        const stateAbbr = parts.length > 1 ? parts[parts.length - 1] : "";
+        return { zip: "", countyKey: "", state: stateAbbr };
+      }
+      return {
+        zip:       t === "zip"    ? loc : (zip    || ""),
+        countyKey: t === "county" ? loc : (county || ""),
+        state:     t === "state"  ? loc : (state  || ""),
+      };
+    };
+
+    if (locArr.length === 0 && !zip && !county && !state) {
+      res.status(400).json({ error: "Provide at least one location" });
+      return;
+    }
+
+    // Start one job per location (fall back to legacy single-field if no array)
+    const toSearch = locArr.length > 0 ? locArr : ["__legacy__"];
+    const jobIds: string[] = [];
+
+    for (const loc of toSearch) {
+      const fields = loc === "__legacy__"
+        ? { zip: zip || "", countyKey: county || "", state: state || "", city: city || "" }
+        : resolveFields(loc);
+
+      const job = await scraperEngine.startDistressed({
+        ...fields,
+        categories: categories || [],
+      });
+      jobIds.push(job.job_id);
+    }
+
+    // Return first jobId for backward compat; also include full list
+    res.json({
+      jobId: jobIds[0],
+      id: jobIds[0],
+      jobIds,
+      status: "queued",
+      progress: 0,
     });
-    const jobId = job.job_id;
-    res.json({ jobId, id: jobId, status: job.status || "queued", progress: 0 });
   } catch (err: any) {
     if (err instanceof ScraperEngineUnavailable) {
       res.status(503).json({ error: err.message });

@@ -425,7 +425,7 @@ export default function LeadScraper() {
       if (!res.ok) throw new Error(data.error || "Scrape failed");
       setMapsResults(data.results || []);
       if (data.creditExhausted) {
-        setMapsError(`ScraperAPI credits exhausted for this month — results below are from ScrapingBee fallback (may be limited). Upgrade at scraperapi.com/billing to restore full results.`);
+        setMapsError(`ScraperAPI fallback credits exhausted for this month — results below are from ScrapingBee. Configure GOOGLE_MAPS_API_KEY in the engine environment for unlimited primary results.`);
       } else if (!data.count) {
         setMapsError("No results found. Try different keywords or locations.");
       }
@@ -446,7 +446,7 @@ export default function LeadScraper() {
       if (!res.ok) throw new Error(data.error || "Scrape failed");
       setSearchResults(data.results || []);
       if (data.creditExhausted) {
-        setSearchError(`ScraperAPI credits exhausted for this month — results below are from ScrapingBee fallback (may be limited). Upgrade at scraperapi.com/billing to restore full results.`);
+        setSearchError(`ScraperAPI fallback credits exhausted for this month — results below are from ScrapingBee. Configure a scraper engine for unlimited primary results.`);
       } else if (!data.count) {
         setSearchError("No results found. Try different keywords.");
       }
@@ -515,7 +515,7 @@ export default function LeadScraper() {
         });
         const data = await res.json();
         if (data.creditExhausted) {
-          setBulkApiWarning("ScraperAPI credits exhausted — using ScrapingBee fallback (limited results). Upgrade at scraperapi.com/billing.");
+          setBulkApiWarning("ScraperAPI fallback credits exhausted — using ScrapingBee fallback (limited results). Configure GOOGLE_MAPS_API_KEY on the engine for unlimited primary results.");
         }
         if (res.ok && data.results?.length) {
           accumulated.push(...data.results);
@@ -582,12 +582,12 @@ export default function LeadScraper() {
         </p>
       </div>
 
-      <Alert className="border-amber-500/30 bg-amber-500/5">
-        <Info className="w-4 h-4 text-amber-500" />
-        <AlertDescription className="text-amber-400 text-xs">
-          <strong>API Credits:</strong> ScraperAPI (1,000 req/mo — Google Maps &amp; Google Search) · ScrapingBee (1,000 req/mo — Zillow + fallback).
-          If Google Maps/Search returns 0 results, ScraperAPI credits may be exhausted for this month — ScrapingBee will be used as fallback automatically.
-          <a href="https://dashboard.scraperapi.com/billing" target="_blank" rel="noreferrer" className="ml-1 underline">Upgrade ScraperAPI</a>
+      <Alert className="border-blue-500/30 bg-blue-500/5">
+        <Info className="w-4 h-4 text-blue-400" />
+        <AlertDescription className="text-blue-300 text-xs">
+          <strong>How scraping works:</strong> The Python scraper engine (Playwright / Crawl4AI) runs first — it uses real browser sessions and residential proxies.
+          ScraperAPI and ScrapingBee are <strong>fallback only</strong> and are used automatically when the engine is unreachable.
+          Configure <code className="bg-black/20 px-1 rounded">GOOGLE_MAPS_API_KEY</code> in the engine environment to unlock the highest-quality Google Maps results.
         </AlertDescription>
       </Alert>
 
@@ -632,8 +632,8 @@ export default function LeadScraper() {
                   <Label className="text-sm font-medium whitespace-nowrap">Scrape using</Label>
                   <div className="flex gap-2">
                     {([
-                      { value: "google-maps", label: "Google Maps", sub: "ScraperAPI • returns phone numbers" },
-                      { value: "google-search", label: "Google Search", sub: "ScraperAPI • returns websites" },
+                      { value: "google-maps", label: "Google Maps", sub: "Engine (Playwright) → ScraperAPI fallback • returns phone numbers" },
+                      { value: "google-search", label: "Google Search", sub: "Engine (Playwright) → ScraperAPI fallback • returns websites" },
                     ] as const).map(opt => (
                       <button
                         key={opt.value}

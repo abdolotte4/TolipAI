@@ -280,6 +280,19 @@ async def list_cash_buyers_for_lead(lead_id: Union[int, str], limit: int = 100) 
 
 # ─── distressed_listings ─────────────────────────────────────────────────────
 
+def _safe_num(v: Any) -> Optional[float]:
+    """Coerce LLM-extracted numeric strings to float; return None for blanks / dashes."""
+    if v is None:
+        return None
+    s = str(v).strip().replace(",", "").replace("$", "").replace("—", "").replace("-", "")
+    if not s:
+        return None
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
 async def insert_distressed_listings(
     job_id: str, listings: List[Dict[str, Any]], campaign_id: Optional[int] = None,
 ) -> int:
@@ -298,12 +311,12 @@ async def insert_distressed_listings(
                 l.get("city"), l.get("state"), l.get("zip"), l.get("county"),
                 l.get("parcel_id"), l.get("owner_name"),
                 l.get("sale_date"),
-                l.get("opening_bid"),
-                l.get("estimated_value"),
-                l.get("mortgage_balance"),
+                _safe_num(l.get("opening_bid")),
+                _safe_num(l.get("estimated_value")),
+                _safe_num(l.get("mortgage_balance")),
                 l.get("source") or "scraper-engine",
                 l.get("source_url"),
-                l.get("latitude"), l.get("longitude"),
+                _safe_num(l.get("latitude")), _safe_num(l.get("longitude")),
                 json.dumps(l.get("raw_data") or {}),
             ))
         await c.executemany(

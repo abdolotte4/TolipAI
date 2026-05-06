@@ -158,6 +158,7 @@ class DistressedRequest(BaseModel):
     zip: str = ""
     county_key: str = ""
     state: str = ""
+    city: str = ""
     categories: List[str] = Field(
         default_factory=list,
         description="Subset of: county_clerk, public_trustee, probate_court, "
@@ -168,6 +169,25 @@ class DistressedRequest(BaseModel):
         description="Pin to specific sources by key (overrides categories)."
     )
     campaign_id: Optional[int] = None
+
+
+class GoogleMapsRequest(BaseModel):
+    keywords: List[str] = Field(default_factory=list)
+    locations: List[str] = Field(default_factory=list)
+    maxResults: int = 50
+
+
+class GoogleSearchRequest(BaseModel):
+    keywords: List[str] = Field(default_factory=list)
+    locations: List[str] = Field(default_factory=list)
+    maxResults: int = 50
+
+
+class BulkRequest(BaseModel):
+    tool: str = "google-maps"
+    keywords: List[str] = Field(default_factory=list)
+    locations: List[str] = Field(default_factory=list)
+    maxPerCombo: int = 20
 
 
 class SkipTraceRequest(BaseModel):
@@ -961,6 +981,115 @@ async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Google Maps / Google Search / Bulk lead-scraper endpoints ───────────────
+# These endpoints give the Node API server a Playwright-primary route so it can
+# call tryEngine("/google-maps", …) and get real Places API data instead of
+# immediately falling back to ScraperAPI.
+
+@app.post("/google-maps")
+async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
+    """Search Google Maps via Google Places Text Search API (primary) or 503 if unconfigured."""
+    import httpx as _httpx
+    gkey = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+    if not gkey:
+        raise HTTPException(
+            status_code=503,
+            detail="GOOGLE_MAPS_API_KEY not configured — ScraperAPI fallback will be used",
+        )
+
+    results: List[Dict[str, Any]] = []
+    limit = min(int(req.maxResults), 200)
+    base = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+
+    async with _httpx.AsyncClient(timeout=15) as client:
+        for keyword in req.keywords[:5]:
+            for location in req.locations[:10]:
+                if len(results) >= limit:
+                    break
+                query = f"{keyword} near {location}"
+                try:
+                    r = await client.get(base, params={"query": query, "key": gkey})
+                    data = r.json()
+                    for place in (data.get("results") or []):
+                        if len(results) >= limit:
+                            break
+                        results.append({
+                            "name":     place.get("name", ""),
+                            "category": ", ".join((place.get("types") or [])[:3]),
+                            "address":  place.get("formatted_address", ""),
+                            "phone":    "",
+                            "website":  "",
+                            "rating":   place.get("rating", ""),
+                            "reviews":  place.get("user_ratings_total", ""),
+                            "keyword":  keyword,
+                            "location": location,
+                            "source":   "Google Places API",
+                        })
+                except Exception as e:
+                    log.warning("Google Places failed for '%s near %s': %s", keyword, location, e)
+
+    return {"count": len(results), "results": results}
+
+
+@app.post("/google-search")
+async def google_search_scrape(req: GoogleSearchRequest) -> Dict[str, Any]:
+    """Search Google via Crawl4AI / Playwright rendering (primary) or 503 if browser unavailable."""
+    results: List[Dict[str, Any]] = []
+    limit = min(int(req.maxResults), 200)
+
+    for keyword in req.keywords[:5]:
+        for location in req.locations[:10]:
+            if len(results) >= limit:
+                break
+            query_str = f"{keyword} {location}".replace(" ", "+")
+            url = f"https://www.google.com/search?q={query_str}&num=10"
+            try:
+                from .http_client import fetch_html
+                html = await fetch_html(url, render=True)
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html, "lxml")
+                for a in soup.select("a[href]"):
+                    href = a.get("href", "")
+                    if not href.startswith("http") or "google.com" in href:
+                        continue
+                    title = a.get_text(strip=True)
+                    if not title or len(title) < 3:
+                        continue
+                    results.append({
+                        "name":     title[:120],
+                        "website":  href,
+                        "keyword":  keyword,
+                        "location": location,
+                        "source":   "Google Search (Playwright)",
+                    })
+                    if len(results) >= limit:
+                        break
+            except Exception as e:
+                log.warning("Google Search Playwright failed for '%s %s': %s", keyword, location, e)
+                raise HTTPException(status_code=503, detail=f"Browser scrape failed: {e}")
+
+    return {"count": len(results), "results": results}
+
+
+@app.post("/bulk")
+async def bulk_scrape(req: BulkRequest) -> Dict[str, Any]:
+    """Bulk keyword × location scrape — delegates to /google-maps or /google-search."""
+    if req.tool == "google-search":
+        inner = GoogleSearchRequest(
+            keywords=req.keywords,
+            locations=req.locations,
+            maxResults=min(req.maxPerCombo * len(req.keywords) * len(req.locations), 500),
+        )
+        return await google_search_scrape(inner)
+    else:
+        inner_maps = GoogleMapsRequest(
+            keywords=req.keywords,
+            locations=req.locations,
+            maxResults=min(req.maxPerCombo * len(req.keywords) * len(req.locations), 500),
+        )
+        return await google_maps_scrape(inner_maps)
 
 
 # ─── Distressed scraping jobs ────────────────────────────────────────────────

@@ -246,19 +246,19 @@ export default function DistressedFinder() {
       {status && !isConfigured && (
         <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>ATTOM API Not Configured</AlertTitle>
+          <AlertTitle>Scraper Engine Unreachable</AlertTitle>
           <AlertDescription>
-            The ATTOM API key is required to search for property opportunities. Please configure it in environment variables.
+            The scraper engine is not responding. Check that the engine is deployed and the <code>SCRAPER_ENGINE_URL</code> environment variable is set correctly.
           </AlertDescription>
         </Alert>
       )}
 
       {(locationType === "state" || locationType === "county") && (
-        <Alert className="bg-amber-500/10 border-amber-500/20 text-amber-400">
+        <Alert className="bg-blue-500/10 border-blue-500/20 text-blue-400">
           <Info className="h-4 w-4" />
-          <AlertTitle>{locationType === "state" ? "State" : "County"} Search — Not Available on Current Plan</AlertTitle>
+          <AlertTitle>{locationType === "state" ? "State" : "County"} Search — Free Scraper Engine</AlertTitle>
           <AlertDescription>
-            County and state area searches require the ATTOM <strong>geoid</strong> query feature, which is included in a higher-tier ATTOM data subscription. Your current plan supports <strong>ZIP code searches only</strong>. Use the ZIP Code location type to pull properties by ZIP code.
+            {locationType === "state" ? "State-wide" : "County-wide"} searches run via the free public-record scraper engine — no ATTOM key needed. The engine fans out across county clerk, public trustee, probate court, tax assessor, and auction aggregator sources for the matching {locationType === "state" ? "state" : "county"}. Results may take a few minutes to accumulate.
           </AlertDescription>
         </Alert>
       )}
@@ -399,7 +399,7 @@ export default function DistressedFinder() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground bg-muted/20 px-3 py-2 rounded-md border">
-                <span className="font-medium text-primary">Mortgage-based filters</span> (Absentee Owner, Free & Clear, High Equity, High LTV) use your ATTOM mortgage subscription to filter results server-side — only matching properties are returned. Pre-Foreclosure, Foreclosure, Tax Delinquent, and Vacant pull all properties in the area and tag results as labels; advanced filtering for those requires a higher-tier ATTOM plan.
+                All categories are sourced from <span className="font-medium text-primary">free public records</span> — county clerk filings, public trustee auction notices, probate court dockets, tax assessor delinquency rolls, government REO portals, and auction aggregators (Auction.com, Hubzu, Xome). Results are extracted and de-duplicated automatically. No paid data subscription required.
               </p>
             </div>
           </CardContent>
@@ -407,7 +407,7 @@ export default function DistressedFinder() {
             <Button 
               className="w-full" 
               size="lg"
-              disabled={!isConfigured || locations.length === 0 || selectedCategories.length === 0 || searchMutation.isPending || locationType === "state" || locationType === "county"}
+              disabled={!isConfigured || locations.length === 0 || selectedCategories.length === 0 || searchMutation.isPending}
               onClick={handleSearch}
             >
               {searchMutation.isPending ? "Starting Search..." : "Pull Opportunity List"}
