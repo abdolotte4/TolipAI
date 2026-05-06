@@ -199,7 +199,7 @@ export default function DistressedFinder() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(["pre_foreclosure"]);
   const [limit, setLimit] = useState("500");
 
-  const isConfigured = status?.attomConfigured;
+  const isConfigured = status?.engineConfigured !== false;
 
   const handleAddLocation = () => {
     if (currentLocation.trim() && !locations.includes(currentLocation.trim())) {

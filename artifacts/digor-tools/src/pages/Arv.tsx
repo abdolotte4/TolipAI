@@ -84,11 +84,11 @@ export default function ArvCalculator() {
       </div>
 
       {status && !status.attomConfigured && activeTab === "auto" && (
-        <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
+        <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-700 dark:text-yellow-400">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Data APIs Not Configured</AlertTitle>
+          <AlertTitle>ATTOM API Key Not Configured</AlertTitle>
           <AlertDescription>
-            Auto mode requires PropertyAPI and ATTOM API keys. Switch to Manual mode to calculate yourself, or configure the API keys.
+            Auto-comps require an ATTOM API key. Results may be limited or unavailable. Switch to Manual mode to enter comps yourself.
           </AlertDescription>
         </Alert>
       )}
@@ -148,7 +148,7 @@ export default function ArvCalculator() {
                     </div>
                   </div>
 
-                  <Button type="submit" className="w-full mt-4" disabled={calculateArv.isPending || (!status?.attomConfigured)}>
+                  <Button type="submit" className="w-full mt-4" disabled={calculateArv.isPending || !autoForm.street}>
                     {calculateArv.isPending ? "Calculating..." : "Calculate ARV"}
                   </Button>
                 </form>

@@ -131,10 +131,10 @@ export default function PropertyLookup() {
       </div>
 
       {status && !status.attomConfigured && (
-        <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
+        <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-700 dark:text-yellow-400">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Data API Not Configured</AlertTitle>
-          <AlertDescription>Property lookup requires the ATTOM API key to be configured.</AlertDescription>
+          <AlertTitle>ATTOM API Key Not Configured</AlertTitle>
+          <AlertDescription>Full property data requires an ATTOM API key. Lookup will use available free sources but results may be limited.</AlertDescription>
         </Alert>
       )}
 
@@ -192,7 +192,7 @@ export default function PropertyLookup() {
                 <Button
                   type="submit"
                   className="w-full mt-2"
-                  disabled={lookup.isPending || !form.street || !status?.attomConfigured}
+                  disabled={lookup.isPending || !form.street}
                 >
                   {lookup.isPending ? "Looking up..." : "Look Up Property"}
                 </Button>

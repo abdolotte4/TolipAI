@@ -118,11 +118,27 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 50,
 
     # Deeds first so real names take priority in aggregation
     all_sales = sold_attom + sold_deeds + sold_zillow + sold_redfin
-    log.info("Found %d recent sales (%d ATTOM + %d Deeds + %d Zillow + %d Redfin) for ZIP=%s",
+    log.info("Found %d recent sales (%d ATTOM + %d Deeds + %d Zillow + %d Redfin) for ZIP=%s city=%s",
              len(all_sales), len(sold_attom), len(sold_deeds),
-             len(sold_zillow), len(sold_redfin), zip_code)
+             len(sold_zillow), len(sold_redfin), zip_code, city)
+
+    # ── Tier 4: Broader city+state fallback when ZIP-level search returns nothing ──
+    if not all_sales and city and state:
+        if progress_cb:
+            await progress_cb(40, f"No ZIP-level results — broadening to {city}, {state}…")
+        log.info("Cash buyers: ZIP=%s returned 0 results, retrying with city=%s state=%s only",
+                 zip_code, city, state)
+        broad_zillow = await zillow.fetch_recently_sold(zip_code="", city=city,
+                                                        state=state, max_results=80)
+        broad_redfin = await redfin.fetch_recently_sold(zip_code="", city=city,
+                                                        state=state, max_results=80)
+        all_sales = broad_zillow + broad_redfin
+        log.info("Broad fallback: %d Zillow + %d Redfin for city=%s state=%s",
+                 len(broad_zillow), len(broad_redfin), city, state)
 
     if not all_sales:
+        log.warning("Cash buyers: no recent sales found for ZIP=%s city=%s state=%s — "
+                    "check that the lead has a valid zip/city/state", zip_code, city, state)
         return []
 
     by_buyer = _aggregate_by_buyer(all_sales)

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional, Set
 
 from openai import AsyncOpenAI
@@ -29,11 +30,14 @@ _nvidia_client: Optional[AsyncOpenAI] = None
 _openrouter_client: Optional[AsyncOpenAI] = None
 _moonshot_client: Optional[AsyncOpenAI] = None
 
-# Circuit breakers — providers added here are permanently skipped for this run
+# Permanently dead providers (auth/deprecated errors — never recoverable)
 _dead_providers: Set[str] = set()
 # Track 429 consecutive hits per provider (reset on success)
 _rate_hits: Dict[str, int] = {}
-_MAX_RATE_HITS = 5  # give up after 5 consecutive 429s
+# Cooldown: provider → unix timestamp when it's allowed to retry after rate-limit
+_rate_cooldown_until: Dict[str, float] = {}
+_MAX_RATE_HITS = 8        # cooldown after 8 consecutive 429s (was: permanently die at 5)
+_RATE_COOLDOWN_SEC = 180  # 3-minute cooldown before retrying a rate-limited provider
 
 # Global concurrency gate — Groq free tier is ~30 req/min.
 # Limiting to 2 concurrent calls keeps us well under the limit and
@@ -186,11 +190,18 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
         if client is None:
             continue
         hits = _rate_hits.get(provider, 0)
+        # Check cooldown — provider may recover after _RATE_COOLDOWN_SEC
+        cooldown_until = _rate_cooldown_until.get(provider, 0.0)
         if hits >= _MAX_RATE_HITS:
-            if provider not in _dead_providers:
-                _dead_providers.add(provider)
-                log.warning("LLM provider %s: max rate-limit hits reached — skipping for this run", provider)
-            continue
+            if time.time() < cooldown_until:
+                remaining = int(cooldown_until - time.time())
+                log.debug("LLM provider %s in cooldown for %ds more", provider, remaining)
+                continue
+            else:
+                # Cooldown expired — give this provider another chance
+                log.info("LLM provider %s cooldown expired, retrying", provider)
+                _rate_hits[provider] = 0
+                hits = 0
         for attempt in range(2):
             try:
                 kwargs: Dict[str, Any] = {
@@ -203,6 +214,7 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                     kwargs["response_format"] = {"type": "json_object"}
                 resp = await client.chat.completions.create(**kwargs)
                 _rate_hits[provider] = 0  # reset on success
+                _rate_cooldown_until.pop(provider, None)
                 return resp.choices[0].message.content or ""
             except Exception as e:
                 last_err = e
@@ -217,12 +229,17 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                     log.warning("LLM provider %s permanently dead: %s", provider, e)
                     break
                 if _is_rate_limited(e):
-                    _rate_hits[provider] = hits + 1
+                    new_hits = hits + 1
+                    _rate_hits[provider] = new_hits
+                    if new_hits >= _MAX_RATE_HITS:
+                        _rate_cooldown_until[provider] = time.time() + _RATE_COOLDOWN_SEC
+                        log.warning("LLM provider %s: %d consecutive 429s — cooling down for %ds",
+                                    provider, new_hits, _RATE_COOLDOWN_SEC)
+                        break
                     if attempt == 0:
-                        backoff = 2.0 * (2 ** hits)  # 2s, 4s, 8s … (was 8s, 16s, 32s)
-                        backoff = min(backoff, 15.0)  # cap at 15s instead of 60s
+                        backoff = min(2.0 * (2 ** hits), 30.0)  # 2s → 4s → 8s … cap 30s
                         log.info("LLM provider %s rate-limited (hit %d/%d), backing off %.1fs…",
-                                 provider, hits + 1, _MAX_RATE_HITS, backoff)
+                                 provider, new_hits, _MAX_RATE_HITS, backoff)
                         await asyncio.sleep(backoff)
                         continue
                     log.info("LLM provider %s rate-limited, moving to next provider", provider)
