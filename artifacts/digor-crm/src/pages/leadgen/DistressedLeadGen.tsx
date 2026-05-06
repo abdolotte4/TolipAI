@@ -89,7 +89,9 @@ export default function DistressedLeadGen() {
             if (status.message) setStatusMsg(status.message);
             if (status.status === "completed" || status.status === "done") {
               clearInterval(pollRef.current!);
-              const listings = status.result?.listings || status.result?.results || [];
+              const raw = status.result;
+              const listings: any[] = Array.isArray(raw) ? raw :
+                (raw?.listings || raw?.results || []);
               setResults(listings);
               setProgress(100);
               setStatusMsg(`Done — ${listings.length} lead(s) found`);

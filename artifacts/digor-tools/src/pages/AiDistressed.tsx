@@ -39,7 +39,15 @@ export default function AiDistressed() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const toggle = (id: string) => setSelected(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]));
-  const normalizeListings = (data: any) => data?.result?.listings || data?.result?.results || data?.listings || data?.results || data?.data || [];
+  const normalizeListings = (data: any): any[] => {
+    if (Array.isArray(data?.result)) return data.result;
+    if (Array.isArray(data?.result?.listings)) return data.result.listings;
+    if (Array.isArray(data?.result?.results)) return data.result.results;
+    if (Array.isArray(data?.listings)) return data.listings;
+    if (Array.isArray(data?.results)) return data.results;
+    if (Array.isArray(data?.data)) return data.data;
+    return [];
+  };
 
   useEffect(() => {
     if (!jobId) return;

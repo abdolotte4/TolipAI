@@ -204,9 +204,13 @@ async def find_cash_buyers(lead: Dict[str, Any], *, max_buyers: int = 50,
 
     # Persist — pass lead["id"] as-is (db coerces to str to match TEXT column)
     if job_id and lead.get("id"):
-        await db.insert_cash_buyer_matches(job_id, lead["id"], out)
+        try:
+            saved = await db.insert_cash_buyer_matches(job_id, lead["id"], out)
+            log.info("Cash buyers: inserted %d rows for lead %s job %s", saved, lead["id"], job_id)
+        except Exception as e:
+            log.error("Cash buyers: DB insert failed for job %s: %s", job_id, str(e)[:300])
 
     if progress_cb:
-        await progress_cb(95, "Saving matches…")
+        await progress_cb(100, f"Done — {len(out)} buyers found")
 
     return out

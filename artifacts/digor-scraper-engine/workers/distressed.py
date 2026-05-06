@@ -135,7 +135,16 @@ async def find_distressed(*, zip_code: str = "", county_key: str = "",
         await progress_cb(90, f"De-duped to {len(deduped)} unique listings — saving…")
 
     if job_id:
-        await db.insert_distressed_listings(job_id, deduped, campaign_id=campaign_id)
+        try:
+            saved = await db.insert_distressed_listings(job_id, deduped, campaign_id=campaign_id)
+            log.info("Distressed: inserted %d rows into distressed_listings for job %s", saved, job_id)
+        except Exception as e:
+            log.error("Distressed: DB insert failed for job %s: %s", job_id, str(e)[:300])
+            raise
+
+    if progress_cb:
+        await progress_cb(100, f"Done — {len(deduped)} listings found")
+
     return deduped
 
 

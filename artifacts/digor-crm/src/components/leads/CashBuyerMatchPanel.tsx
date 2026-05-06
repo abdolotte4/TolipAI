@@ -115,7 +115,10 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
       const res = await fetch(`/api/scraper-engine/jobs/${completedJobId}`);
       if (res.ok) {
         const data = await res.json();
-        setBuyers(data.result?.buyers ?? data.buyers ?? data.result?.listings ?? data.result?.results ?? []);
+        const raw = data.result;
+        const normalized: Buyer[] = Array.isArray(raw) ? raw :
+          (raw?.buyers ?? raw?.listings ?? raw?.results ?? data.buyers ?? []);
+        setBuyers(normalized);
       }
     } catch {
       /* noop */

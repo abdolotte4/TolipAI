@@ -231,8 +231,8 @@ async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -
     - Returns latitude/longitude natively (required for satellite imagery)
     - Works reliably on Railway without scraping proxies
     """
-    async def _safe(fn, **kwargs):
-        try: return await fn(**kwargs)
+    async def _safe(fn, *args, **kwargs):
+        try: return await fn(*args, **kwargs)
         except Exception as e: log.info("%s failed: %s", fn.__name__, e); return []
 
     all_listings: List[Dict[str, Any]] = []
