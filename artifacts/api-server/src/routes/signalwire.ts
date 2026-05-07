@@ -188,7 +188,7 @@ router.post("/signalwire/click-to-call", crmAuth, async (req, res) => {
   const agentE164 = toE164(agentPhone);
 
   // TwiML URL: when agent picks up, connect them to the lead
-  const baseUrl = process.env.SIGNALWIRE_WEBHOOK_URL?.replace("/webhook", "") || "https://digorva.com/api/signalwire";
+  const baseUrl = process.env.SIGNALWIRE_WEBHOOK_URL?.replace("/webhook", "") || "https://tolipai.com/api/signalwire";
   const twimlUrl = `${baseUrl}/twiml/call?to=${encodeURIComponent(leadE164)}&callerId=${encodeURIComponent(fromNumber)}`;
 
   try {
@@ -209,7 +209,7 @@ router.post("/signalwire/click-to-call", crmAuth, async (req, res) => {
 // Admin: auto-configure SMS webhook for all purchased phone numbers
 router.post("/signalwire/setup-webhooks", crmAuth, async (req, res) => {
   try {
-    const webhookUrl = process.env.SIGNALWIRE_WEBHOOK_URL || "https://digorva.com/api/signalwire/webhook";
+    const webhookUrl = process.env.SIGNALWIRE_WEBHOOK_URL || "https://tolipai.com/api/signalwire/webhook";
     const data = await swFetch("/IncomingPhoneNumbers.json");
     const numbers: any[] = data.incoming_phone_numbers || [];
 

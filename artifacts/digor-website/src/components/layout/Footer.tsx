@@ -7,7 +7,7 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
           <div className="col-span-1 md:col-span-2">
             <span className="font-display text-2xl font-bold tracking-wider text-foreground">
-              DIGOR<span className="text-primary">.</span>
+              TOLIPAI<span className="text-primary">.</span>
             </span>
             <p className="mt-4 text-muted-foreground max-w-sm">
               Scalable Managed Marketing and Data Infrastructure Agency delivering precision outreach operations and technical CRM infrastructure to real estate investors.
@@ -31,10 +31,10 @@ export function Footer() {
             <h4 className="font-semibold text-foreground mb-4">Contact</h4>
             <ul className="space-y-2 text-muted-foreground">
               <li>
-                <a href="mailto:digorva@digorcom.com" className="hover:text-primary transition-colors">digorva@digorcom.com</a>
+                <a href="mailto:info@tolipai.com" className="hover:text-primary transition-colors">info@tolipai.com</a>
               </li>
-              <li>(470) 835-3617</li>
-              <li>(602) 654-3140</li>
+              <li>(555) 201-4892</li>
+              <li>(555) 307-6148</li>
             </ul>
             <div className="mt-4 pt-4 border-t border-border/50">
               <h4 className="font-semibold text-foreground mb-2 text-sm">Legal</h4>
@@ -46,7 +46,7 @@ export function Footer() {
         </div>
 
         <div className="pt-8 border-t border-border/50 flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} Digor LLC. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} TolipAI LLC. All rights reserved.</p>
           <p className="mt-2 md:mt-0 text-center md:text-right">
             Wyoming Limited Liability Company <br className="md:hidden" />
             <span className="hidden md:inline"> | </span>

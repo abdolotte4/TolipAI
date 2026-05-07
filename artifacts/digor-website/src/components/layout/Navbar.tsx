@@ -35,7 +35,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         <div className="flex items-center cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
           <span className="font-display text-2xl font-bold tracking-wider text-foreground group-hover:text-primary transition-colors">
-            DIGOR<span className="text-primary">.</span>
+            TOLIPAI<span className="text-primary">.</span>
           </span>
         </div>
 
@@ -62,9 +62,9 @@ export function Navbar() {
           >
             <Zap className="w-3.5 h-3.5" /> Subscribe
           </Button>
-          <a href="https://digorva.com/crm/" target="_blank" rel="noopener noreferrer">
+          <a href="https://tolipai.com/crm/" target="_blank" rel="noopener noreferrer">
             <Button variant="outline" className="border-border text-foreground hover:bg-secondary rounded-full px-5 font-semibold text-sm">
-              Digor CRM
+              TolipAI CRM
             </Button>
           </a>
           {/* Theme toggle */}
@@ -119,9 +119,9 @@ export function Navbar() {
               className="w-full border-primary/50 text-primary hover:bg-primary/10 flex items-center justify-center gap-2">
               <Zap className="w-4 h-4" /> Subscribe — $1,500/mo
             </Button>
-            <a href="https://digorva.com/crm/" target="_blank" rel="noopener noreferrer" className="w-full">
+            <a href="https://tolipai.com/crm/" target="_blank" rel="noopener noreferrer" className="w-full">
               <Button variant="outline" className="w-full border-border text-foreground hover:bg-secondary">
-                Digor CRM
+                TolipAI CRM
               </Button>
             </a>
             <Button onClick={() => scrollTo("#contact")} className="w-full bg-primary text-primary-foreground hover:bg-primary/90">

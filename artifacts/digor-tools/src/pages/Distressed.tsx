@@ -60,11 +60,19 @@ function DistressedJobRow({ jobId }: { jobId: string }) {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "completed": return <Badge variant="default" className="bg-green-500/10 text-green-500 border-green-500/20"><CheckCircle2 className="w-3 h-3 mr-1" /> Completed</Badge>;
-      case "running": return <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 border-blue-500/20"><PlayCircle className="w-3 h-3 mr-1 animate-pulse" /> Searching</Badge>;
-      case "queued": return <Badge variant="outline"><Clock className="w-3 h-3 mr-1" /> Queued</Badge>;
-      case "failed": return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" /> Failed</Badge>;
-      default: return <Badge variant="outline">{status}</Badge>;
+      case "completed":
+      case "done":
+        return <Badge variant="default" className="bg-green-500/10 text-green-600 border-green-500/20"><CheckCircle2 className="w-3 h-3 mr-1" /> Completed</Badge>;
+      case "partial_success":
+        return <Badge variant="default" className="bg-amber-500/10 text-amber-600 border-amber-500/20"><CheckCircle2 className="w-3 h-3 mr-1" /> Partial Results</Badge>;
+      case "running":
+        return <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 border-blue-500/20"><PlayCircle className="w-3 h-3 mr-1 animate-pulse" /> Searching</Badge>;
+      case "queued":
+        return <Badge variant="outline"><Clock className="w-3 h-3 mr-1" /> Queued</Badge>;
+      case "failed":
+        return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" /> Failed</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
@@ -131,14 +139,14 @@ function DistressedJobRow({ jobId }: { jobId: string }) {
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {getStatusBadge(job.status)}
-          {job.status === "completed" && job.totalFound > 0 && (
+          {(job.status === "completed" || job.status === "done" || job.status === "partial_success") && job.totalFound > 0 && (
             <>
-              <Button size="sm" onClick={handleDownload} variant="outline" className="h-8 border-green-500/40 text-green-400 hover:bg-green-500/10">
+              <Button size="sm" onClick={handleDownload} variant="outline" className="h-8 border-green-500/40 text-green-600 hover:bg-green-500/10">
                 <Download className="w-4 h-4 mr-1" />
                 Download CSV
               </Button>
               {!enrichJobId && (
-                <Button size="sm" onClick={handleEnrich} variant="outline" className="h-8 border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10" disabled={enrichLoading}>
+                <Button size="sm" onClick={handleEnrich} variant="outline" className="h-8 border-cyan-500/40 text-cyan-600 hover:bg-cyan-500/10" disabled={enrichLoading}>
                   <Phone className="w-4 h-4 mr-1" />
                   {enrichLoading ? "Starting..." : "+ Enrich Contacts"}
                 </Button>
@@ -154,8 +162,11 @@ function DistressedJobRow({ jobId }: { jobId: string }) {
         </div>
       </div>
 
-      {job.status === "completed" && job.totalFound > 0 && !enrichJobId && (
+      {(job.status === "completed" || job.status === "done" || job.status === "partial_success") && job.totalFound > 0 && !enrichJobId && (
         <div className="text-xs text-muted-foreground border-t border-border/30 pt-2">
+          {job.status === "partial_success" && (
+            <span className="text-amber-600 font-medium block mb-1">⚠ Partial results — some sources timed out or were unavailable.</span>
+          )}
           CSV includes: address · property type · year built · sqft · baths · lot size · APN. Use "+ Enrich Contacts" to add owner phone &amp; email.
         </div>
       )}
@@ -175,7 +186,7 @@ function DistressedJobRow({ jobId }: { jobId: string }) {
         </div>
       )}
       
-      {(job.status === "running" || job.status === "completed") && (
+      {(job.status === "running" || job.status === "completed" || job.status === "done" || job.status === "partial_success") && (
         <div className="space-y-1.5 mt-1">
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{job.locationsProcessed} / {job.totalLocations} locations</span>

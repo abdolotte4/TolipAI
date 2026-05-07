@@ -4,7 +4,7 @@ import { Target, Eye, Star, Users, BarChart2, Lightbulb, Shield } from "lucide-r
 export default function MissionVisionValues() {
   useEffect(() => {
     window.scrollTo({ top: 0 });
-    document.title = "Mission, Vision & Values | Digor LLC";
+    document.title = "Mission, Vision & Values | TolipAI LLC";
   }, []);
 
   const values = [
@@ -39,7 +39,7 @@ export default function MissionVisionValues() {
           <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-[#d4af37]/5 rounded-full blur-3xl" />
         </div>
         <div className="relative max-w-4xl mx-auto text-center">
-          <p className="text-[#d4af37] text-sm font-semibold uppercase tracking-widest mb-4">Digor LLC</p>
+          <p className="text-[#d4af37] text-sm font-semibold uppercase tracking-widest mb-4">TolipAI LLC</p>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
             Mission, Vision <span className="text-[#d4af37]">&amp;</span> Values
           </h1>
@@ -59,7 +59,7 @@ export default function MissionVisionValues() {
             <span className="text-[#d4af37] text-sm font-semibold uppercase tracking-widest">Mission</span>
           </div>
 
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">What is Digor's Mission Statement?</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">What is TolipAI's Mission Statement?</h2>
 
           <blockquote className="border-l-4 border-[#d4af37] pl-6 mb-10">
             <p className="text-xl text-white font-medium italic leading-relaxed">
@@ -71,7 +71,7 @@ export default function MissionVisionValues() {
             {[
               {
                 heading: "Outcome-Oriented Delivery",
-                body: "Digor's mission anchors every engagement to a concrete result: qualified, enriched data that produces actionable opportunities. We don't sell impressions or clicks — we deliver verified property owner records that have been researched, validated, and prioritized based on market criteria that match our clients' parameters.",
+                body: "TolipAI's mission anchors every engagement to a concrete result: qualified, enriched data that produces actionable opportunities. We don't sell impressions or clicks — we deliver verified property owner records that have been researched, validated, and prioritized based on market criteria that match our clients' parameters.",
               },
               {
                 heading: "Managed Infrastructure, Not Ad-Hoc Services",
@@ -83,7 +83,7 @@ export default function MissionVisionValues() {
               },
               {
                 heading: "Data Intelligence as Competitive Advantage",
-                body: "Digor integrates property records, ownership data, market condition signals, and ARV analytics into every outreach campaign. This intelligence layer transforms broad outreach into precision targeting — reducing client costs and improving conversion rates across every market we operate in.",
+                body: "TolipAI integrates property records, ownership data, market condition signals, and ARV analytics into every outreach campaign. This intelligence layer transforms broad outreach into precision targeting — reducing client costs and improving conversion rates across every market we operate in.",
               },
             ].map((item) => (
               <div key={item.heading} className="bg-card border border-border rounded-2xl p-6">
@@ -110,7 +110,7 @@ export default function MissionVisionValues() {
             <span className="text-[#d4af37] text-sm font-semibold uppercase tracking-widest">Vision</span>
           </div>
 
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">What is Digor's Vision Statement?</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">What is TolipAI's Vision Statement?</h2>
 
           <blockquote className="border-l-4 border-[#d4af37] pl-6 mb-10">
             <p className="text-xl text-white font-medium italic leading-relaxed">
@@ -122,7 +122,7 @@ export default function MissionVisionValues() {
             {[
               {
                 heading: "Trusted Partnership as Strategic Identity",
-                body: "Digor's vision is built on becoming an indispensable, long-term partner — not a rotating vendor. We aim to be the firm real estate professionals call before they expand into a new market, launch a new data strategy, or need to understand why a pipeline underperformed. That level of trust is earned through consistent results and honest communication.",
+                body: "TolipAI's vision is built on becoming an indispensable, long-term partner — not a rotating vendor. We aim to be the firm real estate professionals call before they expand into a new market, launch a new data strategy, or need to understand why a pipeline underperformed. That level of trust is earned through consistent results and honest communication.",
               },
               {
                 heading: "Proprietary Intelligence at the Core",
@@ -130,11 +130,11 @@ export default function MissionVisionValues() {
               },
               {
                 heading: "Nationwide Reach, Market-Level Precision",
-                body: "We are building toward a model where Digor can activate data pipelines in any U.S. market within days — with the same data depth and outreach precision we deliver today in our core markets. Scale without sacrificing quality is the operational standard we hold ourselves to.",
+                body: "We are building toward a model where TolipAI can activate data pipelines in any U.S. market within days — with the same data depth and outreach precision we deliver today in our core markets. Scale without sacrificing quality is the operational standard we hold ourselves to.",
               },
               {
                 heading: "Human Judgment Meets Data Infrastructure",
-                body: "Technology alone does not produce deals. Digor's vision combines automated data infrastructure with senior-level judgment on every list we build and every lead we qualify. The result is a service that thinks like an investor — because it is operated by people who understand what closable looks like.",
+                body: "Technology alone does not produce deals. TolipAI's vision combines automated data infrastructure with senior-level judgment on every list we build and every lead we qualify. The result is a service that thinks like an investor — because it is operated by people who understand what closable looks like.",
               },
             ].map((item) => (
               <div key={item.heading} className="bg-card border border-border rounded-2xl p-6">
@@ -151,7 +151,7 @@ export default function MissionVisionValues() {
             </p>
             <div className="flex flex-col items-center gap-1">
               <p className="text-[#d4af37] font-bold text-lg">Abdullah Gawish</p>
-              <p className="text-gray-400 text-sm">Partner &amp; Chief Marketing Officer, Digor LLC</p>
+              <p className="text-gray-400 text-sm">Partner &amp; Chief Marketing Officer, TolipAI LLC</p>
             </div>
           </div>
         </div>
@@ -172,9 +172,9 @@ export default function MissionVisionValues() {
             <span className="text-[#d4af37] text-sm font-semibold uppercase tracking-widest">Core Values</span>
           </div>
 
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">What are Digor's Core Values?</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">What are TolipAI's Core Values?</h2>
           <p className="text-gray-400 mb-10 leading-relaxed max-w-2xl">
-            Digor's core values are the operational compass that shape every client engagement and every internal decision. They define how we work, what we prioritize, and the standard of service our clients can expect — consistently.
+            TolipAI's core values are the operational compass that shape every client engagement and every internal decision. They define how we work, what we prioritize, and the standard of service our clients can expect — consistently.
           </p>
 
           <div className="grid sm:grid-cols-2 gap-6">
@@ -200,9 +200,9 @@ export default function MissionVisionValues() {
       <section className="py-16 px-4 bg-gradient-to-t from-[#0a0f1a] to-background">
         <div className="max-w-2xl mx-auto text-center">
           <h3 className="text-2xl font-bold text-white mb-3">Ready to work with a team that lives by these principles?</h3>
-          <p className="text-gray-400 mb-8">Schedule a consultation and see how Digor's mission translates into results for your data pipeline.</p>
+          <p className="text-gray-400 mb-8">Schedule a consultation and see how TolipAI's mission translates into results for your data pipeline.</p>
           <a href="/" className="inline-block bg-[#d4af37] text-[#0a0f1a] font-bold px-8 py-4 rounded-full hover:bg-[#d4af37]/90 transition-colors">
-            Back to Digor.com
+            Back to TolipAI.com
           </a>
         </div>
       </section>

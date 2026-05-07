@@ -29,7 +29,7 @@ export default function Login() {
     try {
       const success = await login(pin);
       if (success) {
-        toast({ title: "Access Granted", description: "Welcome to Digor Tools." });
+        toast({ title: "Access Granted", description: "Welcome to TolipAI Tools." });
         setLocation("/contact-enrichment");
       } else {
         toast({ 
@@ -62,7 +62,7 @@ export default function Login() {
             <Database className="w-8 h-8 text-primary" />
           </div>
           <div className="space-y-2">
-            <CardTitle className="text-3xl font-bold tracking-tight">Digor Tools</CardTitle>
+            <CardTitle className="text-3xl font-bold tracking-tight">TolipAI Tools</CardTitle>
             <CardDescription className="text-base">
               Authorized personnel only. Enter your PIN to continue.
             </CardDescription>

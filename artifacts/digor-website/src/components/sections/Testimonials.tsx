@@ -6,19 +6,19 @@ export function Testimonials() {
     {
       name: "Michael Torres",
       role: "REAL ESTATE INVESTOR",
-      text: "Digor LLC transformed our acquisition operations completely. Their data engineering services delivered verified property owner contacts with accuracy rates we had never seen before. Our transaction volume increased by 200% within the first quarter.",
+      text: "TolipAI LLC transformed our acquisition operations completely. Their data engineering services delivered verified property owner contacts with accuracy rates we had never seen before. Our transaction volume increased by 200% within the first quarter.",
       featured: false
     },
     {
       name: "Sarah Chen",
       role: "PORTFOLIO MANAGER",
-      text: "Outstanding operational infrastructure. Within weeks of partnering with Digor LLC, our acquisition pipeline was producing consistent, qualified opportunities. Their managed outreach team operates with exceptional professionalism and compliance standards. The ROI has been remarkable.",
+      text: "Outstanding operational infrastructure. Within weeks of partnering with TolipAI LLC, our acquisition pipeline was producing consistent, qualified opportunities. Their managed outreach team operates with exceptional professionalism and compliance standards. The ROI has been remarkable.",
       featured: true
     },
     {
       name: "David Williams",
       role: "REAL ESTATE ACQUISITIONS DIRECTOR",
-      text: "The Digor team has been instrumental in scaling our operations. Their technical CRM infrastructure and data engineering capabilities are best-in-class. We've achieved results that exceeded our most optimistic projections. Highly recommend.",
+      text: "The TolipAI team has been instrumental in scaling our operations. Their technical CRM infrastructure and data engineering capabilities are best-in-class. We've achieved results that exceeded our most optimistic projections. Highly recommend.",
       featured: false
     }
   ];
@@ -35,7 +35,7 @@ export function Testimonials() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Client Testimonials</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Don't just take our word for it. Hear what industry leaders are saying about Digor LLC.
+            Don't just take our word for it. Hear what industry leaders are saying about TolipAI LLC.
           </p>
         </motion.div>
 

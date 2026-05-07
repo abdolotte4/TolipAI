@@ -76,7 +76,7 @@ export function LeadTypes() {
           </h2>
           <div className="w-20 h-1 bg-primary mx-auto mb-6 rounded-full" />
           <p className="text-muted-foreground text-lg">
-            Digor specializes in strategic data enrichment and operational support for high-growth real estate firms. We build curated property datasets, provide bulk contact enrichment, and manage workflow automation — all tracked inside Digor CRM.
+            Digor specializes in strategic data enrichment and operational support for high-growth real estate firms. We build curated property datasets, provide bulk contact enrichment, and manage workflow automation — all tracked inside TolipAI CRM.
           </p>
         </motion.div>
 
@@ -112,7 +112,7 @@ export function LeadTypes() {
           className="mt-12 p-6 rounded-2xl border border-primary/20 bg-primary/5 text-center max-w-3xl mx-auto"
         >
           <p className="text-muted-foreground text-sm md:text-base">
-            <span className="text-foreground font-semibold">Digor's data platform</span> identifies and enriches all six segments with owner contact data through bulk data enrichment — then loads them directly into <span className="text-primary font-semibold">Digor CRM</span> for your team to action.{" "}
+            <span className="text-foreground font-semibold">TolipAI's data platform</span> identifies and enriches all six segments with owner contact data through bulk data enrichment — then loads them directly into <span className="text-primary font-semibold">TolipAI CRM</span> for your team to action.{" "}
             <a href="#contact" className="text-primary hover:underline font-medium">Get started →</a>
           </p>
         </motion.div>

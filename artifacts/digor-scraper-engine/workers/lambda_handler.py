@@ -1,4 +1,4 @@
-"""AWS Lambda entry point for the Digor Scraper Engine.
+"""AWS Lambda entry point for the TolipAI Scraper Engine.
 
 Each Lambda function maps to a specific scraper endpoint.
 The handler deserialises the API Gateway event, calls the appropriate

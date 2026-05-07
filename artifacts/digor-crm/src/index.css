@@ -60,103 +60,50 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* DEEP DARK PROFESSIONAL THEME */
+/* MATERIO INSPIRED LIGHT THEME — TolipAI Brand Palette */
 :root {
-  --background: 224 71% 4%;
-  --foreground: 210 20% 98%;
-  
-  --card: 222 47% 7%;
-  --card-foreground: 210 20% 98%;
-  --card-border: 217 33% 15%;
+  --background: 230 24% 97%; /* #F4F5FA */
+  --foreground: 245 47% 12%; /* deep navy-purple */
 
-  --sidebar: 224 71% 4%;
-  --sidebar-foreground: 210 20% 98%;
-  --sidebar-border: 217 33% 15%;
-  --sidebar-primary: 226 100% 64%;
-  --sidebar-primary-foreground: 210 20% 98%;
-  --sidebar-accent: 217 33% 15%;
-  --sidebar-accent-foreground: 210 20% 98%;
-  --sidebar-ring: 226 100% 64%;
+  --card: 0 0% 100%; /* white cards */
+  --card-foreground: 245 47% 12%;
+  --card-border: 230 18% 90%;
 
-  --popover: 222 47% 7%;
-  --popover-foreground: 210 20% 98%;
-  --popover-border: 217 33% 15%;
+  --sidebar: 245 47% 12%; /* dark purple sidebar — Materio style */
+  --sidebar-foreground: 210 20% 96%;
+  --sidebar-border: 245 40% 18%;
+  --sidebar-primary: 252 84% 68%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 245 40% 18%;
+  --sidebar-accent-foreground: 210 20% 75%;
+  --sidebar-ring: 252 84% 68%;
 
-  --primary: 226 100% 64%;
-  --primary-foreground: 210 20% 98%;
-  
-  --secondary: 217 33% 15%;
-  --secondary-foreground: 210 20% 98%;
-  
-  --muted: 217 33% 15%;
-  --muted-foreground: 215 20% 65%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 245 47% 12%;
+  --popover-border: 230 18% 90%;
 
-  --accent: 226 100% 64%;
-  --accent-foreground: 210 20% 98%;
+  --primary: 252 84% 68%; /* #7367F0 purple */
+  --primary-foreground: 0 0% 100%;
 
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 20% 98%;
+  --secondary: 230 18% 92%;
+  --secondary-foreground: 245 47% 12%;
 
-  --border: 217 33% 15%;
-  --input: 217 33% 15%;
-  --ring: 226 100% 64%;
+  --muted: 230 18% 93%;
+  --muted-foreground: 245 14% 52%;
+
+  --accent: 149 68% 47%; /* #28C76F teal */
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 230 18% 90%;
+  --input: 230 18% 92%;
+  --ring: 252 84% 68%;
 
   --radius: 0.75rem;
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
-  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
-  
-  --button-outline: rgba(255,255,255, .15);
-  --badge-outline: rgba(255,255,255, .15);
-  --opaque-button-border-intensity: 10;
-  --elevate-1: rgba(255,255,255, .05);
-  --elevate-2: rgba(255,255,255, .10);
-}
-
-/* LIGHT MODE — Digor Brand Palette */
-html.light {
-  --background: 200 10% 96%;
-  --foreground: 222 47% 11%;
-
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 200 12% 87%;
-
-  --sidebar: 200 8% 92%;
-  --sidebar-foreground: 222 47% 11%;
-  --sidebar-border: 200 12% 84%;
-  --sidebar-primary: 226 72% 50%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 200 8% 86%;
-  --sidebar-accent-foreground: 222 47% 11%;
-  --sidebar-ring: 226 72% 50%;
-
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 200 12% 87%;
-
-  --primary: 226 72% 50%;
-  --primary-foreground: 0 0% 100%;
-
-  --secondary: 200 8% 86%; /* #D3D9DC range */
-  --secondary-foreground: 222 47% 11%;
-
-  --muted: 200 8% 90%;
-  --muted-foreground: 198 14% 40%; /* #69808C range */
-
-  --accent: 226 72% 50%;
-  --accent-foreground: 0 0% 100%;
-
-  --destructive: 0 72% 45%;
-  --destructive-foreground: 0 0% 100%;
-
-  --border: 200 12% 87%;
-  --input: 200 12% 87%;
-  --ring: 226 72% 50%;
-
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.08);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
@@ -166,6 +113,59 @@ html.light {
   --opaque-button-border-intensity: 80;
   --elevate-1: rgba(0,0,0, .04);
   --elevate-2: rgba(0,0,0, .07);
+}
+
+/* DARK MODE — TolipAI Purple-tinted Dark */
+html.dark {
+  --background: 245 38% 9%;
+  --foreground: 210 20% 96%;
+
+  --card: 245 35% 13%;
+  --card-foreground: 210 20% 96%;
+  --card-border: 245 30% 20%;
+
+  --sidebar: 245 47% 7%;
+  --sidebar-foreground: 210 20% 90%;
+  --sidebar-border: 245 40% 14%;
+  --sidebar-primary: 252 84% 68%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 245 35% 15%;
+  --sidebar-accent-foreground: 210 20% 75%;
+  --sidebar-ring: 252 84% 68%;
+
+  --popover: 245 35% 13%;
+  --popover-foreground: 210 20% 96%;
+  --popover-border: 245 30% 20%;
+
+  --primary: 252 84% 68%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 245 30% 18%;
+  --secondary-foreground: 210 20% 96%;
+
+  --muted: 245 30% 18%;
+  --muted-foreground: 245 14% 60%;
+
+  --accent: 149 68% 47%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 62% 40%;
+  --destructive-foreground: 210 20% 96%;
+
+  --border: 245 30% 20%;
+  --input: 245 30% 20%;
+  --ring: 252 84% 68%;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+
+  --button-outline: rgba(255,255,255, .12);
+  --badge-outline: rgba(255,255,255, .12);
+  --opaque-button-border-intensity: 15;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .08);
 }
 
 @layer base {

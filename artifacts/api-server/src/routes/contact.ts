@@ -63,7 +63,7 @@ router.post("/contact", async (req, res) => {
           <p style="color:#222;margin:0;line-height:1.6;">${message.replace(/\n/g, "<br>")}</p>
         </div>
         <p style="margin-top:24px;color:#888;font-size:12px;border-top:1px solid #eee;padding-top:16px;">
-          Digor LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
+          TolipAI LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
         </p>
       </div>
     </div>
@@ -73,9 +73,9 @@ router.post("/contact", async (req, res) => {
   if (transporter) {
     try {
       await transporter.sendMail({
-        from: `"Digor LLC Website" <${process.env.SMTP_USER}>`,
-        to: "digorva@digorcom.com",
-        cc: "info@digorcom.com, martin@digorcom.com",
+        from: `"TolipAI LLC Website" <${process.env.SMTP_USER}>`,
+        to: "info@tolipai.com",
+        cc: "hello@tolipai.com, martin@tolipai.com",
         replyTo: email,
         subject: `New Inquiry from ${name} — ${serviceLabel}`,
         html: emailHtml,

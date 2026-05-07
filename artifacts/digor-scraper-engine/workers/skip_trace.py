@@ -46,7 +46,7 @@ SOS_URLS: Dict[str, str] = {
 
 OPENCORPORATES_API = "https://api.opencorporates.com/v0.4/companies/search"
 SEC_EDGAR_SEARCH   = "https://www.sec.gov/cgi-bin/browse-edgar"
-USER_AGENT = "Digor/1.0 (skip-trace; contact: ops@digor.app)"
+USER_AGENT = "TolipAI/1.0 (skip-trace; contact: ops@tolipai.com)"
 
 # ─── Tier 0: OSINT People-Finder ────────────────────────────────────────────
 async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:

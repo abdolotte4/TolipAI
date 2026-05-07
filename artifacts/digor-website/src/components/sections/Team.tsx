@@ -4,24 +4,24 @@ import { Mail } from "lucide-react";
 export function Team() {
   const leaders = [
     {
-      name: "Amr Magdy",
+      name: "James Carter",
       role: "Chief Executive Officer",
-      email: "amr@digorcom.com",
-      description: "Visionary leader driving Digor LLC's strategic direction, client relationships, and operational excellence. With deep expertise in B2B infrastructure and real estate acquisition markets.",
+      email: "james@tolipai.com",
+      description: "Visionary leader driving TolipAI's strategic direction, client relationships, and operational excellence. With deep expertise in B2B infrastructure and real estate acquisition markets.",
       image: "avatar-1.jpg"
     },
     {
-      name: "Marawan Magdy",
+      name: "David Holloway",
       role: "Partner&Chief Operating Officer",
-      email: "marawan@digorcom.com",
-      description: "Oversees all operational workflows, quality assurance protocols, and delivery systems ensuring every client engagement meets Digor's rigorous standards.",
+      email: "david@tolipai.com",
+      description: "Oversees all operational workflows, quality assurance protocols, and delivery systems ensuring every client engagement meets TolipAI's rigorous standards.",
       image: "avatar-2.jpg"
     },
     {
       name: "Abdullah Gawish",
       role: "Partner&Chief Marketing Officer",
-      email: "abdullah@digorcom.com",
-      description: "Leads Digor's marketing strategy, brand development, and client acquisition programs with a focus on data-driven outreach and market positioning.",
+      email: "abdullah@tolipai.com",
+      description: "Leads TolipAI's marketing strategy, brand development, and client acquisition programs with a focus on data-driven outreach and market positioning.",
       image: "avatar-3.jpg"
     }
   ];
@@ -30,14 +30,14 @@ export function Team() {
     {
       name: "Martin Adams",
       role: "Chief Technology Officer",
-      email: "martin@digorcom.com",
-      description: "Architects the technical infrastructure powering Digor's CRM systems, data engineering pipelines, and operational automation frameworks.",
+      email: "martin@tolipai.com",
+      description: "Architects the technical infrastructure powering TolipAI's CRM systems, data engineering pipelines, and operational automation frameworks.",
       image: "avatar-4.jpg"
     },
     {
-      name: "Ali Hassan",
+      name: "Ryan Mitchell",
       role: "Outreach Operations Specialist",
-      email: "ali@digorcom.com",
+      email: "ryan@tolipai.com",
       description: "Specializes in high-intent outbound outreach operations, quality compliance protocols, and managed outreach program execution for real estate investors.",
       image: "avatar-1.jpg"
     }

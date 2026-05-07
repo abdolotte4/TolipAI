@@ -42,72 +42,72 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* FORCED DARK MODE - Premium B2B Agency Look */
+/* MATERIO INSPIRED LIGHT THEME — TolipAI Brand Palette */
 :root {
-  --background: 225 44% 7%; /* #0a0e1a */
-  --foreground: 210 40% 98%; /* #f8fafc */
-  
-  --card: 222 47% 11%; /* #111827 */
-  --card-foreground: 210 40% 98%;
-  --card-border: 217 32% 18%;
-  
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217 32% 18%;
-  
-  --primary: 43 67% 52%; /* #d4af37 - Elegant Gold */
-  --primary-foreground: 225 44% 7%;
-  
-  --secondary: 217 32% 18%; /* Slate Blue */
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 217 32% 18%;
-  --muted-foreground: 215 20.2% 65.1%;
-  
-  --accent: 217 32% 18%;
-  --accent-foreground: 210 40% 98%;
-  
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --border: 217 32% 18%;
-  --input: 217 32% 18%;
-  --ring: 43 67% 52%;
-  
+  --background: 230 24% 97%; /* #F4F5FA */
+  --foreground: 245 47% 12%; /* deep navy-purple */
+
+  --card: 0 0% 100%; /* white cards */
+  --card-foreground: 245 47% 12%;
+  --card-border: 230 18% 90%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 245 47% 12%;
+  --popover-border: 230 18% 90%;
+
+  --primary: 252 84% 68%; /* #7367F0 purple */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 230 18% 92%;
+  --secondary-foreground: 245 47% 12%;
+
+  --muted: 230 18% 93%;
+  --muted-foreground: 245 14% 52%;
+
+  --accent: 149 68% 47%; /* #28C76F teal */
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 230 18% 90%;
+  --input: 230 18% 92%;
+  --ring: 252 84% 68%;
+
   --radius: 0.5rem;
 }
 
-/* LIGHT MODE — Digor Brand Palette */
-html.light {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
+/* DARK MODE — TolipAI Purple-tinted Dark */
+html.dark {
+  --background: 245 38% 9%;
+  --foreground: 210 40% 96%;
 
-  --card: 210 17% 98%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 88%;
+  --card: 245 35% 13%;
+  --card-foreground: 210 40% 96%;
+  --card-border: 245 30% 20%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 88%;
+  --popover: 245 35% 13%;
+  --popover-foreground: 210 40% 96%;
+  --popover-border: 245 30% 20%;
 
-  --primary: 43 67% 45%; /* Gold, slightly deeper for light bg */
+  --primary: 252 84% 68%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 200 8% 88%; /* #D3D9DC range */
-  --secondary-foreground: 222 47% 11%;
+  --secondary: 245 30% 18%;
+  --secondary-foreground: 210 40% 96%;
 
-  --muted: 200 8% 92%;
-  --muted-foreground: 198 14% 40%; /* #69808C range */
+  --muted: 245 30% 18%;
+  --muted-foreground: 245 14% 60%;
 
-  --accent: 200 8% 88%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 149 68% 47%;
+  --accent-foreground: 0 0% 100%;
 
-  --destructive: 0 72% 45%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 0 62% 40%;
+  --destructive-foreground: 210 40% 96%;
 
-  --border: 214 32% 88%;
-  --input: 214 32% 92%;
-  --ring: 43 67% 45%;
+  --border: 245 30% 20%;
+  --input: 245 30% 20%;
+  --ring: 252 84% 68%;
 }
 
 @layer base {

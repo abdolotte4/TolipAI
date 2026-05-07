@@ -5,9 +5,9 @@ import { Card } from "@/components/ui/card";
 export function Services() {
   const services = [
     {
-      title: "Digor CRM — Real Estate CRM Software",
+      title: "TolipAI CRM — Real Estate CRM Software",
       icon: <BarChart3 className="w-8 h-8 text-primary" />,
-      description: "Digor CRM is a purpose-built real estate CRM for investors and real estate professionals. Features include lead pipeline management, ARV (After Repair Value) calculator, MAO (Maximum Allowable Offer) calculator, real estate comps analysis, task tracking, and team collaboration. Manage all high-propensity property segments from first contact to closed deal — all in one CRM."
+      description: "TolipAI CRM is a purpose-built real estate CRM for investors and real estate professionals. Features include lead pipeline management, ARV (After Repair Value) calculator, MAO (Maximum Allowable Offer) calculator, real estate comps analysis, task tracking, and team collaboration. Manage all high-propensity property segments from first contact to closed deal — all in one CRM."
     },
     {
       title: "Virtual Assistants for Real Estate",
@@ -22,17 +22,17 @@ export function Services() {
     {
       title: "Managed Outreach Operations",
       icon: <MessageSquare className="w-8 h-8 text-primary" />,
-      description: "End-to-end outbound outreach for real estate professionals — outbound calls, SMS campaigns, and direct mail targeting high-propensity data segments. We build and execute outreach sequences across curated property datasets. All campaigns are tracked and managed inside Digor CRM for full pipeline visibility."
+      description: "End-to-end outbound outreach for real estate professionals — outbound calls, SMS campaigns, and direct mail targeting high-propensity data segments. We build and execute outreach sequences across curated property datasets. All campaigns are tracked and managed inside TolipAI CRM for full pipeline visibility."
     },
     {
       title: "ARV Calculation & Comps Analysis",
       icon: <BarChart3 className="w-8 h-8 text-primary" />,
-      description: "Accurate After Repair Value (ARV) calculation and real estate comps analysis using live property data. Digor CRM's built-in ARV calculator and MAO calculator automatically pull comparable sales, adjust for property differences, and compute your Maximum Allowable Offer — giving real estate professionals data-driven numbers for every deal."
+      description: "Accurate After Repair Value (ARV) calculation and real estate comps analysis using live property data. TolipAI CRM's built-in ARV calculator and MAO calculator automatically pull comparable sales, adjust for property differences, and compute your Maximum Allowable Offer — giving real estate professionals data-driven numbers for every deal."
     },
     {
       title: "Technical CRM Infrastructure",
       icon: <Settings className="w-8 h-8 text-primary" />,
-      description: "Enterprise-grade CRM architecture and automation workflow design for real estate businesses. We implement Digor CRM, configure acquisition pipelines, set up automation, and build the complete technical backbone powering modern real estate marketing operations — from data ingestion to closed deals."
+      description: "Enterprise-grade CRM architecture and automation workflow design for real estate businesses. We implement TolipAI CRM, configure acquisition pipelines, set up automation, and build the complete technical backbone powering modern real estate marketing operations — from data ingestion to closed deals."
     }
   ];
 
@@ -48,7 +48,7 @@ export function Services() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Specialized Infrastructure</h2>
           <div className="w-20 h-1 bg-primary mx-auto mb-6 rounded-full" />
           <p className="text-muted-foreground text-lg">
-            From Digor CRM to virtual assistants and data infrastructure — we build and operate the systems that power modern real estate operations.
+            From TolipAI CRM to virtual assistants and data infrastructure — we build and operate the systems that power modern real estate operations.
           </p>
         </motion.div>
 

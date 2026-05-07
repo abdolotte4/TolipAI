@@ -290,7 +290,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                       <div className="border-t border-[#1f2937] p-4 bg-[#0f1624]">
                         <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{c.message}</p>
                         <div className="mt-3 flex gap-3">
-                          <a href={`mailto:${c.email}?subject=Re: Inquiry from Digor LLC`} className="text-xs bg-[#d4af37] text-[#0a0e1a] font-semibold px-3 py-1.5 rounded-lg hover:bg-[#b8962e] transition-colors">
+                          <a href={`mailto:${c.email}?subject=Re: Inquiry from TolipAI LLC`} className="text-xs bg-[#d4af37] text-[#0a0e1a] font-semibold px-3 py-1.5 rounded-lg hover:bg-[#b8962e] transition-colors">
                             Reply via Email
                           </a>
                         </div>

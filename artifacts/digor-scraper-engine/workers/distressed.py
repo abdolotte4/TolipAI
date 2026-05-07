@@ -102,9 +102,19 @@ async def find_distressed(*, zip_code: str = "", county_key: str = "",
     # Fan out — but cap concurrency so we don't melt the proxy pool
     sem = asyncio.Semaphore(6)
 
+    _SRC_TIMEOUT = 45  # seconds per individual source
+
     async def _bounded(src):
         async with sem:
-            return src["key"], await _scrape_source(src, zip_code=zip_code, state=state)
+            try:
+                result = await asyncio.wait_for(
+                    _scrape_source(src, zip_code=zip_code, state=state),
+                    timeout=_SRC_TIMEOUT,
+                )
+                return src["key"], result
+            except asyncio.TimeoutError:
+                log.warning("Source %s timed out after %ds — skipping", src["key"], _SRC_TIMEOUT)
+                return src["key"], []
 
     results: List[Dict[str, Any]] = []
     completed = 0

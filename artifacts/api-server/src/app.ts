@@ -26,8 +26,8 @@ const ALLOWED_ORIGINS = [
   // Railway scraper / internal services
   /^https:\/\/.*\.up\.railway\.app$/,
   // Custom domain
-  /^https:\/\/.*\.digorva\.com$/,
-  /^https:\/\/digorva\.com$/,
+  /^https:\/\/.*\.tolipai\.com$/,
+  /^https:\/\/tolipai\.com$/,
   // Local development
   /^http:\/\/localhost(:\d+)?$/,
   /^http:\/\/127\.0\.0\.1(:\d+)?$/,

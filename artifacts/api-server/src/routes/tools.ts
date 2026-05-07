@@ -1,5 +1,5 @@
 /**
- * Digor Tools API Routes
+ * TolipAI Tools API Routes
  *
  * Routes:
  *   POST /api/tools/auth/verify            — PIN check + config status

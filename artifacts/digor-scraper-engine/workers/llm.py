@@ -100,8 +100,8 @@ def _openrouter() -> Optional[AsyncOpenAI]:
             api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
             default_headers={
-                "HTTP-Referer": "https://digor.app",
-                "X-Title": "Digor",
+                "HTTP-Referer": "https://tolipai.com",
+                "X-Title": "TolipAI",
             },
         )
     return _openrouter_client

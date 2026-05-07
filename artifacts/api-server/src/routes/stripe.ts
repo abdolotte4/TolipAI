@@ -44,7 +44,7 @@ router.post("/stripe/checkout", async (req: Request, res: Response) => {
     const resolvedPriceId = allowedPrices.includes(priceId) ? priceId : FULL_PRICE_ID;
 
     const origin = req.headers.origin || `https://${req.headers.host}`;
-    const tosUrl = "https://digorva.com/terms-of-service";
+    const tosUrl = "https://tolipai.com/terms-of-service";
     const tosAcceptedAt = new Date().toISOString();
     const tosAcceptedIp =
       (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() ||
@@ -99,7 +99,7 @@ router.post("/stripe/checkout", async (req: Request, res: Response) => {
       },
       custom_text: {
         terms_of_service_acceptance: {
-          message: `By subscribing, you authorize Digor LLC to charge you until you cancel. Service is non-refundable. For billing inquiries or technical support, contact digorva@digorcom.com within 3 days of a charge. Full terms: [Terms of Service](${tosUrl}).`,
+          message: `By subscribing, you authorize TolipAI LLC to charge you until you cancel. Service is non-refundable. For billing inquiries or technical support, contact info@tolipai.com within 3 days of a charge. Full terms: [Terms of Service](${tosUrl}).`,
         },
       },
     });

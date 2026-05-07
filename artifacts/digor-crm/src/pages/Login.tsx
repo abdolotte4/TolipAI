@@ -68,7 +68,7 @@ export default function Login() {
             <div className="w-16 h-16 bg-primary/20 rounded-2xl flex items-center justify-center mb-4 border border-primary/30 shadow-[0_0_30px_rgba(99,102,241,0.3)]">
               <Building2 className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="text-3xl font-display font-bold text-foreground tracking-tight">Digor Portal</h1>
+            <h1 className="text-3xl font-display font-bold text-foreground tracking-tight">TolipAI Portal</h1>
             <p className="text-muted-foreground mt-2">Sign in to your workspace</p>
           </div>
 
@@ -111,15 +111,15 @@ export default function Login() {
           <div className="mt-6 pt-5 border-t border-white/8 text-center">
             <p className="text-sm text-muted-foreground">
               Don't have an account?{" "}
-              <span className="text-foreground/80">Contact Digor LLC to get started.</span>
+              <span className="text-foreground/80">Contact TolipAI LLC to get started.</span>
             </p>
             <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted-foreground/70">
-              <a href="mailto:digorva@digorcom.com" className="hover:text-primary transition-colors">
-                digorva@digorcom.com
+              <a href="mailto:info@tolipai.com" className="hover:text-primary transition-colors">
+                info@tolipai.com
               </a>
               <span className="opacity-30">|</span>
-              <a href="tel:4708353617" className="hover:text-primary transition-colors">
-                (470) 835-3617
+              <a href="tel:5552014892" className="hover:text-primary transition-colors">
+                (555) 201-4892
               </a>
             </div>
           </div>

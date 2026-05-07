@@ -27,10 +27,10 @@ export function About() {
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">About Digor LLC</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">About TolipAI LLC</h2>
             <div className="w-20 h-1 bg-primary rounded-full mb-8" />
             <p className="text-lg text-muted-foreground leading-relaxed mb-6">
-              Digor LLC is a Wyoming-based managed services agency established in 2024. We provide specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations.
+              TolipAI LLC is a Wyoming-based managed services agency established in 2024. We provide specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations.
             </p>
             <p className="text-lg text-muted-foreground leading-relaxed">
               Our integrated approach combines data engineering, managed outreach operations, and technical CRM infrastructure to deliver measurable results. We engineer systems that scale, supported by rigorous quality assurance and compliance frameworks.

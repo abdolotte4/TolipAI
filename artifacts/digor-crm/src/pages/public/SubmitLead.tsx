@@ -112,7 +112,7 @@ export default function SubmitLead() {
             <Building className="w-7 h-7 text-white" />
           </div>
           <span className="font-bold text-2xl text-zinc-900 tracking-tight">
-            {campaignName || "Digor Properties"}
+            {campaignName || "TolipAI Properties"}
           </span>
         </div>
 
@@ -298,7 +298,7 @@ export default function SubmitLead() {
         </Card>
 
         <p className="text-center mt-6 text-sm text-zinc-400">
-          Powered by <span className="font-semibold text-zinc-500">Digor CRM</span>
+          Powered by <span className="font-semibold text-zinc-500">TolipAI CRM</span>
         </p>
       </div>
     </div>

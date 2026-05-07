@@ -406,7 +406,7 @@ router.post("/twilio/webhook", async (req, res) => {
 
 router.get("/twilio/setup-guide", crmAuth, (_req, res) => {
   res.json({
-    title: "Twilio Setup Guide — Digor CRM",
+    title: "Twilio Setup Guide — TolipAI CRM",
     steps: [
       {
         step: 1,
@@ -447,7 +447,7 @@ router.get("/twilio/setup-guide", crmAuth, (_req, res) => {
       "Each campaign can use its own separate Twilio account — perfect for multi-team setups.",
       "For volume SMS, upgrade from a trial account and register a 10DLC brand to avoid carrier filtering.",
       "For HIPAA compliance, enable Twilio's Advanced Security add-on in the console.",
-      "Keep your Auth Token secret — it's encrypted when stored in Digor CRM.",
+      "Keep your Auth Token secret — it's encrypted when stored in TolipAI CRM.",
     ],
   });
 });

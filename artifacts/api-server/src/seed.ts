@@ -73,7 +73,7 @@ export async function seedDatabase() {
   await ensureIndexes();
 
   try {
-    await seedAdmin(adminEmail, adminPassword, "Digor Admin");
+    await seedAdmin(adminEmail, adminPassword, "TolipAI Admin");
   } catch (err) {
     logger.error({ err }, "Failed to seed primary CRM super admin.");
   }

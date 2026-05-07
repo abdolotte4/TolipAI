@@ -201,7 +201,7 @@ function MentionTextarea({
 
 // ─── Offer Letter ─────────────────────────────────────────────────────────────
 function openOfferLetter(lead: any, mao: number, campaign?: any) {
-  const companyName = campaign?.name || "Digor LLC";
+  const companyName = campaign?.name || "TolipAI LLC";
   const formattedMao = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(mao);
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const html = `<!DOCTYPE html>
@@ -425,7 +425,7 @@ function ZillowCard({ address, city, state, zip }: { address?: string; city?: st
         </div>
 
         <p className="text-xs text-muted-foreground/50 mt-3 text-center">
-          Zillow data is provided externally and not controlled by Digor CRM
+          Zillow data is provided externally and not controlled by TolipAI CRM
         </p>
       </div>
     </Card>

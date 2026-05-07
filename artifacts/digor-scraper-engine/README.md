@@ -1,7 +1,7 @@
-# Digor Scraper Engine
+# TolipAI Scraper Engine
 
 FastAPI service that powers the **advanced scraping + skip-trace + investor
-classification** pipeline for the Digor CRM/Tools platform. The Express
+classification** pipeline for the TolipAI CRM/Tools platform. The Express
 api-server proxies authenticated requests here under `/api/scraper-engine/*`.
 
 ## Endpoints

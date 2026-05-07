@@ -244,7 +244,7 @@ export async function runEmailSequenceJob() {
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  sender: { name: "Digor CRM", email: process.env.BREVO_SENDER_EMAIL },
+                  sender: { name: "TolipAI CRM", email: process.env.BREVO_SENDER_EMAIL },
                   to: [{ email: lead.email!, name: lead.sellerName }],
                   replyTo: { email: replyToEmail },
                   subject,

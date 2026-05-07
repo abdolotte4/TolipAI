@@ -28,7 +28,7 @@ export function Scene3() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.3 }}
       >
-        <h2 className="text-[3vw] font-display font-bold text-white drop-shadow-md">Digor Tools</h2>
+        <h2 className="text-[3vw] font-display font-bold text-white drop-shadow-md">TolipAI Tools</h2>
         <p className="text-[1.2vw] text-accent mt-2 uppercase tracking-wider">Standalone Intelligence</p>
       </motion.div>
 

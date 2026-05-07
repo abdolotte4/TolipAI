@@ -13,7 +13,4 @@ Disallow: /*?feed=
 Disallow: /*?s=
 Disallow: /*?attachment_id=
 
-Sitemap: https://digorva.com/sitemap.xml
-
-# IndexNow verification
-# https://digorva.com/da40addf8292e24d46179c6841b1d125.txt
+Sitemap: https://tolipai.com/sitemap.xml

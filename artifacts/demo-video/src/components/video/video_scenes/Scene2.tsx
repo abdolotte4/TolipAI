@@ -31,7 +31,7 @@ export function Scene2() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6 }}
         >
-          Digor CRM
+          TolipAI CRM
         </motion.p>
         <h2 className="text-[3.5vw] font-display font-bold leading-tight mb-8 text-white drop-shadow-lg">
           One platform.

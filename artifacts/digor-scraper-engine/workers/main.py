@@ -1,4 +1,4 @@
-"""Digor Scraper Engine — FastAPI entrypoint.
+"""TolipAI Scraper Engine — FastAPI entrypoint.
 
 Endpoints all return immediately with a job_id; long work runs as an asyncio
 background task that persists progress + results to Postgres.
@@ -138,7 +138,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Digor Scraper Engine",
+    title="TolipAI Scraper Engine",
     version="0.1.0",
     description="Advanced scraping + skip-trace + investor classification",
     lifespan=lifespan,
@@ -272,6 +272,8 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
 
 
 async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    listings: List[Dict[str, Any]] = []
+    partial = False
     try:
         _jobs.setdefault(job_id, {"id": job_id, "type": "distressed",
                                    "status": "retrying", "progress": 0,
@@ -279,25 +281,49 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
         _set_status(job_id, "retrying")
         await db.update_job(job_id, status="running", progress=0)
         cb = await _make_progress_cb(job_id)
-        listings = await distressed.find_distressed(
-            zip_code=params.get("zip", ""),
-            county_key=params.get("county_key", ""),
-            state=params.get("state", ""),
-            categories=params.get("categories"),
-            source_keys=params.get("source_keys"),
-            job_id=job_id,
-            campaign_id=params.get("campaign_id"),
-            progress_cb=cb,
-        )
-        _set_status(job_id, "done", progress=100, result=listings)
-        await db.update_job(job_id, status="done", progress=100,
-                            result_count=len(listings), completed=True)
+        # Overall job timeout: 8 minutes; sources each have their own 45 s timeout
+        try:
+            listings = await asyncio.wait_for(
+                distressed.find_distressed(
+                    zip_code=params.get("zip", ""),
+                    county_key=params.get("county_key", ""),
+                    state=params.get("state", ""),
+                    categories=params.get("categories"),
+                    source_keys=params.get("source_keys"),
+                    job_id=job_id,
+                    campaign_id=params.get("campaign_id"),
+                    progress_cb=cb,
+                ),
+                timeout=480,
+            )
+        except asyncio.TimeoutError:
+            log.warning("distressed job %s: overall timeout hit — returning partial results (%d so far)",
+                        job_id, len(listings))
+            partial = True
+
+        if listings:
+            final_status = "partial_success" if partial else "done"
+            _set_status(job_id, final_status, progress=100, result=listings)
+            await db.update_job(job_id, status=final_status, progress=100,
+                                result_count=len(listings), completed=True)
+        else:
+            # No results at all — treat as failed
+            _set_status(job_id, "failed", error="No listings found" + (" (timeout)" if partial else ""))
+            await db.update_job(job_id, status="failed",
+                                error="No listings found" + (" (timeout)" if partial else ""),
+                                completed=True)
         return {"count": len(listings)}
     except Exception as e:
         log.error("distressed job %s failed: %s", job_id, str(e)[:120])
-        _set_status(job_id, "failed", error=str(e))
-        await db.update_job(job_id, status="failed", error=str(e), completed=True)
-        return {"count": 0}
+        if listings:
+            log.info("distressed job %s: returning %d partial results despite error", job_id, len(listings))
+            _set_status(job_id, "partial_success", progress=100, result=listings)
+            await db.update_job(job_id, status="partial_success", progress=100,
+                                result_count=len(listings), completed=True)
+        else:
+            _set_status(job_id, "failed", error=str(e))
+            await db.update_job(job_id, status="failed", error=str(e), completed=True)
+        return {"count": len(listings)}
 
 
 async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:

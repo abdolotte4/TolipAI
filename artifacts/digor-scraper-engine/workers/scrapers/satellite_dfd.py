@@ -15,6 +15,15 @@ except ImportError:
     _YOLO_CLASS = None  # type: ignore
     _YOLO_AVAILABLE = False
 
+# ─── Google Cloud Vision availability ────────────────────────────────────────
+_GCV_API_KEY: Optional[str] = None
+
+def _get_gcv_key() -> Optional[str]:
+    global _GCV_API_KEY
+    if _GCV_API_KEY is None:
+        _GCV_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY") or ""
+    return _GCV_API_KEY or None
+
 from ..http_client import fetch_html
 from ..llm import _chat
 from . import zillow, redfin, homeharvest_scraper
@@ -187,6 +196,92 @@ def _yolo_signals(image_path: str) -> Dict[str, bool]:
         log.warning("YOLO inference failed: %s", e)
         return {}
 
+# ─── Google Cloud Vision distress detection ──────────────────────────────────
+# Distress-relevant GCV label categories mapped to signal keys
+_GCV_DISTRESS_LABELS: Dict[str, str] = {
+    "junk":             "litter",
+    "litter":           "litter",
+    "trash":            "litter",
+    "debris":           "litter",
+    "graffiti":         "graffiti",
+    "vandalism":        "graffiti",
+    "overgrown":        "overgrown_vegetation",
+    "weeds":            "overgrown_vegetation",
+    "vegetation":       "overgrown_vegetation",
+    "abandoned":        "abandoned",
+    "foreclosure":      "abandoned",
+    "neglect":          "abandoned",
+    "dilapidated":      "structural_damage",
+    "damage":           "structural_damage",
+    "deterioration":    "structural_damage",
+    "tarp":             "structural_damage",
+    "boarded":          "structural_damage",
+    "broken":           "structural_damage",
+    "furniture":        "furniture_outside",
+    "mattress":         "furniture_outside",
+    "sofa":             "furniture_outside",
+    "pile":             "items_piled_outside",
+    "clutter":          "items_piled_outside",
+}
+
+async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
+    """Call Google Cloud Vision LABEL_DETECTION on a satellite image URL.
+    Returns a dict of distress signal keys → True (only truthy entries)."""
+    key = _get_gcv_key()
+    if not key:
+        return {}
+    gcv_url = f"https://vision.googleapis.com/v1/images:annotate?key={key}"
+    body = {
+        "requests": [{
+            "image": {"source": {"imageUri": image_url}},
+            "features": [
+                {"type": "LABEL_DETECTION",  "maxResults": 30},
+                {"type": "OBJECT_LOCALIZATION", "maxResults": 20},
+            ],
+        }]
+    }
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            resp = await client.post(gcv_url, json=body)
+            resp.raise_for_status()
+            data = resp.json()
+
+        responses = data.get("responses", [{}])[0]
+        labels = [a.get("description", "").lower()
+                  for a in responses.get("labelAnnotations", [])]
+        objects = [o.get("name", "").lower()
+                   for o in responses.get("localizedObjectAnnotations", [])]
+        all_detections = labels + objects
+
+        signals: Dict[str, bool] = {}
+        for det in all_detections:
+            for keyword, signal_key in _GCV_DISTRESS_LABELS.items():
+                if keyword in det:
+                    signals[signal_key] = True
+        log.debug("GCV detections: %s → signals: %s", all_detections[:15], list(signals.keys()))
+        return signals
+    except Exception as e:
+        log.warning("Google Cloud Vision call failed: %s", e)
+        return {}
+
+
+async def _visual_signals(image_path: Optional[str], image_url: Optional[str]) -> Dict[str, bool]:
+    """Merge YOLO (local file) and GCV (remote URL) visual signals."""
+    yolo: Dict[str, bool] = {}
+    gcv: Dict[str, bool] = {}
+
+    if image_path:
+        loop = asyncio.get_event_loop()
+        yolo = await loop.run_in_executor(None, _yolo_signals, image_path)
+
+    if image_url and _get_gcv_key():
+        gcv = await _gcv_signals_from_url(image_url)
+
+    # Merge: YOLO takes priority for keys it provides; GCV fills gaps
+    merged = {**gcv, **yolo}
+    return merged
+
+
 # ─── AI distress reasoning ───────────────────────────────────────────────────
 async def _ai_distress_score(address: str, signals: Dict[str, Any], base_score: int,
                               yolo_signals: Dict[str, bool]) -> Dict[str, Any]:
@@ -330,21 +425,24 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
             sat_url = _satellite_url(float(lat), float(lon))
             sv_url  = _streetview_url(float(lat), float(lon))
 
-        # ── YOLO distress detection on street view ───────────────────────────
+        # ── Visual distress detection: YOLO (local) + Google Cloud Vision ───────
         yolo_sigs: Dict[str, bool] = {}
-        if has_yolo and has_google and sv_url and base_score >= 40:
-            fname = f"/tmp/sv_{lat}_{lon}.jpg"
-            img_path = await _download_image(sv_url, fname)
-            if img_path:
-                # Serialize YOLO inference — the model is a singleton and
-                # torch is not thread-safe for concurrent model.forward() calls.
-                async with _get_yolo_lock():
-                    yolo_sigs = await asyncio.get_event_loop().run_in_executor(
-                        None, _yolo_signals, img_path
-                    )
-                # Each confirmed visual signal bumps score by 5 pts
-                yolo_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
-                base_score = min(100, base_score + yolo_boost)
+        _has_gcv = bool(_get_gcv_key())
+        _run_visual = (base_score >= 40) and (has_google or _has_gcv)
+        if _run_visual:
+            img_path: Optional[str] = None
+            if has_yolo and has_google and sv_url:
+                fname = f"/tmp/sv_{lat}_{lon}.jpg"
+                img_path = await _download_image(sv_url, fname)
+
+            # Use YOLO (requires local file) + GCV (uses satellite URL directly)
+            # _visual_signals() gracefully skips whichever source is unavailable
+            async with _get_yolo_lock():
+                yolo_sigs = await _visual_signals(img_path, sat_url if _has_gcv else None)
+
+            # Each confirmed visual signal bumps score by 5 pts (cap at +20)
+            visual_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
+            base_score = min(100, base_score + visual_boost)
 
         # ── AI reasoning ─────────────────────────────────────────────────────
         if use_ai_scoring:
@@ -389,7 +487,7 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
             "year_built":        year_built,
             "source":            p.get("source", "zillow"),
             "signals":           signals,
-            "yolo_signals":      yolo_sigs,
+            "visual_signals":     yolo_sigs,
         })
 
         if len(candidates) >= max_results * 2:  # over-fetch then trim after sort

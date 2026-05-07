@@ -29,17 +29,17 @@ export default function CheckoutSuccess() {
       <Navbar />
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-32 text-center">
         <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-8">
-          <CheckCircle className="w-12 h-12 text-green-400" />
+          <CheckCircle className="w-12 h-12 text-green-500" />
         </div>
 
-        <h1 className="text-4xl font-bold text-white mb-4">Welcome to Digor!</h1>
-        <p className="text-gray-400 text-lg mb-8 leading-relaxed">
+        <h1 className="text-4xl font-bold text-foreground mb-4">Welcome to TolipAI!</h1>
+        <p className="text-muted-foreground text-lg mb-8 leading-relaxed">
           Your subscription is confirmed. {customerName ? `Thank you, ${customerName}.` : ""} You'll receive a confirmation receipt
-          {customerEmail ? <> at <span className="text-[#d4af37]">{customerEmail}</span></> : " at your email address"}.
+          {customerEmail ? <> at <span className="text-primary">{customerEmail}</span></> : " at your email address"}.
         </p>
 
-        <div className="bg-[#111827] border border-[#1f2937] rounded-2xl p-6 mb-8 text-left">
-          <h2 className="text-lg font-semibold text-white mb-4">What happens next?</h2>
+        <div className="bg-card border border-border rounded-2xl p-6 mb-8 text-left shadow-sm">
+          <h2 className="text-lg font-semibold text-foreground mb-4">What happens next?</h2>
           <div className="space-y-4">
             {[
               { step: "1", title: "Confirmation Email", desc: "You'll receive an invoice and subscription confirmation from Stripe within minutes." },
@@ -48,25 +48,25 @@ export default function CheckoutSuccess() {
               { step: "4", title: "Service Activation", desc: "Your managed marketing infrastructure will be fully operational within 5–7 business days." },
             ].map(item => (
               <div key={item.step} className="flex gap-4">
-                <div className="w-8 h-8 bg-[#d4af37]/20 rounded-full flex items-center justify-center flex-shrink-0 text-[#d4af37] font-bold text-sm">
+                <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0 text-primary font-bold text-sm">
                   {item.step}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">{item.title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
+                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-[#0a0e1a] border border-[#1f2937] rounded-xl p-4 mb-8 text-sm text-gray-400">
-          <p className="font-semibold text-white mb-1">Need to cancel or have questions?</p>
-          <p>Send an email to <a href="mailto:digorva@digorcom.com" className="text-[#d4af37] hover:underline">digorva@digorcom.com</a> — cancellation requires an official email request per our Terms of Service.</p>
+        <div className="bg-muted border border-border rounded-xl p-4 mb-8 text-sm text-muted-foreground">
+          <p className="font-semibold text-foreground mb-1">Need to cancel or have questions?</p>
+          <p>Send an email to <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a> — cancellation requires an official email request per our Terms of Service.</p>
         </div>
 
         <Link href="/">
-          <a className="inline-flex items-center gap-2 px-8 py-3 bg-[#d4af37] text-[#0a0e1a] font-bold rounded-xl hover:bg-[#b8962e] transition-colors">
+          <a className="inline-flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-colors">
             Back to Home <ArrowRight className="w-4 h-4" />
           </a>
         </Link>

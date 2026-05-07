@@ -19,7 +19,7 @@ import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 const DEMO_SLUG = "demo";
-const DEMO_EMAIL = "demo@digorva.com";
+const DEMO_EMAIL = "demo@tolipai.com";
 const DEMO_PASSWORD = "Demo2026!";
 
 // ── Fake leads (no real PII — all fictional) ─────────────────────────────────
@@ -431,7 +431,7 @@ async function run() {
     [campaign] = await db
       .insert(crmCampaigns)
       .values({
-        name: "Digor Demo",
+        name: "TolipAI Demo",
         slug: DEMO_SLUG,
         active: true,
         skipTraceDailyLimit: 2,
@@ -601,7 +601,7 @@ async function run() {
   }
 
   console.log("\n✅ Demo seed complete!");
-  console.log(`   Campaign: Digor Demo (slug: ${DEMO_SLUG})`);
+  console.log(`   Campaign: TolipAI Demo (slug: ${DEMO_SLUG})`);
   console.log(`   Login:    ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
   process.exit(0);
 }

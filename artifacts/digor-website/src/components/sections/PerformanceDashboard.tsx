@@ -61,7 +61,7 @@ export function PerformanceDashboard() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display text-white">Client Performance Analytics</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Real results from real estate professionals partnering with Digor LLC's managed infrastructure
+            Real results from real estate professionals partnering with TolipAI LLC's managed infrastructure
           </p>
         </motion.div>
 
@@ -243,7 +243,7 @@ export function PerformanceDashboard() {
               <div className="flex items-end justify-center gap-8 h-32">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-20 bg-muted/30 rounded-t-md h-[40%]" />
-                  <span className="text-sm font-medium text-muted-foreground">Before Digor</span>
+                  <span className="text-sm font-medium text-muted-foreground">Before TolipAI</span>
                   <span className="text-xs text-muted-foreground">20 Transactions</span>
                 </div>
                 
@@ -267,7 +267,7 @@ export function PerformanceDashboard() {
                     transition={{ duration: 1, delay: 0.2 }}
                     className="w-20 bg-primary/80 rounded-t-md" 
                   />
-                  <span className="text-sm font-medium text-white">After Digor</span>
+                  <span className="text-sm font-medium text-white">After TolipAI</span>
                   <span className="text-xs text-primary">45 Transactions</span>
                 </div>
               </div>

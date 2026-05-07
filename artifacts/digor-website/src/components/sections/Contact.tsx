@@ -95,7 +95,7 @@ export function Contact() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-foreground text-lg mb-1">Email</h4>
-                  <p className="text-muted-foreground">digorva@digorcom.com</p>
+                  <p className="text-muted-foreground">info@tolipai.com</p>
                 </div>
               </div>
 
@@ -105,7 +105,7 @@ export function Contact() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-foreground text-lg mb-1">Phone</h4>
-                  <p className="text-muted-foreground">(470) 835-3617<br />(602) 654-3140</p>
+                  <p className="text-muted-foreground">(555) 201-4892<br />(555) 307-6148</p>
                 </div>
               </div>
             </div>

@@ -76,8 +76,9 @@ class Settings:
     # If BRIGHTDATA_USERNAME already contains "-zone-" leave this empty.
     brightdata_zone: Optional[str] = _env("BRIGHTDATA_ZONE")
     brightdata_host: str = _env("BRIGHTDATA_HOST", "brd.superproxy.io") or "brd.superproxy.io"
-    # 22225 = residential/ISP proxy  |  33335 = datacenter  |  24000 = scraping browser
-    brightdata_port: int = int(os.getenv("BRIGHTDATA_PORT", "22225"))
+    # 22225 = residential  |  33335 = ISP/residential-fast  |  24000 = scraping browser
+    # Default 33335 (ISP) — fastest for JS-heavy sites (Propelio/Propwire)
+    brightdata_port: int = int(os.getenv("BRIGHTDATA_PORT", "33335"))
     oxylabs_user: Optional[str] = _env("OXYLABS_USERNAME")
     oxylabs_pass: Optional[str] = _env("OXYLABS_PASSWORD")
 

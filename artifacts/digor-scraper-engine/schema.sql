@@ -1,4 +1,4 @@
--- Digor Scraper Engine — Neon DB schema
+-- TolipAI Scraper Engine — Neon DB schema
 -- Run against your Neon project with:
 --   psql $DATABASE_URL -f schema.sql
 -- Safe to re-run: all statements use IF NOT EXISTS / ON CONFLICT.
