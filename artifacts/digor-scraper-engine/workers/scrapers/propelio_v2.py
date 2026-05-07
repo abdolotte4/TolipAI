@@ -23,7 +23,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
-from ._browser_session import browser_context, invalidate_session
+from ._browser_session import browser_context, invalidate_session, _nav_with_fallback
 from ._utils import _safe_num, _parse_buyer_card
 
 log = logging.getLogger("propelio")
@@ -178,7 +178,7 @@ async def search_property(address: str) -> Dict[str, Any]:
     async with browser_context(SERVICE, login_fn=_do_login) as ctx:
         page = await ctx.new_page()
         try:
-            await page.goto(SEARCH_URL, wait_until="domcontentloaded", timeout=30000)
+            await _nav_with_fallback(page, SEARCH_URL, log, SERVICE)
 
             # If we got bounced to login the cached session was stale → invalidate.
             if "/login" in page.url:
@@ -230,7 +230,7 @@ async def fetch_comps(
         page = await ctx.new_page()
         comps: List[Dict[str, Any]] = []
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await _nav_with_fallback(page, url, log, SERVICE)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propelio session expired")
@@ -328,7 +328,7 @@ async def fetch_cash_buyers(
 
         page.on("response", _capture_response)
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await _nav_with_fallback(page, url, log, SERVICE)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propelio session expired")

@@ -105,16 +105,38 @@ async def find_distressed(*, zip_code: str = "", county_key: str = "",
     _SRC_TIMEOUT = 45  # seconds per individual source
 
     async def _bounded(src):
+        """Fetch one source with a per-source timeout and a single retry on transient failures."""
         async with sem:
-            try:
-                result = await asyncio.wait_for(
-                    _scrape_source(src, zip_code=zip_code, state=state),
-                    timeout=_SRC_TIMEOUT,
-                )
-                return src["key"], result
-            except asyncio.TimeoutError:
-                log.warning("Source %s timed out after %ds — skipping", src["key"], _SRC_TIMEOUT)
-                return src["key"], []
+            for attempt in range(2):
+                try:
+                    result = await asyncio.wait_for(
+                        _scrape_source(src, zip_code=zip_code, state=state),
+                        timeout=_SRC_TIMEOUT,
+                    )
+                    return src["key"], result
+                except asyncio.TimeoutError:
+                    if attempt == 0:
+                        log.warning("Source %s timed out after %ds — retrying once…",
+                                    src["key"], _SRC_TIMEOUT)
+                        await asyncio.sleep(5)
+                    else:
+                        log.warning("Source %s timed out on retry — skipping", src["key"])
+                        return src["key"], []
+                except Exception as exc:
+                    exc_str = str(exc)
+                    # 403/404/robots-block: don't retry
+                    if any(k in exc_str for k in ("403", "404", "ERR_ABORTED")):
+                        log.warning("Source %s blocked (%s) — skipping", src["key"], exc_str[:80])
+                        return src["key"], []
+                    if attempt == 0:
+                        log.warning("Source %s failed (%s) — retrying in 5 s…",
+                                    src["key"], exc_str[:120])
+                        await asyncio.sleep(5)
+                    else:
+                        log.warning("Source %s failed on retry — skipping: %s",
+                                    src["key"], exc_str[:200])
+                        return src["key"], []
+            return src["key"], []
 
     results: List[Dict[str, Any]] = []
     completed = 0

@@ -146,6 +146,33 @@ class Settings:
             }
         return None
 
+    def proxy_dict_pinned(self, session_id: str) -> Optional[dict]:
+        """Return a proxy dict with a stable Bright Data session pin.
+
+        Bright Data session pinning: append -session-SESSION_ID to the username.
+        The proxy gateway then routes all requests from that session through the
+        same exit IP, which is critical for sites that correlate requests by IP
+        (clerk portals, JS-heavy SPA login pages, Cloudflare challenge flows).
+
+        session_id should be a short stable identifier like the service name
+        ('propelio', 'propwire', 'county_FL_orange') so the same browser context
+        always gets the same exit node.
+        """
+        if self.brightdata_configured():
+            user = self._brightdata_username_full()
+            # Only append if not already pinned
+            if "-session-" not in user:
+                # Sanitise: strip chars invalid in Bright Data session IDs
+                safe_id = "".join(c if c.isalnum() or c == "_" else "_" for c in session_id)[:32]
+                user = f"{user}-session-{safe_id}"
+            return {
+                "server":   f"http://{self.brightdata_host}:{self.brightdata_port}",
+                "username": user,
+                "password": self.brightdata_password or "",
+            }
+        # Oxylabs doesn't have per-session pinning in the same way — use rotating
+        return self.proxy_dict()
+
     def has_llm(self) -> bool:
         return bool(
             self.groq_api_key or self.cerebras_api_key or self.together_api_key

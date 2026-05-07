@@ -19,7 +19,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
-from ._browser_session import browser_context, invalidate_session
+from ._browser_session import browser_context, invalidate_session, _nav_with_fallback
 from ._utils import _safe_num, _parse_buyer_card
 
 log = logging.getLogger("propwire")
@@ -134,7 +134,9 @@ async def _resolve_property_url(ctx, query_or_url: str) -> str:
 
     page = await ctx.new_page()
     try:
-        await page.goto(SEARCH_URL, wait_until="domcontentloaded", timeout=30000)
+        # Use "commit" (first bytes received) then wait for the search input
+        # to be visible — avoids tunnel timeout on slow proxy handshakes.
+        await _nav_with_fallback(page, SEARCH_URL, log, SERVICE)
         if "/login" in page.url:
             await invalidate_session(SERVICE)
             raise RuntimeError("Propwire session expired")
@@ -177,7 +179,7 @@ async def fetch_property(query_or_url: str) -> Dict[str, Any]:
         prop_url = re.sub(r"/(comparable-sales|history|owner|market)$", "", url) or url
         page = await ctx.new_page()
         try:
-            await page.goto(prop_url, wait_until="domcontentloaded", timeout=45000)
+            await _nav_with_fallback(page, prop_url, log, SERVICE)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -275,7 +277,7 @@ async def fetch_comps(query_or_url: str, *, max_results: int = 50) -> List[Dict[
         comps_url = base.rstrip("/") + "/comparable-sales"
         page = await ctx.new_page()
         try:
-            await page.goto(comps_url, wait_until="domcontentloaded", timeout=45000)
+            await _nav_with_fallback(page, comps_url, log, SERVICE)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -347,7 +349,7 @@ async def fetch_history(query_or_url: str) -> Dict[str, Any]:
         url = base.rstrip("/") + "/history"
         page = await ctx.new_page()
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await _nav_with_fallback(page, url, log, SERVICE)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -385,7 +387,7 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
         prop_url = re.sub(r"/(comparable-sales|history|owner|market|comps|buyers)$", "", base) or base
         page = await ctx.new_page()
         try:
-            await page.goto(prop_url, wait_until="domcontentloaded", timeout=45000)
+            await _nav_with_fallback(page, prop_url, log, SERVICE)
             if "/login" in page.url:
                 await invalidate_session(SERVICE)
                 raise RuntimeError("Propwire session expired")
@@ -467,7 +469,7 @@ async def fetch_cash_buyers_nearby(
         try:
             chosen_url = None
             for c in candidates:
-                await page.goto(c, wait_until="domcontentloaded", timeout=20000)
+                await _nav_with_fallback(page, c, log, SERVICE, timeout_ms=20000)
                 if "/login" in page.url:
                     await invalidate_session(SERVICE)
                     raise RuntimeError("Propwire session expired")
@@ -478,7 +480,7 @@ async def fetch_cash_buyers_nearby(
             if not chosen_url:
                 return []
 
-            await page.wait_for_load_state("domcontentloaded", timeout=20000)
+            await page.wait_for_load_state("networkidle", timeout=20000)
 
             seen_pages = 0
             while len(buyers) < max_results and seen_pages < 30:

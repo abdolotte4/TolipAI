@@ -116,18 +116,142 @@ DEFAULT_UA = (
 )
 
 
-def _proxy_settings() -> Optional[Dict[str, str]]:
-    """Return a Playwright proxy dict using the centralised settings.proxy_dict().
+def _proxy_settings(service: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """Return a Playwright proxy dict, optionally session-pinned per service.
 
-    This ensures the proxy host, port, and zone suffix are all consistent with
-    the rest of the engine (config.py) rather than being duplicated here.
+    When `service` is supplied the proxy is pinned to a stable Bright Data
+    session ID derived from the service name.  This gives clerk/court/login
+    pages a consistent exit IP across the entire browser session, which is the
+    #1 fix for ERR_TUNNEL_CONNECTION_FAILED and Cloudflare re-challenge loops.
     """
     from ..config import settings
+    if service:
+        return settings.proxy_dict_pinned(service)
     return settings.proxy_dict()
 
 
 _STATE_DIR = Path(os.getenv("BROWSER_STATE_DIR", "/tmp")).resolve()
 _STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+# ─── Shared stealth script (extracted for reuse on re-created contexts) ───────
+_STEALTH_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+if (!window.chrome) {
+  window.chrome = {
+    app: { isInstalled: false, InstallState: {}, RunningState: {} },
+    runtime: {
+      PlatformOs: { MAC: 'mac', WIN: 'win', ANDROID: 'android', CROS: 'cros', LINUX: 'linux', OPENBSD: 'openbsd' },
+      PlatformArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64' },
+      PlatformNaclArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64' },
+      RequestUpdateCheckStatus: { THROTTLED: 'throttled', NO_UPDATE: 'no_update', UPDATE_AVAILABLE: 'update_available' },
+      OnInstalledReason: { INSTALL: 'install', UPDATE: 'update', CHROME_UPDATE: 'chrome_update', SHARED_MODULE_UPDATE: 'shared_module_update' },
+      OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+    },
+    csi: () => {},
+    loadTimes: () => {},
+  };
+}
+const _origPermQuery = window.navigator.permissions.query.bind(navigator.permissions);
+window.navigator.permissions.query = (params) =>
+  params.name === 'notifications'
+    ? Promise.resolve({ state: Notification.permission, onchange: null })
+    : _origPermQuery(params);
+Object.defineProperty(navigator, 'plugins', {
+  get: () => {
+    const arr = [
+      { filename: 'internal-pdf-viewer', name: 'Chrome PDF Plugin', description: 'Portable Document Format', length: 1 },
+      { filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', name: 'Chrome PDF Viewer', description: '', length: 1 },
+      { filename: 'internal-nacl-plugin', name: 'Native Client', description: '', length: 2 }
+    ];
+    arr.item = (i) => arr[i]; arr.namedItem = (n) => arr.find(p => p.name === n) || null; arr.refresh = () => {};
+    return arr;
+  }, configurable: true,
+});
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'], configurable: true });
+Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8, configurable: true });
+if ('deviceMemory' in navigator) { Object.defineProperty(navigator, 'deviceMemory', { get: () => 8, configurable: true }); }
+Object.defineProperty(navigator, 'platform', { get: () => 'Win32', configurable: true });
+try {
+  const getParam = WebGLRenderingContext.prototype.getParameter;
+  WebGLRenderingContext.prototype.getParameter = function(param) {
+    if (param === 37445) return 'Intel Inc.';
+    if (param === 37446) return 'Intel Iris OpenGL Engine';
+    return getParam.call(this, param);
+  };
+} catch(e) {}
+try {
+  const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+  HTMLCanvasElement.prototype.toDataURL = function(type, quality) {
+    const ctx2d = this.getContext('2d');
+    if (ctx2d) { const d = ctx2d.getImageData(0,0,this.width||1,this.height||1); d.data[0]^=1; ctx2d.putImageData(d,0,0); }
+    return origToDataURL.call(this, type, quality);
+  };
+} catch(e) {}
+try {
+  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+    const origEnum = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+    navigator.mediaDevices.enumerateDevices = () => origEnum().then(d => d.length ? d : [
+      { deviceId:'default', groupId:'default', kind:'audioinput', label:'' },
+      { deviceId:'default', groupId:'default', kind:'audiooutput', label:'' },
+      { deviceId:'default', groupId:'default', kind:'videoinput', label:'' },
+    ]);
+  }
+} catch(e) {}
+try { Object.defineProperty(navigator, 'connection', { get: () => ({ effectiveType:'4g', rtt:50, downlink:10, saveData:false }), configurable:true }); } catch(e) {}
+if (window.outerWidth === 0) Object.defineProperty(window, 'outerWidth', { get: () => 1440 });
+if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get: () => 900 });
+"""
+
+
+async def _apply_stealth(ctx: Any) -> None:
+    """Apply the comprehensive stealth init script to a Playwright BrowserContext."""
+    await ctx.add_init_script(_STEALTH_SCRIPT)
+
+
+async def _nav_with_fallback(page: Any, url: str, logger: Any, service: str,
+                              timeout_ms: int = 45000) -> None:
+    """Navigate to `url` with a robust multi-strategy fallback.
+
+    Strategy:
+      1. Try wait_until="commit" (fastest — unblocked by proxy tunnel stalls)
+      2. On failure, wait 2 s and retry with wait_until="domcontentloaded"
+      3. On second failure, try wait_until="networkidle" with a shorter budget
+
+    After each navigation, saves a debug screenshot to /tmp if the page title
+    looks like a bot-detection block page (403 / Cloudflare / Just a moment).
+    """
+    debug_path = f"/tmp/nav_debug_{service}_{hash(url) & 0xFFFF:04x}.png"
+    for attempt, strategy in enumerate(["commit", "domcontentloaded", "networkidle"]):
+        try:
+            await page.goto(url, wait_until=strategy, timeout=timeout_ms)
+            # Check for bot-block pages after navigation
+            title = (await page.title()).lower()
+            if any(kw in title for kw in ("403", "access denied", "just a moment", "cloudflare", "blocked", "captcha")):
+                logger.warning("[%s] bot-block detected on %s (title=%r) — screenshot: %s",
+                               service, url, title, debug_path)
+                try:
+                    await page.screenshot(path=debug_path, full_page=False)
+                except Exception:
+                    pass
+            return
+        except Exception as nav_err:
+            err_str = str(nav_err)
+            # 403 / 404 — no point retrying
+            if "ERR_ABORTED" in err_str or "net::ERR_NAME_NOT_RESOLVED" in err_str:
+                raise
+            if attempt < 2:
+                logger.warning("[%s] nav attempt %d (%s) failed for %s: %s — retrying…",
+                               service, attempt + 1, strategy, url, err_str[:120])
+                await page.wait_for_timeout(2000)
+            else:
+                # All strategies exhausted — save screenshot and re-raise
+                logger.error("[%s] all nav strategies failed for %s: %s", service, url, err_str[:200])
+                try:
+                    await page.screenshot(path=debug_path, full_page=False)
+                    logger.error("[%s] debug screenshot saved to %s", service, debug_path)
+                except Exception:
+                    pass
+                raise
 
 # One lock per service so two concurrent jobs can't both try to login.
 _login_locks: Dict[str, asyncio.Lock] = {}
@@ -168,7 +292,7 @@ async def browser_context(
 
     pw = await async_playwright().start()
 
-    proxy_cfg: Optional[ProxySettings] = _proxy_settings()  # type: ignore[assignment]
+    proxy_cfg: Optional[ProxySettings] = _proxy_settings(service)  # type: ignore[assignment]
 
     # Prefer the full Chromium binary over the headless shell.
     # The headless shell (chromium_headless_shell-*) requires libgbm.so.1 from
@@ -206,27 +330,8 @@ async def browser_context(
             ignore_https_errors=True,
         )
 
-        # Stealth patches
-        await ctx.add_init_script(
-            """
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-
-const originalQuery = window.navigator.permissions.query;
-window.navigator.permissions.query = (parameters) => (
-  parameters.name === 'notifications'
-    ? Promise.resolve({ state: Notification.permission })
-    : originalQuery(parameters)
-);
-
-Object.defineProperty(navigator, 'plugins', {
-  get: () => [1, 2, 3],
-});
-
-Object.defineProperty(navigator, 'languages', {
-  get: () => ['en-US', 'en'],
-});
-"""
-        )
+        # ── Comprehensive stealth patches (all 13 fingerprint masks) ─────────
+        await _apply_stealth(ctx)
 
         # First-time login (or session expired) flow
         if not storage_state and login_fn is not None:
@@ -252,19 +357,8 @@ Object.defineProperty(navigator, 'languages', {
                         permissions=["geolocation"],
                         ignore_https_errors=True,
                     )
-                    await ctx.add_init_script(
-                        """
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-const originalQuery = window.navigator.permissions.query;
-window.navigator.permissions.query = (parameters) => (
-  parameters.name === 'notifications'
-    ? Promise.resolve({ state: Notification.permission })
-    : originalQuery(parameters)
-);
-Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-"""
-                    )
+                    # Apply the same comprehensive stealth patches on the re-used context
+                    await _apply_stealth(ctx)
 
         yield ctx
     finally:
