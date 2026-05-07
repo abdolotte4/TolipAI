@@ -1327,7 +1327,7 @@ async def google_search_scrape(req: GoogleSearchRequest) -> Dict[str, Any]:
 
                 soup = BeautifulSoup(html, "lxml")
                 for a in soup.select("a[href]"):
-                    href = a.get("href", "")
+                    href = str(a.get("href", "") or "")
                     if not href.startswith("http") or "google.com" in href:
                         continue
                     title = a.get_text(strip=True)

@@ -7,39 +7,43 @@
 ### What Was Built
 - **pnpm monorepo**: Express API (`api-server`) + 3 React portals (website, CRM, tools)
 - **Python scraper engine** (`digor-scraper-engine`): FastAPI app with 30+ scrapers
-- **ATTOM fallback**: `fetchDistressedViaAttom()` added to `attomApi.ts`; fallback routes in `tools.ts`
+- **Phone Finder**: CSV upload → Google Maps Places API → phone number extraction (in digor-tools)
+- **ATTOM fallback**: `fetchDistressedViaAttom()` in `attomApi.ts`
 - **Playwright-first Google Maps endpoint** (`/google-maps`) in `main.py`
-- **Bedrock integration** in `llm.py` (structured output via AWS Bedrock)
-- **Mode B helpers** in `main.py`: `safe_create_task`, `safe_get_pool`, `_get_scraper_sem`
-- **Google Search throttle** and **foreclosure skip_step fix** in main.py
-- **Black + Flake8 clean**: all Python files reformatted and lint errors fixed
+- **Bedrock integration** in `llm.py` (USE_BEDROCK=1 env var)
+- **Lambda handler** (`lambda_handler.py`): universal AWS Lambda router for all scraper endpoints
+- **Dockerfile.lambda**: pre-built for ECR → API Gateway deployment
 
 ### Key Architecture Decisions
-- LLM calls route through `workers/llm.py._chat()` — primary: **Kimi K2.6** (Moonshot direct or OpenRouter), fallback: Groq (free)
-- Kimi K2.6 has 1M token context, 200K input, agent swarm up to 300 agents
-- Provider chain order: Moonshot → OpenRouter → Groq → Cerebras → Together → NVIDIA
+- LLM calls route through `workers/llm.py._chat()` — priority: Kimi K2.6 (Moonshot/OpenRouter) → Groq → Cerebras → Together → NVIDIA → Bedrock
 - All scraper I/O is async (httpx + Playwright + asyncio.gather)
-- Jobs are tracked in `job_store.py` (in-memory + DB); clients poll `/job-status/{id}`
-- Imports that must follow `_patch_ld_library_path()` in `main.py` use `# noqa: E402`
-- The `from .scrapers import county, propelio` imports were removed from `main.py` (unused)
+- Jobs tracked in `job_store.py` (in-memory + DB); clients poll `/job-status/{id}`
+- boto3 imports are always lazy (`import boto3  # type: ignore[import]`) inside guarded blocks — not a hard dep for local dev
+- BeautifulSoup `Tag.get("href")` must be wrapped with `str(... or "")` — returns `str | AttributeValueList | None`
+
+### Type-Fix Patterns (apply these always)
+- boto3 lazy import: `import boto3  # type: ignore[import]` inside `if os.getenv("USE_BEDROCK")` or try blocks
+- BeautifulSoup href: `href = str(a.get("href", "") or "")` — never `a.get("href", "")`
+- Dynamic **kwargs to typed function: `run_fn(**params)  # type: ignore[arg-type]`
+
+### Hillsborough County Clerk — CORRECT URLs (updated May 2026)
+- Official Records (Lis Pendens / Deeds): https://publicaccess.hillsclerk.com/TD/
+- Probate Case Search: https://publicaccess.hillsclerk.com/
+- Old broken URL (do NOT use): https://pubrec2.hillsclerk.com/pubrec/
 
 ### Known Pre-existing Issues (not caused by recent changes)
-- TypeScript errors in `admin.ts`, `leads.ts`, `scraperEngine.ts`, `automation.ts` — missing DB schema members
-- Server starts fine despite TS errors (compiled JS runs)
+- DB errors: `relation "crm_users" does not exist` — dev database schema not pushed; fix: run drizzle migrations
+- `tools_skip_trace_jobs` table missing in dev DB — same root cause
 
-### Flake8 Clean Status (as of May 2026)
-All issues resolved:
-- F541 f-strings missing placeholders — fixed in `test_logins.py`
-- F401 unused imports — removed across all workers
-- E741 ambiguous variable `l` — renamed to `listing` / `item` across all files
-- E401 multiple imports on one line — split in `http_client.py`, `county_deeds.py`, `satellite_dfd.py`, `skip_trace.py`
-- E402 late imports (intentional) — marked `# noqa: E402`
-- F824 unused global — removed from `http_client.py`
-- F841 unused locals — removed `proxy_dict`, `campaign_id`, `tasks` variables
+### Flake8 / Black Config
+- Line length: 120
+- Flake8 ignore: E203, W503, E501
+- Python workers path: `artifacts/digor-scraper-engine/workers/`
 
-### Active API Routes (api-server)
-- `GET/POST /api/tools/distressed-search` — distressed property search (ATTOM fallback)
-- `GET /api/tools/distressed-jobs/:id` — job status
-- `POST /api/scraper/*` — proxied to Python engine
-- `POST /api/admin/*` — admin endpoints
-- `POST /api/crm/leads` — lead management
+### AWS Readiness Status
+- `Dockerfile.lambda` — complete, targets `public.ecr.aws/lambda/python:3.11`
+- `lambda_handler.py` — universal router with all endpoints wired
+- S3 storage: activated by `S3_BUCKET` env var
+- Bedrock LLM: activated by `USE_BEDROCK=1` env var
+- Rekognition visual analysis: activated by `USE_REKOGNITION=1` env var
+- See `docs/aws-migration.md` for full migration guide

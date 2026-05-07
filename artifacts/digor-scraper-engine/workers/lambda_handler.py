@@ -298,7 +298,7 @@ def satellite_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )
     job_id = str(uuid.uuid4())
     try:
-        result = _run_async(run_dfd(**params))
+        result = _run_async(run_dfd(**params))  # type: ignore[arg-type]
         _maybe_store_s3("satellite", result, job_id=job_id, request_id=req_id)
         return _ok(result, request_id=req_id)
     except Exception as exc:

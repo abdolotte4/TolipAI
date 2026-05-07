@@ -93,9 +93,9 @@ SOURCES: List[Dict[str, Any]] = [
         "category": "county_clerk",
         "state": "FL",
         "name": "Hillsborough County FL — Official Records (Tampa area Lis Pendens)",
-        "url": "https://pubrec2.hillsclerk.com/pubrec/",
+        "url": "https://publicaccess.hillsclerk.com/TD/",
         "render": True,
-        "notes": "Search for LIS PENDENS filings in Hillsborough County (Tampa). Extract address, plaintiff, date.",
+        "notes": "Search for LIS PENDENS filings in Hillsborough County (Tampa). Select Document Type = LIS PENDENS. Extract address, plaintiff, date.",
     },
     {
         "key": "FL-palm-beach-clerk",
@@ -248,9 +248,9 @@ SOURCES: List[Dict[str, Any]] = [
         "category": "probate_court",
         "state": "FL",
         "name": "Hillsborough County FL — Probate Court (Tampa)",
-        "url": "https://www.hillsclerk.com/Records/CaseSearch",
+        "url": "https://publicaccess.hillsclerk.com/",
         "render": True,
-        "notes": "Hillsborough County probate court — search PROBATE case type filed last 90 days.",
+        "notes": "Hillsborough County probate court — use publicaccess.hillsclerk.com case search, filter by PROBATE case type filed last 90 days.",
     },
     {
         "key": "TX-harris-probate",
@@ -2362,7 +2362,7 @@ DEED_REGISTRY: Dict[tuple[str, str], str] = {
     ): "https://hcad.org/hcad-resources/hcad-appraisal-codes-and-definitions/real-estate-transaction-data/",
     ("FL", "orange"): "https://or.occompt.com/recorder/eagleweb/docIndex.jsp",
     ("FL", "miami-dade"): "https://www2.miami-dadeclerk.com/ocs/Search.aspx",
-    ("FL", "hillsborough"): "https://pubrec2.hillsclerk.com/pubrec/docIndex.jsp",
+    ("FL", "hillsborough"): "https://publicaccess.hillsclerk.com/TD/",
     (
         "GA",
         "fulton",

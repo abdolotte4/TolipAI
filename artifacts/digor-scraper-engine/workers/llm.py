@@ -205,7 +205,7 @@ async def _chat_inner(
     # ── Amazon Bedrock short-circuit (USE_BEDROCK=1) ──────────────────────────
     if _os.getenv("USE_BEDROCK") == "1":
         try:
-            import boto3 as _boto3
+            import boto3 as _boto3  # type: ignore[import]
             import json as _json
 
             def _bedrock_sync() -> str:
