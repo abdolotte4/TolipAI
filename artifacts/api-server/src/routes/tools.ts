@@ -1179,12 +1179,9 @@ router.post("/tools/phone-finder/upload", requirePin, async (req: Request, res: 
           let source = "none";
 
           try {
-            const result = await scraperEngine.post("/phone-finder/lookup", {
-              name: name.trim(),
-              address: address.trim(),
-            });
-            phones = result.data?.phones ?? [];
-            source = result.data?.source ?? "google";
+            const result = await scraperEngine.lookupPhone(name.trim(), address.trim());
+            phones = result?.phones ?? [];
+            source = result?.source ?? "google";
           } catch (err: any) {
             if (!(err instanceof ScraperEngineUnavailable)) {
               logger.warn({ name, err: err?.message }, "[phone-finder] lookup failed for record");

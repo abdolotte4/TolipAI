@@ -358,6 +358,13 @@ export const scraperEngine = {
     return Promise.resolve();
   },
 
+  async lookupPhone(name: string, address: string) {
+    return request<{ phones: string[]; source: string }>(
+      "/phone-finder/lookup",
+      { method: "POST", body: JSON.stringify({ name, address }) },
+    );
+  },
+
   async startDistressedCrm(params: {
     zip?: string;
     city?: string;

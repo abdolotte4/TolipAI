@@ -707,15 +707,7 @@ SOURCES: List[Dict[str, Any]] = [
         "render": True,
         "notes": "NYC ACRIS — search LIS PENDENS document type in Kings County (Brooklyn). Extract grantor/grantee, block/lot, filing date.",
     },
-    {
-        "key": "NY-queens-acris",
-        "category": "county_clerk",
-        "state": "NY",
-        "name": "NYC ACRIS — Queens County Lis Pendens",
-        "url": "https://a836-acris.nyc.gov/DS/DocumentSearch/DocumentType?hid_DocType=LIS+PENDENS",
-        "render": True,
-        "notes": "NYC ACRIS — search LIS PENDENS in Queens County. NY uses judicial foreclosure via court system.",
-    },
+    # Duplicate of NY-kings-acris (same ACRIS portal) — removed to avoid double-scraping
     {
         "key": "NY-nyc-foreclosures",
         "category": "public_trustee",
@@ -1295,15 +1287,7 @@ SOURCES: List[Dict[str, Any]] = [
         "render": True,
         "notes": "Bexar County TX (San Antonio) county clerk — search Notice of Trustee Sale filings. 1st Tuesday auction state.",
     },
-    {
-        "key": "TX-public-notice",
-        "category": "public_trustee",
-        "state": "TX",
-        "name": "Public Notice Texas — Statewide Foreclosure Notices",
-        "url": "https://www.publicnoticetexas.com/Search.aspx?Category=Foreclosures",
-        "render": True,
-        "notes": "Statewide TX public notice foreclosure listings — all counties. 1st Tuesday sales. Extract property address, county, trustee, sale date, opening bid.",
-    },
+    # Duplicate of TX-trustee-sales (same publicnoticetexas.com URL) — removed
     # ── Georgia — additional coverage ────────────────────────────────────────
     {
         "key": "GA-cobb-clerk",
@@ -1398,15 +1382,7 @@ SOURCES: List[Dict[str, Any]] = [
         "notes": "Clark County delinquent property tax list. Extract parcel, owner, address, balance owed.",
     },
     # ── Tennessee — Shelby County (Memphis) & Davidson County (Nashville) ────
-    {
-        "key": "TN-shelby-clerk",
-        "category": "county_clerk",
-        "state": "TN",
-        "name": "Shelby County TN — Register of Deeds (Memphis Lis Pendens)",
-        "url": "https://register.shelby.tn.us/",
-        "render": True,
-        "notes": "Shelby County (Memphis) ROD — search LIS PENDENS and FORECLOSURE deed filings. Extract grantor, grantee, address, date.",
-    },
+    # Duplicate of TN-shelby-deeds (same register.shelby.tn.us URL) — removed
     {
         "key": "TN-davidson-clerk",
         "category": "county_clerk",
@@ -1604,15 +1580,7 @@ SOURCES: List[Dict[str, Any]] = [
         "render": True,
         "notes": "NYC ACRIS — filter by borough=BROOKLYN (Kings County) and document type=LIS PENDENS filed last 90 days. Extract block/lot, grantor, date.",
     },
-    {
-        "key": "NY-queens-clerk",
-        "category": "county_clerk",
-        "state": "NY",
-        "name": "Queens County NY — ACRIS Lis Pendens",
-        "url": "https://a836-acris.nyc.gov/CP/",
-        "render": True,
-        "notes": "NYC ACRIS — filter by borough=QUEENS and document type=LIS PENDENS filed last 90 days. Extract block/lot, grantor, date.",
-    },
+    # Duplicate of NY-kings-clerk (same ACRIS /CP/ URL) — removed to avoid double-scraping
     {
         "key": "NY-nassau-trustee",
         "category": "public_trustee",
@@ -1708,15 +1676,7 @@ SOURCES: List[Dict[str, Any]] = [
         "notes": "Fayette County KY (Lexington) master commissioner foreclosure sales. Extract case, address, sale date, opening bid.",
     },
     # ── Indiana — Marion County (Indianapolis) ────────────────────────────────
-    {
-        "key": "IN-marion-trustee",
-        "category": "public_trustee",
-        "state": "IN",
-        "name": "Marion County IN — Sheriff Foreclosure Sales (Indianapolis)",
-        "url": "https://www.indy.gov/activity/sheriff-sales",
-        "render": True,
-        "notes": "Marion County IN (Indianapolis) sheriff real estate sales. Judicial foreclosure. Extract case, address, sale date, opening bid.",
-    },
+    # Duplicate of IN-marion-sheriff (same indy.gov/activity/sheriff-sales URL) — removed
     {
         "key": "IN-marion-tax",
         "category": "tax_assessor",
@@ -1838,15 +1798,7 @@ SOURCES: List[Dict[str, Any]] = [
         "render": True,
         "notes": "Connecticut uses strict judicial foreclosure (no sale — title vests). Search Hartford Superior Court for MORTGAGE FORECLOSURE case type. Extract property address, plaintiff, case number, law day.",
     },
-    {
-        "key": "CT-fairfield-clerk",
-        "category": "county_clerk",
-        "state": "CT",
-        "name": "Fairfield County CT — Superior Court Foreclosure Actions (Bridgeport/Stamford)",
-        "url": "https://civilinquiry.jud.ct.gov/CourtNumbers.aspx",
-        "render": True,
-        "notes": "Fairfield County CT (Bridgeport/Stamford/Norwalk) superior court mortgage foreclosures. Extract property address, plaintiff, case number, law day.",
-    },
+    # Duplicate of CT-hartford-court (same civilinquiry.jud.ct.gov URL) — removed
     {
         "key": "CT-new-haven-tax",
         "category": "tax_assessor",
@@ -2055,15 +2007,7 @@ SOURCES: List[Dict[str, Any]] = [
         "render": True,
         "notes": "Hillsborough County NH (Manchester/Nashua) registry of deeds — search NOTICE OF FORECLOSURE SALE and FORECLOSURE DEED document types. NH uses non-judicial power-of-sale. Extract address, mortgagor, sale date.",
     },
-    {
-        "key": "NH-rockingham-clerk",
-        "category": "county_clerk",
-        "state": "NH",
-        "name": "Rockingham County NH — Registry of Deeds (Salem/Portsmouth)",
-        "url": "https://www.nhdeeds.com/",
-        "render": True,
-        "notes": "Rockingham County NH registry of deeds — search NOTICE OF FORECLOSURE SALE filings. Extract address, mortgagor, lender, sale date.",
-    },
+    # Duplicate of NH-hillsborough-deeds (same nhdeeds.com URL) — removed
     # ── New Mexico — non-judicial foreclosure ─────────────────────────────────
     {
         "key": "NM-bernalillo-trustee",

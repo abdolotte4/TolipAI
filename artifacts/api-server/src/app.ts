@@ -166,7 +166,8 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const msg = err instanceof Error ? err.message : String(err);
   logger.error({ err: msg }, "Unhandled Express error");
   if (!res.headersSent) {
-    res.status(500).json({ error: msg || "Internal server error" });
+    // Never expose internal error details (DB column names, stack traces) to clients
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

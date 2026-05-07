@@ -36,6 +36,41 @@ if [ ! -f "$AIDER_BIN" ]; then
   AIDER_BIN="$(which aider)"
 fi
 
+# ── Pre-flight: validate API keys before committing to a model ────────────────
+# If MOONSHOT_KIMI_API_KEY is set but the account is suspended / out of balance,
+# unset it so the elif chain below falls through to the next working provider.
+if [ -n "$MOONSHOT_KIMI_API_KEY" ]; then
+  if ! python3 - <<'PYEOF' 2>/dev/null
+import urllib.request, json, os, sys
+req = urllib.request.Request(
+    "https://api.moonshot.ai/v1/chat/completions",
+    data=json.dumps({
+        "model": "moonshot-v1-8k",
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1
+    }).encode(),
+    headers={
+        "Authorization": "Bearer " + os.environ["MOONSHOT_KIMI_API_KEY"],
+        "Content-Type": "application/json",
+    },
+    method="POST",
+)
+try:
+    urllib.request.urlopen(req, timeout=8)
+    sys.exit(0)          # OK — account active
+except Exception as e:
+    msg = str(e).lower()
+    # 402 = payment required, "suspended" or "balance" = no credits
+    if "402" in msg or "suspend" in msg or "balance" in msg or "429" in msg:
+        sys.exit(1)      # Definitely broken — skip to next provider
+    sys.exit(0)          # Other error (network?) — try anyway
+PYEOF
+    echo "⚠  Moonshot key exists but account suspended/insufficient balance — skipping to next model"
+    unset MOONSHOT_KIMI_API_KEY
+    unset OPENAI_API_BASE
+  fi
+fi
+
 # ── Model selection (first matching key wins) ─────────────────────────────────
 if [ -n "$MOONSHOT_KIMI_API_KEY" ]; then
   echo "✓ Kimi K2.6 — Moonshot direct (1M token context)"

@@ -1,7 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
 
 function getKey(): Buffer {
-  const secret = process.env.JWT_SECRET || "fallback-secret-change-me";
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET environment variable is not set — cannot encrypt/decrypt passwords");
+  }
   return createHash("sha256").update(secret).digest();
 }
 

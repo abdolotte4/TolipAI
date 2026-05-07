@@ -152,7 +152,9 @@ async function notifyFollowers(leadId: number, excludeUserId: number, content: s
     await db.insert(crmNotifications).values(
       followers.map(f => ({ userId: f.userId, leadId, type, content, read: false }))
     );
-  } catch (_) {}
+  } catch (err) {
+    console.error("notifyFollowers failed (non-fatal):", err);
+  }
 }
 
 router.get("/", crmAuth, async (req, res) => {

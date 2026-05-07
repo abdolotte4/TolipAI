@@ -59,13 +59,15 @@ def _extract_phones(raw_phones) -> List[str]:
             elif isinstance(item, str) and item.strip():
                 out.append(item.strip())
         return out
-    # Stringified list — try eval, fall back to strip
+    # Stringified list — use ast.literal_eval (safe; eval is intentionally avoided)
+    import ast
+
     s = str(raw_phones).strip()
     if s.startswith("["):
         try:
-            parsed = eval(s)  # noqa: S307 — controlled internal data from HomeHarvest
+            parsed = ast.literal_eval(s)
             return _extract_phones(parsed)
-        except Exception:
+        except (ValueError, SyntaxError):
             pass
     return [s] if s else []
 

@@ -196,7 +196,7 @@ async def fetch_property(query_or_url: str) -> Dict[str, Any]:
                     parsed = json.loads(next_data)
                     data = (parsed.get("props") or {}).get("pageProps") or {}
                 except Exception:
-                    pass
+                    log.warning("Propwire: failed to parse __NEXT_DATA__ JSON on property page")
 
             # Fallback: scrape visible text into structured fields.
             if not data:
@@ -299,7 +299,7 @@ async def fetch_comps(query_or_url: str, *, max_results: int = 50) -> List[Dict[
                     if isinstance(rows, list):
                         comps = [_propwire_normalise_comp(r) for r in rows]
                 except Exception:
-                    pass
+                    log.warning("Propwire: failed to parse __NEXT_DATA__ JSON on comps page")
 
             # Fallback: scrape table
             if not comps:
@@ -371,7 +371,7 @@ async def fetch_history(query_or_url: str) -> Dict[str, Any]:
                     sales = pp.get("salesHistory") or pp.get("transactionHistory") or []
                     mortgages = pp.get("mortgageHistory") or pp.get("mortgages") or []
                 except Exception:
-                    pass
+                    log.warning("Propwire: failed to parse __NEXT_DATA__ JSON on history page")
             return {"url": url, "sales": sales, "mortgages": mortgages}
         finally:
             await page.close()
@@ -423,7 +423,7 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
                     }
                     tax_history = prop.get("taxHistory") or pp.get("taxHistory") or []
                 except Exception:
-                    pass
+                    log.warning("Propwire: failed to parse __NEXT_DATA__ JSON on tax page")
 
             # If __NEXT_DATA__ didn't have tax, fall back to DOM scraping
             if not any(v for v in tax.values() if v is not None):
@@ -502,7 +502,7 @@ async def fetch_cash_buyers_nearby(
                         if isinstance(rows, list):
                             page_buyers = rows
                     except Exception:
-                        pass
+                        log.warning("Propwire: failed to parse __NEXT_DATA__ JSON on cash-buyers page")
 
                 if not page_buyers:
                     cards = await page.locator(
