@@ -387,7 +387,7 @@ async def fetch_cash_buyers(
             except Exception:
                 pass
 
-            await page.wait_for_load_state("domcontentloaded", timeout=15000)
+            await page.wait_for_load_state("networkidle", timeout=15000)
 
             def _drain_xhr() -> List[Dict[str, Any]]:
                 """Consume all accumulated XHR responses and return normalised buyer rows."""

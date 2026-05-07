@@ -1,5 +1,5 @@
 [project]
-name = "digor-scraper-engine"
+name = "tolipai-scraper-engine"
 version = "0.1.0"
 description = "TolipAI advanced scraping + skip-trace + investor classification engine"
 requires-python = ">=3.11,<3.13"
