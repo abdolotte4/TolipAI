@@ -1,34 +1,51 @@
 ## Aider configuration for Digor LLC monorepo
 ## Run: ./launch-aider.sh
 ##
-## Primary: Kimi K2.6 (Moonshot) — 1M token context, 200K input, agent swarm capable
-## Fallback: Groq (free, fast)
+## Primary model: Kimi K2.6 (Moonshot) — 1M token context
+## Fallback:      Groq — free, fast
 ##
-## Set API keys in Replit Secrets:
-##   MOONSHOT_KIMI_API_KEY  — https://platform.moonshot.ai  (direct, most powerful)
-##   OPENROUTER_API_KEY     — https://openrouter.ai          (kimi-k2.6 via proxy)
-##   GROQ_API_KEY           — https://console.groq.com       (free fallback)
+## Required secrets (Replit → Secrets):
+##   MOONSHOT_KIMI_API_KEY  https://platform.moonshot.ai   ← best
+##   OPENROUTER_API_KEY     https://openrouter.ai           ← kimi-k2.6 via proxy
+##   GROQ_API_KEY           https://console.groq.com        ← free fallback
 
-# ── Primary model: Kimi K2.6 via OpenRouter ───────────────────────────────────
-# The launch script overrides this with direct Moonshot if MOONSHOT_KIMI_API_KEY is set.
+# ── Model (launch script overrides based on available API keys) ───────────────
 model: openrouter/moonshotai/kimi-k2.6
-
-# Weak model: Groq (free, used for repo-map summaries and cheap tasks)
 weak-model: groq/llama-3.1-8b-instant
 
-# ── Repo map ──────────────────────────────────────────────────────────────────
-# Kimi K2.6 has 1M token context — use a generous repo map
+# ── Repo map — how much of the project Aider understands ──────────────────────
+# Kimi K2.6 has 1M token context; 8192 map-tokens gives full project awareness
 map-tokens: 8192
 
-# ── Context: always load project docs as read-only ───────────────────────────
+# ── Caching — don't re-send unchanged files every turn ────────────────────────
+cache-prompts: true
+
+# ── Suppress warnings for newer models not in Aider's built-in model list ─────
+no-show-model-warnings: true
+
+# ── Read-only context (always loaded, never edited by Aider) ─────────────────
+# Aider reads these to understand project conventions and recent decisions
 read:
   - CONVENTIONS.md
   - docs/agent-chat-context.md
 
-# ── Cost / caching ────────────────────────────────────────────────────────────
-cache-prompts: true
-no-show-model-warnings: true
+# ── Default editable files (always in chat — use /add for more) ──────────────
+# These are the files most frequently changed. For large files like main.py,
+# use /add workers/main.py in the chat rather than loading them by default.
+file:
+  - artifacts/digor-scraper-engine/workers/config.py
+  - artifacts/digor-scraper-engine/workers/llm.py
+  - artifacts/digor-scraper-engine/workers/db.py
+  - artifacts/digor-scraper-engine/workers/distressed.py
+  - artifacts/digor-scraper-engine/workers/http_client.py
 
-# ── Git ───────────────────────────────────────────────────────────────────────
+# ── Auto-lint after every edit ────────────────────────────────────────────────
+# Runs flake8 on changed Python files automatically after Aider applies a patch
+lint-cmd: python -m flake8 --max-line-length=120 --extend-ignore=E203,W503,E501 {file}
+
+# ── Auto-test after every edit (uncomment when you have a test suite) ─────────
+# test-cmd: pytest -q artifacts/digor-scraper-engine/
+
+# ── Git attribution ───────────────────────────────────────────────────────────
 attribute-author: false
 attribute-committer: false
