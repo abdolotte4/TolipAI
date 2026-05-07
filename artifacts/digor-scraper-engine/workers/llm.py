@@ -283,7 +283,11 @@ async def _chat_inner(
                 }
                 if json_mode:
                     kwargs["response_format"] = {"type": "json_object"}
-                resp = await client.chat.completions.create(**kwargs)
+                _LLM_TIMEOUT = float(__import__("os").getenv("LLM_TIMEOUT_SEC", "90"))
+                resp = await asyncio.wait_for(
+                    client.chat.completions.create(**kwargs),
+                    timeout=_LLM_TIMEOUT,
+                )
                 _rate_hits[provider] = 0  # reset on success
                 _rate_cooldown_until.pop(provider, None)
                 return resp.choices[0].message.content or ""

@@ -46,10 +46,14 @@ router.get("/", crmAuth, async (req, res) => {
       db.select().from(crmLeads).where(leadWhere).orderBy(desc(crmLeads.createdAt)).limit(5),
     ]);
 
-    const userIds = [...new Set(recentLeads.map(l => l.assignedTo).filter(Boolean))];
+    const userIds = [...new Set(recentLeads.map(l => l.assignedTo).filter(Boolean))] as number[];
     let usersMap: Record<number, string> = {};
     if (userIds.length > 0) {
-      const users = await db.select({ id: crmUsers.id, name: crmUsers.name }).from(crmUsers);
+      const { inArray } = await import("drizzle-orm");
+      const users = await db
+        .select({ id: crmUsers.id, name: crmUsers.name })
+        .from(crmUsers)
+        .where(inArray(crmUsers.id, userIds));
       usersMap = Object.fromEntries(users.map(u => [u.id, u.name]));
     }
 
@@ -68,7 +72,6 @@ router.get("/", crmAuth, async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error("CRM stats error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

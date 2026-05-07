@@ -11,8 +11,19 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${process.env["PORT"]}"`);
 }
 
+// Validate critical environment variables before the server starts
+const missingVars: string[] = [];
+if (!process.env["JWT_SECRET"])    missingVars.push("JWT_SECRET");
+if (!process.env["DATABASE_URL"])  missingVars.push("DATABASE_URL");
+if (missingVars.length > 0) {
+  logger.error({ missingVars }, "Missing required environment variables — server cannot start safely");
+  process.exit(1);
+}
+
+let server: ReturnType<typeof app.listen>;
+
 seedDatabase().then(() => {
-  app.listen(port, "0.0.0.0", (err?: Error) => {
+  server = app.listen(port, "0.0.0.0", (err?: Error) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
       process.exit(1);
@@ -32,3 +43,23 @@ seedDatabase().then(() => {
     setInterval(runTaskAutomationCron, 60 * 60 * 1000);
   });
 });
+
+// ── Graceful shutdown ────────────────────────────────────────────────────────
+async function shutdown(signal: string) {
+  logger.info({ signal }, "Received shutdown signal — draining connections");
+  if (server) {
+    server.close(() => {
+      logger.info("HTTP server closed");
+    });
+  }
+  try {
+    await pool.end();
+    logger.info("DB pool closed");
+  } catch (err) {
+    logger.error({ err }, "Error closing DB pool");
+  }
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT",  () => shutdown("SIGINT"));
