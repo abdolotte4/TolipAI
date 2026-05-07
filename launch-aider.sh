@@ -9,15 +9,15 @@
 #   4. Claude 3.5 Sonnet                (ANTHROPIC_API_KEY)
 #   5. GPT-4o                           (OPENAI_API_KEY)
 #
+# After Aider exits, scripts/post-aider.sh runs automatically:
+#   - Validates all changes (black, flake8, TypeScript)
+#   - Writes report to docs/aider-session-log.md
+#   - Replit Agent reads that log and fixes any issues without you asking
+#
 # Usage:
 #   ./launch-aider.sh                              # Full project context
 #   ./launch-aider.sh workers/main.py              # Also pre-load a file
 #   ./launch-aider.sh workers/main.py workers/db.py
-#
-# Switching agents:
-#   Replit Agent  → chat panel on the left (auto-commits)
-#   Aider         → this script in Shell tab
-#                   commit after editing: git add -A && git commit -m "msg"
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -e
@@ -78,10 +78,11 @@ fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Digor LLC — Aider AI"
-echo "  Model:   $MODEL"
-echo "  Context: full repo map (${MAP_TOKENS} tokens) + CONVENTIONS.md"
-echo "  Files:   config.py, llm.py, db.py, distressed.py, http_client.py"
-echo "  Auto:    flake8 lint after every edit"
+echo "  Model:    $MODEL"
+echo "  Context:  full repo map (${MAP_TOKENS} tokens) + CONVENTIONS.md"
+echo "  Files:    config.py, llm.py, db.py, distressed.py, http_client.py"
+echo "  Auto:     flake8 after every edit"
+echo "  On exit:  post-aider check runs → Replit Agent picks up any issues"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "  Just type what you want:"
@@ -94,20 +95,26 @@ echo "  See loaded files: /ls"
 echo "  See what changed: /diff"
 echo "  Undo last change: /undo"
 echo "  Run a command:    /run pytest -q"
-echo "  Commit changes:   /git commit -am 'your message'"
-echo "  Exit:             /quit"
+echo "  Commit:           /git commit -am 'your message'"
+echo "  Exit:             /quit  (post-check runs automatically)"
 echo ""
-echo "  Switch to Replit Agent: close this shell and use the chat panel."
+echo "  Switch to Replit Agent: close this shell, it will check your work."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Note: --format-cmd is not supported in Aider v0.86.2 (run black manually or
-# after a session: python -m black artifacts/digor-scraper-engine/workers/)
-# lint-cmd and test-cmd are set in .aider.conf.yml
-
-exec "$AIDER_BIN" \
+# ── Run Aider (NOT exec — we need to run post-check after it exits) ───────────
+"$AIDER_BIN" \
   --model "$MODEL" \
   --weak-model "$WEAK_MODEL" \
   --map-tokens "$MAP_TOKENS" \
   --no-show-model-warnings \
   "$@"
+
+AIDER_EXIT=$?
+
+# ── Post-session validation — runs automatically when Aider exits ─────────────
+echo ""
+echo "Aider exited. Running post-session check..."
+bash "$PROJECT_ROOT/scripts/post-aider.sh"
+
+exit $AIDER_EXIT
