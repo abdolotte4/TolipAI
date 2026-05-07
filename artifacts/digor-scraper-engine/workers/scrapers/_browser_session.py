@@ -68,8 +68,11 @@ def _ensure_nix_ld_path() -> None:
             os.environ["LD_LIBRARY_PATH"] = f"{combined}:{existing}" if existing else combined
 
 
-# Run once at import time — safe to call multiple times (set arithmetic prevents dups)
-_ensure_nix_ld_path()
+# NOTE: _ensure_nix_ld_path() is NOT called at import time because it does
+# glob("/nix/store/*/lib/*.so") across tens of thousands of directories and
+# hangs for minutes on Replit NixOS.  It is called lazily (once, thread-safe)
+# inside browser_context() right before the first Playwright launch.
+_nix_ld_patched = False
 
 log = logging.getLogger("browser")
 
@@ -313,6 +316,13 @@ async def browser_context(
 
     state_file = _state_path(service)
     storage_state: Optional[str] = str(state_file) if state_file.exists() else None
+
+    # Lazy one-time Nix LD_LIBRARY_PATH setup (skipped at import time to avoid
+    # expensive glob scan of /nix/store on Replit).
+    global _nix_ld_patched
+    if not _nix_ld_patched:
+        _ensure_nix_ld_path()
+        _nix_ld_patched = True
 
     pw = await async_playwright().start()
 
