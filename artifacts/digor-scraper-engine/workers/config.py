@@ -59,15 +59,18 @@ class Settings:
 
     openrouter_api_key: Optional[str] = _env("OPENROUTER_API_KEY")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Kimi K2.6 via OpenRouter — 1M token context, top coding model
     openrouter_model: str = (
-        _env("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free") or ""
+        _env("OPENROUTER_MODEL", "moonshotai/kimi-k2.6") or "moonshotai/kimi-k2.6"
     )
 
+    # Moonshot direct API — set MOONSHOT_KIMI_API_KEY for direct access
+    # Model IDs: kimi-k2 | moonshot-v1-128k | moonshot-v1-32k | moonshot-v1-8k
     moonshot_api_key: Optional[str] = _env("MOONSHOT_KIMI_API_KEY")
     moonshot_base_url: str = (
         _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
     )
-    moonshot_model: str = _env("MOONSHOT_MODEL", "moonshot-v1-8k") or ""
+    moonshot_model: str = _env("MOONSHOT_MODEL", "kimi-k2") or "kimi-k2"
 
     # ── Scraping providers ──────────────────────────────────────────────────
     scraperapi_keys: List[str] = field(

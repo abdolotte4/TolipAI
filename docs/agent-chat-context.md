@@ -15,7 +15,9 @@
 - **Black + Flake8 clean**: all Python files reformatted and lint errors fixed
 
 ### Key Architecture Decisions
-- LLM calls route through `workers/llm.py._chat()` — primary: OpenRouter/Kimi K2, fallback: Groq
+- LLM calls route through `workers/llm.py._chat()` — primary: **Kimi K2.6** (Moonshot direct or OpenRouter), fallback: Groq (free)
+- Kimi K2.6 has 1M token context, 200K input, agent swarm up to 300 agents
+- Provider chain order: Moonshot → OpenRouter → Groq → Cerebras → Together → NVIDIA
 - All scraper I/O is async (httpx + Playwright + asyncio.gather)
 - Jobs are tracked in `job_store.py` (in-memory + DB); clients poll `/job-status/{id}`
 - Imports that must follow `_patch_ld_library_path()` in `main.py` use `# noqa: E402`

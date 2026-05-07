@@ -104,8 +104,11 @@ OPENPHONE_*           # OpenPhone integration
 
 ### LLM Integration
 - All LLM calls go through `workers/llm.py` → `_chat()` helper
-- Supports OpenRouter (primary), Groq (fallback), AWS Bedrock (structured output)
-- Default model: `moonshotai/kimi-k2` via OpenRouter
+- Provider chain: Moonshot Kimi K2.6 (direct) → OpenRouter Kimi K2.6 → Groq (free fallback) → Cerebras → Together → NVIDIA
+- Primary model: **Kimi K2.6** — 1M token context, 200K input, agent swarm (up to 300 agents)
+- Set `MOONSHOT_KIMI_API_KEY` for direct Moonshot access (best); `OPENROUTER_API_KEY` for proxy access
+- Groq (`GROQ_API_KEY`) is the free fallback — always set this as backup
+- AWS Bedrock also supported via `USE_BEDROCK=1` env flag
 
 ### Browser Sessions
 - `workers/scrapers/_browser_session.py` manages persistent Playwright contexts

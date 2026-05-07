@@ -1,7 +1,12 @@
 """LLM client — provider chain with circuit breakers.
 
-Provider order (free-tier first):
-  Groq → Cerebras → Together → NVIDIA → OpenRouter → Moonshot
+Provider order (Kimi K2.6 first, free fallback second):
+  Moonshot (Kimi K2.6 direct) → OpenRouter (Kimi K2.6) → Groq → Cerebras → Together → NVIDIA
+
+Kimi K2.6 features:
+  - 1M token context window, 200K input tokens
+  - Agent swarm support (up to 300 parallel agents)
+  - Top-tier coding and reasoning model
 
 All providers expose an OpenAI-compatible Chat Completions API.
 Circuit breakers: each provider is permanently skipped after its first
@@ -150,11 +155,10 @@ async def _chat(
 ) -> str:
     """Run a chat completion through the provider chain with circuit breakers.
 
-    Provider order: Groq → NVIDIA → Moonshot.
+    Provider order: Moonshot/Kimi K2.6 → OpenRouter/Kimi K2.6 → Groq (free fallback).
     Each provider is skipped silently after its first fatal error.
     Rate-limit (429) is retried up to _MAX_RATE_HITS times before moving on.
-    A global semaphore caps concurrent calls so we never hammer the free-tier
-    rate limit (Groq: ~30 req/min).
+    A global semaphore caps concurrent calls so we never hammer free-tier limits.
     """
     async with _get_sem():
         return await _chat_inner(
@@ -246,14 +250,14 @@ async def _chat_inner(
     if json_mode:
         messages = _ensure_json_in_messages(messages)
 
-    # Free-tier first, paid fallbacks last.
+    # Provider order: Kimi K2.6 first (best model, 1M context), Groq free fallback.
     providers = [
-        ("groq", _groq, settings.groq_model),
+        ("moonshot", _moonshot, settings.moonshot_model),    # Kimi K2.6 direct API
+        ("openrouter", _openrouter, settings.openrouter_model),  # Kimi K2.6 via OpenRouter
+        ("groq", _groq, settings.groq_model),                # Free, fast fallback
         ("cerebras", _cerebras, settings.cerebras_model),
         ("together", _together, settings.together_model),
         ("nvidia", _nvidia, settings.nvidia_model),
-        ("openrouter", _openrouter, settings.openrouter_model),
-        ("moonshot", _moonshot, settings.moonshot_model),
     ]
     last_err: Optional[Exception] = None
     for provider, client_fn, model in providers:
@@ -343,7 +347,8 @@ async def _chat_inner(
     if last_err:
         raise last_err
     raise RuntimeError(
-        "No LLM provider available (set GROQ_API_KEY, NVIDIA_API_KEY, or MOONSHOT_KIMI_API_KEY)"
+        "No LLM provider available — set MOONSHOT_KIMI_API_KEY (Kimi K2.6), "
+        "OPENROUTER_API_KEY, or GROQ_API_KEY in Replit Secrets"
     )
 
 

@@ -1,33 +1,33 @@
 ## Aider configuration for Digor LLC monorepo
-## Run: ./launch-aider.sh   (sets up API key automatically)
+## Run: ./launch-aider.sh
 ##
-## Model priority (cheapest/free first):
-##   1. Groq  — free, fast (set GROQ_API_KEY in Replit Secrets)
-##   2. OpenRouter free models — limited credits, small context only
-##   3. OpenRouter paid — set OPENROUTER_API_KEY + add credits
+## Primary: Kimi K2.6 (Moonshot) — 1M token context, 200K input, agent swarm capable
+## Fallback: Groq (free, fast)
 ##
-## The launch script picks the right model automatically based on env vars.
+## Set API keys in Replit Secrets:
+##   MOONSHOT_KIMI_API_KEY  — https://platform.moonshot.ai  (direct, most powerful)
+##   OPENROUTER_API_KEY     — https://openrouter.ai          (kimi-k2.6 via proxy)
+##   GROQ_API_KEY           — https://console.groq.com       (free fallback)
 
-# ── Model ─────────────────────────────────────────────────────────────────────
-# Default: Groq (free). Launch script overrides this if only OpenRouter is set.
-model: groq/llama-3.3-70b-versatile
+# ── Primary model: Kimi K2.6 via OpenRouter ───────────────────────────────────
+# The launch script overrides this with direct Moonshot if MOONSHOT_KIMI_API_KEY is set.
+model: openrouter/moonshotai/kimi-k2.6
 
-# Weak model used for lightweight tasks (repo map summaries, etc.)
+# Weak model: Groq (free, used for repo-map summaries and cheap tasks)
 weak-model: groq/llama-3.1-8b-instant
 
 # ── Repo map ──────────────────────────────────────────────────────────────────
-# Tokens used to build the map of your whole project.
-# Keep low (1024) for free/limited accounts. Raise to 4096 if you have credits.
-map-tokens: 1024
+# Kimi K2.6 has 1M token context — use a generous repo map
+map-tokens: 8192
 
-# ── Context ───────────────────────────────────────────────────────────────────
-# Always load these files as read-only context every session
+# ── Context: always load project docs as read-only ───────────────────────────
 read:
   - CONVENTIONS.md
   - docs/agent-chat-context.md
 
 # ── Cost / caching ────────────────────────────────────────────────────────────
 cache-prompts: true
+no-show-model-warnings: true
 
 # ── Git ───────────────────────────────────────────────────────────────────────
 attribute-author: false
