@@ -76,9 +76,7 @@ def _pdf_text_ocr(data: bytes) -> str:
         return ""
 
 
-async def fetch_pdf_text(
-    url: str, *, timeout: float = 45.0, chunk_size: int = 50000
-) -> str:
+async def fetch_pdf_text(url: str, *, timeout: float = 45.0, chunk_size: int = 50000) -> str:
     """Download a PDF from `url` and return extracted text (chunked if large)."""
     proxy = settings.proxy_url()
     data: Optional[bytes] = None
@@ -100,9 +98,7 @@ async def fetch_pdf_text(
                 r = await cli.get(url)
                 ct = r.headers.get("content-type", "")
                 if "pdf" not in ct.lower() and not url.lower().endswith(".pdf"):
-                    log.warning(
-                        "pdf_parser: unexpected content-type %s for %s", ct, url
-                    )
+                    log.warning("pdf_parser: unexpected content-type %s for %s", ct, url)
                     return None
                 r.raise_for_status()
                 return r.content

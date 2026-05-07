@@ -65,9 +65,7 @@ def _ensure_nix_ld_path() -> None:
         new_dirs = dirs - existing_set
         if new_dirs:
             combined = ":".join(sorted(new_dirs))
-            os.environ["LD_LIBRARY_PATH"] = (
-                f"{combined}:{existing}" if existing else combined
-            )
+            os.environ["LD_LIBRARY_PATH"] = f"{combined}:{existing}" if existing else combined
 
 
 # Run once at import time — safe to call multiple times (set arithmetic prevents dups)
@@ -99,8 +97,7 @@ def _find_chromium_executable() -> Optional[str]:
         "/home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-*"
         "/chrome-headless-shell-linux64/chrome-headless-shell",
         os.path.expanduser(
-            "~/.cache/ms-playwright/chromium_headless_shell-*"
-            "/chrome-headless-shell-linux64/chrome-headless-shell"
+            "~/.cache/ms-playwright/chromium_headless_shell-*" "/chrome-headless-shell-linux64/chrome-headless-shell"
         ),
     ):
         hits = sorted(_glob.glob(pattern))
@@ -211,9 +208,7 @@ async def _apply_stealth(ctx: Any) -> None:
     await ctx.add_init_script(_STEALTH_SCRIPT)
 
 
-async def _nav_with_fallback(
-    page: Any, url: str, logger: Any, service: str, timeout_ms: int = 45000
-) -> None:
+async def _nav_with_fallback(page: Any, url: str, logger: Any, service: str, timeout_ms: int = 45000) -> None:
     """Navigate to `url` with a robust multi-strategy fallback.
 
     Strategy:
@@ -278,9 +273,7 @@ async def _nav_with_fallback(
                 )
                 try:
                     await page.screenshot(path=debug_path, full_page=False)
-                    logger.error(
-                        "[%s] debug screenshot saved to %s", service, debug_path
-                    )
+                    logger.error("[%s] debug screenshot saved to %s", service, debug_path)
                 except Exception:
                     pass
                 raise
@@ -316,9 +309,7 @@ async def browser_context(
     try:
         from playwright.async_api import async_playwright
     except ImportError as e:
-        raise RuntimeError(
-            "playwright not installed — run `playwright install chromium`"
-        ) from e
+        raise RuntimeError("playwright not installed — run `playwright install chromium`") from e
 
     state_file = _state_path(service)
     storage_state: Optional[str] = str(state_file) if state_file.exists() else None

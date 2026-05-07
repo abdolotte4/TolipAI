@@ -168,15 +168,11 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
     longitude = _coord("longitude")
 
     # Price-reduction signal
-    reduced_amount = _num(
-        raw.get("price_reduced_amount") or raw.get("price_change_amount")
-    )
+    reduced_amount = _num(raw.get("price_reduced_amount") or raw.get("price_change_amount"))
     price_reduction = bool(reduced_amount and reduced_amount < 0)
 
     # Source-specific listing URL
-    listing_url = (
-        str(raw.get("property_url") or raw.get("listing_url") or "").strip() or None
-    )
+    listing_url = str(raw.get("property_url") or raw.get("listing_url") or "").strip() or None
 
     return {
         "address": address,
@@ -195,8 +191,7 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
         "sqft": _int(raw.get("sqft")),
         "year_built": _int(raw.get("year_built")),
         "lot_sqft": _int(raw.get("lot_sqft")),
-        "property_type": str(raw.get("style") or raw.get("property_type") or "").strip()
-        or None,
+        "property_type": str(raw.get("style") or raw.get("property_type") or "").strip() or None,
         "status": str(raw.get("status") or "").strip() or None,
         "days_on_market": _int(raw.get("days_on_mls")),
         "days_on_mls": _int(raw.get("days_on_mls")),
@@ -301,9 +296,7 @@ async def scrape_foreclosures(
             log.info("HomeHarvest: got %d listings for %r", len(listings), location)
             return listings
         except Exception as e:
-            log.warning(
-                "HomeHarvest scrape failed (%s / %s): %s", listing_type, location, e
-            )
+            log.warning("HomeHarvest scrape failed (%s / %s): %s", listing_type, location, e)
             return []
 
     return await asyncio.get_event_loop().run_in_executor(None, _run)
@@ -319,18 +312,14 @@ async def scrape_multi_site(
     """Scrape all sources (new HH API) or Zillow+Realtor in parallel (old API)
     and de-duplicate by address."""
     # New HomeHarvest scrapes all sources automatically in one call
-    combined = await scrape_foreclosures(
-        city, state, listing_type=listing_type, limit=limit_per_site * 3
-    )
+    combined = await scrape_foreclosures(city, state, listing_type=listing_type, limit=limit_per_site * 3)
     if combined:
         log.info("HomeHarvest multi-site: %d unique listings", len(combined))
         return combined
 
     # Fallback for older installs that still support site_name
     results_z, results_r = await asyncio.gather(
-        scrape_foreclosures(
-            city, state, listing_type=listing_type, site="zillow", limit=limit_per_site
-        ),
+        scrape_foreclosures(city, state, listing_type=listing_type, site="zillow", limit=limit_per_site),
         scrape_foreclosures(
             city,
             state,

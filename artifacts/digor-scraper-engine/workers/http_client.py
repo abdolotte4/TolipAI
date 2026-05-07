@@ -188,9 +188,7 @@ def _ssl_ctx() -> Any:
 
 
 # ─── Direct fetch ────────────────────────────────────────────────────────────
-async def fetch_direct(
-    url: str, *, use_proxy: bool = True, verify_ssl: bool = False
-) -> Any:
+async def fetch_direct(url: str, *, use_proxy: bool = True, verify_ssl: bool = False) -> Any:
     """Plain httpx fetch with rotating UA + optional residential proxy.
     Returns .text for HTML, raw bytes for PDFs.
     """
@@ -222,9 +220,7 @@ async def fetch_direct(
 
 
 # ─── Tiered fetch ────────────────────────────────────────────────────────────
-async def fetch_html(
-    url: str, *, render: bool = False, country: str = "us", is_google: bool = False
-) -> Any:
+async def fetch_html(url: str, *, render: bool = False, country: str = "us", is_google: bool = False) -> Any:
     """Tiered fetch: direct proxy → Crawl4AI (render-only fallback).
     Returns HTML text or raw PDF bytes.
     """
@@ -248,9 +244,7 @@ async def fetch_html(
 
 
 # ─── Crawl4AI rendered fetch ─────────────────────────────────────────────────
-async def fetch_crawl4ai(
-    url: str, *, wait_for: Optional[str] = None, use_proxy: bool = True
-) -> Any:
+async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None, use_proxy: bool = True) -> Any:
     """Playwright-based render with stealth patches.
 
     Guarded by _browser_sem() so at most BROWSER_MAX_CONCURRENT Chromium
@@ -360,9 +354,7 @@ async def fetch_crawl4ai(
                         )
                         return html_fallback
                     if "ERR_HTTP_RESPONSE_CODE_FAILURE" in err:
-                        raise RuntimeError(
-                            f"Crawl4AI: server returned error HTTP status for {url}"
-                        )
+                        raise RuntimeError(f"Crawl4AI: server returned error HTTP status for {url}")
                     raise RuntimeError(f"Crawl4AI failed: {err}")
                 return result.html or result.markdown or result.binary or ""
         except RuntimeError:
@@ -388,9 +380,7 @@ async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
     try:
         proxy = settings.proxy_url() if use_proxy else None
         headers = _build_headers(url)
-        async with httpx.AsyncClient(
-            proxy=proxy, headers=headers, timeout=settings.request_timeout
-        ) as cli:
+        async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout) as cli:
             r = await cli.get(url)
             r.raise_for_status()
             pdf_bytes = r.content

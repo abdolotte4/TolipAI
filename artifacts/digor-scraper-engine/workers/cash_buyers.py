@@ -36,9 +36,7 @@ def _aggregate_by_buyer(properties: List[Dict[str, Any]]) -> Dict[str, Dict[str,
         addr_part = (p.get("address") or "").split(",")[0].strip()
         key = real_name or f"investor::{p.get('zip')}::{addr_part}"
         # Display name: prefer real name, fall back to a descriptive placeholder
-        display_name = real_name or (
-            f"Investor — {p.get('city') or p.get('zip') or 'Unknown Area'}"
-        )
+        display_name = real_name or (f"Investor — {p.get('city') or p.get('zip') or 'Unknown Area'}")
         b = by_buyer.setdefault(
             key,
             {
@@ -54,14 +52,10 @@ def _aggregate_by_buyer(properties: List[Dict[str, Any]]) -> Dict[str, Dict[str,
         b["purchases"].append(p)
         if p.get("price"):
             try:
-                b["prices"].append(
-                    float(str(p["price"]).replace("$", "").replace(",", ""))
-                )
+                b["prices"].append(float(str(p["price"]).replace("$", "").replace(",", "")))
             except Exception:  # noqa: BLE001
                 pass
-        if p.get("sold_date") and (
-            not b["last_purchase_date"] or p["sold_date"] > b["last_purchase_date"]
-        ):
+        if p.get("sold_date") and (not b["last_purchase_date"] or p["sold_date"] > b["last_purchase_date"]):
             b["last_purchase_date"] = p["sold_date"]
     return by_buyer
 
@@ -83,9 +77,7 @@ async def find_cash_buyers(
     if progress_cb:
         await progress_cb(5, "Trying ATTOM Data API for recent sales…")
     try:
-        sold_attom = await attom.recent_sales(
-            zip_code=zip_code, city=city, state=state, max_results=80
-        )
+        sold_attom = await attom.recent_sales(zip_code=zip_code, city=city, state=state, max_results=80)
     except Exception as e:  # noqa: BLE001
         log.info(
             "ATTOM unavailable / exhausted, falling back to county deeds/free scrape: %s",
@@ -129,14 +121,10 @@ async def find_cash_buyers(
     # ── Tier 3: free scrape (Zillow + Redfin) — always run as backfill ─────
     if progress_cb:
         await progress_cb(22, "Scanning recent sales (Zillow)…")
-    sold_zillow = await zillow.fetch_recently_sold(
-        zip_code=zip_code, city=city, state=state, max_results=80
-    )
+    sold_zillow = await zillow.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
     if progress_cb:
         await progress_cb(35, "Scanning recent sales (Redfin)…")
-    sold_redfin = await redfin.fetch_recently_sold(
-        zip_code=zip_code, city=city, state=state, max_results=80
-    )
+    sold_redfin = await redfin.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
 
     # Deeds first so real names take priority in aggregation
     all_sales = sold_attom + sold_deeds + sold_zillow + sold_redfin
@@ -154,21 +142,15 @@ async def find_cash_buyers(
     # ── Tier 4: Broader city+state fallback when ZIP-level search returns nothing ──
     if not all_sales and city and state:
         if progress_cb:
-            await progress_cb(
-                40, f"No ZIP-level results — broadening to {city}, {state}…"
-            )
+            await progress_cb(40, f"No ZIP-level results — broadening to {city}, {state}…")
         log.info(
             "Cash buyers: ZIP=%s returned 0 results, retrying with city=%s state=%s only",
             zip_code,
             city,
             state,
         )
-        broad_zillow = await zillow.fetch_recently_sold(
-            zip_code="", city=city, state=state, max_results=80
-        )
-        broad_redfin = await redfin.fetch_recently_sold(
-            zip_code="", city=city, state=state, max_results=80
-        )
+        broad_zillow = await zillow.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
+        broad_redfin = await redfin.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
         all_sales = broad_zillow + broad_redfin
         log.info(
             "Broad fallback: %d Zillow + %d Redfin for city=%s state=%s",
@@ -212,9 +194,7 @@ async def find_cash_buyers(
         )
 
         try:
-            profile = await extract_investor_profile(
-                sample_text, source="aggregated_sales"
-            )
+            profile = await extract_investor_profile(sample_text, source="aggregated_sales")
         except Exception as e:  # noqa: BLE001
             log.warning("LLM profile extract failed for %s: %s", cand["buyer_name"], e)
             profile = {"buyer_name": cand["buyer_name"], "buyer_type": "unknown"}
@@ -226,12 +206,8 @@ async def find_cash_buyers(
                 llc=profile.get("llc_name"),
                 state=cand.get("state"),
             )
-            profile["phones"] = list(
-                set((profile.get("phones") or []) + traced.get("phones", []))
-            )
-            profile["emails"] = list(
-                set((profile.get("emails") or []) + traced.get("emails", []))
-            )
+            profile["phones"] = list(set((profile.get("phones") or []) + traced.get("phones", [])))
+            profile["emails"] = list(set((profile.get("emails") or []) + traced.get("emails", [])))
             if traced.get("principals"):
                 profile["principals"] = traced["principals"]
             if traced.get("addresses") and not profile.get("mailing_address"):
@@ -253,12 +229,9 @@ async def find_cash_buyers(
         record = {
             **profile,
             "portfolio_size": profile.get("portfolio_size") or len(cand["purchases"]),
-            "portfolio_value": profile.get("portfolio_value")
-            or (sum(prices) if prices else None),
-            "avg_purchase_price": profile.get("avg_purchase_price")
-            or (sum(prices) / len(prices) if prices else None),
-            "last_purchase_date": profile.get("last_purchase_date")
-            or cand.get("last_purchase_date"),
+            "portfolio_value": profile.get("portfolio_value") or (sum(prices) if prices else None),
+            "avg_purchase_price": profile.get("avg_purchase_price") or (sum(prices) / len(prices) if prices else None),
+            "last_purchase_date": profile.get("last_purchase_date") or cand.get("last_purchase_date"),
             "city": profile.get("city") or cand.get("city"),
             "state": profile.get("state") or cand.get("state"),
             "zip": profile.get("zip") or cand.get("zip"),
@@ -286,9 +259,7 @@ async def find_cash_buyers(
                 job_id,
             )
         except Exception as e:
-            log.error(
-                "Cash buyers: DB insert failed for job %s: %s", job_id, str(e)[:300]
-            )
+            log.error("Cash buyers: DB insert failed for job %s: %s", job_id, str(e)[:300])
 
     if progress_cb:
         await progress_cb(100, f"Done — {len(out)} buyers found")

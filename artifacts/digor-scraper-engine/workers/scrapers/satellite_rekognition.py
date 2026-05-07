@@ -75,9 +75,7 @@ def _analyse_url_sync(image_url: str) -> Dict[str, Any]:
             MinConfidence=_MIN_CONFIDENCE,
         )
 
-        detected_labels = {
-            label["Name"]: label["Confidence"] for label in response.get("Labels", [])
-        }
+        detected_labels = {label["Name"]: label["Confidence"] for label in response.get("Labels", [])}
 
         for label_name, signal_key in _LABEL_SIGNAL_MAP.items():
             if label_name in detected_labels:

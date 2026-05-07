@@ -47,9 +47,7 @@ os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/ms-playwright")
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
-def _ok(
-    body: Any, status: int = 200, *, request_id: Optional[str] = None
-) -> Dict[str, Any]:
+def _ok(body: Any, status: int = 200, *, request_id: Optional[str] = None) -> Dict[str, Any]:
     headers: Dict[str, str] = {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
@@ -64,9 +62,7 @@ def _ok(
     }
 
 
-def _err(
-    msg: str, status: int = 500, *, request_id: Optional[str] = None
-) -> Dict[str, Any]:
+def _err(msg: str, status: int = 500, *, request_id: Optional[str] = None) -> Dict[str, Any]:
     headers: Dict[str, str] = {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
@@ -240,9 +236,7 @@ def cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     log.info("Request %s: cash_buyers_handler", req_id)
     job_id = str(uuid.uuid4())
     try:
-        buyers = _run_async(
-            find_cash_buyers(lead, max_buyers=int(body.get("maxBuyers", 50)))
-        )
+        buyers = _run_async(find_cash_buyers(lead, max_buyers=int(body.get("maxBuyers", 50))))
         _maybe_store_s3("cash_buyers", buyers, job_id=job_id, request_id=req_id)
         return _ok({"buyers": buyers, "count": len(buyers)}, request_id=req_id)
     except Exception as exc:
@@ -265,9 +259,7 @@ def skip_trace_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     log.info("Request %s: skip_trace_handler name=%s", req_id, name[:50])
     try:
-        result = _run_async(
-            skip_trace(name, llc=body.get("llc"), state=body.get("state"))
-        )
+        result = _run_async(skip_trace(name, llc=body.get("llc"), state=body.get("state")))
         return _ok(result, request_id=req_id)
     except Exception as exc:
         log.exception("Request %s: skip_trace_handler failed", req_id)
@@ -325,9 +317,7 @@ def propwire_property_handler(event: Dict[str, Any], context: Any) -> Dict[str, 
     body = _parse_body(event)
     query = body.get("query") or body.get("address") or body.get("url") or ""
     if not query:
-        return _err(
-            "query (address or Propwire URL) is required", 400, request_id=req_id
-        )
+        return _err("query (address or Propwire URL) is required", 400, request_id=req_id)
 
     log.info("Request %s: propwire_property_handler query=%s", req_id, query[:80])
     try:
@@ -350,9 +340,7 @@ def propwire_comps_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any
 
     log.info("Request %s: propwire_comps_handler", req_id)
     try:
-        comps = _run_async(
-            fetch_comps(query, max_results=int(body.get("maxResults", 50)))
-        )
+        comps = _run_async(fetch_comps(query, max_results=int(body.get("maxResults", 50))))
         return _ok({"comps": comps, "count": len(comps)}, request_id=req_id)
     except Exception as exc:
         log.exception("Request %s: propwire_comps_handler failed", req_id)
@@ -448,9 +436,7 @@ def propelio_cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[st
     if not address:
         return _err("address is required", 400, request_id=req_id)
 
-    log.info(
-        "Request %s: propelio_cash_buyers_handler address=%s", req_id, address[:80]
-    )
+    log.info("Request %s: propelio_cash_buyers_handler address=%s", req_id, address[:80])
     try:
         result = _run_async(
             cash_buyers_for_address(
@@ -528,9 +514,7 @@ def _maybe_store_s3(
 # ─── Amazon Bedrock LLM integration ──────────────────────────────────────────
 
 
-async def _bedrock_chat(
-    messages: List[Dict[str, Any]], *, max_tokens: int = 1500
-) -> str:
+async def _bedrock_chat(messages: List[Dict[str, Any]], *, max_tokens: int = 1500) -> str:
     """Call Amazon Bedrock Claude when USE_BEDROCK=1.
 
     This is wired into llm._chat_inner() at startup by patching the provider
@@ -557,9 +541,7 @@ async def _bedrock_chat(
             }
         )
         resp = client.invoke_model(
-            modelId=os.getenv(
-                "BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"
-            ),
+            modelId=os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"),
             body=body,
             contentType="application/json",
             accept="application/json",
@@ -586,9 +568,7 @@ def _patch_llm_for_bedrock() -> None:
 
         _orig_chat_inner = _llm._chat_inner
 
-        async def _bedrock_first(
-            messages, *, json_mode=True, temperature=0.2, max_tokens=1500
-        ):
+        async def _bedrock_first(messages, *, json_mode=True, temperature=0.2, max_tokens=1500):
             try:
                 log.info("LLM: routing through Amazon Bedrock")
                 return await _bedrock_chat(messages, max_tokens=max_tokens)
@@ -651,11 +631,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Universal router — wire this to API Gateway HTTP API (ANY /{proxy+})."""
     req_id = getattr(context, "aws_request_id", None)
     path = (event.get("rawPath") or event.get("path") or "/").rstrip("/") or "/"
-    method = (
-        event.get("requestContext", {}).get("http", {}).get("method")
-        or event.get("httpMethod")
-        or "GET"
-    ).upper()
+    method = (event.get("requestContext", {}).get("http", {}).get("method") or event.get("httpMethod") or "GET").upper()
 
     # Handle CORS preflight globally
     if method == "OPTIONS":

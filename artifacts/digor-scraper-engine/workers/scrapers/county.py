@@ -47,9 +47,7 @@ async def scrape_county(
     distress_type = cat.get("distress_type", src["category"])
     source_state = src["state"] if src["state"] != "*" else state
 
-    def _tag_listings(
-        listings: List[Dict[str, Any]], source_url: str
-    ) -> List[Dict[str, Any]]:
+    def _tag_listings(listings: List[Dict[str, Any]], source_url: str) -> List[Dict[str, Any]]:
         for item in listings:
             item.setdefault("source", distress_type)
             item.setdefault("source_url", source_url)
@@ -78,11 +76,7 @@ async def scrape_county(
 
     # ── PDF discovery: if the page links to PDFs, parse those too ────────────
     all_listings: List[Dict[str, Any]] = []
-    pdf_links = [
-        h
-        for h in re.findall(r'href=["\']([^"\']+\.pdf[^"\']*)["\']', html, re.I)
-        if not h.startswith("#")
-    ]
+    pdf_links = [h for h in re.findall(r'href=["\']([^"\']+\.pdf[^"\']*)["\']', html, re.I) if not h.startswith("#")]
     if pdf_links:
         import re as _re
 
@@ -97,9 +91,7 @@ async def scrape_county(
             log.info("County PDF discovered: %s", pdf_url)
             pdf_text = await fetch_pdf_text(pdf_url)
             if pdf_text:
-                pdf_listings = await parse_distressed_page(
-                    pdf_text, source=f"{src['name']} (PDF)"
-                )
+                pdf_listings = await parse_distressed_page(pdf_text, source=f"{src['name']} (PDF)")
                 all_listings.extend(_tag_listings(pdf_listings, pdf_url))
 
     # Parse HTML text

@@ -37,9 +37,7 @@ class Settings:
     # ── LLM providers ───────────────────────────────────────────────────────
     groq_api_key: Optional[str] = _env("GROQ_API_KEY")
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model: str = (
-        _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
-    )
+    groq_model: str = _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
 
     cerebras_api_key: Optional[str] = _env("CEREBRAS_API_KEY")
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
@@ -47,29 +45,21 @@ class Settings:
 
     together_api_key: Optional[str] = _env("TOGETHER_API_KEY")
     together_base_url: str = "https://api.together.xyz/v1"
-    together_model: str = (
-        _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
-    )
+    together_model: str = _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
 
     nvidia_api_key: Optional[str] = _env("NVIDIA_API_KEY")
-    nvidia_base_url: str = (
-        _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
-    )
+    nvidia_base_url: str = _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
     nvidia_model: str = _env("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct") or ""
 
     openrouter_api_key: Optional[str] = _env("OPENROUTER_API_KEY")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Kimi K2.6 via OpenRouter — 1M token context, top coding model
-    openrouter_model: str = (
-        _env("OPENROUTER_MODEL", "moonshotai/kimi-k2.6") or "moonshotai/kimi-k2.6"
-    )
+    openrouter_model: str = _env("OPENROUTER_MODEL", "moonshotai/kimi-k2.6") or "moonshotai/kimi-k2.6"
 
     # Moonshot direct API — set MOONSHOT_KIMI_API_KEY for direct access
     # Model IDs: kimi-k2 | moonshot-v1-128k | moonshot-v1-32k | moonshot-v1-8k
     moonshot_api_key: Optional[str] = _env("MOONSHOT_KIMI_API_KEY")
-    moonshot_base_url: str = (
-        _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
-    )
+    moonshot_base_url: str = _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
     moonshot_model: str = _env("MOONSHOT_MODEL", "kimi-k2") or "kimi-k2"
 
     # ── Scraping providers ──────────────────────────────────────────────────
@@ -97,9 +87,7 @@ class Settings:
     # Zone name appended to username: brd-customer-XXXXXX-zone-<zone>
     # If BRIGHTDATA_USERNAME already contains "-zone-" leave this empty.
     brightdata_zone: Optional[str] = _env("BRIGHTDATA_ZONE")
-    brightdata_host: str = (
-        _env("BRIGHTDATA_HOST", "brd.superproxy.io") or "brd.superproxy.io"
-    )
+    brightdata_host: str = _env("BRIGHTDATA_HOST", "brd.superproxy.io") or "brd.superproxy.io"
     # 22225 = residential  |  33335 = ISP/residential-fast  |  24000 = scraping browser
     # Default 33335 (ISP) — fastest for JS-heavy sites (Propelio/Propwire)
     brightdata_port: int = int(os.getenv("BRIGHTDATA_PORT", "33335"))
@@ -127,12 +115,8 @@ class Settings:
     )
 
     # ── Feature flags ──────────────────────────────────────────────────────
-    enable_google_dorks: bool = (
-        os.getenv("ENABLE_GOOGLE_DORKS", "false").lower() == "true"
-    )
-    enable_opencorporates: bool = (
-        os.getenv("ENABLE_OPENCORPORATES", "true").lower() == "true"
-    )
+    enable_google_dorks: bool = os.getenv("ENABLE_GOOGLE_DORKS", "false").lower() == "true"
+    enable_opencorporates: bool = os.getenv("ENABLE_OPENCORPORATES", "true").lower() == "true"
     enable_propertyapi: bool = os.getenv("ENABLE_PROPERTYAPI", "true").lower() == "true"
 
     # ── Tunables ───────────────────────────────────────────────────────────
@@ -160,10 +144,7 @@ class Settings:
         """Return a residential proxy URL if configured."""
         if self.brightdata_configured():
             user = self._brightdata_username_full()
-            return (
-                f"http://{user}:{self.brightdata_password}"
-                f"@{self.brightdata_host}:{self.brightdata_port}"
-            )
+            return f"http://{user}:{self.brightdata_password}" f"@{self.brightdata_host}:{self.brightdata_port}"
         if self.oxylabs_user and self.oxylabs_pass:
             return f"http://{self.oxylabs_user}:{self.oxylabs_pass}@unblock.oxylabs.io:60000"
         return None
@@ -201,9 +182,7 @@ class Settings:
             # Only append if not already pinned
             if "-session-" not in user:
                 # Sanitise: strip chars invalid in Bright Data session IDs
-                safe_id = "".join(
-                    c if c.isalnum() or c == "_" else "_" for c in session_id
-                )[:32]
+                safe_id = "".join(c if c.isalnum() or c == "_" else "_" for c in session_id)[:32]
                 user = f"{user}-session-{safe_id}"
             return {
                 "server": f"http://{self.brightdata_host}:{self.brightdata_port}",

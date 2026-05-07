@@ -173,9 +173,7 @@ async def insert_cash_buyer_matches(
         try:
             lead_id_str = int(lead_id) if lead_id is not None else None
         except (ValueError, TypeError):
-            log.warning(
-                "insert_cash_buyer_matches: could not coerce lead_id=%r to int", lead_id
-            )
+            log.warning("insert_cash_buyer_matches: could not coerce lead_id=%r to int", lead_id)
             lead_id_str = None
 
         def _to_int(v: Any) -> Optional[int]:
@@ -288,9 +286,7 @@ async def insert_cash_buyer(
     return n > 0
 
 
-async def list_cash_buyers_for_lead(
-    lead_id: Union[int, str], limit: int = 100
-) -> List[Dict[str, Any]]:
+async def list_cash_buyers_for_lead(lead_id: Union[int, str], limit: int = 100) -> List[Dict[str, Any]]:
     async with conn() as c:
         if c is None:
             return []
@@ -314,14 +310,7 @@ def _safe_num(v: Any) -> Optional[float]:
     """Coerce LLM-extracted numeric strings to float; return None for blanks / dashes."""
     if v is None:
         return None
-    s = (
-        str(v)
-        .strip()
-        .replace(",", "")
-        .replace("$", "")
-        .replace("—", "")
-        .replace("-", "")
-    )
+    s = str(v).strip().replace(",", "").replace("$", "").replace("—", "").replace("-", "")
     if not s:
         return None
     try:
@@ -379,9 +368,7 @@ async def insert_distressed_listings(
         return len(rows)
 
 
-async def list_distressed_for_job(
-    job_id: str, limit: int = 500
-) -> List[Dict[str, Any]]:
+async def list_distressed_for_job(job_id: str, limit: int = 500) -> List[Dict[str, Any]]:
     async with conn() as c:
         if c is None:
             return []
@@ -410,18 +397,10 @@ async def insert_property_comps(
         for comp in comps:
 
             def _n(v):
-                return (
-                    float(str(v).replace(",", "").replace("$", "").strip())
-                    if v is not None
-                    else None
-                )
+                return float(str(v).replace(",", "").replace("$", "").strip()) if v is not None else None
 
             def _i(v):
-                return (
-                    int(float(str(v).replace(",", "").replace("$", "").strip()))
-                    if v is not None
-                    else None
-                )
+                return int(float(str(v).replace(",", "").replace("$", "").strip())) if v is not None else None
 
             try:
                 rows.append(
@@ -473,9 +452,7 @@ async def insert_property_history(
     sales: List[Dict[str, Any]],
     mortgages: List[Dict[str, Any]],
 ) -> int:
-    events = [{"event_type": "sale", **s} for s in sales] + [
-        {"event_type": "mortgage", **m} for m in mortgages
-    ]
+    events = [{"event_type": "sale", **s} for s in sales] + [{"event_type": "mortgage", **m} for m in mortgages]
     if not events:
         return 0
     async with conn() as c:
@@ -485,11 +462,7 @@ async def insert_property_history(
         for ev in events:
 
             def _n(v):
-                return (
-                    float(str(v).replace(",", "").replace("$", "").strip())
-                    if v is not None
-                    else None
-                )
+                return float(str(v).replace(",", "").replace("$", "").strip()) if v is not None else None
 
             rows.append(
                 (
@@ -526,11 +499,7 @@ async def upsert_property_tax(
             return
 
         def _n(v):
-            return (
-                float(str(v).replace(",", "").replace("$", "").strip())
-                if v is not None
-                else None
-            )
+            return float(str(v).replace(",", "").replace("$", "").strip()) if v is not None else None
 
         await c.execute(
             """
@@ -555,9 +524,7 @@ async def upsert_property_tax(
         )
 
 
-async def insert_skip_trace_result(
-    lead_id: Optional[int], subject_name: str, result: Dict[str, Any]
-) -> None:
+async def insert_skip_trace_result(lead_id: Optional[int], subject_name: str, result: Dict[str, Any]) -> None:
     async with conn() as c:
         if c is None:
             return

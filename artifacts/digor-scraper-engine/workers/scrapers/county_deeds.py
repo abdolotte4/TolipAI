@@ -123,22 +123,16 @@ async def _fetch_deeds_from_url(
 
     # Detect PDF responses
     if isinstance(html_or_bytes, (bytes, bytearray)) or url.lower().endswith(".pdf"):
-        text = extract_text_from_pdf(
-            html_or_bytes if isinstance(html_or_bytes, (bytes, bytearray)) else b""
-        )
+        text = extract_text_from_pdf(html_or_bytes if isinstance(html_or_bytes, (bytes, bytearray)) else b"")
     else:
         soup = BeautifulSoup(html_or_bytes, "lxml")
         text = soup.get_text("\n", strip=True)[:8000]
 
-    return await _ai_extract_deeds(
-        text, state=state, city=city, zip_code=zip_code, source=source
-    )
+    return await _ai_extract_deeds(text, state=state, city=city, zip_code=zip_code, source=source)
 
 
 # ─── PropertyShark fallback ───────────────────────────────────────────────────
-async def _propertyshark_deeds(
-    city: str, state: str, max_results: int = 100
-) -> List[Dict[str, Any]]:
+async def _propertyshark_deeds(city: str, state: str, max_results: int = 100) -> List[Dict[str, Any]]:
     """Best-effort PropertyShark public search for recent deed transfers."""
     slug = f"{city.lower().replace(' ', '-')}-{state.lower()}"
     url = f"https://www.propertyshark.com/Real-Estate-Reports/deed-transfers/{slug}/"
@@ -146,13 +140,9 @@ async def _propertyshark_deeds(
         html = await fetch_html(url, render=False)
         soup = BeautifulSoup(html, "lxml")
         text = soup.get_text("\n", strip=True)[:8000]
-        return await _ai_extract_deeds(
-            text, state=state, city=city, source=f"propertyshark_{slug}"
-        )
+        return await _ai_extract_deeds(text, state=state, city=city, source=f"propertyshark_{slug}")
     except Exception as e:
-        log.debug(
-            "PropertyShark fallback failed for %s, %s: %s", city, state, str(e)[:120]
-        )
+        log.debug("PropertyShark fallback failed for %s, %s: %s", city, state, str(e)[:120])
         return []
 
 
@@ -179,9 +169,7 @@ async def fetch_recent_deeds(
     county_key = county.lower().strip() if county else city_key
 
     # 1. Registry lookup
-    source_url = DEED_REGISTRY.get((state, county_key)) or DEED_REGISTRY.get(
-        (state, city_key)
-    )
+    source_url = DEED_REGISTRY.get((state, county_key)) or DEED_REGISTRY.get((state, city_key))
     if source_url:
         results = await _fetch_deeds_from_url(
             source_url,
@@ -192,9 +180,7 @@ async def fetch_recent_deeds(
             max_results=max_results,
         )
         if results:
-            log.info(
-                "Registry deeds (%s/%s): %d records", state, county_key, len(results)
-            )
+            log.info("Registry deeds (%s/%s): %d records", state, county_key, len(results))
             return results
 
     # 2. AI discovery
@@ -221,9 +207,7 @@ async def fetch_recent_deeds(
     if city:
         results = await _propertyshark_deeds(city, state, max_results)
         if results:
-            log.info(
-                "PropertyShark deeds (%s, %s): %d records", city, state, len(results)
-            )
+            log.info("PropertyShark deeds (%s, %s): %d records", city, state, len(results))
             return results
 
     log.warning("No deed handler for %s/%s — returning empty", state, county_key)

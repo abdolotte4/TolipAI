@@ -2298,9 +2298,7 @@ def list_categories() -> List[Dict[str, str]]:
     return [{"key": k, **v} for k, v in CATEGORY_META.items()]
 
 
-def list_sources(
-    category: Optional[str] = None, state: Optional[str] = None
-) -> List[Dict[str, Any]]:
+def list_sources(category: Optional[str] = None, state: Optional[str] = None) -> List[Dict[str, Any]]:
     out = SOURCES
     if category:
         out = [s for s in out if s["category"] == category]
@@ -2346,11 +2344,7 @@ async def sources_for_request_ai(
         from ..llm import suggest_distressed_sources
 
         for c in categories or list(CATEGORY_META.keys()):
-            out.extend(
-                await suggest_distressed_sources(
-                    state=requested_state, category=c, county=county, city=city
-                )
-            )
+            out.extend(await suggest_distressed_sources(state=requested_state, category=c, county=county, city=city))
     return out
 
 

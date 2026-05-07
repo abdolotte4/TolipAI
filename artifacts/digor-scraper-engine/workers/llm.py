@@ -225,26 +225,20 @@ async def _chat_inner(
                     }
                 )
                 resp = client.invoke_model(
-                    modelId=_os.getenv(
-                        "BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"
-                    ),
+                    modelId=_os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"),
                     body=body,
                     contentType="application/json",
                     accept="application/json",
                 )
                 out = _json.loads(resp["body"].read())
-                return " ".join(
-                    c["text"] for c in out.get("content", []) if "text" in c
-                )
+                return " ".join(c["text"] for c in out.get("content", []) if "text" in c)
 
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, _bedrock_sync)
             log.info("LLM: Bedrock response received (%d chars)", len(result))
             return result
         except Exception as bedrock_exc:
-            log.warning(
-                "Bedrock call failed — falling back to provider chain: %s", bedrock_exc
-            )
+            log.warning("Bedrock call failed — falling back to provider chain: %s", bedrock_exc)
 
     # Ensure Groq's json_object requirement is satisfied before any provider call
     if json_mode:
@@ -252,9 +246,9 @@ async def _chat_inner(
 
     # Provider order: Kimi K2.6 first (best model, 1M context), Groq free fallback.
     providers = [
-        ("moonshot", _moonshot, settings.moonshot_model),    # Kimi K2.6 direct API
+        ("moonshot", _moonshot, settings.moonshot_model),  # Kimi K2.6 direct API
         ("openrouter", _openrouter, settings.openrouter_model),  # Kimi K2.6 via OpenRouter
-        ("groq", _groq, settings.groq_model),                # Free, fast fallback
+        ("groq", _groq, settings.groq_model),  # Free, fast fallback
         ("cerebras", _cerebras, settings.cerebras_model),
         ("together", _together, settings.together_model),
         ("nvidia", _nvidia, settings.nvidia_model),
@@ -272,9 +266,7 @@ async def _chat_inner(
         if hits >= _MAX_RATE_HITS:
             if time.time() < cooldown_until:
                 remaining = int(cooldown_until - time.time())
-                log.debug(
-                    "LLM provider %s in cooldown for %ds more", provider, remaining
-                )
+                log.debug("LLM provider %s in cooldown for %ds more", provider, remaining)
                 continue
             else:
                 # Cooldown expired — give this provider another chance
@@ -315,9 +307,7 @@ async def _chat_inner(
                     new_hits = hits + 1
                     _rate_hits[provider] = new_hits
                     if new_hits >= _MAX_RATE_HITS:
-                        _rate_cooldown_until[provider] = (
-                            time.time() + _RATE_COOLDOWN_SEC
-                        )
+                        _rate_cooldown_until[provider] = time.time() + _RATE_COOLDOWN_SEC
                         log.warning(
                             "LLM provider %s: %d consecutive 429s — cooling down for %ds",
                             provider,
@@ -396,9 +386,7 @@ async def extract_investor_profile(text: str, *, source: str = "") -> Dict[str, 
     return data
 
 
-async def score_buyer_match(
-    buyer: Dict[str, Any], lead: Dict[str, Any]
-) -> Dict[str, Any]:
+async def score_buyer_match(buyer: Dict[str, Any], lead: Dict[str, Any]) -> Dict[str, Any]:
     """Return {match_score: 0-100, match_reasons: [str]} for a buyer vs a lead."""
     sys = (
         "You score how well a real-estate cash buyer matches a wholesaler's lead. "

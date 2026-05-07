@@ -30,9 +30,7 @@ async def test_propelio():
         print(f"  Searching: {address}")
         prop = await search_property(address)
         elapsed = round(time.time() - t0, 1)
-        print(
-            f"  Login + search OK ({elapsed}s) — property_id={prop.get('property_id')}"
-        )
+        print(f"  Login + search OK ({elapsed}s) — property_id={prop.get('property_id')}")
         print(f"  URL: {prop.get('url')}")
 
         pid = prop.get("property_id")
@@ -83,9 +81,7 @@ async def test_propwire():
             f"est_value=${det.get('estimated_value')}"
         )
         own = result.get("owner") or {}
-        print(
-            f"  Owner: {own.get('name')} | LLC={own.get('is_llc')} | OO={own.get('owner_occupied')}"
-        )
+        print(f"  Owner: {own.get('name')} | LLC={own.get('is_llc')} | OO={own.get('owner_occupied')}")
 
         prop_url = result.get("url")
         if prop_url and "/realestate/" in prop_url:

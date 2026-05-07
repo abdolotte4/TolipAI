@@ -66,11 +66,7 @@ async def fetch_recently_sold(
         return []
 
     cat = (data.get("cat1") or {}) or (
-        data.get("props", {})
-        .get("pageProps", {})
-        .get("searchPageState", {})
-        .get("cat1")
-        or {}
+        data.get("props", {}).get("pageProps", {}).get("searchPageState", {}).get("cat1") or {}
     )
     results = (cat.get("searchResults") or {}).get("listResults") or []
 
@@ -99,9 +95,7 @@ async def fetch_recently_sold(
                 "price_reduction": price_reduction,
                 "home_status": info.get("homeStatus"),
                 "sold_date": info.get("dateSold"),
-                "zillow_url": f"https://www.zillow.com{p['detailUrl']}"
-                if p.get("detailUrl")
-                else None,
+                "zillow_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
                 "latitude": info.get("latitude"),
                 "longitude": info.get("longitude"),
                 "raw": {"zpid": info.get("zpid")},
@@ -132,11 +126,7 @@ async def fetch_active_listings(
     if not data:
         return []
     cat = (data.get("cat1") or {}) or (
-        data.get("props", {})
-        .get("pageProps", {})
-        .get("searchPageState", {})
-        .get("cat1")
-        or {}
+        data.get("props", {}).get("pageProps", {}).get("searchPageState", {}).get("cat1") or {}
     )
     results = (cat.get("searchResults") or {}).get("listResults") or []
     out: List[Dict[str, Any]] = []
@@ -163,9 +153,7 @@ async def fetch_active_listings(
                 "price_reduction": price_reduction,
                 "home_status": info.get("homeStatus"),
                 "estimated_value": info.get("zestimate"),
-                "zillow_url": f"https://www.zillow.com{p['detailUrl']}"
-                if p.get("detailUrl")
-                else None,
+                "zillow_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
                 "latitude": info.get("latitude"),
                 "longitude": info.get("longitude"),
                 "source": "zillow_active",
@@ -245,9 +233,7 @@ async def fetch_fsbo(
                 "price_reduction": price_reduction,
                 "home_status": info.get("homeStatus"),
                 "source": "zillow_fsbo",
-                "source_url": f"https://www.zillow.com{p['detailUrl']}"
-                if p.get("detailUrl")
-                else None,
+                "source_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
                 "latitude": info.get("latitude"),
                 "longitude": info.get("longitude"),
                 "raw_data": {"zpid": info.get("zpid")},

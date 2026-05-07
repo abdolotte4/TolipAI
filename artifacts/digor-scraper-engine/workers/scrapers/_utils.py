@@ -48,20 +48,14 @@ def _parse_buyer_card(text: str) -> Dict[str, Any]:
 
     m = re.search(r"Total\s+Deal[\s\S]*?\$([\d.]+)([MK])?", text, re.IGNORECASE)
     if m:
-        n = float(m.group(1)) * (
-            1_000_000 if m.group(2) == "M" else (1_000 if m.group(2) == "K" else 1)
-        )
+        n = float(m.group(1)) * (1_000_000 if m.group(2) == "M" else (1_000 if m.group(2) == "K" else 1))
         out["total_deal"] = n
 
-    m = re.search(
-        r"Last\s+Deal[\s\S]*?(\d{2}[./]\d{2}[./]\d{2,4})", text, re.IGNORECASE
-    )
+    m = re.search(r"Last\s+Deal[\s\S]*?(\d{2}[./]\d{2}[./]\d{2,4})", text, re.IGNORECASE)
     if m:
         out["last_deal"] = m.group(1)
 
-    m = re.search(
-        r"Price\s+Range[\s\S]*?\$([\d,]+)\s*-\s*\$([\d,]+)", text, re.IGNORECASE
-    )
+    m = re.search(r"Price\s+Range[\s\S]*?\$([\d,]+)\s*-\s*\$([\d,]+)", text, re.IGNORECASE)
     if m:
         out["price_min"] = _safe_num(m.group(1))
         out["price_max"] = _safe_num(m.group(2))

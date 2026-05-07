@@ -25,9 +25,7 @@ log = logging.getLogger("propelio")
 PROPELIO_COMP_URL = "https://propelio.com/app/comps?address={addr}&radius={radius}"
 
 
-async def fetch_comps(
-    address: str, *, radius_miles: float = 0.5, max_results: int = 12
-) -> List[Dict[str, Any]]:
+async def fetch_comps(address: str, *, radius_miles: float = 0.5, max_results: int = 12) -> List[Dict[str, Any]]:
     """Return up to `max_results` MLS-style comps near `address`."""
     if not address:
         return []
@@ -61,11 +59,7 @@ async def fetch_comps(
     )
     try:
         data = json.loads(raw)
-        comps = [
-            c
-            for c in (data.get("comps") or [])
-            if isinstance(c, dict) and c.get("address")
-        ]
+        comps = [c for c in (data.get("comps") or []) if isinstance(c, dict) and c.get("address")]
         return comps[:max_results]
     except Exception:  # noqa: BLE001
         log.warning("Propelio LLM parse returned non-JSON")

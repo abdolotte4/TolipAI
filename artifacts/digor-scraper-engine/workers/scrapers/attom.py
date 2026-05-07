@@ -111,9 +111,7 @@ async def recent_sales(
 async def owner_for_property(address: str, zip_code: str) -> Optional[Dict[str, Any]]:
     """Get the owner / mailing address for a property — used to flag investors."""
     try:
-        data = await _get(
-            "/property/expandedprofile", {"address1": address, "address2": zip_code}
-        )
+        data = await _get("/property/expandedprofile", {"address1": address, "address2": zip_code})
     except AttomExhausted:
         return None
     if not data:
@@ -128,7 +126,6 @@ async def owner_for_property(address: str, zip_code: str) -> Optional[Dict[str, 
     return {
         "owner_name": owner.get("owner1") or owner.get("owner1full"),
         "mailing_addr": mailing,
-        "is_investor": bool(mailing)
-        and mailing.strip().lower() != addr.strip().lower(),
+        "is_investor": bool(mailing) and mailing.strip().lower() != addr.strip().lower(),
         "source": "attom",
     }

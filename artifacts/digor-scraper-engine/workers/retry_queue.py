@@ -210,9 +210,7 @@ class RetryQueue:
             )
             try:
                 result = await runner(entry.job_id, entry.params)
-                log.info(
-                    "Retry succeeded for job %s → %s", entry.job_id, str(result)[:60]
-                )
+                log.info("Retry succeeded for job %s → %s", entry.job_id, str(result)[:60])
                 if on_success:
                     await on_success(entry.job_id, result)
             except Exception as exc:

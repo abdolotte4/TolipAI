@@ -39,9 +39,7 @@ async def init(redis_url: Optional[str] = None) -> None:
         client = aioredis.from_url(url, decode_responses=True, socket_timeout=3)
         await client.ping()
         _redis = client
-        log.info(
-            "Redis job store connected (%s)", url.split("@")[-1] if "@" in url else url
-        )
+        log.info("Redis job store connected (%s)", url.split("@")[-1] if "@" in url else url)
     except Exception as exc:
         log.warning("Redis unavailable (%s) — falling back to in-memory", exc)
         _redis = None
@@ -68,9 +66,7 @@ async def set_job(job_id: str, data: Dict[str, Any]) -> None:
     _memory[job_id] = data
     if _redis is not None:
         try:
-            await _redis.setex(
-                _key(job_id), _TTL_SECONDS, json.dumps(data, default=str)
-            )
+            await _redis.setex(_key(job_id), _TTL_SECONDS, json.dumps(data, default=str))
         except Exception as exc:
             log.debug("Redis set_job %s: %s", job_id, exc)
 

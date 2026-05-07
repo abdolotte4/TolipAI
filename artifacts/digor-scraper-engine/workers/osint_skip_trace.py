@@ -79,17 +79,13 @@ def _extract_contacts(html: str, source: str) -> Dict[str, Any]:
         cleaned = _clean_phone(m.group())
         if cleaned not in seen_phones and len(re.sub(r"\D", "", cleaned)) >= 10:
             seen_phones.add(cleaned)
-            phones.append(
-                {"number": cleaned, "source": source, "dnc_status": "unknown"}
-            )
+            phones.append({"number": cleaned, "source": source, "dnc_status": "unknown"})
 
     emails = []
     seen_emails: set[str] = set()
     for m in _EMAIL_RE.finditer(text):
         e = m.group().lower()
-        if e not in seen_emails and not e.endswith(
-            (".png", ".jpg", ".gif", ".css", ".js")
-        ):
+        if e not in seen_emails and not e.endswith((".png", ".jpg", ".gif", ".css", ".js")):
             seen_emails.add(e)
             emails.append({"email": e, "source": source})
 
@@ -130,9 +126,7 @@ def _extract_contacts(html: str, source: str) -> Dict[str, Any]:
     }
 
 
-async def _scrape_one_site(
-    site: Dict[str, Any], street: str, city: str, state: str
-) -> Dict[str, Any]:
+async def _scrape_one_site(site: Dict[str, Any], street: str, city: str, state: str) -> Dict[str, Any]:
     """Fetch one public-records site and extract contacts."""
     url = (
         site["url"]
@@ -253,17 +247,12 @@ async def trace_by_address(
         phones = await _twilio_dnc_check(phones)
 
     mobile_count = sum(
-        1
-        for p in phones
-        if p.get("line_type") in ("mobile", None, "unknown")
-        and p.get("dnc_status") != "flagged"
+        1 for p in phones if p.get("line_type") in ("mobile", None, "unknown") and p.get("dnc_status") != "flagged"
     )
     email_count = len(merged["emails"])
 
     # Prefer owner_name from listing; fall back to first resident name found
-    resolved_owner = owner_name or (
-        merged["resident_names"][0] if merged["resident_names"] else None
-    )
+    resolved_owner = owner_name or (merged["resident_names"][0] if merged["resident_names"] else None)
 
     return {
         "street": street,
@@ -287,19 +276,9 @@ def format_markdown_table(leads: List[Dict[str, Any]]) -> str:
     for i, lead in enumerate(leads, 1):
         addr = lead.get("address") or f"{lead.get('street','')}, {lead.get('city','')}"
         owner = lead.get("owner_name") or "—"
-        equity = (
-            f"${lead.get('estimated_equity', 0):,.0f}"
-            if lead.get("estimated_equity")
-            else "—"
-        )
+        equity = f"${lead.get('estimated_equity', 0):,.0f}" if lead.get("estimated_equity") else "—"
         phones = "; ".join(p["number"] for p in lead.get("phones", [])[:2]) or "—"
         emails = "; ".join(e["email"] for e in lead.get("emails", [])[:2]) or "—"
-        dnc_flag = (
-            "⚠️ Yes"
-            if any(p.get("dnc_status") == "flagged" for p in lead.get("phones", []))
-            else "No"
-        )
-        lines.append(
-            f"| {i} | {addr} | {owner} | {equity} | {phones} | {emails} | {dnc_flag} |"
-        )
+        dnc_flag = "⚠️ Yes" if any(p.get("dnc_status") == "flagged" for p in lead.get("phones", [])) else "No"
+        lines.append(f"| {i} | {addr} | {owner} | {equity} | {phones} | {emails} | {dnc_flag} |")
     return "\n".join(lines)

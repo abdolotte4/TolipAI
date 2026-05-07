@@ -56,11 +56,7 @@ def _patch_ld_library_path() -> None:
         return
     for soname, pattern in needed.items():
         for entry in entries:
-            if (
-                re.search(pattern, entry)
-                and not entry.endswith(".drv")
-                and not any(s in entry for s in skip)
-            ):
+            if re.search(pattern, entry) and not entry.endswith(".drv") and not any(s in entry for s in skip):
                 lib_dir = f"{nix}/{entry}/lib"
                 if os.path.isdir(lib_dir) and os.path.exists(f"{lib_dir}/{soname}"):
                     dirs.add(lib_dir)
@@ -190,12 +186,8 @@ app = FastAPI(
 
 
 class CashBuyerRequest(BaseModel):
-    lead_id: Optional[int] = Field(
-        None, description="ID of crm_leads row (omit for ad-hoc / test calls)"
-    )
-    address: Optional[str] = Field(
-        None, description="Full address (used when lead_id is absent)"
-    )
+    lead_id: Optional[int] = Field(None, description="ID of crm_leads row (omit for ad-hoc / test calls)")
+    address: Optional[str] = Field(None, description="Full address (used when lead_id is absent)")
     max_buyers: int = 50
     campaign_id: Optional[int] = None
 
@@ -425,9 +417,7 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
         return {"count": len(listings)}
 
 
-async def _run_propelio_cash_buyers(
-    job_id: str, params: Dict[str, Any]
-) -> Dict[str, Any]:
+async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
     try:
         _jobs.setdefault(
             job_id,
@@ -477,9 +467,7 @@ async def _run_propelio_cash_buyers(
         return {"count": 0}
 
 
-async def _run_propwire_cash_buyers(
-    job_id: str, params: Dict[str, Any]
-) -> Dict[str, Any]:
+async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
     try:
         _jobs.setdefault(
             job_id,
@@ -637,9 +625,7 @@ async def health() -> Dict[str, Any]:
             resp = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=model,
-                    messages=[
-                        {"role": "user", "content": "reply with the single word OK"}
-                    ],
+                    messages=[{"role": "user", "content": "reply with the single word OK"}],
                     max_tokens=5,
                     temperature=0,
                 ),
@@ -694,9 +680,7 @@ async def health() -> Dict[str, Any]:
     llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon)
     llm_ok = any(r["status"] == "ok" for r in llm_results)
     db_ok = db_result.get("status") == "ok"
-    overall = (
-        "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
-    )
+    overall = "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
 
     return {
         "status": overall,
@@ -800,8 +784,7 @@ async def debug_proxy() -> Dict[str, Any]:
         "proxy_port": settings.brightdata_port,
         "username_full": settings.brightdata_username or "(not set)",
         "username_has_zone": "-zone-" in (settings.brightdata_username or ""),
-        "zone_env_var": settings.brightdata_zone
-        or "(not set — must be embedded in username)",
+        "zone_env_var": settings.brightdata_zone or "(not set — must be embedded in username)",
         "test": None,
     }
 
@@ -1004,9 +987,7 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"Lead {req.lead_id} not found")
     else:
         if not req.address:
-            raise HTTPException(
-                status_code=422, detail="Provide either lead_id or address"
-            )
+            raise HTTPException(status_code=422, detail="Provide either lead_id or address")
         lead = {
             "id": None,
             "address": req.address,
@@ -1066,9 +1047,7 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
 
         except Exception as e:  # noqa: BLE001
             err = str(e)
-            if is_transient(e) and retry_queue.enqueue(
-                job_id, "cash_buyers", req.model_dump(), last_error=err
-            ):
+            if is_transient(e) and retry_queue.enqueue(job_id, "cash_buyers", req.model_dump(), last_error=err):
                 log.warning(
                     "cash_buyers job %s failed (transient) — queued for retry: %s",
                     job_id,
@@ -1112,9 +1091,7 @@ async def scrape_propelio_cash_buyers(req: PropelioCashBuyersRequest) -> Dict[st
         lead_id=req.lead_id,
         campaign_id=req.campaign_id,
     )
-    safe_create_task(
-        _run_propelio_cash_buyers(job_id, req.model_dump()), name="propelio_cash_buyers"
-    )
+    safe_create_task(_run_propelio_cash_buyers(job_id, req.model_dump()), name="propelio_cash_buyers")
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
 
 
@@ -1176,9 +1153,7 @@ async def scrape_propwire_cash_buyers_nearby(
         lead_id=req.lead_id,
         campaign_id=req.campaign_id,
     )
-    safe_create_task(
-        _run_propwire_cash_buyers(job_id, req.model_dump()), name="propwire_cash_buyers"
-    )
+    safe_create_task(_run_propwire_cash_buyers(job_id, req.model_dump()), name="propwire_cash_buyers")
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
 
 
@@ -1251,29 +1226,19 @@ async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
                     soup = BeautifulSoup(html, "lxml")
                     # Google Maps result cards — stable enough class fragments
                     for item in soup.select("[class*='Nv2PK']")[:25]:
-                        name_el = item.select_one(
-                            "[class*='fontHeadlineSmall'], [class*='qBF1Pd']"
-                        )
+                        name_el = item.select_one("[class*='fontHeadlineSmall'], [class*='qBF1Pd']")
                         addr_el = item.select_one("[class*='W4Efsd']:last-child")
                         rating_el = item.select_one("[class*='MW4etd']")
-                        cat_el = item.select_one(
-                            "[class*='W4Efsd']:first-child [class*='uEubGf']"
-                        )
+                        cat_el = item.select_one("[class*='W4Efsd']:first-child [class*='uEubGf']")
                         if name_el:
                             results.append(
                                 {
                                     "name": name_el.get_text(strip=True),
-                                    "category": cat_el.get_text(strip=True)
-                                    if cat_el
-                                    else "",
-                                    "address": addr_el.get_text(strip=True)[:120]
-                                    if addr_el
-                                    else "",
+                                    "category": cat_el.get_text(strip=True) if cat_el else "",
+                                    "address": addr_el.get_text(strip=True)[:120] if addr_el else "",
                                     "phone": "",
                                     "website": "",
-                                    "rating": rating_el.get_text(strip=True)
-                                    if rating_el
-                                    else "",
+                                    "rating": rating_el.get_text(strip=True) if rating_el else "",
                                     "reviews": "",
                                     "keyword": keyword,
                                     "location": location,
@@ -1306,9 +1271,7 @@ async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
                             break
                         query = f"{keyword} near {location}"
                         try:
-                            r = await client.get(
-                                base, params={"query": query, "key": gkey}
-                            )
+                            r = await client.get(base, params={"query": query, "key": gkey})
                             data = r.json()
                             for place in data.get("results") or []:
                                 if len(results) >= limit:
@@ -1316,9 +1279,7 @@ async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
                                 results.append(
                                     {
                                         "name": place.get("name", ""),
-                                        "category": ", ".join(
-                                            (place.get("types") or [])[:3]
-                                        ),
+                                        "category": ", ".join((place.get("types") or [])[:3]),
                                         "address": place.get("formatted_address", ""),
                                         "phone": "",
                                         "website": "",
@@ -1469,9 +1430,7 @@ async def nar_directory_scrape(req: NARDirectoryRequest) -> Dict[str, Any]:
 
     results: List[Dict[str, Any]] = []
 
-    async with _httpx.AsyncClient(
-        timeout=25, headers=headers, follow_redirects=True
-    ) as client:
+    async with _httpx.AsyncClient(timeout=25, headers=headers, follow_redirects=True) as client:
         for method, url, params in api_patterns:
             try:
                 r = await client.request(method, url, params=params)
@@ -1481,36 +1440,23 @@ async def nar_directory_scrape(req: NARDirectoryRequest) -> Dict[str, Any]:
                 data = r.json()
                 # Various key names seen across NAR API versions
                 members: List[Any] = (
-                    data.get("members")
-                    or data.get("results")
-                    or data.get("data")
-                    or data.get("items")
-                    or []
+                    data.get("members") or data.get("results") or data.get("data") or data.get("items") or []
                 )
                 if not members:
                     continue
                 for m in members[:limit]:
                     first = m.get("firstName", "")
                     last = m.get("lastName", "")
-                    full = (
-                        m.get("fullName")
-                        or m.get("name")
-                        or (f"{first} {last}".strip() if first or last else "")
-                    )
+                    full = m.get("fullName") or m.get("name") or (f"{first} {last}".strip() if first or last else "")
                     results.append(
                         {
                             "name": full,
                             "state": state,
                             "city": m.get("city") or m.get("officeCity") or city,
-                            "phone": m.get("phoneNumber")
-                            or m.get("phone")
-                            or m.get("cellPhone")
-                            or "",
+                            "phone": m.get("phoneNumber") or m.get("phone") or m.get("cellPhone") or "",
                             "email": m.get("email") or m.get("emailAddress") or "",
                             "office": m.get("officeName") or m.get("brokerage") or "",
-                            "memberType": m.get("memberType")
-                            or m.get("designations")
-                            or "REALTOR®",
+                            "memberType": m.get("memberType") or m.get("designations") or "REALTOR®",
                             "nrdsId": m.get("nrdsId") or m.get("memberId") or "",
                             "profileUrl": (
                                 f"https://directories.apps.realtor/memberProfile?nrdsId={m['nrdsId']}"
@@ -1591,21 +1537,16 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
 
             # Extract __NEXT_DATA__ JSON (Zillow is Next.js)
             next_data_raw = await page.evaluate(
-                "() => { const el = document.getElementById('__NEXT_DATA__'); "
-                "return el ? el.textContent : null; }"
+                "() => { const el = document.getElementById('__NEXT_DATA__'); " "return el ? el.textContent : null; }"
             )
             if not next_data_raw:
                 # Fall back: try window.__PRELOADED_STATE__
-                next_data_raw = await page.evaluate(
-                    "() => JSON.stringify(window.__PRELOADED_STATE__ || null)"
-                )
+                next_data_raw = await page.evaluate("() => JSON.stringify(window.__PRELOADED_STATE__ || null)")
             await page.close()
 
     except Exception as e:
         log.warning("Zillow Playwright failed: %s", str(e)[:200])
-        raise HTTPException(
-            status_code=503, detail=f"Zillow Playwright scrape failed: {str(e)[:200]}"
-        )
+        raise HTTPException(status_code=503, detail=f"Zillow Playwright scrape failed: {str(e)[:200]}")
 
     if not next_data_raw:
         raise HTTPException(
@@ -1614,15 +1555,9 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
         )
 
     try:
-        next_data = (
-            _json.loads(next_data_raw)
-            if isinstance(next_data_raw, str)
-            else next_data_raw
-        )
+        next_data = _json.loads(next_data_raw) if isinstance(next_data_raw, str) else next_data_raw
     except _json.JSONDecodeError:
-        raise HTTPException(
-            status_code=503, detail="Zillow __NEXT_DATA__ could not be parsed as JSON"
-        )
+        raise HTTPException(status_code=503, detail="Zillow __NEXT_DATA__ could not be parsed as JSON")
 
     page_props = next_data.get("props", {}).get("pageProps", {})
 
@@ -1647,11 +1582,7 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
 
                 def _stat(label: str) -> str:
                     return next(
-                        (
-                            x.get("formattedData", "")
-                            for x in pd
-                            if label in (x.get("label") or "").lower()
-                        ),
+                        (x.get("formattedData", "") for x in pd if label in (x.get("label") or "").lower()),
                         "",
                     )
 
@@ -1670,26 +1601,15 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
             else:
                 results.append(
                     {
-                        "name": c.get("fullName")
-                        or c.get("displayName")
-                        or c.get("name", ""),
-                        "brokerage": c.get("businessName")
-                        or c.get("brokerageName", ""),
+                        "name": c.get("fullName") or c.get("displayName") or c.get("name", ""),
+                        "brokerage": c.get("businessName") or c.get("brokerageName", ""),
                         "phone": c.get("phone") or c.get("phoneNumber", ""),
                         "city": c.get("location", {}).get("city", city),
                         "state": c.get("location", {}).get("stateCode", state),
-                        "rating": str(
-                            c.get("rating")
-                            or c.get("reviewStats", {}).get("averageRating", "")
-                        ),
-                        "reviews": str(
-                            c.get("reviewCount")
-                            or c.get("reviewStats", {}).get("totalReviewCount", "")
-                        ),
+                        "rating": str(c.get("rating") or c.get("reviewStats", {}).get("averageRating", "")),
+                        "reviews": str(c.get("reviewCount") or c.get("reviewStats", {}).get("totalReviewCount", "")),
                         "activeListings": str(c.get("activeListingCount", "")),
-                        "profileUrl": ("https://www.zillow.com" + c["profileUrl"])
-                        if c.get("profileUrl")
-                        else "",
+                        "profileUrl": ("https://www.zillow.com" + c["profileUrl"]) if c.get("profileUrl") else "",
                         "source": "Zillow Agents (Python Engine)",
                     }
                 )
@@ -1697,10 +1617,7 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
     elif mode in ("listings", "fsbo"):
         # __NEXT_DATA__ listing results
         search_results = (
-            page_props.get("searchPageState", {})
-            .get("cat1", {})
-            .get("searchResults", {})
-            .get("listResults", [])
+            page_props.get("searchPageState", {}).get("cat1", {}).get("searchResults", {}).get("listResults", [])
         ) or page_props.get("searchResults", {}).get("listResults", [])
 
         for prop in search_results[:limit]:
@@ -1740,18 +1657,14 @@ async def bulk_scrape(req: BulkRequest) -> Dict[str, Any]:
         inner = GoogleSearchRequest(
             keywords=req.keywords,
             locations=req.locations,
-            maxResults=min(
-                req.maxPerCombo * len(req.keywords) * len(req.locations), 500
-            ),
+            maxResults=min(req.maxPerCombo * len(req.keywords) * len(req.locations), 500),
         )
         return await google_search_scrape(inner)
     else:
         inner_maps = GoogleMapsRequest(
             keywords=req.keywords,
             locations=req.locations,
-            maxResults=min(
-                req.maxPerCombo * len(req.keywords) * len(req.locations), 500
-            ),
+            maxResults=min(req.maxPerCombo * len(req.keywords) * len(req.locations), 500),
         )
         return await google_maps_scrape(inner_maps)
 
@@ -1765,9 +1678,7 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Provide zip, county_key, or state")
 
     job_id = _new_job("distressed", req.model_dump())
-    await db.create_job(
-        job_id, "distressed", req.model_dump(), campaign_id=req.campaign_id
-    )
+    await db.create_job(job_id, "distressed", req.model_dump(), campaign_id=req.campaign_id)
 
     async def runner() -> None:
         try:
@@ -1798,15 +1709,11 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
         except asyncio.TimeoutError:
             log.error("Distressed job %s timed out after 900s", job_id)
             _set_status(job_id, "failed", error="timeout_exceeded")
-            await db.update_job(
-                job_id, status="failed", error="timeout_exceeded", completed=True
-            )
+            await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
             METRICS["distressed_timeout"] += 1
         except Exception as e:
             err = str(e)
-            if is_transient(e) and retry_queue.enqueue(
-                job_id, "distressed", req.model_dump(), last_error=err
-            ):
+            if is_transient(e) and retry_queue.enqueue(job_id, "distressed", req.model_dump(), last_error=err):
                 log.warning(
                     "Distressed job %s transient failure — queued for retry: %s",
                     job_id,
@@ -1896,9 +1803,7 @@ async def manual_retry(job_id: str) -> Dict[str, Any]:
             detail=f"Manual retry not supported for job_type={job_type}",
         )
 
-    retry_queue.enqueue(
-        job_id, job_type, params, attempt=0, last_error="manual_retry_requested"
-    )
+    retry_queue.enqueue(job_id, job_type, params, attempt=0, last_error="manual_retry_requested")
     _set_status(job_id, "retry_pending")
     await db.update_job(job_id, status="retry_pending", error="manual_retry_requested")
 
@@ -1931,19 +1836,11 @@ class ForeclosureLeadGenRequest(BaseModel):
     city: str = Field(..., description="Target city, e.g. 'Orlando'")
     state: str = Field(..., description="Two-letter state code, e.g. 'FL'")
     listing_type: str = Field("for_sale", description="'for_sale' | 'sold' | 'pending'")
-    site: str = Field(
-        "zillow", description="'zillow' | 'realtor.com' | 'redfin' | 'all'"
-    )
+    site: str = Field("zillow", description="'zillow' | 'realtor.com' | 'redfin' | 'all'")
     limit: int = Field(5, ge=1, le=20)
-    do_skip_trace: bool = Field(
-        True, description="Run free OSINT skip trace per property"
-    )
-    do_dnc_check: bool = Field(
-        True, description="Run Twilio Lookup for DNC/carrier flags"
-    )
-    save_to_crm: bool = Field(
-        False, description="Persist results to cash_buyer_matches table"
-    )
+    do_skip_trace: bool = Field(True, description="Run free OSINT skip trace per property")
+    do_dnc_check: bool = Field(True, description="Run Twilio Lookup for DNC/carrier flags")
+    save_to_crm: bool = Field(False, description="Persist results to cash_buyer_matches table")
     campaign_id: Optional[int] = None
 
 
@@ -1964,16 +1861,12 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
         await cb(5, f"Scraping {listing_type} listings in {city}, {state}…")
         if site == "all":
             listings = await asyncio.wait_for(
-                homeharvest_scraper.scrape_multi_site(
-                    city, state, listing_type=listing_type, limit_per_site=limit
-                ),
+                homeharvest_scraper.scrape_multi_site(city, state, listing_type=listing_type, limit_per_site=limit),
                 timeout=900,
             )
         else:
             listings = await asyncio.wait_for(
-                homeharvest_scraper.scrape_foreclosures(
-                    city, state, listing_type=listing_type, site=site, limit=limit
-                ),
+                homeharvest_scraper.scrape_foreclosures(city, state, listing_type=listing_type, site=site, limit=limit),
                 timeout=900,
             )
 
@@ -1984,9 +1877,7 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                 "markdown_table": "_No listings found._",
             }
             _set_status(job_id, "done", progress=100, result=summary)
-            await db.update_job(
-                job_id, status="done", progress=100, result_count=0, completed=True
-            )
+            await db.update_job(job_id, status="done", progress=100, result_count=0, completed=True)
             METRICS["foreclosure_success"] += 1
             return
 
@@ -2068,18 +1959,8 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                             r.get("state", state),
                             r.get("zip"),
                             r.get("address"),
-                            _json.dumps(
-                                [
-                                    p["number"] if isinstance(p, dict) else str(p)
-                                    for p in phones
-                                ]
-                            ),
-                            _json.dumps(
-                                [
-                                    e["email"] if isinstance(e, dict) else str(e)
-                                    for e in emails
-                                ]
-                            ),
+                            _json.dumps([p["number"] if isinstance(p, dict) else str(p) for p in phones]),
+                            _json.dumps([e["email"] if isinstance(e, dict) else str(e) for e in emails]),
                             _json.dumps(r.get("resident_names") or []),
                             f"Pre-foreclosure listing in {city}, {state} via HomeHarvest",
                             "homeharvest",
@@ -2122,9 +2003,7 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
     except asyncio.TimeoutError:
         log.error("Foreclosure job %s timed out after 900s", job_id)
         _set_status(job_id, "failed", error="timeout_exceeded")
-        await db.update_job(
-            job_id, status="failed", error="timeout_exceeded", completed=True
-        )
+        await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
         METRICS["foreclosure_timeout"] += 1
     except Exception as e:
         log.exception("Foreclosure lead-gen job %s failed: %s", job_id, e)
@@ -2190,9 +2069,7 @@ async def debug_playwright() -> Dict[str, Any]:
                 ],
             )
             page = await browser.new_page()
-            await page.goto(
-                "https://example.com", wait_until="domcontentloaded", timeout=20000
-            )
+            await page.goto("https://example.com", wait_until="domcontentloaded", timeout=20000)
             title = await page.title()
             await browser.close()
             result.update(
@@ -2269,10 +2146,6 @@ async def debug_env() -> Dict[str, Any]:
 async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
     """Start chained foreclosure lead-gen pipeline. Returns job_id immediately."""
     job_id = _new_job("foreclosure_lead_gen", req.model_dump())
-    await db.create_job(
-        job_id, "foreclosure_lead_gen", req.model_dump(), campaign_id=req.campaign_id
-    )
-    safe_create_task(
-        _run_foreclosure_lead_gen(job_id, req.model_dump()), name="foreclosure_lead_gen"
-    )
+    await db.create_job(job_id, "foreclosure_lead_gen", req.model_dump(), campaign_id=req.campaign_id)
+    safe_create_task(_run_foreclosure_lead_gen(job_id, req.model_dump()), name="foreclosure_lead_gen")
     return {"job_id": job_id, "status": "queued", "city": req.city, "state": req.state}

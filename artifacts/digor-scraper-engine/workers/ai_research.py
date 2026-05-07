@@ -35,9 +35,7 @@ TRUSTEE_DISCOVERY_SYSTEM = (
 )
 
 
-async def discover_trustees(
-    state: str, *, county: str = "", max_results: int = 25
-) -> List[Dict[str, Any]]:
+async def discover_trustees(state: str, *, county: str = "", max_results: int = 25) -> List[Dict[str, Any]]:
     """Ask the LLM to enumerate trustees for foreclosure sales in a market."""
     user = (
         f"Target market: {county + ', ' if county else ''}{state}\n"
@@ -54,11 +52,7 @@ async def discover_trustees(
     )
     try:
         data = json.loads(raw)
-        trustees = [
-            t
-            for t in (data.get("trustees") or [])
-            if isinstance(t, dict) and t.get("name")
-        ]
+        trustees = [t for t in (data.get("trustees") or []) if isinstance(t, dict) and t.get("name")]
         return trustees[:max_results]
     except Exception:
         log.warning("Trustee LLM parse returned non-JSON: %s", raw[:200])

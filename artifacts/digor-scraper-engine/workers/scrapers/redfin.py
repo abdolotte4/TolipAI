@@ -39,9 +39,7 @@ async def _resolve_region(
                             "name": row.get("name"),
                         }
         except Exception as e:
-            log.warning(
-                "Redfin region lookup attempt %d failed: %s", attempt + 1, str(e)[:120]
-            )
+            log.warning("Redfin region lookup attempt %d failed: %s", attempt + 1, str(e)[:120])
     return None
 
 
@@ -103,9 +101,9 @@ async def fetch_recently_sold(
         price_str = r.get("PRICE") or ""
         orig_str = r.get("ORIGINAL LIST PRICE") or ""
         try:
-            price_cut = float(
-                str(price_str).replace("$", "").replace(",", "") or 0
-            ) < float(str(orig_str).replace("$", "").replace(",", "") or 0)
+            price_cut = float(str(price_str).replace("$", "").replace(",", "") or 0) < float(
+                str(orig_str).replace("$", "").replace(",", "") or 0
+            )
         except (TypeError, ValueError):
             price_cut = False
         try:
@@ -130,9 +128,7 @@ async def fetch_recently_sold(
                 "price_reduction": price_cut,
                 "sold_date": r.get("SOLD DATE"),
                 "redfin_url": r.get("URL")
-                or r.get(
-                    "URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)"
-                ),
+                or r.get("URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)"),
                 "latitude": lat,
                 "longitude": lon,
             }

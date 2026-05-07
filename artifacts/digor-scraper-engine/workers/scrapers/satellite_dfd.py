@@ -55,33 +55,13 @@ def _age_score(year_built: Optional[int]) -> int:
     if not year_built:
         return 0
     age = max(0, 2025 - int(year_built))
-    return (
-        20
-        if age >= 80
-        else 15
-        if age >= 50
-        else 10
-        if age >= 30
-        else 5
-        if age >= 15
-        else 0
-    )
+    return 20 if age >= 80 else 15 if age >= 50 else 10 if age >= 30 else 5 if age >= 15 else 0
 
 
 def _days_listed_score(days: Optional[int]) -> int:
     if not days:
         return 0
-    return (
-        20
-        if days >= 180
-        else 15
-        if days >= 90
-        else 10
-        if days >= 45
-        else 5
-        if days >= 21
-        else 0
-    )
+    return 20 if days >= 180 else 15 if days >= 90 else 10 if days >= 45 else 5 if days >= 21 else 0
 
 
 def _price_reduction_score(has_cut: bool) -> int:
@@ -99,15 +79,7 @@ def _vacancy_score(vacant: bool) -> int:
 def _equity_score(equity_pct: Optional[float]) -> int:
     if equity_pct is None:
         return 0
-    return (
-        15
-        if equity_pct >= 50
-        else 10
-        if equity_pct >= 30
-        else 5
-        if equity_pct >= 15
-        else 0
-    )
+    return 15 if equity_pct >= 50 else 10 if equity_pct >= 30 else 5 if equity_pct >= 15 else 0
 
 
 def _tax_delinquent_score(delinquent: bool) -> int:
@@ -135,15 +107,7 @@ def _compute_score(signals: Dict[str, Any]) -> int:
 
 
 def _category(score: int) -> str:
-    return (
-        "severe"
-        if score >= 70
-        else "high"
-        if score >= 50
-        else "medium"
-        if score >= 30
-        else "low"
-    )
+    return "severe" if score >= 70 else "high" if score >= 50 else "medium" if score >= 30 else "low"
 
 
 # ─── Google Maps Static API URLs ──────────────────────────────────────────────
@@ -162,9 +126,7 @@ def _satellite_url(lat: float, lon: float, zoom: int = 20) -> Optional[str]:
     )
 
 
-def _streetview_url(
-    lat: float, lon: float, heading: int = 0, pitch: int = 0
-) -> Optional[str]:
+def _streetview_url(lat: float, lon: float, heading: int = 0, pitch: int = 0) -> Optional[str]:
     key = _google_key()
     if not key:
         return None
@@ -259,14 +221,10 @@ def _yolo_signals(image_path: str) -> Dict[str, bool]:
         results = model(image_path, verbose=False)
         names = results[0].names
         detected = [names[int(cls)] for cls in results[0].boxes.cls]
-        vehicle_count = sum(
-            1 for d in detected if d in ("car", "truck", "motorcycle", "bicycle")
-        )
+        vehicle_count = sum(1 for d in detected if d in ("car", "truck", "motorcycle", "bicycle"))
         out: Dict[str, bool] = {
             "furniture_outside": any(d in ("couch", "bed") for d in detected),
-            "items_piled_outside": any(
-                d in ("suitcase", "backpack", "chair") for d in detected
-            ),
+            "items_piled_outside": any(d in ("suitcase", "backpack", "chair") for d in detected),
             "litter": any(d in ("bottle", "cup") for d in detected),
             "vehicle_clutter": vehicle_count >= _VEHICLE_CLUTTER_MIN,
             "overgrown_vegetation": "potted plant" in detected,
@@ -332,14 +290,8 @@ async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
             data = resp.json()
 
         responses = data.get("responses", [{}])[0]
-        labels = [
-            a.get("description", "").lower()
-            for a in responses.get("labelAnnotations", [])
-        ]
-        objects = [
-            o.get("name", "").lower()
-            for o in responses.get("localizedObjectAnnotations", [])
-        ]
+        labels = [a.get("description", "").lower() for a in responses.get("labelAnnotations", [])]
+        objects = [o.get("name", "").lower() for o in responses.get("localizedObjectAnnotations", [])]
         all_detections = labels + objects
 
         signals: Dict[str, bool] = {}
@@ -358,9 +310,7 @@ async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
         return {}
 
 
-async def _visual_signals(
-    image_path: Optional[str], image_url: Optional[str]
-) -> Dict[str, bool]:
+async def _visual_signals(image_path: Optional[str], image_url: Optional[str]) -> Dict[str, bool]:
     """Merge YOLO (local file) and GCV (remote URL) visual signals."""
     yolo: Dict[str, bool] = {}
     gcv: Dict[str, bool] = {}
@@ -391,10 +341,8 @@ async def _ai_distress_score(
     )
     sig_lines = "\n".join(f"- {k}: {v}" for k, v in signals.items() if v)
     yolo_lines = "\n".join(f"- VISUAL: {k}" for k, v in yolo_signals.items() if v)
-    user_msg = (
-        f"Property: {address}\nBase score: {base_score}\n"
-        f"Signals:\n{sig_lines}"
-        + (f"\nVisual detections (YOLO):\n{yolo_lines}" if yolo_lines else "")
+    user_msg = f"Property: {address}\nBase score: {base_score}\n" f"Signals:\n{sig_lines}" + (
+        f"\nVisual detections (YOLO):\n{yolo_lines}" if yolo_lines else ""
     )
     try:
         raw = await _chat(
@@ -422,9 +370,7 @@ async def _ai_distress_score(
 
 
 # ─── Listing enrichment ───────────────────────────────────────────────────────
-async def _fetch_listings(
-    zip_code: str = "", city: str = "", state: str = ""
-) -> List[Dict[str, Any]]:
+async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -> List[Dict[str, Any]]:
     """Fetch listings via HomeHarvest (primary) with Zillow/Redfin as fallback.
 
     HomeHarvest is preferred because:
@@ -592,9 +538,7 @@ async def scan_area(
             # Use YOLO (requires local file) + GCV (uses satellite URL directly)
             # _visual_signals() gracefully skips whichever source is unavailable
             async with _get_yolo_lock():
-                yolo_sigs = await _visual_signals(
-                    img_path, sat_url if _has_gcv else None
-                )
+                yolo_sigs = await _visual_signals(img_path, sat_url if _has_gcv else None)
 
             # Each confirmed visual signal bumps score by 5 pts (cap at +20)
             visual_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
@@ -603,9 +547,7 @@ async def scan_area(
         # ── AI reasoning ─────────────────────────────────────────────────────
         if use_ai_scoring:
             async with _get_ai_sem():
-                scored = await _ai_distress_score(
-                    p.get("address", ""), signals, base_score, yolo_sigs
-                )
+                scored = await _ai_distress_score(p.get("address", ""), signals, base_score, yolo_sigs)
         else:
             scored = {
                 "score": base_score,
@@ -617,9 +559,7 @@ async def scan_area(
             continue
 
         # ── Normalise value field ─────────────────────────────────────────────
-        estimated_value = (
-            p.get("estimated_value") or p.get("zestimate") or p.get("price")
-        )
+        estimated_value = p.get("estimated_value") or p.get("zestimate") or p.get("price")
 
         candidates.append(
             {

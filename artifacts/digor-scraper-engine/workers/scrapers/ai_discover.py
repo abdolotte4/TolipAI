@@ -9,9 +9,7 @@ from ..http_client import fetch_html
 log = logging.getLogger("ai_discover")
 
 
-async def discover_deed_source(
-    state: str, county: str = "", city: str = ""
-) -> Optional[str]:
+async def discover_deed_source(state: str, county: str = "", city: str = "") -> Optional[str]:
     """
     Use AI + Crawl4AI to discover the official deed/transfer search URL
     for a given state/county/city.
@@ -45,15 +43,11 @@ async def discover_deed_source(
             # quick sanity check: try fetching headers
             try:
                 await fetch_html(url, render=False)
-                log.info(
-                    "Discovered deed source for %s/%s: %s", state, county or city, url
-                )
+                log.info("Discovered deed source for %s/%s: %s", state, county or city, url)
                 return url
             except Exception as e:
                 log.warning("Discovered URL fetch failed: %s", str(e)[:120])
                 return url  # still return, scraper may retry later
     except Exception as e:
-        log.warning(
-            "AI discovery failed for %s/%s: %s", state, county or city, str(e)[:120]
-        )
+        log.warning("AI discovery failed for %s/%s: %s", state, county or city, str(e)[:120])
     return None

@@ -30,19 +30,12 @@ from .scrapers import distressed_sources as ds
 log = logging.getLogger("distressed")
 
 
-async def _scrape_source(
-    src: Dict[str, Any], *, zip_code: str = "", state: str = ""
-) -> List[Dict[str, Any]]:
+async def _scrape_source(src: Dict[str, Any], *, zip_code: str = "", state: str = "") -> List[Dict[str, Any]]:
     """Fetch one source and ask the LLM to extract listings."""
     from datetime import date
 
     today = date.today().strftime("%m/%d/%Y")
-    url = (
-        src["url"]
-        .replace("{zip}", zip_code or "")
-        .replace("{state}", (state or "").lower())
-        .replace("{date}", today)
-    )
+    url = src["url"].replace("{zip}", zip_code or "").replace("{state}", (state or "").lower()).replace("{date}", today)
     try:
         html = await fetch_html(url, render=src.get("render", False))
     except Exception as e:  # noqa: BLE001
@@ -91,9 +84,7 @@ async def find_distressed(
     if source_keys:
         srcs = [s for s in (ds.get_source(k) for k in source_keys) if s]
     else:
-        srcs = await ds.sources_for_request_ai(
-            categories=categories, state=state, county=county_key
-        )
+        srcs = await ds.sources_for_request_ai(categories=categories, state=state, county=county_key)
         # Always include the catch-all aggregators when state is provided
         if state and not categories:
             srcs += ds.list_sources(category="auction_aggregator")
@@ -108,9 +99,7 @@ async def find_distressed(
     srcs = unique_srcs
 
     if progress_cb:
-        await progress_cb(
-            10, f"Scanning {len(srcs)} free public-record sources in parallel…"
-        )
+        await progress_cb(10, f"Scanning {len(srcs)} free public-record sources in parallel…")
 
     log.info(
         "Distressed scrape: %d sources for state=%s zip=%s",
@@ -143,9 +132,7 @@ async def find_distressed(
                         )
                         await asyncio.sleep(5)
                     else:
-                        log.warning(
-                            "Source %s timed out on retry — skipping", src["key"]
-                        )
+                        log.warning("Source %s timed out on retry — skipping", src["key"])
                         return src["key"], []
                 except Exception as exc:
                     exc_str = str(exc)
@@ -206,18 +193,14 @@ async def find_distressed(
 
     if job_id:
         try:
-            saved = await db.insert_distressed_listings(
-                job_id, deduped, campaign_id=campaign_id
-            )
+            saved = await db.insert_distressed_listings(job_id, deduped, campaign_id=campaign_id)
             log.info(
                 "Distressed: inserted %d rows into distressed_listings for job %s",
                 saved,
                 job_id,
             )
         except Exception as e:
-            log.error(
-                "Distressed: DB insert failed for job %s: %s", job_id, str(e)[:300]
-            )
+            log.error("Distressed: DB insert failed for job %s: %s", job_id, str(e)[:300])
             raise
 
     if progress_cb:

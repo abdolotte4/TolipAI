@@ -4,7 +4,6 @@ import { db, contactsTable, subscribersTable } from "@workspace/db";
 import { eq, desc, count } from "drizzle-orm";
 import {
   AdminLoginBody,
-  AdminLoginResponse,
   AdminGetContactsResponse,
   AdminGetSubscribersResponse,
   AdminGetStatsResponse,
@@ -56,7 +55,7 @@ router.post("/admin/login", async (req, res) => {
   }
 
   const token = jwt.sign({ role: "admin", username }, getJwtSecret(), { expiresIn: "24h" });
-  res.json(AdminLoginResponse.parse({ token, message: "Login successful" }));
+  res.json({ token, message: "Login successful" });
 });
 
 // GET /api/admin/contacts

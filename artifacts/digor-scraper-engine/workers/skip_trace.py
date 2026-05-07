@@ -62,9 +62,7 @@ async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:
         return {
             "phones": prof.get("phones") or [],
             "emails": prof.get("emails") or [],
-            "addresses": [prof.get("mailing_address")]
-            if prof.get("mailing_address")
-            else [],
+            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
             "principals": prof.get("principals") or [],
             "jurisdiction": f"osint_fastpeople_{state.lower()}",
         }
@@ -83,9 +81,7 @@ async def _cyberbackground_lookup(name: str, state: str) -> Dict[str, Any]:
         return {
             "phones": prof.get("phones") or [],
             "emails": prof.get("emails") or [],
-            "addresses": [prof.get("mailing_address")]
-            if prof.get("mailing_address")
-            else [],
+            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
             "principals": prof.get("principals") or [],
             "jurisdiction": f"osint_cyber_{state.lower()}",
         }
@@ -139,9 +135,7 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
         if state:
             params["jurisdiction_code"] = f"us_{state.lower()}"
         async with httpx.AsyncClient(timeout=20) as cli:
-            r = await cli.get(
-                OPENCORPORATES_API, params=params, headers={"User-Agent": USER_AGENT}
-            )
+            r = await cli.get(OPENCORPORATES_API, params=params, headers={"User-Agent": USER_AGENT})
         if r.status_code == 401:
             _dead_sources.add("opencorporates")
             log.warning("OpenCorporates 401 — disabling")
@@ -153,9 +147,7 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
         if not companies:
             return {}
         company = companies[0].get("company") or {}
-        officers = [
-            o.get("officer", {}).get("name") for o in company.get("officers") or []
-        ]
+        officers = [o.get("officer", {}).get("name") for o in company.get("officers") or []]
         return {
             "principals": [o for o in officers if o],
             "registered_agent": company.get("registered_address_in_full"),
@@ -198,11 +190,7 @@ async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
 
 # ─── Tier 4: PropertyAPI.co ─────────────────────────────────────────────────
 async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[str, Any]:
-    if (
-        not settings.enable_propertyapi
-        or not settings.property_api_keys
-        or "propertyapi" in _dead_sources
-    ):
+    if not settings.enable_propertyapi or not settings.property_api_keys or "propertyapi" in _dead_sources:
         return {}
     for key in settings.property_api_keys:
         try:
