@@ -16,7 +16,9 @@ Enhancements:
 """
 
 from __future__ import annotations
-import logging, httpx
+import logging
+
+import httpx
 from typing import Any, Dict, List, Optional, Set
 from bs4 import BeautifulSoup
 
@@ -45,8 +47,9 @@ SOS_URLS: Dict[str, str] = {
 }
 
 OPENCORPORATES_API = "https://api.opencorporates.com/v0.4/companies/search"
-SEC_EDGAR_SEARCH   = "https://www.sec.gov/cgi-bin/browse-edgar"
+SEC_EDGAR_SEARCH = "https://www.sec.gov/cgi-bin/browse-edgar"
 USER_AGENT = "TolipAI/1.0 (skip-trace; contact: ops@tolipai.com)"
+
 
 # ─── Tier 0: OSINT People-Finder ────────────────────────────────────────────
 async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:
@@ -59,13 +62,16 @@ async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:
         return {
             "phones": prof.get("phones") or [],
             "emails": prof.get("emails") or [],
-            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
+            "addresses": [prof.get("mailing_address")]
+            if prof.get("mailing_address")
+            else [],
             "principals": prof.get("principals") or [],
             "jurisdiction": f"osint_fastpeople_{state.lower()}",
         }
     except Exception as e:
         log.info("FastPeopleSearch failed: %s", e)
         return {}
+
 
 async def _cyberbackground_lookup(name: str, state: str) -> Dict[str, Any]:
     """Scrape CyberBackgroundChecks for phones/emails."""
@@ -77,13 +83,17 @@ async def _cyberbackground_lookup(name: str, state: str) -> Dict[str, Any]:
         return {
             "phones": prof.get("phones") or [],
             "emails": prof.get("emails") or [],
-            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
+            "addresses": [prof.get("mailing_address")]
+            if prof.get("mailing_address")
+            else [],
             "principals": prof.get("principals") or [],
             "jurisdiction": f"osint_cyber_{state.lower()}",
         }
     except Exception as e:
         log.info("CyberBackgroundChecks failed: %s", e)
         return {}
+
+
 # ─── Tier 1: Secretary of State ─────────────────────────────────────────────
 async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
     state = state.upper()
@@ -119,6 +129,7 @@ async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
         log.info("SOS lookup failed: %s", e)
         return {}
 
+
 # ─── Tier 2: OpenCorporates ─────────────────────────────────────────────────
 async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
     if not settings.enable_opencorporates or "opencorporates" in _dead_sources:
@@ -128,8 +139,9 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
         if state:
             params["jurisdiction_code"] = f"us_{state.lower()}"
         async with httpx.AsyncClient(timeout=20) as cli:
-            r = await cli.get(OPENCORPORATES_API, params=params,
-                              headers={"User-Agent": USER_AGENT})
+            r = await cli.get(
+                OPENCORPORATES_API, params=params, headers={"User-Agent": USER_AGENT}
+            )
         if r.status_code == 401:
             _dead_sources.add("opencorporates")
             log.warning("OpenCorporates 401 — disabling")
@@ -141,8 +153,9 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
         if not companies:
             return {}
         company = companies[0].get("company") or {}
-        officers = [o.get("officer", {}).get("name")
-                    for o in company.get("officers") or []]
+        officers = [
+            o.get("officer", {}).get("name") for o in company.get("officers") or []
+        ]
         return {
             "principals": [o for o in officers if o],
             "registered_agent": company.get("registered_address_in_full"),
@@ -153,14 +166,22 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
         log.info("OpenCorporates failed: %s", e)
         return {}
 
+
 # ─── Tier 3: SEC EDGAR ──────────────────────────────────────────────────────
 async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=20) as cli:
-            r = await cli.get(SEC_EDGAR_SEARCH, params={
-                "action": "getcompany", "company": name, "type": "13",
-                "owner": "include", "count": "10",
-            }, headers={"User-Agent": USER_AGENT})
+            r = await cli.get(
+                SEC_EDGAR_SEARCH,
+                params={
+                    "action": "getcompany",
+                    "company": name,
+                    "type": "13",
+                    "owner": "include",
+                    "count": "10",
+                },
+                headers={"User-Agent": USER_AGENT},
+            )
         if r.status_code != 200:
             return {}
         text = BeautifulSoup(r.text, "lxml").get_text("\n", strip=True)[:6000]
@@ -174,14 +195,20 @@ async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
         log.info("SEC EDGAR failed: %s", e)
         return {}
 
+
 # ─── Tier 4: PropertyAPI.co ─────────────────────────────────────────────────
 async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[str, Any]:
-    if not settings.enable_propertyapi or not settings.property_api_keys or "propertyapi" in _dead_sources:
+    if (
+        not settings.enable_propertyapi
+        or not settings.property_api_keys
+        or "propertyapi" in _dead_sources
+    ):
         return {}
     for key in settings.property_api_keys:
         try:
             async with httpx.AsyncClient(timeout=20) as cli:
-                r = await cli.post("https://api.propertyapi.co/skip-trace",
+                r = await cli.post(
+                    "https://api.propertyapi.co/skip-trace",
                     json={"name": name, "address": address or ""},
                     headers={"Authorization": f"Bearer {key}"},
                 )
@@ -199,6 +226,7 @@ async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[st
             continue
     return {}
 
+
 # ─── Tier 5: Google site-dorking ────────────────────────────────────────────
 async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
     if not settings.enable_google_dorks or "google_dork" in _dead_sources:
@@ -211,7 +239,12 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
     if state:
         queries.insert(1, f'"{name}" site:sos.{state.lower()}.gov')
 
-    aggregated: Dict[str, Any] = {"phones": [], "emails": [], "principals": [], "addresses": []}
+    aggregated: Dict[str, Any] = {
+        "phones": [],
+        "emails": [],
+        "principals": [],
+        "addresses": [],
+    }
     for q in queries:
         try:
             html = await fetch_html(
@@ -235,15 +268,25 @@ async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
                 break
             log.info("Google dork failed for query '%s': %s", q, e)
     return aggregated
-    
+
+
 # ─── Public orchestrator ────────────────────────────────────────────────────
-async def trace(name: str, *, llc: Optional[str] = None,
-                address: Optional[str] = None,
-                state: Optional[str] = None) -> Dict[str, Any]:
+async def trace(
+    name: str,
+    *,
+    llc: Optional[str] = None,
+    address: Optional[str] = None,
+    state: Optional[str] = None,
+) -> Dict[str, Any]:
     """Return enriched contact data for a person / LLC."""
     out: Dict[str, Any] = {
-        "name": name, "llc": llc, "phones": [], "emails": [],
-        "principals": [], "addresses": [], "sources": [],
+        "name": name,
+        "llc": llc,
+        "phones": [],
+        "emails": [],
+        "principals": [],
+        "addresses": [],
+        "sources": [],
     }
     target = llc or name
     state_u = (state or "").upper()
@@ -303,8 +346,8 @@ async def trace(name: str, *, llc: Optional[str] = None,
             out["sources"].append("google_dork")
 
     # Dedup + normalize
-    out["phones"]     = sorted({p.strip() for p in out["phones"] if p})
-    out["emails"]     = sorted({e.strip().lower() for e in out["emails"] if e})
-    out["addresses"]  = sorted({a.strip() for a in out["addresses"] if a})
+    out["phones"] = sorted({p.strip() for p in out["phones"] if p})
+    out["emails"] = sorted({e.strip().lower() for e in out["emails"] if e})
+    out["addresses"] = sorted({a.strip() for a in out["addresses"] if a})
     out["principals"] = sorted({p.strip() for p in out["principals"] if p})
     return out

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .llm import _chat
 
@@ -35,8 +35,9 @@ TRUSTEE_DISCOVERY_SYSTEM = (
 )
 
 
-async def discover_trustees(state: str, *, county: str = "",
-                            max_results: int = 25) -> List[Dict[str, Any]]:
+async def discover_trustees(
+    state: str, *, county: str = "", max_results: int = 25
+) -> List[Dict[str, Any]]:
     """Ask the LLM to enumerate trustees for foreclosure sales in a market."""
     user = (
         f"Target market: {county + ', ' if county else ''}{state}\n"
@@ -47,12 +48,17 @@ async def discover_trustees(state: str, *, county: str = "",
             {"role": "system", "content": TRUSTEE_DISCOVERY_SYSTEM},
             {"role": "user", "content": user},
         ],
-        json_mode=True, max_tokens=1500, temperature=0.2,
+        json_mode=True,
+        max_tokens=1500,
+        temperature=0.2,
     )
     try:
         data = json.loads(raw)
-        trustees = [t for t in (data.get("trustees") or [])
-                    if isinstance(t, dict) and t.get("name")]
+        trustees = [
+            t
+            for t in (data.get("trustees") or [])
+            if isinstance(t, dict) and t.get("name")
+        ]
         return trustees[:max_results]
     except Exception:
         log.warning("Trustee LLM parse returned non-JSON: %s", raw[:200])
@@ -75,7 +81,9 @@ async def hedge_fund_markets(max_results: int = 12) -> List[Dict[str, Any]]:
             {"role": "system", "content": HEDGE_FUND_MARKETS_SYSTEM},
             {"role": "user", "content": f"Return top {max_results} metros."},
         ],
-        json_mode=True, max_tokens=1200, temperature=0.2,
+        json_mode=True,
+        max_tokens=1200,
+        temperature=0.2,
     )
     try:
         data = json.loads(raw)
@@ -97,9 +105,14 @@ async def research(query: str, *, max_results: int = 10) -> Dict[str, Any]:
     raw = await _chat(
         [
             {"role": "system", "content": GENERIC_RESEARCH_SYSTEM},
-            {"role": "user", "content": f"Query: {query}\nReturn up to {max_results} results."},
+            {
+                "role": "user",
+                "content": f"Query: {query}\nReturn up to {max_results} results.",
+            },
         ],
-        json_mode=True, max_tokens=1400, temperature=0.3,
+        json_mode=True,
+        max_tokens=1400,
+        temperature=0.3,
     )
     try:
         data = json.loads(raw)

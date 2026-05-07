@@ -16,10 +16,20 @@ contexts run simultaneously. Excess requests wait on the semaphore.
 """
 
 from __future__ import annotations
-import asyncio, logging, os, random, ssl, io
+import asyncio
+import io
+import logging
+import os
+import random
+import ssl
 from typing import Any, Dict, Optional
 import httpx
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 from .config import settings
 
 log = logging.getLogger("http")
@@ -29,6 +39,7 @@ log = logging.getLogger("http")
 # can consume 200-400 MB; keep this low on Railway Hobby (512 MB) or Starter
 # (1 GB).  Set BROWSER_MAX_CONCURRENT=1 on very memory-constrained plans.
 _BROWSER_SEM: Optional[asyncio.Semaphore] = None
+
 
 def _browser_sem() -> asyncio.Semaphore:
     global _BROWSER_SEM
@@ -40,14 +51,28 @@ def _browser_sem() -> asyncio.Semaphore:
 
 # Government / county sites that block residential proxies
 _PROXY_BLOCKED_DOMAINS = (
-    "treasurer.cuyahoga", "auditor.cuyahoga", "probate.cuyahoga", "cuyahogacounty.us",
-    "sheriffsaleauction.ohio.gov", ".state.oh.us", ".state.nc.us", ".state.tx.us", ".state.fl.us",
-    "hctax.net", "lacounty.gov", "ttc.lacounty", "cclerk.hctx", "octaxcol.com", "broward.county-taxes",
+    "treasurer.cuyahoga",
+    "auditor.cuyahoga",
+    "probate.cuyahoga",
+    "cuyahogacounty.us",
+    "sheriffsaleauction.ohio.gov",
+    ".state.oh.us",
+    ".state.nc.us",
+    ".state.tx.us",
+    ".state.fl.us",
+    "hctax.net",
+    "lacounty.gov",
+    "ttc.lacounty",
+    "cclerk.hctx",
+    "octaxcol.com",
+    "broward.county-taxes",
 )
+
 
 def _should_skip_proxy(url: str) -> bool:
     u = url.lower()
     return any(d in u for d in _PROXY_BLOCKED_DOMAINS)
+
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -126,17 +151,19 @@ Object.defineProperty(screen, 'colorDepth', {get: () => 24});
 # Persistent shared client
 _persistent_client: Optional[httpx.AsyncClient] = None
 
+
 async def init_client() -> None:
     global _persistent_client
     if _persistent_client is None or _persistent_client.is_closed:
         _persistent_client = httpx.AsyncClient(timeout=settings.request_timeout)
     log.info("Persistent HTTP client initialised")
 
+
 async def close_client() -> None:
-    global _persistent_client
     if _persistent_client and not _persistent_client.is_closed:
         await _persistent_client.aclose()
         log.info("Persistent HTTP client closed")
+
 
 def _build_headers(url: str) -> dict[str, str]:
     base = {
@@ -152,17 +179,20 @@ def _build_headers(url: str) -> dict[str, str]:
     base["User-Agent"] = random.choice(USER_AGENTS)
     return base
 
+
 def _ssl_ctx() -> Any:
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     return ctx
 
+
 # ─── Direct fetch ────────────────────────────────────────────────────────────
-async def fetch_direct(url: str, *, use_proxy: bool = True,
-                       verify_ssl: bool = False) -> Any:
+async def fetch_direct(
+    url: str, *, use_proxy: bool = True, verify_ssl: bool = False
+) -> Any:
     """Plain httpx fetch with rotating UA + optional residential proxy.
-       Returns .text for HTML, raw bytes for PDFs.
+    Returns .text for HTML, raw bytes for PDFs.
     """
     proxy = settings.proxy_url() if use_proxy else None
     headers = _build_headers(url)
@@ -190,11 +220,13 @@ async def fetch_direct(url: str, *, use_proxy: bool = True,
                 return r.text
     return ""
 
+
 # ─── Tiered fetch ────────────────────────────────────────────────────────────
-async def fetch_html(url: str, *, render: bool = False,
-                     country: str = "us", is_google: bool = False) -> Any:
+async def fetch_html(
+    url: str, *, render: bool = False, country: str = "us", is_google: bool = False
+) -> Any:
     """Tiered fetch: direct proxy → Crawl4AI (render-only fallback).
-       Returns HTML text or raw PDF bytes.
+    Returns HTML text or raw PDF bytes.
     """
     errors: list[str] = []
     gov_site = _should_skip_proxy(url)
@@ -214,9 +246,11 @@ async def fetch_html(url: str, *, render: bool = False,
 
     raise RuntimeError(f"All fetch tiers failed for {url}: {'; '.join(errors)}")
 
+
 # ─── Crawl4AI rendered fetch ─────────────────────────────────────────────────
-async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
-                         use_proxy: bool = True) -> Any:
+async def fetch_crawl4ai(
+    url: str, *, wait_for: Optional[str] = None, use_proxy: bool = True
+) -> Any:
     """Playwright-based render with stealth patches.
 
     Guarded by _browser_sem() so at most BROWSER_MAX_CONCURRENT Chromium
@@ -234,6 +268,7 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
         if _proxy_cfg is None and settings.proxy_url():
             # Fallback: parse proxy_url() manually
             from urllib.parse import urlparse as _urlparse
+
             _u = _urlparse(settings.proxy_url() or "")
             _proxy_cfg = {"server": f"{_u.scheme}://{_u.hostname}:{_u.port}"}
             if _u.username:
@@ -278,6 +313,7 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
     # CrawlerRunConfig — build defensively; newer crawl4ai features are
     # injected only when the constructor accepts them.
     import inspect as _inspect
+
     _run_params = set(_inspect.signature(CrawlerRunConfig.__init__).parameters)
 
     _run_kwargs: Dict[str, Any] = dict(
@@ -317,11 +353,16 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
                     err = result.error_message or ""
                     html_fallback = result.html or result.markdown or ""
                     if "ERR_HTTP_RESPONSE_CODE_FAILURE" in err and html_fallback:
-                        log.info("Crawl4AI got non-2xx response for %s — returning partial HTML (%d chars)",
-                                 url, len(html_fallback))
+                        log.info(
+                            "Crawl4AI got non-2xx response for %s — returning partial HTML (%d chars)",
+                            url,
+                            len(html_fallback),
+                        )
                         return html_fallback
                     if "ERR_HTTP_RESPONSE_CODE_FAILURE" in err:
-                        raise RuntimeError(f"Crawl4AI: server returned error HTTP status for {url}")
+                        raise RuntimeError(
+                            f"Crawl4AI: server returned error HTTP status for {url}"
+                        )
                     raise RuntimeError(f"Crawl4AI failed: {err}")
                 return result.html or result.markdown or result.binary or ""
         except RuntimeError:
@@ -329,22 +370,27 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None,
         except OSError as e:
             raise RuntimeError(f"Crawl4AI system dependency missing: {e}") from e
 
+
 # ─── Small helpers ────────────────────────────────────────────────────────────
 async def polite_sleep(min_ms: int = 250, max_ms: int = 800) -> None:
     await asyncio.sleep(random.randint(min_ms, max_ms) / 1000)
 
+
 # ─── PDF fetch + extraction ──────────────────────────────────────────────────
-import fitz  # PyMuPDF
-import pdfplumber
-from PIL import Image
-import pytesseract
+import fitz  # PyMuPDF  # noqa: E402
+import pdfplumber  # noqa: E402
+from PIL import Image  # noqa: E402
+import pytesseract  # noqa: E402
+
 
 async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
     """Fetch a PDF and extract text/tables using PyMuPDF → pdfplumber → OCR fallback."""
     try:
         proxy = settings.proxy_url() if use_proxy else None
         headers = _build_headers(url)
-        async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout) as cli:
+        async with httpx.AsyncClient(
+            proxy=proxy, headers=headers, timeout=settings.request_timeout
+        ) as cli:
             r = await cli.get(url)
             r.raise_for_status()
             pdf_bytes = r.content

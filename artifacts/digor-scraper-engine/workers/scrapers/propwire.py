@@ -61,7 +61,11 @@ async def _do_login(page) -> None:
             break
         except Exception as nav_err:
             if attempt == 0:
-                log.warning("Propwire: navigation attempt %d failed (%s), retrying…", attempt + 1, nav_err)
+                log.warning(
+                    "Propwire: navigation attempt %d failed (%s), retrying…",
+                    attempt + 1,
+                    nav_err,
+                )
                 await page.wait_for_timeout(2000)
             else:
                 log.warning("Propwire: fallback navigation with domcontentloaded")
@@ -72,7 +76,10 @@ async def _do_login(page) -> None:
     except Exception:
         try:
             await page.screenshot(path=_screenshot_path)
-            log.warning("Propwire: email selector not found — screenshot at %s", _screenshot_path)
+            log.warning(
+                "Propwire: email selector not found — screenshot at %s",
+                _screenshot_path,
+            )
         except Exception:
             pass
         await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
@@ -112,8 +119,14 @@ async def _do_login(page) -> None:
 
     if "/login" in page.url:
         try:
-            err_el = page.locator('[role="alert"], .error, .alert, [class*="error" i]').first
-            err_text = (await err_el.inner_text(timeout=3000)).strip() if await err_el.count() else ""
+            err_el = page.locator(
+                '[role="alert"], .error, .alert, [class*="error" i]'
+            ).first
+            err_text = (
+                (await err_el.inner_text(timeout=3000)).strip()
+                if await err_el.count()
+                else ""
+            )
         except Exception:
             err_text = ""
         raise RuntimeError(
@@ -149,7 +162,9 @@ async def _resolve_property_url(ctx, query_or_url: str) -> str:
         await page.wait_for_timeout(1500)
 
         # Try to click first dropdown suggestion
-        sugg = page.locator('[role="option"], li[role="option"], .suggestion-item').first
+        sugg = page.locator(
+            '[role="option"], li[role="option"], .suggestion-item'
+        ).first
         if await sugg.count():
             await sugg.click()
         else:
@@ -204,7 +219,9 @@ async def fetch_property(query_or_url: str) -> Dict[str, Any]:
 
             return {
                 "url": prop_url,
-                "address": data.get("address") or data.get("displayAddress") or query_or_url,
+                "address": data.get("address")
+                or data.get("displayAddress")
+                or query_or_url,
                 "details": _extract_details(data),
                 "owner": _extract_owner(data),
                 "raw": data,
@@ -218,7 +235,9 @@ def _extract_details(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "beds": _safe_num(p.get("bedrooms") or p.get("beds")),
         "baths": _safe_num(p.get("bathrooms") or p.get("baths")),
-        "sqft": _safe_num(p.get("livingArea") or p.get("sqft") or p.get("buildingSqft")),
+        "sqft": _safe_num(
+            p.get("livingArea") or p.get("sqft") or p.get("buildingSqft")
+        ),
         "lot_sqft": _safe_num(p.get("lotSize") or p.get("lotSqft")),
         "year_built": _safe_num(p.get("yearBuilt")),
         "garage": p.get("garage") or p.get("garageSpaces"),
@@ -249,7 +268,7 @@ async def _scrape_property_dom(page) -> Dict[str, Any]:
 
     async def _grab(label: str) -> Optional[str]:
         try:
-            loc = page.locator(f'text=/{label}/i').first
+            loc = page.locator(f"text=/{label}/i").first
             if not await loc.count():
                 return None
             sib = loc.locator("xpath=following-sibling::*[1]")
@@ -260,10 +279,14 @@ async def _scrape_property_dom(page) -> Dict[str, Any]:
         return None
 
     for k, label in [
-        ("bedrooms", "Bedrooms"), ("bathrooms", "Bathrooms"),
-        ("sqft", "Building Sqft"), ("lotSize", "Lot Size"),
-        ("yearBuilt", "Year Built"), ("estimatedValue", "Estimated Value"),
-        ("lastSoldPrice", "Last Sold Price"), ("lastSoldDate", "Last Sold Date"),
+        ("bedrooms", "Bedrooms"),
+        ("bathrooms", "Bathrooms"),
+        ("sqft", "Building Sqft"),
+        ("lotSize", "Lot Size"),
+        ("yearBuilt", "Year Built"),
+        ("estimatedValue", "Estimated Value"),
+        ("lastSoldPrice", "Last Sold Price"),
+        ("lastSoldDate", "Last Sold Date"),
     ]:
         v = await _grab(label)
         if v:
@@ -271,7 +294,9 @@ async def _scrape_property_dom(page) -> Dict[str, Any]:
     return {"property": out}
 
 
-async def fetch_comps(query_or_url: str, *, max_results: int = 50) -> List[Dict[str, Any]]:
+async def fetch_comps(
+    query_or_url: str, *, max_results: int = 50
+) -> List[Dict[str, Any]]:
     async with browser_context(SERVICE, login_fn=_do_login) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         comps_url = base.rstrip("/") + "/comparable-sales"
@@ -300,24 +325,32 @@ async def fetch_comps(query_or_url: str, *, max_results: int = 50) -> List[Dict[
 
             # Fallback: scrape table
             if not comps:
-                rows = await page.locator('table tbody tr').all()
+                rows = await page.locator("table tbody tr").all()
                 for row in rows[:max_results]:
                     cells = await row.locator("td").all_text_contents()
                     if len(cells) < 4:
                         continue
-                    comps.append({
-                        "address": cells[0].strip() if len(cells) > 0 else None,
-                        "status": cells[1].strip() if len(cells) > 1 else None,
-                        "sold_date": cells[2].strip() if len(cells) > 2 else None,
-                        "sold_price": _safe_num(cells[3]),
-                        "price_per_sqft": _safe_num(cells[4]) if len(cells) > 4 else None,
-                        "beds": _safe_num(cells[5]) if len(cells) > 5 else None,
-                        "baths": _safe_num(cells[6]) if len(cells) > 6 else None,
-                        "sqft": _safe_num(cells[7]) if len(cells) > 7 else None,
-                        "lot_sqft": _safe_num(cells[8]) if len(cells) > 8 else None,
-                        "year_built": _safe_num(cells[9]) if len(cells) > 9 else None,
-                        "distance_miles": _safe_num(cells[10]) if len(cells) > 10 else None,
-                    })
+                    comps.append(
+                        {
+                            "address": cells[0].strip() if len(cells) > 0 else None,
+                            "status": cells[1].strip() if len(cells) > 1 else None,
+                            "sold_date": cells[2].strip() if len(cells) > 2 else None,
+                            "sold_price": _safe_num(cells[3]),
+                            "price_per_sqft": _safe_num(cells[4])
+                            if len(cells) > 4
+                            else None,
+                            "beds": _safe_num(cells[5]) if len(cells) > 5 else None,
+                            "baths": _safe_num(cells[6]) if len(cells) > 6 else None,
+                            "sqft": _safe_num(cells[7]) if len(cells) > 7 else None,
+                            "lot_sqft": _safe_num(cells[8]) if len(cells) > 8 else None,
+                            "year_built": _safe_num(cells[9])
+                            if len(cells) > 9
+                            else None,
+                            "distance_miles": _safe_num(cells[10])
+                            if len(cells) > 10
+                            else None,
+                        }
+                    )
             return comps[:max_results]
         finally:
             await page.close()
@@ -384,7 +417,10 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
     async with browser_context(SERVICE, login_fn=_do_login) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         # Tax info lives on the Property tab (root URL)
-        prop_url = re.sub(r"/(comparable-sales|history|owner|market|comps|buyers)$", "", base) or base
+        prop_url = (
+            re.sub(r"/(comparable-sales|history|owner|market|comps|buyers)$", "", base)
+            or base
+        )
         page = await ctx.new_page()
         try:
             await _nav_with_fallback(page, prop_url, log, SERVICE)
@@ -405,24 +441,45 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
                     parsed = json.loads(next_data_raw)
                     pp = (parsed.get("props") or {}).get("pageProps") or {}
                     prop = pp.get("property") or pp.get("propertyDetails") or pp
-                    tax_info = (prop.get("tax") or prop.get("taxInfo")
-                                or prop.get("assessment") or {})
+                    tax_info = (
+                        prop.get("tax")
+                        or prop.get("taxInfo")
+                        or prop.get("assessment")
+                        or {}
+                    )
                     tax = {
-                        "assessed_value":   _safe_num(tax_info.get("assessedValue") or tax_info.get("assessed")),
-                        "market_value":     _safe_num(tax_info.get("marketValue") or tax_info.get("market")),
-                        "land_value":       _safe_num(tax_info.get("landValue") or tax_info.get("land")),
-                        "improvement_value": _safe_num(tax_info.get("improvementValue") or tax_info.get("improvement")),
-                        "annual_tax":       _safe_num(tax_info.get("annualTax") or tax_info.get("taxes") or tax_info.get("taxAmount")),
-                        "tax_year":         tax_info.get("taxYear") or tax_info.get("year"),
-                        "parcel_id":        prop.get("parcelId") or prop.get("apn") or tax_info.get("parcelId"),
-                        "legal_description": prop.get("legalDescription") or tax_info.get("legalDescription"),
+                        "assessed_value": _safe_num(
+                            tax_info.get("assessedValue") or tax_info.get("assessed")
+                        ),
+                        "market_value": _safe_num(
+                            tax_info.get("marketValue") or tax_info.get("market")
+                        ),
+                        "land_value": _safe_num(
+                            tax_info.get("landValue") or tax_info.get("land")
+                        ),
+                        "improvement_value": _safe_num(
+                            tax_info.get("improvementValue")
+                            or tax_info.get("improvement")
+                        ),
+                        "annual_tax": _safe_num(
+                            tax_info.get("annualTax")
+                            or tax_info.get("taxes")
+                            or tax_info.get("taxAmount")
+                        ),
+                        "tax_year": tax_info.get("taxYear") or tax_info.get("year"),
+                        "parcel_id": prop.get("parcelId")
+                        or prop.get("apn")
+                        or tax_info.get("parcelId"),
+                        "legal_description": prop.get("legalDescription")
+                        or tax_info.get("legalDescription"),
                     }
-                    tax_history = (prop.get("taxHistory") or pp.get("taxHistory") or [])
+                    tax_history = prop.get("taxHistory") or pp.get("taxHistory") or []
                 except Exception:
                     pass
 
             # If __NEXT_DATA__ didn't have tax, fall back to DOM scraping
             if not any(v for v in tax.values() if v is not None):
+
                 async def _grab_label(label: str) -> Optional[str]:
                     try:
                         sel = f'*:has-text("{label}") + *, *:has-text("{label}") ~ *'
@@ -432,13 +489,18 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
                         return None
 
                 tax = {
-                    "assessed_value":   _safe_num(await _grab_label("Assessed Value")),
-                    "market_value":     _safe_num(await _grab_label("Market Value")),
-                    "land_value":       _safe_num(await _grab_label("Land Value")),
-                    "improvement_value": _safe_num(await _grab_label("Improvement Value")),
-                    "annual_tax":       _safe_num(await _grab_label("Annual Tax") or await _grab_label("Taxes")),
-                    "tax_year":         await _grab_label("Tax Year"),
-                    "parcel_id":        await _grab_label("Parcel ID") or await _grab_label("APN"),
+                    "assessed_value": _safe_num(await _grab_label("Assessed Value")),
+                    "market_value": _safe_num(await _grab_label("Market Value")),
+                    "land_value": _safe_num(await _grab_label("Land Value")),
+                    "improvement_value": _safe_num(
+                        await _grab_label("Improvement Value")
+                    ),
+                    "annual_tax": _safe_num(
+                        await _grab_label("Annual Tax") or await _grab_label("Taxes")
+                    ),
+                    "tax_year": await _grab_label("Tax Year"),
+                    "parcel_id": await _grab_label("Parcel ID")
+                    or await _grab_label("APN"),
                     "legal_description": await _grab_label("Legal Description"),
                 }
 
@@ -473,8 +535,10 @@ async def fetch_cash_buyers_nearby(
                 if "/login" in page.url:
                     await invalidate_session(SERVICE)
                     raise RuntimeError("Propwire session expired")
-                if not (await page.locator('text=/not found/i').count()
-                        or await page.locator('text=/404/').count()):
+                if not (
+                    await page.locator("text=/not found/i").count()
+                    or await page.locator("text=/404/").count()
+                ):
                     chosen_url = c
                     break
             if not chosen_url:
@@ -494,8 +558,12 @@ async def fetch_cash_buyers_nearby(
                     try:
                         parsed = json.loads(next_data)
                         pp = (parsed.get("props") or {}).get("pageProps") or {}
-                        rows = (pp.get("buyers") or pp.get("cashBuyers")
-                                or pp.get("nearbyBuyers") or [])
+                        rows = (
+                            pp.get("buyers")
+                            or pp.get("cashBuyers")
+                            or pp.get("nearbyBuyers")
+                            or []
+                        )
                         if isinstance(rows, list):
                             page_buyers = rows
                     except Exception:
@@ -516,18 +584,26 @@ async def fetch_cash_buyers_nearby(
                     pc = norm.get("props_count")
                     if pc is not None and pc < min_properties:
                         continue
-                    key = (str(norm.get("name", "")).lower(),
-                           str(norm.get("address") or "").lower())
+                    key = (
+                        str(norm.get("name", "")).lower(),
+                        str(norm.get("address") or "").lower(),
+                    )
                     if not any(
-                        (str(x.get("name", "")).lower(),
-                         str(x.get("address") or "").lower()) == key for x in buyers
+                        (
+                            str(x.get("name", "")).lower(),
+                            str(x.get("address") or "").lower(),
+                        )
+                        == key
+                        for x in buyers
                     ):
                         buyers.append(norm)
 
                 if progress_cb:
                     pct = min(99, int(100 * len(buyers) / max(max_results, 1)))
                     try:
-                        await progress_cb(pct, f"page {seen_pages + 1}: {len(buyers)} buyers")
+                        await progress_cb(
+                            pct, f"page {seen_pages + 1}: {len(buyers)} buyers"
+                        )
                     except Exception:
                         pass
 
@@ -555,10 +631,12 @@ def _normalise_buyer(b: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "name": b.get("name") or b.get("buyerName") or b.get("displayName"),
         "llc": b.get("llc") or b.get("entityName") or b.get("company"),
-        "props_count": (b.get("props_count") or b.get("propertyCount")
-                        or b.get("portfolioSize")),
-        "avg_deal": _safe_num(b.get("avg_deal") or b.get("averagePrice")
-                              or b.get("avgPurchasePrice")),
+        "props_count": (
+            b.get("props_count") or b.get("propertyCount") or b.get("portfolioSize")
+        ),
+        "avg_deal": _safe_num(
+            b.get("avg_deal") or b.get("averagePrice") or b.get("avgPurchasePrice")
+        ),
         "total_deal": _safe_num(b.get("total_deal") or b.get("portfolioValue")),
         "last_deal": b.get("last_deal") or b.get("lastPurchaseDate"),
         "price_min": _safe_num(b.get("price_min") or b.get("minPrice")),

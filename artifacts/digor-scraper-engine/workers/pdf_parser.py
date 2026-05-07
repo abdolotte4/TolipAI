@@ -13,7 +13,7 @@ from __future__ import annotations
 import io
 import logging
 import re
-from typing import Optional, List, Dict
+from typing import Optional, List
 
 import httpx
 
@@ -25,6 +25,7 @@ log = logging.getLogger("pdf_parser")
 def _pdf_text_pdfplumber(data: bytes) -> str:
     try:
         import pdfplumber
+
         pages = []
         with pdfplumber.open(io.BytesIO(data)) as pdf:
             for page in pdf.pages:
@@ -45,6 +46,7 @@ def _pdf_text_pdfplumber(data: bytes) -> str:
 def _pdf_text_pymupdf(data: bytes) -> str:
     try:
         import fitz  # PyMuPDF
+
         doc = fitz.open(stream=data, filetype="pdf")
         pages = [page.get_text() for page in doc]
         meta = doc.metadata or {}
@@ -63,6 +65,7 @@ def _pdf_text_ocr(data: bytes) -> str:
     try:
         import pdf2image
         import pytesseract
+
         images = pdf2image.convert_from_bytes(data)
         text = []
         for img in images:
@@ -73,7 +76,9 @@ def _pdf_text_ocr(data: bytes) -> str:
         return ""
 
 
-async def fetch_pdf_text(url: str, *, timeout: float = 45.0, chunk_size: int = 50000) -> str:
+async def fetch_pdf_text(
+    url: str, *, timeout: float = 45.0, chunk_size: int = 50000
+) -> str:
     """Download a PDF from `url` and return extracted text (chunked if large)."""
     proxy = settings.proxy_url()
     data: Optional[bytes] = None
@@ -81,7 +86,9 @@ async def fetch_pdf_text(url: str, *, timeout: float = 45.0, chunk_size: int = 5
     async def _download(p: Optional[str]) -> Optional[bytes]:
         try:
             async with httpx.AsyncClient(
-                timeout=timeout, proxy=p, follow_redirects=True,
+                timeout=timeout,
+                proxy=p,
+                follow_redirects=True,
                 headers={
                     "User-Agent": (
                         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -93,7 +100,9 @@ async def fetch_pdf_text(url: str, *, timeout: float = 45.0, chunk_size: int = 5
                 r = await cli.get(url)
                 ct = r.headers.get("content-type", "")
                 if "pdf" not in ct.lower() and not url.lower().endswith(".pdf"):
-                    log.warning("pdf_parser: unexpected content-type %s for %s", ct, url)
+                    log.warning(
+                        "pdf_parser: unexpected content-type %s for %s", ct, url
+                    )
                     return None
                 r.raise_for_status()
                 return r.content
@@ -122,8 +131,13 @@ async def fetch_pdf_text(url: str, *, timeout: float = 45.0, chunk_size: int = 5
 
     # Chunk output if very large
     if len(text) > chunk_size:
-        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-        log.info("pdf_parser: extracted %d chars in %d chunks from %s", len(text), len(chunks), url)
+        chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+        log.info(
+            "pdf_parser: extracted %d chars in %d chunks from %s",
+            len(text),
+            len(chunks),
+            url,
+        )
         return "\n\n---CHUNK_BREAK---\n\n".join(chunks)
 
     log.info("pdf_parser: extracted %d chars from %s", len(text), url)
@@ -134,7 +148,9 @@ async def discover_pdfs_on_page(page_url: str) -> List[str]:
     """Fetch a page and return all absolute PDF link URLs found on it."""
     try:
         async with httpx.AsyncClient(
-            timeout=20, proxy=settings.proxy_url(), follow_redirects=True,
+            timeout=20,
+            proxy=settings.proxy_url(),
+            follow_redirects=True,
             headers={"User-Agent": "Mozilla/5.0 Chrome/124.0"},
         ) as cli:
             r = await cli.get(page_url)

@@ -36,27 +36,50 @@ from typing import Any, Callable, Coroutine, Dict, Optional
 
 log = logging.getLogger("retry_queue")
 
-POLL_INTERVAL = 30       # seconds between queue scans
-MAX_ATTEMPTS  = 3        # retries before permanently failing
-BACKOFF = [60, 300, 900] # seconds per attempt index (0-based)
+POLL_INTERVAL = 30  # seconds between queue scans
+MAX_ATTEMPTS = 3  # retries before permanently failing
+BACKOFF = [60, 300, 900]  # seconds per attempt index (0-based)
 
 
 # ─── Error classification ────────────────────────────────────────────────────
 
 _TRANSIENT_KEYWORDS = (
-    "429", "rate limit", "too many requests",
-    "timeout", "timed out", "read timeout", "connect timeout",
-    "connection reset", "connection refused", "dns", "name or service not known",
-    "502", "503", "504", "service unavailable", "bad gateway",
-    "temporary", "retry", "ssl", "certificate",
+    "429",
+    "rate limit",
+    "too many requests",
+    "timeout",
+    "timed out",
+    "read timeout",
+    "connect timeout",
+    "connection reset",
+    "connection refused",
+    "dns",
+    "name or service not known",
+    "502",
+    "503",
+    "504",
+    "service unavailable",
+    "bad gateway",
+    "temporary",
+    "retry",
+    "ssl",
+    "certificate",
 )
 
 _FATAL_KEYWORDS = (
-    "401", "403", "unauthorized", "forbidden",
-    "suspended", "account", "deprecated", "not found",
-    "no such model", "does not exist", "invalid api key",
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "suspended",
+    "account",
+    "deprecated",
+    "not found",
+    "no such model",
+    "does not exist",
+    "invalid api key",
     "quota exceeded",  # hard quota (not rate limit)
-    "dataerror",       # asyncpg type mismatch
+    "dataerror",  # asyncpg type mismatch
     "invalid input",
 )
 
@@ -71,50 +94,71 @@ def is_transient(exc: Exception) -> bool:
 
 # ─── Data model ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class PendingRetry:
-    job_id:    str
-    job_type:  str
-    params:    Dict[str, Any]
-    attempt:   int           = 0
-    retry_at:  float         = field(default_factory=time.monotonic)
-    last_error: str          = ""
+    job_id: str
+    job_type: str
+    params: Dict[str, Any]
+    attempt: int = 0
+    retry_at: float = field(default_factory=time.monotonic)
+    last_error: str = ""
 
 
 # ─── Queue ───────────────────────────────────────────────────────────────────
+
 
 class RetryQueue:
     """Thread-safe async retry queue backed by a deque."""
 
     def __init__(self) -> None:
         self._queue: deque[PendingRetry] = deque()
-        self._lock  = asyncio.Lock()
+        self._lock = asyncio.Lock()
         self._task: Optional[asyncio.Task] = None
         # registered runners: job_type → async callable(params) → result
         self._runners: Dict[str, Callable[..., Coroutine]] = {}
 
-    def register(self, job_type: str,
-                 runner: Callable[..., Coroutine]) -> None:
+    def register(self, job_type: str, runner: Callable[..., Coroutine]) -> None:
         """Register an async runner function for a job_type."""
         self._runners[job_type] = runner
 
-    def enqueue(self, job_id: str, job_type: str,
-                params: Dict[str, Any], *,
-                attempt: int = 0, last_error: str = "") -> bool:
+    def enqueue(
+        self,
+        job_id: str,
+        job_type: str,
+        params: Dict[str, Any],
+        *,
+        attempt: int = 0,
+        last_error: str = "",
+    ) -> bool:
         """Push a retry. Returns False if max attempts exceeded."""
         if attempt >= MAX_ATTEMPTS:
-            log.warning("Job %s (%s) exhausted %d retries — permanently failed: %s",
-                        job_id, job_type, MAX_ATTEMPTS, last_error)
+            log.warning(
+                "Job %s (%s) exhausted %d retries — permanently failed: %s",
+                job_id,
+                job_type,
+                MAX_ATTEMPTS,
+                last_error,
+            )
             return False
-        delay  = BACKOFF[min(attempt, len(BACKOFF) - 1)]
+        delay = BACKOFF[min(attempt, len(BACKOFF) - 1)]
         retry_at = time.monotonic() + delay
         entry = PendingRetry(
-            job_id=job_id, job_type=job_type, params=params,
-            attempt=attempt, retry_at=retry_at, last_error=last_error,
+            job_id=job_id,
+            job_type=job_type,
+            params=params,
+            attempt=attempt,
+            retry_at=retry_at,
+            last_error=last_error,
         )
         self._queue.append(entry)
-        log.info("Job %s enqueued for retry #%d in %ds (reason: %s)",
-                 job_id, attempt + 1, delay, last_error[:80])
+        log.info(
+            "Job %s enqueued for retry #%d in %ds (reason: %s)",
+            job_id,
+            attempt + 1,
+            delay,
+            last_error[:80],
+        )
         return True
 
     def pending(self) -> list[Dict[str, Any]]:
@@ -122,9 +166,9 @@ class RetryQueue:
         now = time.monotonic()
         return [
             {
-                "job_id":    e.job_id,
-                "job_type":  e.job_type,
-                "attempt":   e.attempt + 1,
+                "job_id": e.job_id,
+                "job_type": e.job_type,
+                "attempt": e.attempt + 1,
                 "max_attempts": MAX_ATTEMPTS,
                 "retry_in_seconds": max(0, int(e.retry_at - now)),
                 "last_error": e.last_error[:120],
@@ -152,25 +196,43 @@ class RetryQueue:
         for entry in ready:
             runner = self._runners.get(entry.job_type)
             if runner is None:
-                log.warning("No runner for job_type=%s — dropping %s",
-                            entry.job_type, entry.job_id)
+                log.warning(
+                    "No runner for job_type=%s — dropping %s",
+                    entry.job_type,
+                    entry.job_id,
+                )
                 continue
-            log.info("Retrying job %s (attempt %d/%d) …",
-                     entry.job_id, entry.attempt + 1, MAX_ATTEMPTS)
+            log.info(
+                "Retrying job %s (attempt %d/%d) …",
+                entry.job_id,
+                entry.attempt + 1,
+                MAX_ATTEMPTS,
+            )
             try:
                 result = await runner(entry.job_id, entry.params)
-                log.info("Retry succeeded for job %s → %s", entry.job_id, str(result)[:60])
+                log.info(
+                    "Retry succeeded for job %s → %s", entry.job_id, str(result)[:60]
+                )
                 if on_success:
                     await on_success(entry.job_id, result)
             except Exception as exc:
-                log.warning("Retry #%d for job %s failed: %s",
-                            entry.attempt + 1, entry.job_id, exc)
+                log.warning(
+                    "Retry #%d for job %s failed: %s",
+                    entry.attempt + 1,
+                    entry.job_id,
+                    exc,
+                )
                 next_attempt = entry.attempt + 1
                 if on_exhaust and next_attempt >= MAX_ATTEMPTS:
                     await on_exhaust(entry.job_id, str(exc))
                 else:
-                    self.enqueue(entry.job_id, entry.job_type, entry.params,
-                                 attempt=next_attempt, last_error=str(exc))
+                    self.enqueue(
+                        entry.job_id,
+                        entry.job_type,
+                        entry.params,
+                        attempt=next_attempt,
+                        last_error=str(exc),
+                    )
 
     async def _loop(self, on_success=None, on_exhaust=None) -> None:
         """Background loop — runs forever until task is cancelled."""
@@ -178,8 +240,7 @@ class RetryQueue:
             try:
                 await asyncio.sleep(POLL_INTERVAL)
                 if self._queue:
-                    await self._drain_once(on_success=on_success,
-                                           on_exhaust=on_exhaust)
+                    await self._drain_once(on_success=on_success, on_exhaust=on_exhaust)
             except asyncio.CancelledError:
                 break
             except Exception as exc:
@@ -191,7 +252,11 @@ class RetryQueue:
             self._loop(on_success=on_success, on_exhaust=on_exhaust),
             name="retry-queue-loop",
         )
-        log.info("RetryQueue started (poll=%ds, max_attempts=%d)", POLL_INTERVAL, MAX_ATTEMPTS)
+        log.info(
+            "RetryQueue started (poll=%ds, max_attempts=%d)",
+            POLL_INTERVAL,
+            MAX_ATTEMPTS,
+        )
         return self._task
 
     def stop(self) -> None:

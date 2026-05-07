@@ -31,6 +31,7 @@ log = logging.getLogger("homeharvest")
 def _import_homeharvest():
     try:
         from homeharvest import scrape_property
+
         return scrape_property
     except ImportError:
         log.warning("homeharvest not installed — run: pip install homeharvest pandas")
@@ -79,6 +80,7 @@ def _df_to_listings(df) -> List[Dict[str, Any]]:
         return []
     try:
         import pandas as _pd
+
         _has_pandas = True
     except ImportError:
         _has_pandas = False
@@ -120,11 +122,13 @@ def _df_to_listings(df) -> List[Dict[str, Any]]:
 
 def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Map HomeHarvest column names → our standard schema."""
+
     def _num(v) -> Optional[float]:
         if v is None:
             return None
         try:
             import pandas as _pd
+
             if _pd.isna(v):
                 return None
         except Exception:
@@ -139,15 +143,15 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
         return int(n) if n is not None else None
 
     street = str(raw.get("street") or raw.get("full_street_line") or "").strip()
-    city   = str(raw.get("city") or "").strip()
-    state  = str(raw.get("state") or "").strip()
-    zip_   = str(raw.get("zip_code") or raw.get("zip") or "").strip()
+    city = str(raw.get("city") or "").strip()
+    state = str(raw.get("state") or "").strip()
+    zip_ = str(raw.get("zip_code") or raw.get("zip") or "").strip()
     address = f"{street}, {city}, {state} {zip_}".strip(", ")
 
     # Equity estimate: list_price - estimated_mortgage (rough)
     list_price = _num(raw.get("list_price") or raw.get("price"))
-    zestimate  = _num(raw.get("zestimate"))
-    est_value  = zestimate or list_price
+    zestimate = _num(raw.get("zestimate"))
+    est_value = zestimate or list_price
 
     # Lat/lon come directly from the HomeHarvest DataFrame
     def _coord(key: str) -> Optional[float]:
@@ -160,46 +164,51 @@ def _normalize_listing(raw: Dict[str, Any]) -> Dict[str, Any]:
         except (ValueError, TypeError):
             return None
 
-    latitude  = _coord("latitude")
+    latitude = _coord("latitude")
     longitude = _coord("longitude")
 
     # Price-reduction signal
-    reduced_amount = _num(raw.get("price_reduced_amount") or raw.get("price_change_amount"))
+    reduced_amount = _num(
+        raw.get("price_reduced_amount") or raw.get("price_change_amount")
+    )
     price_reduction = bool(reduced_amount and reduced_amount < 0)
 
     # Source-specific listing URL
-    listing_url = str(raw.get("property_url") or raw.get("listing_url") or "").strip() or None
+    listing_url = (
+        str(raw.get("property_url") or raw.get("listing_url") or "").strip() or None
+    )
 
     return {
-        "address":         address,
-        "street":          street,
-        "city":            city,
-        "state":           state,
-        "zip":             zip_,
-        "county":          str(raw.get("county") or "").strip() or None,
-        "latitude":        latitude,
-        "longitude":       longitude,
-        "list_price":      list_price,
-        "zestimate":       zestimate,
+        "address": address,
+        "street": street,
+        "city": city,
+        "state": state,
+        "zip": zip_,
+        "county": str(raw.get("county") or "").strip() or None,
+        "latitude": latitude,
+        "longitude": longitude,
+        "list_price": list_price,
+        "zestimate": zestimate,
         "estimated_value": est_value,
-        "beds":            _int(raw.get("beds")),
-        "baths":           _num(raw.get("full_baths") or raw.get("baths")),
-        "sqft":            _int(raw.get("sqft")),
-        "year_built":      _int(raw.get("year_built")),
-        "lot_sqft":        _int(raw.get("lot_sqft")),
-        "property_type":   str(raw.get("style") or raw.get("property_type") or "").strip() or None,
-        "status":          str(raw.get("status") or "").strip() or None,
-        "days_on_market":  _int(raw.get("days_on_mls")),
-        "days_on_mls":     _int(raw.get("days_on_mls")),
+        "beds": _int(raw.get("beds")),
+        "baths": _num(raw.get("full_baths") or raw.get("baths")),
+        "sqft": _int(raw.get("sqft")),
+        "year_built": _int(raw.get("year_built")),
+        "lot_sqft": _int(raw.get("lot_sqft")),
+        "property_type": str(raw.get("style") or raw.get("property_type") or "").strip()
+        or None,
+        "status": str(raw.get("status") or "").strip() or None,
+        "days_on_market": _int(raw.get("days_on_mls")),
+        "days_on_mls": _int(raw.get("days_on_mls")),
         "price_reduction": price_reduction,
-        "mls_id":          str(raw.get("mls_id") or "").strip() or None,
-        "zillow_url":      listing_url,
-        "listing_url":     listing_url,
-        "agent":           str(raw.get("agent_name") or "").strip() or None,
-        "agent_email":     str(raw.get("agent_email") or "").strip() or None,
-        "agent_phones":    _extract_phones(raw.get("agent_phones")),
-        "owner_name":      str(raw.get("owner_name") or "").strip() or None,
-        "source":          "homeharvest",
+        "mls_id": str(raw.get("mls_id") or "").strip() or None,
+        "zillow_url": listing_url,
+        "listing_url": listing_url,
+        "agent": str(raw.get("agent_name") or "").strip() or None,
+        "agent_email": str(raw.get("agent_email") or "").strip() or None,
+        "agent_phones": _extract_phones(raw.get("agent_phones")),
+        "owner_name": str(raw.get("owner_name") or "").strip() or None,
+        "source": "homeharvest",
     }
 
 
@@ -208,7 +217,7 @@ async def scrape_foreclosures(
     state: str = "",
     *,
     listing_type: str = "for_sale",
-    site: str = "zillow",          # kept for API compat — ignored in new HH versions
+    site: str = "zillow",  # kept for API compat — ignored in new HH versions
     limit: int = 20,
     location: str = "",
     foreclosure_only: bool = False,
@@ -230,12 +239,13 @@ async def scrape_foreclosures(
     Returns list of normalised listing dicts.
     """
     import inspect as _inspect
+
     scrape_property = _import_homeharvest()
     if not scrape_property:
         return []
 
     if not location:
-        city_clean  = (city or "").strip()
+        city_clean = (city or "").strip()
         state_clean = (state or "").strip()
         location = f"{city_clean}, {state_clean}" if state_clean else city_clean
 
@@ -280,7 +290,9 @@ async def scrape_foreclosures(
 
         log.info(
             "HomeHarvest: scraping %s listings in %r (foreclosure_filter=%s)",
-            listing_type, location, foreclosure_only,
+            listing_type,
+            location,
+            foreclosure_only,
         )
         try:
             df = scrape_property(**kwargs)
@@ -289,7 +301,9 @@ async def scrape_foreclosures(
             log.info("HomeHarvest: got %d listings for %r", len(listings), location)
             return listings
         except Exception as e:
-            log.warning("HomeHarvest scrape failed (%s / %s): %s", listing_type, location, e)
+            log.warning(
+                "HomeHarvest scrape failed (%s / %s): %s", listing_type, location, e
+            )
             return []
 
     return await asyncio.get_event_loop().run_in_executor(None, _run)
@@ -305,15 +319,25 @@ async def scrape_multi_site(
     """Scrape all sources (new HH API) or Zillow+Realtor in parallel (old API)
     and de-duplicate by address."""
     # New HomeHarvest scrapes all sources automatically in one call
-    combined = await scrape_foreclosures(city, state, listing_type=listing_type, limit=limit_per_site * 3)
+    combined = await scrape_foreclosures(
+        city, state, listing_type=listing_type, limit=limit_per_site * 3
+    )
     if combined:
         log.info("HomeHarvest multi-site: %d unique listings", len(combined))
         return combined
 
     # Fallback for older installs that still support site_name
     results_z, results_r = await asyncio.gather(
-        scrape_foreclosures(city, state, listing_type=listing_type, site="zillow", limit=limit_per_site),
-        scrape_foreclosures(city, state, listing_type=listing_type, site="realtor.com", limit=limit_per_site),
+        scrape_foreclosures(
+            city, state, listing_type=listing_type, site="zillow", limit=limit_per_site
+        ),
+        scrape_foreclosures(
+            city,
+            state,
+            listing_type=listing_type,
+            site="realtor.com",
+            limit=limit_per_site,
+        ),
         return_exceptions=True,
     )
 
@@ -323,13 +347,13 @@ async def scrape_multi_site(
         if isinstance(batch, Exception):
             log.warning("Multi-site scrape partial failure: %s", batch)
             continue
-        for l in batch:
-            key = (l.get("street") or "").lower()
+        for listing in batch:
+            key = (listing.get("street") or "").lower()
             if key and key in seen:
                 continue
             if key:
                 seen.add(key)
-            deduped.append(l)
+            deduped.append(listing)
 
     log.info("HomeHarvest multi-site (legacy): %d unique listings", len(deduped))
     return deduped

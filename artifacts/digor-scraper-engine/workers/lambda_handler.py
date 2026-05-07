@@ -46,7 +46,10 @@ os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/ms-playwright")
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _ok(body: Any, status: int = 200, *, request_id: Optional[str] = None) -> Dict[str, Any]:
+
+def _ok(
+    body: Any, status: int = 200, *, request_id: Optional[str] = None
+) -> Dict[str, Any]:
     headers: Dict[str, str] = {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
@@ -61,7 +64,9 @@ def _ok(body: Any, status: int = 200, *, request_id: Optional[str] = None) -> Di
     }
 
 
-def _err(msg: str, status: int = 500, *, request_id: Optional[str] = None) -> Dict[str, Any]:
+def _err(
+    msg: str, status: int = 500, *, request_id: Optional[str] = None
+) -> Dict[str, Any]:
     headers: Dict[str, str] = {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
@@ -88,7 +93,7 @@ def _parse_body(event: Dict[str, Any]) -> Dict[str, Any]:
 def _classify_exc(exc: Exception) -> int:
     """Map common exception types to HTTP status codes."""
     name = type(exc).__name__.lower()
-    msg  = str(exc).lower()
+    msg = str(exc).lower()
     if "timeout" in name or "timeout" in msg:
         return 504
     if "ratelimit" in name or "rate limit" in msg or "429" in msg or "too many" in msg:
@@ -113,6 +118,7 @@ def _run_async(coro) -> Any:
             # Already inside a loop (e.g., async Lambda runtime or test) —
             # schedule the coroutine and wait using a thread executor.
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(asyncio.run, coro)
                 return future.result(timeout=600)
@@ -124,6 +130,7 @@ def _run_async(coro) -> Any:
 
 # ─── Health check ─────────────────────────────────────────────────────────────
 
+
 async def _db_ping() -> tuple[bool, float]:
     """Lightweight Aurora/RDS probe — returns (ok, latency_ms)."""
     db_url = os.getenv("DATABASE_URL")
@@ -131,6 +138,7 @@ async def _db_ping() -> tuple[bool, float]:
         return False, 0.0
     try:
         import asyncpg  # type: ignore[import]
+
         t0 = time.monotonic()
         conn = await asyncpg.connect(db_url)
         await conn.execute("SELECT 1")
@@ -144,22 +152,26 @@ def health_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     req_id = getattr(context, "aws_request_id", None)
     log.info("Request %s: health_handler started", req_id)
     db_ok, db_ms = _run_async(_db_ping())
-    return _ok({
-        "status": "ok",
-        "env": "lambda",
-        "bright_data":       bool(os.getenv("BRIGHTDATA_USERNAME")),
-        "groq":              bool(os.getenv("GROQ_API_KEY")),
-        "google_cloud":      bool(os.getenv("GOOGLE_CLOUD_API_KEY")),
-        "db":                db_ok,
-        "db_latency_ms":     db_ms,
-        "use_rekognition":   os.getenv("USE_REKOGNITION") == "1",
-        "use_bedrock":       os.getenv("USE_BEDROCK") == "1",
-        "s3_bucket":         os.getenv("S3_BUCKET"),
-        "browser_state_dir": os.getenv("BROWSER_STATE_DIR", "/tmp"),
-    }, request_id=req_id)
+    return _ok(
+        {
+            "status": "ok",
+            "env": "lambda",
+            "bright_data": bool(os.getenv("BRIGHTDATA_USERNAME")),
+            "groq": bool(os.getenv("GROQ_API_KEY")),
+            "google_cloud": bool(os.getenv("GOOGLE_CLOUD_API_KEY")),
+            "db": db_ok,
+            "db_latency_ms": db_ms,
+            "use_rekognition": os.getenv("USE_REKOGNITION") == "1",
+            "use_bedrock": os.getenv("USE_BEDROCK") == "1",
+            "s3_bucket": os.getenv("S3_BUCKET"),
+            "browser_state_dir": os.getenv("BROWSER_STATE_DIR", "/tmp"),
+        },
+        request_id=req_id,
+    )
 
 
 # ─── Warmup ──────────────────────────────────────────────────────────────────
+
 
 def warmup_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Scheduled EventBridge ping to keep the Lambda container warm.
@@ -173,15 +185,16 @@ def warmup_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 # ─── Distressed search ────────────────────────────────────────────────────────
 
+
 def distressed_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """POST /distressed/search — run a distressed-property scrape."""
-    from .distressed import find_distressed   # correct function name
+    from .distressed import find_distressed  # correct function name
 
-    req_id     = getattr(context, "aws_request_id", None)
-    body       = _parse_body(event)
-    zip_code   = body.get("zip") or ""
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
+    zip_code = body.get("zip") or ""
     county_key = body.get("countyKey") or ""
-    state      = body.get("state") or ""
+    state = body.get("state") or ""
     categories = body.get("categories") or []
     source_keys = body.get("sourceKeys") or []
 
@@ -202,8 +215,10 @@ def distressed_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
         )
         _maybe_store_s3("distressed", result, job_id=job_id, request_id=req_id)
-        return _ok({"count": len(result), "listings": result, "job_id": job_id},
-                   request_id=req_id)
+        return _ok(
+            {"count": len(result), "listings": result, "job_id": job_id},
+            request_id=req_id,
+        )
     except Exception as exc:
         log.exception("Request %s: distressed_handler failed", req_id)
         return _err(str(exc), _classify_exc(exc), request_id=req_id)
@@ -211,13 +226,14 @@ def distressed_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 # ─── Cash buyer discovery ─────────────────────────────────────────────────────
 
+
 def cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """POST /cash-buyers — find cash buyers for a given lead."""
     from .cash_buyers import find_cash_buyers
 
     req_id = getattr(context, "aws_request_id", None)
-    body   = _parse_body(event)
-    lead   = body.get("lead") or body
+    body = _parse_body(event)
+    lead = body.get("lead") or body
     if not lead.get("zip") and not lead.get("city"):
         return _err("lead.zip or lead.city is required", 400, request_id=req_id)
 
@@ -236,13 +252,14 @@ def cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 # ─── Skip trace ───────────────────────────────────────────────────────────────
 
+
 def skip_trace_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """POST /skip-trace — OSINT skip-trace a name/LLC."""
     from .skip_trace import trace as skip_trace
 
     req_id = getattr(context, "aws_request_id", None)
-    body   = _parse_body(event)
-    name   = body.get("name") or body.get("owner_name")
+    body = _parse_body(event)
+    name = body.get("name") or body.get("owner_name")
     if not name:
         return _err("name is required", 400, request_id=req_id)
 
@@ -259,6 +276,7 @@ def skip_trace_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 # ─── Satellite / Drive-for-Dollars AI ─────────────────────────────────────────
 
+
 def satellite_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """POST /satellite — satellite drive-for-dollars distress scoring."""
     req_id = getattr(context, "aws_request_id", None)
@@ -268,20 +286,24 @@ def satellite_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     else:
         from .scrapers.satellite_dfd import scan_area as run_dfd  # type: ignore[assignment]
 
-    body   = _parse_body(event)
+    body = _parse_body(event)
     params = {
-        "zip_code":       body.get("zip") or body.get("zip_code") or "",
-        "city":           body.get("city") or "",
-        "state":          body.get("state") or "",
-        "min_score":      int(body.get("min_score", 30)),
-        "max_results":    int(body.get("maxResults", body.get("max_results", 50))),
+        "zip_code": body.get("zip") or body.get("zip_code") or "",
+        "city": body.get("city") or "",
+        "state": body.get("state") or "",
+        "min_score": int(body.get("min_score", 30)),
+        "max_results": int(body.get("maxResults", body.get("max_results", 50))),
         "use_ai_scoring": bool(body.get("use_ai_scoring", True)),
     }
     if not (params["zip_code"] or params["city"]):
         return _err("zip or city is required", 400, request_id=req_id)
 
-    log.info("Request %s: satellite_handler zip=%s city=%s", req_id,
-             params["zip_code"], params["city"])
+    log.info(
+        "Request %s: satellite_handler zip=%s city=%s",
+        req_id,
+        params["zip_code"],
+        params["city"],
+    )
     job_id = str(uuid.uuid4())
     try:
         result = _run_async(run_dfd(**params))
@@ -294,15 +316,18 @@ def satellite_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 # ─── Propwire endpoints ───────────────────────────────────────────────────────
 
+
 def propwire_property_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """POST /propwire/property — full property detail from Propwire."""
     from .scrapers.propwire import fetch_property
 
-    req_id  = getattr(context, "aws_request_id", None)
-    body    = _parse_body(event)
-    query   = body.get("query") or body.get("address") or body.get("url") or ""
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
+    query = body.get("query") or body.get("address") or body.get("url") or ""
     if not query:
-        return _err("query (address or Propwire URL) is required", 400, request_id=req_id)
+        return _err(
+            "query (address or Propwire URL) is required", 400, request_id=req_id
+        )
 
     log.info("Request %s: propwire_property_handler query=%s", req_id, query[:80])
     try:
@@ -317,15 +342,17 @@ def propwire_comps_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any
     """POST /propwire/comps — comparable sales from Propwire."""
     from .scrapers.propwire import fetch_comps
 
-    req_id  = getattr(context, "aws_request_id", None)
-    body    = _parse_body(event)
-    query   = body.get("query") or body.get("address") or body.get("url") or ""
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
+    query = body.get("query") or body.get("address") or body.get("url") or ""
     if not query:
         return _err("query is required", 400, request_id=req_id)
 
     log.info("Request %s: propwire_comps_handler", req_id)
     try:
-        comps = _run_async(fetch_comps(query, max_results=int(body.get("maxResults", 50))))
+        comps = _run_async(
+            fetch_comps(query, max_results=int(body.get("maxResults", 50)))
+        )
         return _ok({"comps": comps, "count": len(comps)}, request_id=req_id)
     except Exception as exc:
         log.exception("Request %s: propwire_comps_handler failed", req_id)
@@ -336,9 +363,9 @@ def propwire_history_handler(event: Dict[str, Any], context: Any) -> Dict[str, A
     """POST /propwire/history — sale + mortgage history from Propwire."""
     from .scrapers.propwire import fetch_history
 
-    req_id  = getattr(context, "aws_request_id", None)
-    body    = _parse_body(event)
-    query   = body.get("query") or body.get("address") or body.get("url") or ""
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
+    query = body.get("query") or body.get("address") or body.get("url") or ""
     if not query:
         return _err("query is required", 400, request_id=req_id)
 
@@ -355,9 +382,9 @@ def propwire_cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[st
     """POST /propwire/cash-buyers — nearby cash buyers from Propwire."""
     from .scrapers.propwire import fetch_cash_buyers_nearby
 
-    req_id  = getattr(context, "aws_request_id", None)
-    body    = _parse_body(event)
-    query   = body.get("query") or body.get("address") or body.get("url") or ""
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
+    query = body.get("query") or body.get("address") or body.get("url") or ""
     if not query:
         return _err("query is required", 400, request_id=req_id)
 
@@ -378,18 +405,20 @@ def propwire_cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[st
 
 # ─── Propelio endpoints ───────────────────────────────────────────────────────
 
+
 def propelio_comps_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """POST /propelio/comps — comparable sales from Propelio."""
     from .scrapers.propelio_v2 import search_property, fetch_comps
 
-    req_id  = getattr(context, "aws_request_id", None)
-    body    = _parse_body(event)
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
     address = body.get("address") or ""
     if not address:
         return _err("address is required", 400, request_id=req_id)
 
     log.info("Request %s: propelio_comps_handler address=%s", req_id, address[:80])
     try:
+
         async def _run():
             meta = await search_property(address)
             prop_id = meta.get("property_id")
@@ -413,13 +442,15 @@ def propelio_cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[st
     """POST /propelio/cash-buyers — cash buyers from Propelio."""
     from .scrapers.propelio_v2 import cash_buyers_for_address
 
-    req_id  = getattr(context, "aws_request_id", None)
-    body    = _parse_body(event)
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
     address = body.get("address") or ""
     if not address:
         return _err("address is required", 400, request_id=req_id)
 
-    log.info("Request %s: propelio_cash_buyers_handler address=%s", req_id, address[:80])
+    log.info(
+        "Request %s: propelio_cash_buyers_handler address=%s", req_id, address[:80]
+    )
     try:
         result = _run_async(
             cash_buyers_for_address(
@@ -439,8 +470,8 @@ def propelio_arv_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """POST /propelio/arv — ARV estimate from Propelio comps."""
     from .scrapers.propelio_v2 import estimate_arv
 
-    req_id  = getattr(context, "aws_request_id", None)
-    body    = _parse_body(event)
+    req_id = getattr(context, "aws_request_id", None)
+    body = _parse_body(event)
     address = body.get("address") or ""
     if not address:
         return _err("address is required", 400, request_id=req_id)
@@ -461,6 +492,7 @@ def propelio_arv_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 # ─── S3 result storage (optional) ────────────────────────────────────────────
 
+
 def _maybe_store_s3(
     prefix: str,
     data: Any,
@@ -478,9 +510,10 @@ def _maybe_store_s3(
     try:
         import boto3  # type: ignore[import]
         from datetime import datetime, timezone
-        ts     = datetime.now(timezone.utc).strftime("%Y/%m/%d/%H%M%S")
+
+        ts = datetime.now(timezone.utc).strftime("%Y/%m/%d/%H%M%S")
         suffix = "_".join(filter(None, [job_id, request_id])) or "result"
-        key    = f"{prefix}/{ts}_{suffix}.json"
+        key = f"{prefix}/{ts}_{suffix}.json"
         boto3.client("s3").put_object(
             Bucket=bucket,
             Key=key,
@@ -494,7 +527,10 @@ def _maybe_store_s3(
 
 # ─── Amazon Bedrock LLM integration ──────────────────────────────────────────
 
-async def _bedrock_chat(messages: List[Dict[str, Any]], *, max_tokens: int = 1500) -> str:
+
+async def _bedrock_chat(
+    messages: List[Dict[str, Any]], *, max_tokens: int = 1500
+) -> str:
     """Call Amazon Bedrock Claude when USE_BEDROCK=1.
 
     This is wired into llm._chat_inner() at startup by patching the provider
@@ -509,17 +545,21 @@ async def _bedrock_chat(messages: List[Dict[str, Any]], *, max_tokens: int = 150
             "bedrock-runtime",
             region_name=os.getenv("AWS_REGION", "us-east-1"),
         )
-        body = _json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": max_tokens,
-            "messages": [
-                {"role": m["role"], "content": m.get("content", "")}
-                for m in messages
-                if m.get("role") in ("user", "assistant")
-            ],
-        })
+        body = _json.dumps(
+            {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": m["role"], "content": m.get("content", "")}
+                    for m in messages
+                    if m.get("role") in ("user", "assistant")
+                ],
+            }
+        )
         resp = client.invoke_model(
-            modelId=os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"),
+            modelId=os.getenv(
+                "BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"
+            ),
             body=body,
             contentType="application/json",
             accept="application/json",
@@ -546,16 +586,19 @@ def _patch_llm_for_bedrock() -> None:
 
         _orig_chat_inner = _llm._chat_inner
 
-        async def _bedrock_first(messages, *, json_mode=True,
-                                 temperature=0.2, max_tokens=1500):
+        async def _bedrock_first(
+            messages, *, json_mode=True, temperature=0.2, max_tokens=1500
+        ):
             try:
                 log.info("LLM: routing through Amazon Bedrock")
                 return await _bedrock_chat(messages, max_tokens=max_tokens)
             except Exception as exc:
                 log.warning("Bedrock failed (%s), falling back to provider chain", exc)
                 return await _orig_chat_inner(
-                    messages, json_mode=json_mode,
-                    temperature=temperature, max_tokens=max_tokens,
+                    messages,
+                    json_mode=json_mode,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                 )
 
         _llm._chat_inner = _bedrock_first  # type: ignore[assignment]
@@ -570,15 +613,16 @@ _patch_llm_for_bedrock()
 
 # ─── CORS preflight ──────────────────────────────────────────────────────────
 
+
 def options_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Handle OPTIONS preflight requests from API Gateway."""
     return {
         "statusCode": 200,
         "headers": {
-            "Access-Control-Allow-Origin":  "*",
+            "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Api-Key",
-            "Access-Control-Max-Age":       "86400",
+            "Access-Control-Max-Age": "86400",
         },
         "body": "",
     }
@@ -587,26 +631,26 @@ def options_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 # ─── Universal router ─────────────────────────────────────────────────────────
 
 _ROUTES: Dict[tuple, Any] = {
-    ("/health",                   "GET"):  health_handler,
-    ("/_warmup",                  "POST"): warmup_handler,
-    ("/distressed/search",        "POST"): distressed_handler,
-    ("/cash-buyers",              "POST"): cash_buyers_handler,
-    ("/skip-trace",               "POST"): skip_trace_handler,
-    ("/satellite",                "POST"): satellite_handler,
-    ("/propwire/property",        "POST"): propwire_property_handler,
-    ("/propwire/comps",           "POST"): propwire_comps_handler,
-    ("/propwire/history",         "POST"): propwire_history_handler,
-    ("/propwire/cash-buyers",     "POST"): propwire_cash_buyers_handler,
-    ("/propelio/comps",           "POST"): propelio_comps_handler,
-    ("/propelio/cash-buyers",     "POST"): propelio_cash_buyers_handler,
-    ("/propelio/arv",             "POST"): propelio_arv_handler,
+    ("/health", "GET"): health_handler,
+    ("/_warmup", "POST"): warmup_handler,
+    ("/distressed/search", "POST"): distressed_handler,
+    ("/cash-buyers", "POST"): cash_buyers_handler,
+    ("/skip-trace", "POST"): skip_trace_handler,
+    ("/satellite", "POST"): satellite_handler,
+    ("/propwire/property", "POST"): propwire_property_handler,
+    ("/propwire/comps", "POST"): propwire_comps_handler,
+    ("/propwire/history", "POST"): propwire_history_handler,
+    ("/propwire/cash-buyers", "POST"): propwire_cash_buyers_handler,
+    ("/propelio/comps", "POST"): propelio_comps_handler,
+    ("/propelio/cash-buyers", "POST"): propelio_cash_buyers_handler,
+    ("/propelio/arv", "POST"): propelio_arv_handler,
 }
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Universal router — wire this to API Gateway HTTP API (ANY /{proxy+})."""
     req_id = getattr(context, "aws_request_id", None)
-    path   = (event.get("rawPath") or event.get("path") or "/").rstrip("/") or "/"
+    path = (event.get("rawPath") or event.get("path") or "/").rstrip("/") or "/"
     method = (
         event.get("requestContext", {}).get("http", {}).get("method")
         or event.get("httpMethod")

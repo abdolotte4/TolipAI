@@ -9,6 +9,7 @@ import logging
 
 log = logging.getLogger("pdf_utils")
 
+
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     """Try PyMuPDF → pdfplumber → OCR fallback."""
     # 1. PyMuPDF (fast text)

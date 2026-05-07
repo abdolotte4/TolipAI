@@ -20,24 +20,24 @@ log = logging.getLogger("satellite_rekognition")
 # Maps Rekognition DetectLabels names to the same signal keys used by
 # satellite_dfd.py so downstream scoring logic is reused unchanged.
 _LABEL_SIGNAL_MAP: Dict[str, str] = {
-    "Overgrown":           "overgrown_vegetation",
-    "Weed":                "overgrown_vegetation",
-    "Dead Plant":          "overgrown_vegetation",
-    "Damaged":             "structural_damage",
-    "Broken":              "structural_damage",
-    "Crack":               "structural_damage",
-    "Graffiti":            "graffiti",
-    "Tarp":                "tarp_roof",
-    "Boarded":             "boarded_windows",
-    "Roof Damage":         "structural_damage",
-    "Debris":              "debris_clutter",
-    "Junk":                "debris_clutter",
-    "Abandoned":           "abandonment_signs",
-    "Foreclosure":         "abandonment_signs",
-    "Fence Damage":        "structural_damage",
-    "Broken Window":       "boarded_windows",
-    "Peeling Paint":       "deferred_maintenance",
-    "Rust":                "deferred_maintenance",
+    "Overgrown": "overgrown_vegetation",
+    "Weed": "overgrown_vegetation",
+    "Dead Plant": "overgrown_vegetation",
+    "Damaged": "structural_damage",
+    "Broken": "structural_damage",
+    "Crack": "structural_damage",
+    "Graffiti": "graffiti",
+    "Tarp": "tarp_roof",
+    "Boarded": "boarded_windows",
+    "Roof Damage": "structural_damage",
+    "Debris": "debris_clutter",
+    "Junk": "debris_clutter",
+    "Abandoned": "abandonment_signs",
+    "Foreclosure": "abandonment_signs",
+    "Fence Damage": "structural_damage",
+    "Broken Window": "boarded_windows",
+    "Peeling Paint": "deferred_maintenance",
+    "Rust": "deferred_maintenance",
 }
 
 # Confidence threshold for accepting a Rekognition label
@@ -47,6 +47,7 @@ _MIN_CONFIDENCE = 65.0
 def _boto3_rek_client():
     """Lazy singleton Rekognition client."""
     import boto3  # type: ignore[import]
+
     return boto3.client(
         "rekognition",
         region_name=os.getenv("AWS_REGION", "us-east-1"),
@@ -75,8 +76,7 @@ def _analyse_url_sync(image_url: str) -> Dict[str, Any]:
         )
 
         detected_labels = {
-            label["Name"]: label["Confidence"]
-            for label in response.get("Labels", [])
+            label["Name"]: label["Confidence"] for label in response.get("Labels", [])
         }
 
         for label_name, signal_key in _LABEL_SIGNAL_MAP.items():
@@ -102,6 +102,7 @@ async def _analyse_url(image_url: str) -> Dict[str, Any]:
 
 # ── Public API — mirrors satellite_dfd.scan_area() signature exactly ─────────
 
+
 async def run_rekognition_dfd(
     zip_code: str = "",
     city: str = "",
@@ -120,8 +121,11 @@ async def run_rekognition_dfd(
     # visual analysis step via the rekognition flag in the environment.
     from .satellite_dfd import scan_area
 
-    log.info("Rekognition DFD: zip=%s city=%s — delegating to satellite_dfd with Rekognition signals",
-             zip_code, city)
+    log.info(
+        "Rekognition DFD: zip=%s city=%s — delegating to satellite_dfd with Rekognition signals",
+        zip_code,
+        city,
+    )
 
     # satellite_dfd._gcv_signals_from_url() is already guarded by USE_REKOGNITION;
     # here we just ensure the env var is set and call scan_area normally.
@@ -146,7 +150,6 @@ async def analyse_property_images(
     Returns a merged signals dict.  Useful as a standalone Lambda call
     when a property URL is already known (no need to re-scan a whole zip).
     """
-    tasks: List[asyncio.Task] = []
     urls = [u for u in (satellite_url, streetview_url) if u]
     if not urls:
         return {}

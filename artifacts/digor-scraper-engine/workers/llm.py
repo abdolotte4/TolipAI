@@ -36,7 +36,7 @@ _dead_providers: Set[str] = set()
 _rate_hits: Dict[str, int] = {}
 # Cooldown: provider → unix timestamp when it's allowed to retry after rate-limit
 _rate_cooldown_until: Dict[str, float] = {}
-_MAX_RATE_HITS = 8        # cooldown after 8 consecutive 429s (was: permanently die at 5)
+_MAX_RATE_HITS = 8  # cooldown after 8 consecutive 429s (was: permanently die at 5)
 _RATE_COOLDOWN_SEC = 180  # 3-minute cooldown before retrying a rate-limited provider
 
 # Global concurrency gate — Groq free tier is ~30 req/min.
@@ -120,10 +120,20 @@ def _moonshot() -> Optional[AsyncOpenAI]:
 def _is_fatal(exc: Exception) -> bool:
     """Return True for errors that mean this provider will never work."""
     msg = str(exc).lower()
-    return any(k in msg for k in (
-        "suspended", "account", "forbidden", "unauthorized", "401",
-        "deprecated", "not found", "no such model", "does not exist",
-    ))
+    return any(
+        k in msg
+        for k in (
+            "suspended",
+            "account",
+            "forbidden",
+            "unauthorized",
+            "401",
+            "deprecated",
+            "not found",
+            "no such model",
+            "does not exist",
+        )
+    )
 
 
 def _is_rate_limited(exc: Exception) -> bool:
@@ -131,8 +141,13 @@ def _is_rate_limited(exc: Exception) -> bool:
     return "429" in msg or "rate limit" in msg or "too many requests" in msg
 
 
-async def _chat(messages: List[Dict[str, str]], *, json_mode: bool = True,
-                temperature: float = 0.2, max_tokens: int = 1500) -> str:
+async def _chat(
+    messages: List[Dict[str, str]],
+    *,
+    json_mode: bool = True,
+    temperature: float = 0.2,
+    max_tokens: int = 1500,
+) -> str:
     """Run a chat completion through the provider chain with circuit breakers.
 
     Provider order: Groq → NVIDIA → Moonshot.
@@ -142,8 +157,12 @@ async def _chat(messages: List[Dict[str, str]], *, json_mode: bool = True,
     rate limit (Groq: ~30 req/min).
     """
     async with _get_sem():
-        return await _chat_inner(messages, json_mode=json_mode,
-                                 temperature=temperature, max_tokens=max_tokens)
+        return await _chat_inner(
+            messages,
+            json_mode=json_mode,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
 
 def _ensure_json_in_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
@@ -163,12 +182,20 @@ def _ensure_json_in_messages(messages: List[Dict[str, str]]) -> List[Dict[str, s
             return result
     # No system message — append to first user message
     if result:
-        result[0] = {**result[0], "content": result[0].get("content", "") + " Respond with valid JSON."}
+        result[0] = {
+            **result[0],
+            "content": result[0].get("content", "") + " Respond with valid JSON.",
+        }
     return result
 
 
-async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
-                      temperature: float = 0.2, max_tokens: int = 1500) -> str:
+async def _chat_inner(
+    messages: List[Dict[str, str]],
+    *,
+    json_mode: bool = True,
+    temperature: float = 0.2,
+    max_tokens: int = 1500,
+) -> str:
     import os as _os
 
     # ── Amazon Bedrock short-circuit (USE_BEDROCK=1) ──────────────────────────
@@ -182,29 +209,38 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                     "bedrock-runtime",
                     region_name=_os.getenv("AWS_REGION", "us-east-1"),
                 )
-                body = _json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": max_tokens,
-                    "messages": [
-                        {"role": m["role"], "content": m.get("content", "")}
-                        for m in messages if m.get("role") in ("user", "assistant")
-                    ],
-                })
+                body = _json.dumps(
+                    {
+                        "anthropic_version": "bedrock-2023-05-31",
+                        "max_tokens": max_tokens,
+                        "messages": [
+                            {"role": m["role"], "content": m.get("content", "")}
+                            for m in messages
+                            if m.get("role") in ("user", "assistant")
+                        ],
+                    }
+                )
                 resp = client.invoke_model(
-                    modelId=_os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"),
+                    modelId=_os.getenv(
+                        "BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"
+                    ),
                     body=body,
                     contentType="application/json",
                     accept="application/json",
                 )
                 out = _json.loads(resp["body"].read())
-                return " ".join(c["text"] for c in out.get("content", []) if "text" in c)
+                return " ".join(
+                    c["text"] for c in out.get("content", []) if "text" in c
+                )
 
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, _bedrock_sync)
             log.info("LLM: Bedrock response received (%d chars)", len(result))
             return result
         except Exception as bedrock_exc:
-            log.warning("Bedrock call failed — falling back to provider chain: %s", bedrock_exc)
+            log.warning(
+                "Bedrock call failed — falling back to provider chain: %s", bedrock_exc
+            )
 
     # Ensure Groq's json_object requirement is satisfied before any provider call
     if json_mode:
@@ -212,12 +248,12 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
 
     # Free-tier first, paid fallbacks last.
     providers = [
-        ("groq",        _groq,        settings.groq_model),
-        ("cerebras",    _cerebras,    settings.cerebras_model),
-        ("together",    _together,    settings.together_model),
-        ("nvidia",      _nvidia,      settings.nvidia_model),
-        ("openrouter",  _openrouter,  settings.openrouter_model),
-        ("moonshot",    _moonshot,    settings.moonshot_model),
+        ("groq", _groq, settings.groq_model),
+        ("cerebras", _cerebras, settings.cerebras_model),
+        ("together", _together, settings.together_model),
+        ("nvidia", _nvidia, settings.nvidia_model),
+        ("openrouter", _openrouter, settings.openrouter_model),
+        ("moonshot", _moonshot, settings.moonshot_model),
     ]
     last_err: Optional[Exception] = None
     for provider, client_fn, model in providers:
@@ -232,7 +268,9 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
         if hits >= _MAX_RATE_HITS:
             if time.time() < cooldown_until:
                 remaining = int(cooldown_until - time.time())
-                log.debug("LLM provider %s in cooldown for %ds more", provider, remaining)
+                log.debug(
+                    "LLM provider %s in cooldown for %ds more", provider, remaining
+                )
                 continue
             else:
                 # Cooldown expired — give this provider another chance
@@ -259,7 +297,11 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                 # Groq-specific: json_object mode without 'json' in messages — permanent config error
                 if "must contain the word" in err_str and "json" in err_str.lower():
                     _dead_providers.add(provider)
-                    log.warning("LLM provider %s permanently skipped: JSON mode misconfiguration — %s", provider, e)
+                    log.warning(
+                        "LLM provider %s permanently skipped: JSON mode misconfiguration — %s",
+                        provider,
+                        e,
+                    )
                     break
                 if _is_fatal(e):
                     _dead_providers.add(provider)
@@ -269,29 +311,52 @@ async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                     new_hits = hits + 1
                     _rate_hits[provider] = new_hits
                     if new_hits >= _MAX_RATE_HITS:
-                        _rate_cooldown_until[provider] = time.time() + _RATE_COOLDOWN_SEC
-                        log.warning("LLM provider %s: %d consecutive 429s — cooling down for %ds",
-                                    provider, new_hits, _RATE_COOLDOWN_SEC)
+                        _rate_cooldown_until[provider] = (
+                            time.time() + _RATE_COOLDOWN_SEC
+                        )
+                        log.warning(
+                            "LLM provider %s: %d consecutive 429s — cooling down for %ds",
+                            provider,
+                            new_hits,
+                            _RATE_COOLDOWN_SEC,
+                        )
                         break
                     if attempt == 0:
-                        backoff = min(2.0 * (2 ** hits), 30.0)  # 2s → 4s → 8s … cap 30s
-                        log.info("LLM provider %s rate-limited (hit %d/%d), backing off %.1fs…",
-                                 provider, new_hits, _MAX_RATE_HITS, backoff)
+                        backoff = min(2.0 * (2**hits), 30.0)  # 2s → 4s → 8s … cap 30s
+                        log.info(
+                            "LLM provider %s rate-limited (hit %d/%d), backing off %.1fs…",
+                            provider,
+                            new_hits,
+                            _MAX_RATE_HITS,
+                            backoff,
+                        )
                         await asyncio.sleep(backoff)
                         continue
-                    log.info("LLM provider %s rate-limited, moving to next provider", provider)
+                    log.info(
+                        "LLM provider %s rate-limited, moving to next provider",
+                        provider,
+                    )
                     break
                 log.warning("LLM provider %s error: %s", provider, e)
                 break  # non-fatal non-rate error → try next provider
 
     if last_err:
         raise last_err
-    raise RuntimeError("No LLM provider available (set GROQ_API_KEY, NVIDIA_API_KEY, or MOONSHOT_KIMI_API_KEY)")
+    raise RuntimeError(
+        "No LLM provider available (set GROQ_API_KEY, NVIDIA_API_KEY, or MOONSHOT_KIMI_API_KEY)"
+    )
 
 
 # ─── Public helpers ──────────────────────────────────────────────────────────
 
-INVESTOR_TYPES = ["flipper", "landlord", "hedge_fund", "lender", "wholesaler", "unknown"]
+INVESTOR_TYPES = [
+    "flipper",
+    "landlord",
+    "hedge_fund",
+    "lender",
+    "wholesaler",
+    "unknown",
+]
 
 
 async def extract_investor_profile(text: str, *, source: str = "") -> Dict[str, Any]:
@@ -309,19 +374,26 @@ async def extract_investor_profile(text: str, *, source: str = "") -> Dict[str, 
     user = f"Source: {source}\n\nTEXT:\n{text[:8000]}"
     raw = await _chat(
         [{"role": "system", "content": sys}, {"role": "user", "content": user}],
-        json_mode=True, max_tokens=900,
+        json_mode=True,
+        max_tokens=900,
     )
     try:
         data = json.loads(raw)
     except Exception:
         log.warning("LLM returned non-JSON: %s", raw[:200])
-        return {"buyer_name": "Unknown", "buyer_type": "unknown", "raw_data": {"text": text[:1000]}}
+        return {
+            "buyer_name": "Unknown",
+            "buyer_type": "unknown",
+            "raw_data": {"text": text[:1000]},
+        }
     if data.get("buyer_type") not in INVESTOR_TYPES:
         data["buyer_type"] = "unknown"
     return data
 
 
-async def score_buyer_match(buyer: Dict[str, Any], lead: Dict[str, Any]) -> Dict[str, Any]:
+async def score_buyer_match(
+    buyer: Dict[str, Any], lead: Dict[str, Any]
+) -> Dict[str, Any]:
     """Return {match_score: 0-100, match_reasons: [str]} for a buyer vs a lead."""
     sys = (
         "You score how well a real-estate cash buyer matches a wholesaler's lead. "
@@ -332,21 +404,46 @@ async def score_buyer_match(buyer: Dict[str, Any], lead: Dict[str, Any]) -> Dict
         "hedge_fund for portfolio-sized, lender for owner-financed deals)."
     )
     payload = {
-        "buyer": {k: buyer.get(k) for k in (
-            "buyer_name", "llc_name", "buyer_type", "city", "state", "zip",
-            "portfolio_size", "portfolio_value", "avg_purchase_price",
-        )},
-        "lead": {k: lead.get(k) for k in (
-            "address", "city", "state", "zip", "beds", "baths", "sqft",
-            "year_built", "current_value", "asking_price", "arv", "condition",
-        )},
+        "buyer": {
+            k: buyer.get(k)
+            for k in (
+                "buyer_name",
+                "llc_name",
+                "buyer_type",
+                "city",
+                "state",
+                "zip",
+                "portfolio_size",
+                "portfolio_value",
+                "avg_purchase_price",
+            )
+        },
+        "lead": {
+            k: lead.get(k)
+            for k in (
+                "address",
+                "city",
+                "state",
+                "zip",
+                "beds",
+                "baths",
+                "sqft",
+                "year_built",
+                "current_value",
+                "asking_price",
+                "arv",
+                "condition",
+            )
+        },
     }
     raw = await _chat(
         [
             {"role": "system", "content": sys},
             {"role": "user", "content": json.dumps(payload, default=str)},
         ],
-        json_mode=True, max_tokens=300, temperature=0.3,
+        json_mode=True,
+        max_tokens=300,
+        temperature=0.3,
     )
     try:
         data = json.loads(raw)
@@ -375,7 +472,9 @@ async def parse_distressed_page(text: str, *, source: str) -> List[Dict[str, Any
             {"role": "system", "content": sys},
             {"role": "user", "content": f"Source: {source}\n\nTEXT:\n{text[:9000]}"},
         ],
-        json_mode=True, max_tokens=1500, temperature=0.1,
+        json_mode=True,
+        max_tokens=1500,
+        temperature=0.1,
     )
     try:
         data = json.loads(raw)
@@ -386,7 +485,9 @@ async def parse_distressed_page(text: str, *, source: str) -> List[Dict[str, Any
         return []
 
 
-async def suggest_distressed_sources(*, state: str, category: str, county: str = "", city: str = "") -> List[Dict[str, Any]]:
+async def suggest_distressed_sources(
+    *, state: str, category: str, county: str = "", city: str = ""
+) -> List[Dict[str, Any]]:
     """Suggest fallback source URLs for a state/category when registry coverage is thin."""
     sys = (
         "You discover free public-record or public-web distressed-property sources in the United States. "
@@ -403,8 +504,13 @@ async def suggest_distressed_sources(*, state: str, category: str, county: str =
         "city": city,
     }
     raw = await _chat(
-        [{"role": "system", "content": sys}, {"role": "user", "content": json.dumps(user)}],
-        json_mode=True, max_tokens=900, temperature=0.2,
+        [
+            {"role": "system", "content": sys},
+            {"role": "user", "content": json.dumps(user)},
+        ],
+        json_mode=True,
+        max_tokens=900,
+        temperature=0.2,
     )
     try:
         data = json.loads(raw)
@@ -413,15 +519,17 @@ async def suggest_distressed_sources(*, state: str, category: str, county: str =
         for idx, src in enumerate(sources):
             if not isinstance(src, dict) or not src.get("url"):
                 continue
-            out.append({
-                "key": src.get("key") or f"{state.lower()}-{category}-{idx+1}",
-                "category": src.get("category") or category,
-                "state": src.get("state") or state.upper(),
-                "name": src.get("name") or src.get("url"),
-                "url": src["url"],
-                "render": bool(src.get("render", True)),
-                "notes": src.get("notes") or "",
-            })
+            out.append(
+                {
+                    "key": src.get("key") or f"{state.lower()}-{category}-{idx+1}",
+                    "category": src.get("category") or category,
+                    "state": src.get("state") or state.upper(),
+                    "name": src.get("name") or src.get("url"),
+                    "url": src["url"],
+                    "render": bool(src.get("render", True)),
+                    "notes": src.get("notes") or "",
+                }
+            )
         return out[:5]
     except Exception:
         log.warning("LLM source discovery returned non-JSON")

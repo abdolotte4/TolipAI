@@ -37,7 +37,9 @@ class Settings:
     # ── LLM providers ───────────────────────────────────────────────────────
     groq_api_key: Optional[str] = _env("GROQ_API_KEY")
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model: str = _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
+    groq_model: str = (
+        _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
+    )
 
     cerebras_api_key: Optional[str] = _env("CEREBRAS_API_KEY")
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
@@ -45,28 +47,45 @@ class Settings:
 
     together_api_key: Optional[str] = _env("TOGETHER_API_KEY")
     together_base_url: str = "https://api.together.xyz/v1"
-    together_model: str = _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
+    together_model: str = (
+        _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
+    )
 
     nvidia_api_key: Optional[str] = _env("NVIDIA_API_KEY")
-    nvidia_base_url: str = _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
+    nvidia_base_url: str = (
+        _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
+    )
     nvidia_model: str = _env("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct") or ""
 
     openrouter_api_key: Optional[str] = _env("OPENROUTER_API_KEY")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = _env("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free") or ""
+    openrouter_model: str = (
+        _env("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free") or ""
+    )
 
     moonshot_api_key: Optional[str] = _env("MOONSHOT_KIMI_API_KEY")
-    moonshot_base_url: str = _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
+    moonshot_base_url: str = (
+        _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
+    )
     moonshot_model: str = _env("MOONSHOT_MODEL", "moonshot-v1-8k") or ""
 
     # ── Scraping providers ──────────────────────────────────────────────────
-    scraperapi_keys: List[str] = field(default_factory=lambda: _env_list(
-        "SCRAPERAPI_KEY", "SCRAPERAPI_KEY_2", "SCRAPERAPI_KEY_3", "SCRAPERAPI_KEY_4",
-    ))
-    scrapingbee_keys: List[str] = field(default_factory=lambda: _env_list(
-        "SCRAPINGBEE_API_KEY", "SCRAPINGBEE_API_KEY_2",
-        "SCRAPINGBEE_API_KEY_3", "SCRAPINGBEE_API_KEY_4",
-    ))
+    scraperapi_keys: List[str] = field(
+        default_factory=lambda: _env_list(
+            "SCRAPERAPI_KEY",
+            "SCRAPERAPI_KEY_2",
+            "SCRAPERAPI_KEY_3",
+            "SCRAPERAPI_KEY_4",
+        )
+    )
+    scrapingbee_keys: List[str] = field(
+        default_factory=lambda: _env_list(
+            "SCRAPINGBEE_API_KEY",
+            "SCRAPINGBEE_API_KEY_2",
+            "SCRAPINGBEE_API_KEY_3",
+            "SCRAPINGBEE_API_KEY_4",
+        )
+    )
     webscraper_key: Optional[str] = _env("WEBSCRAPER_API_KEY")
 
     # ── Residential proxy ───────────────────────────────────────────────────
@@ -75,7 +94,9 @@ class Settings:
     # Zone name appended to username: brd-customer-XXXXXX-zone-<zone>
     # If BRIGHTDATA_USERNAME already contains "-zone-" leave this empty.
     brightdata_zone: Optional[str] = _env("BRIGHTDATA_ZONE")
-    brightdata_host: str = _env("BRIGHTDATA_HOST", "brd.superproxy.io") or "brd.superproxy.io"
+    brightdata_host: str = (
+        _env("BRIGHTDATA_HOST", "brd.superproxy.io") or "brd.superproxy.io"
+    )
     # 22225 = residential  |  33335 = ISP/residential-fast  |  24000 = scraping browser
     # Default 33335 (ISP) — fastest for JS-heavy sites (Propelio/Propwire)
     brightdata_port: int = int(os.getenv("BRIGHTDATA_PORT", "33335"))
@@ -83,18 +104,32 @@ class Settings:
     oxylabs_pass: Optional[str] = _env("OXYLABS_PASSWORD")
 
     # ── Property data ───────────────────────────────────────────────────────
-    property_api_keys: List[str] = field(default_factory=lambda: _env_list(
-        "PROPERTY_API_KEY", "PROPERTY_API_KEY_1", "PROPERTY_API_KEY_2",
-        "PROPERTY_API_KEY_3", "PROPERTY_API_KEY_4", "PROPERTY_API_KEY_5",
-        "PROPERTY_API_KEY_6", "PROPERTY_API_KEY_7",
-    ))
-    attom_keys: List[str] = field(default_factory=lambda: _env_list(
-        "ATTOM_API_KEY", "ATTOM_API_KEY_2",
-    ))
+    property_api_keys: List[str] = field(
+        default_factory=lambda: _env_list(
+            "PROPERTY_API_KEY",
+            "PROPERTY_API_KEY_1",
+            "PROPERTY_API_KEY_2",
+            "PROPERTY_API_KEY_3",
+            "PROPERTY_API_KEY_4",
+            "PROPERTY_API_KEY_5",
+            "PROPERTY_API_KEY_6",
+            "PROPERTY_API_KEY_7",
+        )
+    )
+    attom_keys: List[str] = field(
+        default_factory=lambda: _env_list(
+            "ATTOM_API_KEY",
+            "ATTOM_API_KEY_2",
+        )
+    )
 
     # ── Feature flags ──────────────────────────────────────────────────────
-    enable_google_dorks: bool = os.getenv("ENABLE_GOOGLE_DORKS", "false").lower() == "true"
-    enable_opencorporates: bool = os.getenv("ENABLE_OPENCORPORATES", "true").lower() == "true"
+    enable_google_dorks: bool = (
+        os.getenv("ENABLE_GOOGLE_DORKS", "false").lower() == "true"
+    )
+    enable_opencorporates: bool = (
+        os.getenv("ENABLE_OPENCORPORATES", "true").lower() == "true"
+    )
     enable_propertyapi: bool = os.getenv("ENABLE_PROPERTYAPI", "true").lower() == "true"
 
     # ── Tunables ───────────────────────────────────────────────────────────
@@ -134,13 +169,13 @@ class Settings:
         """Return a {'server', 'username', 'password'} dict for Playwright / Crawl4AI."""
         if self.brightdata_configured():
             return {
-                "server":   f"http://{self.brightdata_host}:{self.brightdata_port}",
+                "server": f"http://{self.brightdata_host}:{self.brightdata_port}",
                 "username": self._brightdata_username_full(),
                 "password": self.brightdata_password or "",
             }
         if self.oxylabs_user and self.oxylabs_pass:
             return {
-                "server":   "http://unblock.oxylabs.io:60000",
+                "server": "http://unblock.oxylabs.io:60000",
                 "username": self.oxylabs_user,
                 "password": self.oxylabs_pass,
             }
@@ -163,10 +198,12 @@ class Settings:
             # Only append if not already pinned
             if "-session-" not in user:
                 # Sanitise: strip chars invalid in Bright Data session IDs
-                safe_id = "".join(c if c.isalnum() or c == "_" else "_" for c in session_id)[:32]
+                safe_id = "".join(
+                    c if c.isalnum() or c == "_" else "_" for c in session_id
+                )[:32]
                 user = f"{user}-session-{safe_id}"
             return {
-                "server":   f"http://{self.brightdata_host}:{self.brightdata_port}",
+                "server": f"http://{self.brightdata_host}:{self.brightdata_port}",
                 "username": user,
                 "password": self.brightdata_password or "",
             }
@@ -175,8 +212,12 @@ class Settings:
 
     def has_llm(self) -> bool:
         return bool(
-            self.groq_api_key or self.cerebras_api_key or self.together_api_key
-            or self.nvidia_api_key or self.openrouter_api_key or self.moonshot_api_key
+            self.groq_api_key
+            or self.cerebras_api_key
+            or self.together_api_key
+            or self.nvidia_api_key
+            or self.openrouter_api_key
+            or self.moonshot_api_key
         )
 
     def rotate_key(self, keys: List[str], counter: int) -> Optional[str]:

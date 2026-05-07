@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
@@ -99,14 +98,17 @@ def _find_chromium_executable() -> Optional[str]:
     for pattern in (
         "/home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-*"
         "/chrome-headless-shell-linux64/chrome-headless-shell",
-        os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-*"
-                           "/chrome-headless-shell-linux64/chrome-headless-shell"),
+        os.path.expanduser(
+            "~/.cache/ms-playwright/chromium_headless_shell-*"
+            "/chrome-headless-shell-linux64/chrome-headless-shell"
+        ),
     ):
         hits = sorted(_glob.glob(pattern))
         if hits:
             return hits[-1]
 
     return None
+
 
 # Reasonable Chrome UA matching modern Chromium
 DEFAULT_UA = (
@@ -125,6 +127,7 @@ def _proxy_settings(service: Optional[str] = None) -> Optional[Dict[str, str]]:
     #1 fix for ERR_TUNNEL_CONNECTION_FAILED and Cloudflare re-challenge loops.
     """
     from ..config import settings
+
     if service:
         return settings.proxy_dict_pinned(service)
     return settings.proxy_dict()
@@ -208,8 +211,9 @@ async def _apply_stealth(ctx: Any) -> None:
     await ctx.add_init_script(_STEALTH_SCRIPT)
 
 
-async def _nav_with_fallback(page: Any, url: str, logger: Any, service: str,
-                              timeout_ms: int = 45000) -> None:
+async def _nav_with_fallback(
+    page: Any, url: str, logger: Any, service: str, timeout_ms: int = 45000
+) -> None:
     """Navigate to `url` with a robust multi-strategy fallback.
 
     Strategy:
@@ -226,9 +230,24 @@ async def _nav_with_fallback(page: Any, url: str, logger: Any, service: str,
             await page.goto(url, wait_until=strategy, timeout=timeout_ms)
             # Check for bot-block pages after navigation
             title = (await page.title()).lower()
-            if any(kw in title for kw in ("403", "access denied", "just a moment", "cloudflare", "blocked", "captcha")):
-                logger.warning("[%s] bot-block detected on %s (title=%r) — screenshot: %s",
-                               service, url, title, debug_path)
+            if any(
+                kw in title
+                for kw in (
+                    "403",
+                    "access denied",
+                    "just a moment",
+                    "cloudflare",
+                    "blocked",
+                    "captcha",
+                )
+            ):
+                logger.warning(
+                    "[%s] bot-block detected on %s (title=%r) — screenshot: %s",
+                    service,
+                    url,
+                    title,
+                    debug_path,
+                )
                 try:
                     await page.screenshot(path=debug_path, full_page=False)
                 except Exception:
@@ -240,18 +259,32 @@ async def _nav_with_fallback(page: Any, url: str, logger: Any, service: str,
             if "ERR_ABORTED" in err_str or "net::ERR_NAME_NOT_RESOLVED" in err_str:
                 raise
             if attempt < 2:
-                logger.warning("[%s] nav attempt %d (%s) failed for %s: %s — retrying…",
-                               service, attempt + 1, strategy, url, err_str[:120])
+                logger.warning(
+                    "[%s] nav attempt %d (%s) failed for %s: %s — retrying…",
+                    service,
+                    attempt + 1,
+                    strategy,
+                    url,
+                    err_str[:120],
+                )
                 await page.wait_for_timeout(2000)
             else:
                 # All strategies exhausted — save screenshot and re-raise
-                logger.error("[%s] all nav strategies failed for %s: %s", service, url, err_str[:200])
+                logger.error(
+                    "[%s] all nav strategies failed for %s: %s",
+                    service,
+                    url,
+                    err_str[:200],
+                )
                 try:
                     await page.screenshot(path=debug_path, full_page=False)
-                    logger.error("[%s] debug screenshot saved to %s", service, debug_path)
+                    logger.error(
+                        "[%s] debug screenshot saved to %s", service, debug_path
+                    )
                 except Exception:
                     pass
                 raise
+
 
 # One lock per service so two concurrent jobs can't both try to login.
 _login_locks: Dict[str, asyncio.Lock] = {}

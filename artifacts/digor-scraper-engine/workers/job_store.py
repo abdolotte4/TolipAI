@@ -18,12 +18,13 @@ from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("job_store")
 
-_redis: Any = None          # redis.asyncio client or None
-_memory: Dict[str, Dict[str, Any]] = {}   # always-available fallback
-_TTL_SECONDS = 86_400       # 24 h
+_redis: Any = None  # redis.asyncio client or None
+_memory: Dict[str, Dict[str, Any]] = {}  # always-available fallback
+_TTL_SECONDS = 86_400  # 24 h
 
 
 # ─── Lifecycle ────────────────────────────────────────────────────────────────
+
 
 async def init(redis_url: Optional[str] = None) -> None:
     """Connect to Redis.  Falls back to in-memory silently if unavailable."""
@@ -34,10 +35,13 @@ async def init(redis_url: Optional[str] = None) -> None:
         return
     try:
         import redis.asyncio as aioredis  # type: ignore
+
         client = aioredis.from_url(url, decode_responses=True, socket_timeout=3)
         await client.ping()
         _redis = client
-        log.info("Redis job store connected (%s)", url.split("@")[-1] if "@" in url else url)
+        log.info(
+            "Redis job store connected (%s)", url.split("@")[-1] if "@" in url else url
+        )
     except Exception as exc:
         log.warning("Redis unavailable (%s) — falling back to in-memory", exc)
         _redis = None
@@ -55,6 +59,7 @@ async def close() -> None:
 
 # ─── CRUD ─────────────────────────────────────────────────────────────────────
 
+
 def _key(job_id: str) -> str:
     return f"digor:job:{job_id}"
 
@@ -63,7 +68,9 @@ async def set_job(job_id: str, data: Dict[str, Any]) -> None:
     _memory[job_id] = data
     if _redis is not None:
         try:
-            await _redis.setex(_key(job_id), _TTL_SECONDS, json.dumps(data, default=str))
+            await _redis.setex(
+                _key(job_id), _TTL_SECONDS, json.dumps(data, default=str)
+            )
         except Exception as exc:
             log.debug("Redis set_job %s: %s", job_id, exc)
 
@@ -78,7 +85,7 @@ async def get_job(job_id: str) -> Optional[Dict[str, Any]]:
             raw = await _redis.get(_key(job_id))
             if raw:
                 data: Dict[str, Any] = json.loads(raw)
-                _memory[job_id] = data   # warm memory cache
+                _memory[job_id] = data  # warm memory cache
                 return data
         except Exception as exc:
             log.debug("Redis get_job %s: %s", job_id, exc)
@@ -111,6 +118,7 @@ async def all_jobs() -> Dict[str, Dict[str, Any]]:
 
 
 # ─── Startup recovery ─────────────────────────────────────────────────────────
+
 
 async def recover_interrupted_jobs() -> int:
     """

@@ -17,7 +17,8 @@ from ..http_client import fetch_html
 log = logging.getLogger("zillow")
 
 NEXT_DATA_RE = re.compile(
-    r'<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', re.I,
+    r'<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>',
+    re.I,
 )
 
 
@@ -35,9 +36,12 @@ def _parse_next_data(html: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-async def fetch_recently_sold(zip_code: Optional[str] = None,
-                              city: str = "", state: str = "",
-                              max_results: int = 50) -> List[Dict[str, Any]]:
+async def fetch_recently_sold(
+    zip_code: Optional[str] = None,
+    city: str = "",
+    state: str = "",
+    max_results: int = 50,
+) -> List[Dict[str, Any]]:
     """Return recently-sold homes (cash + financed) for a region.
 
     The owner names + mailing addresses on these are the seed for cash-buyer
@@ -62,7 +66,11 @@ async def fetch_recently_sold(zip_code: Optional[str] = None,
         return []
 
     cat = (data.get("cat1") or {}) or (
-        data.get("props", {}).get("pageProps", {}).get("searchPageState", {}).get("cat1") or {}
+        data.get("props", {})
+        .get("pageProps", {})
+        .get("searchPageState", {})
+        .get("cat1")
+        or {}
     )
     results = (cat.get("searchResults") or {}).get("listResults") or []
 
@@ -76,30 +84,38 @@ async def fetch_recently_sold(zip_code: Optional[str] = None,
         except (TypeError, ValueError):
             price_change = 0
         price_reduction = bool(info.get("priceReductionDate") or price_change < 0)
-        out.append({
-            "address": p.get("address") or info.get("streetAddress"),
-            "city": info.get("city"),
-            "state": info.get("state"),
-            "zip": info.get("zipcode"),
-            "price": p.get("price") or info.get("price"),
-            "beds": p.get("beds") or info.get("bedrooms"),
-            "baths": p.get("baths") or info.get("bathrooms"),
-            "sqft": p.get("area") or info.get("livingArea"),
-            "year_built": info.get("yearBuilt"),
-            "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
-            "price_reduction": price_reduction,
-            "home_status": info.get("homeStatus"),
-            "sold_date": info.get("dateSold"),
-            "zillow_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
-            "latitude": info.get("latitude"),
-            "longitude": info.get("longitude"),
-            "raw": {"zpid": info.get("zpid")},
-        })
+        out.append(
+            {
+                "address": p.get("address") or info.get("streetAddress"),
+                "city": info.get("city"),
+                "state": info.get("state"),
+                "zip": info.get("zipcode"),
+                "price": p.get("price") or info.get("price"),
+                "beds": p.get("beds") or info.get("bedrooms"),
+                "baths": p.get("baths") or info.get("bathrooms"),
+                "sqft": p.get("area") or info.get("livingArea"),
+                "year_built": info.get("yearBuilt"),
+                "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
+                "price_reduction": price_reduction,
+                "home_status": info.get("homeStatus"),
+                "sold_date": info.get("dateSold"),
+                "zillow_url": f"https://www.zillow.com{p['detailUrl']}"
+                if p.get("detailUrl")
+                else None,
+                "latitude": info.get("latitude"),
+                "longitude": info.get("longitude"),
+                "raw": {"zpid": info.get("zpid")},
+            }
+        )
     return out
 
 
-async def fetch_active_listings(zip_code: Optional[str] = None, city: str = "", state: str = "",
-                               max_results: int = 50) -> List[Dict[str, Any]]:
+async def fetch_active_listings(
+    zip_code: Optional[str] = None,
+    city: str = "",
+    state: str = "",
+    max_results: int = 50,
+) -> List[Dict[str, Any]]:
     """Active for-sale listings — these carry days_on_market and price-reduction signals."""
     if zip_code:
         path = f"https://www.zillow.com/homes/for_sale/{zip_code}_rb/"
@@ -116,7 +132,11 @@ async def fetch_active_listings(zip_code: Optional[str] = None, city: str = "", 
     if not data:
         return []
     cat = (data.get("cat1") or {}) or (
-        data.get("props", {}).get("pageProps", {}).get("searchPageState", {}).get("cat1") or {}
+        data.get("props", {})
+        .get("pageProps", {})
+        .get("searchPageState", {})
+        .get("cat1")
+        or {}
     )
     results = (cat.get("searchResults") or {}).get("listResults") or []
     out: List[Dict[str, Any]] = []
@@ -128,25 +148,29 @@ async def fetch_active_listings(zip_code: Optional[str] = None, city: str = "", 
         except (TypeError, ValueError):
             price_change = 0
         price_reduction = bool(info.get("priceReductionDate") or price_change < 0)
-        out.append({
-            "address": p.get("address") or info.get("streetAddress"),
-            "city": info.get("city"),
-            "state": info.get("state"),
-            "zip": info.get("zipcode"),
-            "price": p.get("price") or info.get("price"),
-            "beds": p.get("beds") or info.get("bedrooms"),
-            "baths": p.get("baths") or info.get("bathrooms"),
-            "sqft": p.get("area") or info.get("livingArea"),
-            "year_built": info.get("yearBuilt"),
-            "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
-            "price_reduction": price_reduction,
-            "home_status": info.get("homeStatus"),
-            "estimated_value": info.get("zestimate"),
-            "zillow_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
-            "latitude": info.get("latitude"),
-            "longitude": info.get("longitude"),
-            "source": "zillow_active",
-        })
+        out.append(
+            {
+                "address": p.get("address") or info.get("streetAddress"),
+                "city": info.get("city"),
+                "state": info.get("state"),
+                "zip": info.get("zipcode"),
+                "price": p.get("price") or info.get("price"),
+                "beds": p.get("beds") or info.get("bedrooms"),
+                "baths": p.get("baths") or info.get("bathrooms"),
+                "sqft": p.get("area") or info.get("livingArea"),
+                "year_built": info.get("yearBuilt"),
+                "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
+                "price_reduction": price_reduction,
+                "home_status": info.get("homeStatus"),
+                "estimated_value": info.get("zestimate"),
+                "zillow_url": f"https://www.zillow.com{p['detailUrl']}"
+                if p.get("detailUrl")
+                else None,
+                "latitude": info.get("latitude"),
+                "longitude": info.get("longitude"),
+                "source": "zillow_active",
+            }
+        )
     return out
 
 
@@ -170,8 +194,12 @@ async def fetch_property_owner(zillow_url: str) -> Optional[Dict[str, Any]]:
     return {"raw": info}
 
 
-async def fetch_fsbo(zip_code: Optional[str] = None, city: str = "", state: str = "",
-                    max_results: int = 50) -> List[Dict[str, Any]]:
+async def fetch_fsbo(
+    zip_code: Optional[str] = None,
+    city: str = "",
+    state: str = "",
+    max_results: int = 50,
+) -> List[Dict[str, Any]]:
     """For-sale-by-owner — distressed/motivated indicator."""
     if zip_code:
         path = f"https://www.zillow.com/homes/fsbo/{zip_code}_rb/"
@@ -187,7 +215,7 @@ async def fetch_fsbo(zip_code: Optional[str] = None, city: str = "", state: str 
     data = _parse_next_data(html)
     if not data:
         return []
-    cat = (data.get("cat1") or {})
+    cat = data.get("cat1") or {}
     results = (cat.get("searchResults") or {}).get("listResults") or []
     out: List[Dict[str, Any]] = []
     for p in results[:max_results]:
@@ -198,24 +226,31 @@ async def fetch_fsbo(zip_code: Optional[str] = None, city: str = "", state: str 
         except (TypeError, ValueError):
             price_change = 0
         price_reduction = bool(info.get("priceReductionDate") or price_change < 0)
-        out.append({
-            "distress_type": "fsbo",
-            "is_fsbo": True,
-            "address": p.get("address") or info.get("streetAddress"),
-            "city": info.get("city"), "state": info.get("state"), "zip": info.get("zipcode"),
-            "estimated_value": info.get("zestimate"),
-            "price": p.get("price") or info.get("price"),
-            "opening_bid": p.get("price") or info.get("price"),
-            "beds": p.get("beds") or info.get("bedrooms"),
-            "baths": p.get("baths") or info.get("bathrooms"),
-            "sqft": p.get("area") or info.get("livingArea"),
-            "year_built": info.get("yearBuilt"),
-            "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
-            "price_reduction": price_reduction,
-            "home_status": info.get("homeStatus"),
-            "source": "zillow_fsbo",
-            "source_url": f"https://www.zillow.com{p['detailUrl']}" if p.get("detailUrl") else None,
-            "latitude": info.get("latitude"), "longitude": info.get("longitude"),
-            "raw_data": {"zpid": info.get("zpid")},
-        })
+        out.append(
+            {
+                "distress_type": "fsbo",
+                "is_fsbo": True,
+                "address": p.get("address") or info.get("streetAddress"),
+                "city": info.get("city"),
+                "state": info.get("state"),
+                "zip": info.get("zipcode"),
+                "estimated_value": info.get("zestimate"),
+                "price": p.get("price") or info.get("price"),
+                "opening_bid": p.get("price") or info.get("price"),
+                "beds": p.get("beds") or info.get("bedrooms"),
+                "baths": p.get("baths") or info.get("bathrooms"),
+                "sqft": p.get("area") or info.get("livingArea"),
+                "year_built": info.get("yearBuilt"),
+                "days_on_market": info.get("daysOnZillow") or info.get("daysOnMarket"),
+                "price_reduction": price_reduction,
+                "home_status": info.get("homeStatus"),
+                "source": "zillow_fsbo",
+                "source_url": f"https://www.zillow.com{p['detailUrl']}"
+                if p.get("detailUrl")
+                else None,
+                "latitude": info.get("latitude"),
+                "longitude": info.get("longitude"),
+                "raw_data": {"zpid": info.get("zpid")},
+            }
+        )
     return out

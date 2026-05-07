@@ -38,11 +38,15 @@ async def search_llc(name: str) -> List[Dict[str, Any]]:
         if not link:
             continue
         href = link.get("href") or ""
-        hits.append({
-            "name": link.get_text(strip=True),
-            "detail_path": href,
-            "status": row.find_all("td")[-1].get_text(strip=True) if row.find_all("td") else "",
-        })
+        hits.append(
+            {
+                "name": link.get_text(strip=True),
+                "detail_path": href,
+                "status": row.find_all("td")[-1].get_text(strip=True)
+                if row.find_all("td")
+                else "",
+            }
+        )
     return hits
 
 
@@ -76,12 +80,19 @@ async def fetch_llc_detail(detail_path: str) -> Optional[Dict[str, Any]]:
     # Registered agent + mailing
     text_all = soup.get_text("\n", strip=True)
     addr_match = re.search(r"Mailing Address\s*\n([^\n]+\n[^\n]+\n[^\n]+)", text_all)
-    agent_match = re.search(r"Registered Agent.*?Name & Address\s*\n([^\n]+)\s*\n([^\n]+\n[^\n]+\n[^\n]+)",
-                            text_all, re.DOTALL)
+    agent_match = re.search(
+        r"Registered Agent.*?Name & Address\s*\n([^\n]+)\s*\n([^\n]+\n[^\n]+\n[^\n]+)",
+        text_all,
+        re.DOTALL,
+    )
 
     return {
         "principals": principals[:20],
-        "mailing_address": addr_match.group(1).replace("\n", ", ") if addr_match else None,
+        "mailing_address": addr_match.group(1).replace("\n", ", ")
+        if addr_match
+        else None,
         "registered_agent": agent_match.group(1) if agent_match else None,
-        "registered_agent_address": agent_match.group(2).replace("\n", ", ") if agent_match else None,
+        "registered_agent_address": agent_match.group(2).replace("\n", ", ")
+        if agent_match
+        else None,
     }

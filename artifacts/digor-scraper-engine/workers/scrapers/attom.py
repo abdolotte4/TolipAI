@@ -67,8 +67,9 @@ async def _get(path: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     raise AttomExhausted("All ATTOM keys exhausted or invalid")
 
 
-async def recent_sales(*, zip_code: str = "", city: str = "", state: str = "",
-                       max_results: int = 50) -> List[Dict[str, Any]]:
+async def recent_sales(
+    *, zip_code: str = "", city: str = "", state: str = "", max_results: int = 50
+) -> List[Dict[str, Any]]:
     """Return recently-sold properties in a ZIP, normalized to our shape."""
     params: Dict[str, Any] = {"pagesize": min(max_results, 100), "page": 1}
     if zip_code:
@@ -84,23 +85,25 @@ async def recent_sales(*, zip_code: str = "", city: str = "", state: str = "",
         return []
     out: List[Dict[str, Any]] = []
     for row in (data.get("sale") or [])[:max_results]:
-        addr = (row.get("address") or {})
-        sale = (row.get("sale") or {})
-        amount = (sale.get("amount") or {})
-        out.append({
-            "address":   addr.get("oneLine"),
-            "city":      addr.get("locality"),
-            "state":     addr.get("countrySubd"),
-            "zip":       addr.get("postal1"),
-            "price":     amount.get("saleamt"),
-            "sold_date": sale.get("salesearchdate") or sale.get("saletransdate"),
-            "owner_name": (row.get("owner") or {}).get("owner1"),
-            "buyer_name": (row.get("owner") or {}).get("owner1"),
-            "beds":  (row.get("building") or {}).get("rooms", {}).get("beds"),
-            "baths": (row.get("building") or {}).get("rooms", {}).get("bathstotal"),
-            "sqft":  (row.get("building") or {}).get("size", {}).get("livingsize"),
-            "source": "attom",
-        })
+        addr = row.get("address") or {}
+        sale = row.get("sale") or {}
+        amount = sale.get("amount") or {}
+        out.append(
+            {
+                "address": addr.get("oneLine"),
+                "city": addr.get("locality"),
+                "state": addr.get("countrySubd"),
+                "zip": addr.get("postal1"),
+                "price": amount.get("saleamt"),
+                "sold_date": sale.get("salesearchdate") or sale.get("saletransdate"),
+                "owner_name": (row.get("owner") or {}).get("owner1"),
+                "buyer_name": (row.get("owner") or {}).get("owner1"),
+                "beds": (row.get("building") or {}).get("rooms", {}).get("beds"),
+                "baths": (row.get("building") or {}).get("rooms", {}).get("bathstotal"),
+                "sqft": (row.get("building") or {}).get("size", {}).get("livingsize"),
+                "source": "attom",
+            }
+        )
     log.info("ATTOM returned %d recent sales for ZIP=%s", len(out), zip_code)
     return out
 
@@ -108,8 +111,9 @@ async def recent_sales(*, zip_code: str = "", city: str = "", state: str = "",
 async def owner_for_property(address: str, zip_code: str) -> Optional[Dict[str, Any]]:
     """Get the owner / mailing address for a property — used to flag investors."""
     try:
-        data = await _get("/property/expandedprofile",
-                          {"address1": address, "address2": zip_code})
+        data = await _get(
+            "/property/expandedprofile", {"address1": address, "address2": zip_code}
+        )
     except AttomExhausted:
         return None
     if not data:
@@ -119,11 +123,12 @@ async def owner_for_property(address: str, zip_code: str) -> Optional[Dict[str, 
         return None
     p = rows[0]
     owner = p.get("owner") or {}
-    mailing = (owner.get("mailingaddressoneline") or "")
+    mailing = owner.get("mailingaddressoneline") or ""
     addr = (p.get("address") or {}).get("oneLine") or ""
     return {
-        "owner_name":   owner.get("owner1") or owner.get("owner1full"),
+        "owner_name": owner.get("owner1") or owner.get("owner1full"),
         "mailing_addr": mailing,
-        "is_investor":  bool(mailing) and mailing.strip().lower() != addr.strip().lower(),
+        "is_investor": bool(mailing)
+        and mailing.strip().lower() != addr.strip().lower(),
         "source": "attom",
     }

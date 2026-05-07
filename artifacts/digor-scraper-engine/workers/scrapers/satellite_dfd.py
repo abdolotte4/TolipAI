@@ -5,11 +5,18 @@ LLM reasoning to score property distress 0-100.
 """
 
 from __future__ import annotations
-import asyncio, json, logging, os, httpx
+
+import asyncio
+import json
+import logging
+import os
+
+import httpx
 from typing import Any, Dict, List, Optional
 
 try:
     from ultralytics import YOLO as _YOLO_CLASS
+
     _YOLO_AVAILABLE = True
 except ImportError:
     _YOLO_CLASS = None  # type: ignore
@@ -18,20 +25,22 @@ except ImportError:
 # ─── Google Cloud Vision availability ────────────────────────────────────────
 _GCV_API_KEY: Optional[str] = None
 
+
 def _get_gcv_key() -> Optional[str]:
     global _GCV_API_KEY
     if _GCV_API_KEY is None:
         _GCV_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY") or ""
     return _GCV_API_KEY or None
 
-from ..http_client import fetch_html
-from ..llm import _chat
-from . import zillow, redfin, homeharvest_scraper
+
+from ..llm import _chat  # noqa: E402
+from . import zillow, redfin, homeharvest_scraper  # noqa: E402
 
 log = logging.getLogger("satellite_dfd")
 
 # ─── Concurrency guard for AI calls ───────────────────────────────────────────
 _AI_SCORE_SEM: Optional[asyncio.Semaphore] = None
+
 
 def _get_ai_sem() -> asyncio.Semaphore:
     global _AI_SCORE_SEM
@@ -40,26 +49,76 @@ def _get_ai_sem() -> asyncio.Semaphore:
         _AI_SCORE_SEM = asyncio.Semaphore(limit)
     return _AI_SCORE_SEM
 
+
 # ─── Distress signal weights ──────────────────────────────────────────────────
 def _age_score(year_built: Optional[int]) -> int:
-    if not year_built: return 0
+    if not year_built:
+        return 0
     age = max(0, 2025 - int(year_built))
-    return 20 if age >= 80 else 15 if age >= 50 else 10 if age >= 30 else 5 if age >= 15 else 0
+    return (
+        20
+        if age >= 80
+        else 15
+        if age >= 50
+        else 10
+        if age >= 30
+        else 5
+        if age >= 15
+        else 0
+    )
+
 
 def _days_listed_score(days: Optional[int]) -> int:
-    if not days: return 0
-    return 20 if days >= 180 else 15 if days >= 90 else 10 if days >= 45 else 5 if days >= 21 else 0
+    if not days:
+        return 0
+    return (
+        20
+        if days >= 180
+        else 15
+        if days >= 90
+        else 10
+        if days >= 45
+        else 5
+        if days >= 21
+        else 0
+    )
 
-def _price_reduction_score(has_cut: bool) -> int: return 10 if has_cut else 0
-def _fsbo_score(is_fsbo: bool) -> int: return 10 if is_fsbo else 0
-def _vacancy_score(vacant: bool) -> int: return 15 if vacant else 0
+
+def _price_reduction_score(has_cut: bool) -> int:
+    return 10 if has_cut else 0
+
+
+def _fsbo_score(is_fsbo: bool) -> int:
+    return 10 if is_fsbo else 0
+
+
+def _vacancy_score(vacant: bool) -> int:
+    return 15 if vacant else 0
+
+
 def _equity_score(equity_pct: Optional[float]) -> int:
-    if equity_pct is None: return 0
-    return 15 if equity_pct >= 50 else 10 if equity_pct >= 30 else 5 if equity_pct >= 15 else 0
-def _tax_delinquent_score(delinquent: bool) -> int: return 20 if delinquent else 0
+    if equity_pct is None:
+        return 0
+    return (
+        15
+        if equity_pct >= 50
+        else 10
+        if equity_pct >= 30
+        else 5
+        if equity_pct >= 15
+        else 0
+    )
+
+
+def _tax_delinquent_score(delinquent: bool) -> int:
+    return 20 if delinquent else 0
+
+
 def _ownership_years_score(years: Optional[float]) -> int:
-    if years is None: return 0
+    if years is None:
+        return 0
     return 10 if years >= 20 else 7 if years >= 10 else 3 if years >= 5 else 0
+
 
 def _compute_score(signals: Dict[str, Any]) -> int:
     score = (
@@ -74,12 +133,23 @@ def _compute_score(signals: Dict[str, Any]) -> int:
     )
     return max(0, min(100, score))
 
+
 def _category(score: int) -> str:
-    return "severe" if score >= 70 else "high" if score >= 50 else "medium" if score >= 30 else "low"
+    return (
+        "severe"
+        if score >= 70
+        else "high"
+        if score >= 50
+        else "medium"
+        if score >= 30
+        else "low"
+    )
+
 
 # ─── Google Maps Static API URLs ──────────────────────────────────────────────
 def _google_key() -> Optional[str]:
     return os.getenv("GOOGLE_MAPS_API_KEY") or None
+
 
 def _satellite_url(lat: float, lon: float, zoom: int = 20) -> Optional[str]:
     key = _google_key()
@@ -91,7 +161,10 @@ def _satellite_url(lat: float, lon: float, zoom: int = 20) -> Optional[str]:
         f"&maptype=satellite&key={key}"
     )
 
-def _streetview_url(lat: float, lon: float, heading: int = 0, pitch: int = 0) -> Optional[str]:
+
+def _streetview_url(
+    lat: float, lon: float, heading: int = 0, pitch: int = 0
+) -> Optional[str]:
     key = _google_key()
     if not key:
         return None
@@ -100,6 +173,7 @@ def _streetview_url(lat: float, lon: float, heading: int = 0, pitch: int = 0) ->
         f"?size=640x400&location={lat},{lon}"
         f"&heading={heading}&pitch={pitch}&fov=90&key={key}"
     )
+
 
 async def _download_image(url: str, fname: str) -> Optional[str]:
     """Download an image URL to a temp file. Returns path or None on error."""
@@ -119,21 +193,22 @@ async def _download_image(url: str, fname: str) -> Optional[str]:
         log.debug("Image download failed for %s: %s", url, e)
         return None
 
+
 # ─── YOLO visual distress detection ──────────────────────────────────────────
 # YOLOv8n is trained on COCO80. Map detected COCO classes → distress proxies.
 # Classes that actually appear in street/aerial property imagery:
 _COCO_DISTRESS_MAP: Dict[str, str] = {
-    "couch":      "furniture_outside",    # sofa on lawn = vacancy / eviction
-    "bed":        "furniture_outside",    # mattress outside = eviction
-    "chair":      "items_outside",        # outdoor chairs = neglect
-    "suitcase":   "items_piled_outside",  # bags piled up = eviction
-    "backpack":   "items_outside",
-    "bottle":     "litter",              # scattered bottles = neglect
-    "cup":        "litter",
-    "car":        "vehicle_clutter",     # will count occurrences below
-    "truck":      "vehicle_clutter",
+    "couch": "furniture_outside",  # sofa on lawn = vacancy / eviction
+    "bed": "furniture_outside",  # mattress outside = eviction
+    "chair": "items_outside",  # outdoor chairs = neglect
+    "suitcase": "items_piled_outside",  # bags piled up = eviction
+    "backpack": "items_outside",
+    "bottle": "litter",  # scattered bottles = neglect
+    "cup": "litter",
+    "car": "vehicle_clutter",  # will count occurrences below
+    "truck": "vehicle_clutter",
     "motorcycle": "vehicle_clutter",
-    "bicycle":    "vehicle_clutter",
+    "bicycle": "vehicle_clutter",
     "potted plant": "overgrown_vegetation",
 }
 # Threshold: if ≥ N vehicles detected, flag vehicle clutter
@@ -168,10 +243,12 @@ def _get_yolo():
 def _yolo_model_size_mb() -> float:
     try:
         import os as _os
+
         p = "yolov8n.pt"
         return _os.path.getsize(p) / 1024 / 1024 if _os.path.exists(p) else 0.0
     except Exception:
         return 0.0
+
 
 def _yolo_signals(image_path: str) -> Dict[str, bool]:
     """Run YOLOv8n on an image and return distress signal dict."""
@@ -182,12 +259,16 @@ def _yolo_signals(image_path: str) -> Dict[str, bool]:
         results = model(image_path, verbose=False)
         names = results[0].names
         detected = [names[int(cls)] for cls in results[0].boxes.cls]
-        vehicle_count = sum(1 for d in detected if d in ("car", "truck", "motorcycle", "bicycle"))
+        vehicle_count = sum(
+            1 for d in detected if d in ("car", "truck", "motorcycle", "bicycle")
+        )
         out: Dict[str, bool] = {
-            "furniture_outside":   any(d in ("couch", "bed") for d in detected),
-            "items_piled_outside": any(d in ("suitcase", "backpack", "chair") for d in detected),
-            "litter":              any(d in ("bottle", "cup") for d in detected),
-            "vehicle_clutter":     vehicle_count >= _VEHICLE_CLUTTER_MIN,
+            "furniture_outside": any(d in ("couch", "bed") for d in detected),
+            "items_piled_outside": any(
+                d in ("suitcase", "backpack", "chair") for d in detected
+            ),
+            "litter": any(d in ("bottle", "cup") for d in detected),
+            "vehicle_clutter": vehicle_count >= _VEHICLE_CLUTTER_MIN,
             "overgrown_vegetation": "potted plant" in detected,
         }
         log.debug("YOLO detections: %s → signals: %s", detected[:10], out)
@@ -196,33 +277,35 @@ def _yolo_signals(image_path: str) -> Dict[str, bool]:
         log.warning("YOLO inference failed: %s", e)
         return {}
 
+
 # ─── Google Cloud Vision distress detection ──────────────────────────────────
 # Distress-relevant GCV label categories mapped to signal keys
 _GCV_DISTRESS_LABELS: Dict[str, str] = {
-    "junk":             "litter",
-    "litter":           "litter",
-    "trash":            "litter",
-    "debris":           "litter",
-    "graffiti":         "graffiti",
-    "vandalism":        "graffiti",
-    "overgrown":        "overgrown_vegetation",
-    "weeds":            "overgrown_vegetation",
-    "vegetation":       "overgrown_vegetation",
-    "abandoned":        "abandoned",
-    "foreclosure":      "abandoned",
-    "neglect":          "abandoned",
-    "dilapidated":      "structural_damage",
-    "damage":           "structural_damage",
-    "deterioration":    "structural_damage",
-    "tarp":             "structural_damage",
-    "boarded":          "structural_damage",
-    "broken":           "structural_damage",
-    "furniture":        "furniture_outside",
-    "mattress":         "furniture_outside",
-    "sofa":             "furniture_outside",
-    "pile":             "items_piled_outside",
-    "clutter":          "items_piled_outside",
+    "junk": "litter",
+    "litter": "litter",
+    "trash": "litter",
+    "debris": "litter",
+    "graffiti": "graffiti",
+    "vandalism": "graffiti",
+    "overgrown": "overgrown_vegetation",
+    "weeds": "overgrown_vegetation",
+    "vegetation": "overgrown_vegetation",
+    "abandoned": "abandoned",
+    "foreclosure": "abandoned",
+    "neglect": "abandoned",
+    "dilapidated": "structural_damage",
+    "damage": "structural_damage",
+    "deterioration": "structural_damage",
+    "tarp": "structural_damage",
+    "boarded": "structural_damage",
+    "broken": "structural_damage",
+    "furniture": "furniture_outside",
+    "mattress": "furniture_outside",
+    "sofa": "furniture_outside",
+    "pile": "items_piled_outside",
+    "clutter": "items_piled_outside",
 }
+
 
 async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
     """Call Google Cloud Vision LABEL_DETECTION on a satellite image URL.
@@ -232,13 +315,15 @@ async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
         return {}
     gcv_url = f"https://vision.googleapis.com/v1/images:annotate?key={key}"
     body = {
-        "requests": [{
-            "image": {"source": {"imageUri": image_url}},
-            "features": [
-                {"type": "LABEL_DETECTION",  "maxResults": 30},
-                {"type": "OBJECT_LOCALIZATION", "maxResults": 20},
-            ],
-        }]
+        "requests": [
+            {
+                "image": {"source": {"imageUri": image_url}},
+                "features": [
+                    {"type": "LABEL_DETECTION", "maxResults": 30},
+                    {"type": "OBJECT_LOCALIZATION", "maxResults": 20},
+                ],
+            }
+        ]
     }
     try:
         async with httpx.AsyncClient(timeout=12) as client:
@@ -247,10 +332,14 @@ async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
             data = resp.json()
 
         responses = data.get("responses", [{}])[0]
-        labels = [a.get("description", "").lower()
-                  for a in responses.get("labelAnnotations", [])]
-        objects = [o.get("name", "").lower()
-                   for o in responses.get("localizedObjectAnnotations", [])]
+        labels = [
+            a.get("description", "").lower()
+            for a in responses.get("labelAnnotations", [])
+        ]
+        objects = [
+            o.get("name", "").lower()
+            for o in responses.get("localizedObjectAnnotations", [])
+        ]
         all_detections = labels + objects
 
         signals: Dict[str, bool] = {}
@@ -258,14 +347,20 @@ async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
             for keyword, signal_key in _GCV_DISTRESS_LABELS.items():
                 if keyword in det:
                     signals[signal_key] = True
-        log.debug("GCV detections: %s → signals: %s", all_detections[:15], list(signals.keys()))
+        log.debug(
+            "GCV detections: %s → signals: %s",
+            all_detections[:15],
+            list(signals.keys()),
+        )
         return signals
     except Exception as e:
         log.warning("Google Cloud Vision call failed: %s", e)
         return {}
 
 
-async def _visual_signals(image_path: Optional[str], image_url: Optional[str]) -> Dict[str, bool]:
+async def _visual_signals(
+    image_path: Optional[str], image_url: Optional[str]
+) -> Dict[str, bool]:
     """Merge YOLO (local file) and GCV (remote URL) visual signals."""
     yolo: Dict[str, bool] = {}
     gcv: Dict[str, bool] = {}
@@ -283,11 +378,15 @@ async def _visual_signals(image_path: Optional[str], image_url: Optional[str]) -
 
 
 # ─── AI distress reasoning ───────────────────────────────────────────────────
-async def _ai_distress_score(address: str, signals: Dict[str, Any], base_score: int,
-                              yolo_signals: Dict[str, bool]) -> Dict[str, Any]:
+async def _ai_distress_score(
+    address: str,
+    signals: Dict[str, Any],
+    base_score: int,
+    yolo_signals: Dict[str, bool],
+) -> Dict[str, Any]:
     sys_msg = (
         "You are a real estate distress analyst. Score property distress 0-100. "
-        "Return JSON: {\"score\": int, \"rationale\": str, \"category\": str} "
+        'Return JSON: {"score": int, "rationale": str, "category": str} '
         "where category is one of: low, medium, high, severe."
     )
     sig_lines = "\n".join(f"- {k}: {v}" for k, v in signals.items() if v)
@@ -299,9 +398,13 @@ async def _ai_distress_score(address: str, signals: Dict[str, Any], base_score: 
     )
     try:
         raw = await _chat(
-            [{"role": "system", "content": sys_msg},
-             {"role": "user", "content": user_msg}],
-            json_mode=True, max_tokens=180, temperature=0.2,
+            [
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            json_mode=True,
+            max_tokens=180,
+            temperature=0.2,
         )
         data = json.loads(raw)
         score = max(0, min(100, int(data.get("score", base_score))))
@@ -309,7 +412,7 @@ async def _ai_distress_score(address: str, signals: Dict[str, Any], base_score: 
         if category not in ("low", "medium", "high", "severe"):
             category = _category(score)
         return {
-            "score":    score,
+            "score": score,
             "rationale": str(data.get("rationale", "")),
             "category": category,
         }
@@ -317,8 +420,11 @@ async def _ai_distress_score(address: str, signals: Dict[str, Any], base_score: 
         log.debug("AI distress score failed for %s: %s", address, e)
         return {"score": base_score, "rationale": "", "category": _category(base_score)}
 
+
 # ─── Listing enrichment ───────────────────────────────────────────────────────
-async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -> List[Dict[str, Any]]:
+async def _fetch_listings(
+    zip_code: str = "", city: str = "", state: str = ""
+) -> List[Dict[str, Any]]:
     """Fetch listings via HomeHarvest (primary) with Zillow/Redfin as fallback.
 
     HomeHarvest is preferred because:
@@ -326,26 +432,38 @@ async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -
     - Returns latitude/longitude natively (required for satellite imagery)
     - Works reliably on Railway without scraping proxies
     """
+
     async def _safe(fn, *args, **kwargs):
-        try: return await fn(*args, **kwargs)
-        except Exception as e: log.info("%s failed: %s", fn.__name__, e); return []
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as e:
+            log.info("%s failed: %s", fn.__name__, e)
+            return []
 
     all_listings: List[Dict[str, Any]] = []
 
     # ── HomeHarvest: primary source (zip or city+state) ───────────────────────
     # scrape_foreclosures takes (city, state) — HomeHarvest also accepts a zip
     # code in the city field when state is left blank.
-    hh_city  = zip_code if zip_code else city
+    hh_city = zip_code if zip_code else city
     hh_state = "" if zip_code else state
 
     if hh_city:
         hh_active, hh_sold = await asyncio.gather(
-            _safe(homeharvest_scraper.scrape_foreclosures,
-                  hh_city, hh_state,
-                  listing_type="for_sale", limit=50),
-            _safe(homeharvest_scraper.scrape_foreclosures,
-                  hh_city, hh_state,
-                  listing_type="sold", limit=30),
+            _safe(
+                homeharvest_scraper.scrape_foreclosures,
+                hh_city,
+                hh_state,
+                listing_type="for_sale",
+                limit=50,
+            ),
+            _safe(
+                homeharvest_scraper.scrape_foreclosures,
+                hh_city,
+                hh_state,
+                listing_type="sold",
+                limit=30,
+            ),
         )
         all_listings.extend(hh_active + hh_sold)
         log.info("DFD: HomeHarvest returned %d listings", len(all_listings))
@@ -354,10 +472,34 @@ async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -
     if not all_listings:
         log.info("DFD: HomeHarvest empty — falling back to Zillow/Redfin scrapers")
         active, fsbo, zsold, rsold = await asyncio.gather(
-            _safe(zillow.fetch_active_listings, zip_code=zip_code, city=city, state=state, max_results=40),
-            _safe(zillow.fetch_fsbo, zip_code=zip_code, city=city, state=state, max_results=25),
-            _safe(zillow.fetch_recently_sold, zip_code=zip_code, city=city, state=state, max_results=20),
-            _safe(redfin.fetch_recently_sold, zip_code=zip_code, city=city, state=state, max_results=20),
+            _safe(
+                zillow.fetch_active_listings,
+                zip_code=zip_code,
+                city=city,
+                state=state,
+                max_results=40,
+            ),
+            _safe(
+                zillow.fetch_fsbo,
+                zip_code=zip_code,
+                city=city,
+                state=state,
+                max_results=25,
+            ),
+            _safe(
+                zillow.fetch_recently_sold,
+                zip_code=zip_code,
+                city=city,
+                state=state,
+                max_results=20,
+            ),
+            _safe(
+                redfin.fetch_recently_sold,
+                zip_code=zip_code,
+                city=city,
+                state=state,
+                max_results=20,
+            ),
         )
         for p in fsbo:
             p["is_fsbo"] = True
@@ -375,11 +517,23 @@ async def _fetch_listings(zip_code: str = "", city: str = "", state: str = "") -
         deduped.append(p)
     return deduped
 
+
 # ─── Public entrypoint ───────────────────────────────────────────────────────
-async def scan_area(zip_code: str = "", city: str = "", state: str = "",
-                    min_score: int = 30, max_results: int = 50,
-                    use_ai_scoring: bool = True) -> Dict[str, Any]:
-    log.info("Satellite DFD scan: zip=%s city=%s state=%s min=%d", zip_code, city, state, min_score)
+async def scan_area(
+    zip_code: str = "",
+    city: str = "",
+    state: str = "",
+    min_score: int = 30,
+    max_results: int = 50,
+    use_ai_scoring: bool = True,
+) -> Dict[str, Any]:
+    log.info(
+        "Satellite DFD scan: zip=%s city=%s state=%s min=%d",
+        zip_code,
+        city,
+        state,
+        min_score,
+    )
     has_google = bool(_google_key())
     has_yolo = _YOLO_AVAILABLE
 
@@ -402,13 +556,13 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
             days_on_market = None
 
         signals: Dict[str, Any] = {
-            "year_built":      year_built,
-            "days_on_market":  days_on_market,
+            "year_built": year_built,
+            "days_on_market": days_on_market,
             "price_reduction": bool(p.get("price_reduction") or p.get("price_reduced")),
-            "is_fsbo":         bool(p.get("is_fsbo")),
-            "vacant":          bool(p.get("vacant") or p.get("vacancy")),
-            "equity_pct":      p.get("equity_pct"),
-            "tax_delinquent":  bool(p.get("tax_delinquent")),
+            "is_fsbo": bool(p.get("is_fsbo")),
+            "vacant": bool(p.get("vacant") or p.get("vacancy")),
+            "equity_pct": p.get("equity_pct"),
+            "tax_delinquent": bool(p.get("tax_delinquent")),
             "ownership_years": p.get("ownership_years"),
         }
         base_score = _compute_score(signals)
@@ -423,7 +577,7 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
         sv_url: Optional[str] = None
         if has_google and lat and lon:
             sat_url = _satellite_url(float(lat), float(lon))
-            sv_url  = _streetview_url(float(lat), float(lon))
+            sv_url = _streetview_url(float(lat), float(lon))
 
         # ── Visual distress detection: YOLO (local) + Google Cloud Vision ───────
         yolo_sigs: Dict[str, bool] = {}
@@ -438,7 +592,9 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
             # Use YOLO (requires local file) + GCV (uses satellite URL directly)
             # _visual_signals() gracefully skips whichever source is unavailable
             async with _get_yolo_lock():
-                yolo_sigs = await _visual_signals(img_path, sat_url if _has_gcv else None)
+                yolo_sigs = await _visual_signals(
+                    img_path, sat_url if _has_gcv else None
+                )
 
             # Each confirmed visual signal bumps score by 5 pts (cap at +20)
             visual_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
@@ -452,7 +608,7 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
                 )
         else:
             scored = {
-                "score":    base_score,
+                "score": base_score,
                 "rationale": "",
                 "category": _category(base_score),
             }
@@ -462,33 +618,33 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
 
         # ── Normalise value field ─────────────────────────────────────────────
         estimated_value = (
-            p.get("estimated_value")
-            or p.get("zestimate")
-            or p.get("price")
+            p.get("estimated_value") or p.get("zestimate") or p.get("price")
         )
 
-        candidates.append({
-            "address":           p.get("address"),
-            "city":              p.get("city") or city,
-            "state":             p.get("state") or state,
-            "zip":               p.get("zip") or zip_code,
-            "distress_score":    scored["score"],
-            "distress_category": scored["category"],
-            "rationale":         scored["rationale"],
-            "latitude":          lat,
-            "longitude":         lon,
-            "satellite_url":     sat_url,
-            "streetview_url":    sv_url,
-            "zillow_url":        p.get("zillow_url") or p.get("source_url"),
-            "estimated_value":   estimated_value,
-            "beds":              p.get("beds"),
-            "baths":             p.get("baths"),
-            "sqft":              p.get("sqft"),
-            "year_built":        year_built,
-            "source":            p.get("source", "zillow"),
-            "signals":           signals,
-            "visual_signals":     yolo_sigs,
-        })
+        candidates.append(
+            {
+                "address": p.get("address"),
+                "city": p.get("city") or city,
+                "state": p.get("state") or state,
+                "zip": p.get("zip") or zip_code,
+                "distress_score": scored["score"],
+                "distress_category": scored["category"],
+                "rationale": scored["rationale"],
+                "latitude": lat,
+                "longitude": lon,
+                "satellite_url": sat_url,
+                "streetview_url": sv_url,
+                "zillow_url": p.get("zillow_url") or p.get("source_url"),
+                "estimated_value": estimated_value,
+                "beds": p.get("beds"),
+                "baths": p.get("baths"),
+                "sqft": p.get("sqft"),
+                "year_built": year_built,
+                "source": p.get("source", "zillow"),
+                "signals": signals,
+                "visual_signals": yolo_sigs,
+            }
+        )
 
         if len(candidates) >= max_results * 2:  # over-fetch then trim after sort
             break
@@ -497,14 +653,14 @@ async def scan_area(zip_code: str = "", city: str = "", state: str = "",
     top = candidates[:max_results]
 
     return {
-        "zip":                  zip_code,
-        "city":                 city,
-        "state":                state,
-        "total_scanned":        len(listings),
+        "zip": zip_code,
+        "city": city,
+        "state": state,
+        "total_scanned": len(listings),
         "total_above_threshold": total_above,
-        "min_score_filter":     min_score,
-        "google_imagery":       has_google,
-        "yolo_available":       has_yolo,
-        "results":              top,
-        "count":                len(top),
+        "min_score_filter": min_score,
+        "google_imagery": has_google,
+        "yolo_available": has_yolo,
+        "results": top,
+        "count": len(top),
     }

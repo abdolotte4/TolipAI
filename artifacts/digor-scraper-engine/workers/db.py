@@ -75,6 +75,7 @@ async def conn() -> AsyncIterator[Optional[asyncpg.Connection]]:
 
 # ─── scraper_jobs ────────────────────────────────────────────────────────────
 
+
 async def create_job(
     job_id: str,
     job_type: str,
@@ -94,7 +95,12 @@ async def create_job(
             VALUES ($1, $2, 'queued', $3::jsonb, $4, $5, $6)
             ON CONFLICT (id) DO NOTHING
             """,
-            job_id, job_type, json.dumps(params), lead_id, campaign_id, created_by,
+            job_id,
+            job_type,
+            json.dumps(params),
+            lead_id,
+            campaign_id,
+            created_by,
         )
 
 
@@ -114,13 +120,21 @@ async def update_job(
         vals: List[Any] = []
         i = 1
         if status is not None:
-            sets.append(f"status=${i}"); vals.append(status); i += 1
+            sets.append(f"status=${i}")
+            vals.append(status)
+            i += 1
         if progress is not None:
-            sets.append(f"progress=${i}"); vals.append(progress); i += 1
+            sets.append(f"progress=${i}")
+            vals.append(progress)
+            i += 1
         if result_count is not None:
-            sets.append(f"result_count=${i}"); vals.append(result_count); i += 1
+            sets.append(f"result_count=${i}")
+            vals.append(result_count)
+            i += 1
         if error is not None:
-            sets.append(f"error=${i}"); vals.append(error); i += 1
+            sets.append(f"error=${i}")
+            vals.append(error)
+            i += 1
         if completed:
             sets.append(f"completed_at=${i}")
             vals.append(datetime.now(timezone.utc).replace(tzinfo=None))
@@ -144,8 +158,11 @@ async def get_job(job_id: str) -> Optional[Dict[str, Any]]:
 
 # ─── cash_buyer_matches ──────────────────────────────────────────────────────
 
+
 async def insert_cash_buyer_matches(
-    job_id: str, lead_id: Any, matches: List[Dict[str, Any]],
+    job_id: str,
+    lead_id: Any,
+    matches: List[Dict[str, Any]],
 ) -> int:
     if not matches:
         return 0
@@ -156,8 +173,11 @@ async def insert_cash_buyer_matches(
         try:
             lead_id_str = int(lead_id) if lead_id is not None else None
         except (ValueError, TypeError):
-            log.warning("insert_cash_buyer_matches: could not coerce lead_id=%r to int", lead_id)
+            log.warning(
+                "insert_cash_buyer_matches: could not coerce lead_id=%r to int", lead_id
+            )
             lead_id_str = None
+
         def _to_int(v: Any) -> Optional[int]:
             """Coerce LLM-returned strings/floats to int, None if unparseable."""
             if v is None:
@@ -182,28 +202,32 @@ async def insert_cash_buyer_matches(
             lpd = m.get("last_purchase_date")
             if lpd is not None and not isinstance(lpd, str):
                 lpd = str(lpd)
-            rows.append((
-                lead_id_str,
-                job_id,
-                m.get("buyer_name") or "Unknown",
-                m.get("llc_name"),
-                m.get("buyer_type") or "unknown",
-                int(m.get("match_score") or 0),
-                json.dumps(m.get("match_reasons") or []),
-                _to_int(m.get("portfolio_size")),
-                _to_float(m.get("portfolio_value")),
-                _to_float(m.get("portfolio_appreciation")),
-                _to_float(m.get("avg_purchase_price")),
-                lpd,
-                m.get("city"), m.get("state"), m.get("zip"),
-                m.get("mailing_address"),
-                json.dumps(m.get("phones") or []),
-                json.dumps(m.get("emails") or []),
-                json.dumps(m.get("principals") or []),
-                m.get("classification_reason"),
-                m.get("source") or "scraper-engine",
-                json.dumps(m.get("raw_data") or {}),
-            ))
+            rows.append(
+                (
+                    lead_id_str,
+                    job_id,
+                    m.get("buyer_name") or "Unknown",
+                    m.get("llc_name"),
+                    m.get("buyer_type") or "unknown",
+                    int(m.get("match_score") or 0),
+                    json.dumps(m.get("match_reasons") or []),
+                    _to_int(m.get("portfolio_size")),
+                    _to_float(m.get("portfolio_value")),
+                    _to_float(m.get("portfolio_appreciation")),
+                    _to_float(m.get("avg_purchase_price")),
+                    lpd,
+                    m.get("city"),
+                    m.get("state"),
+                    m.get("zip"),
+                    m.get("mailing_address"),
+                    json.dumps(m.get("phones") or []),
+                    json.dumps(m.get("emails") or []),
+                    json.dumps(m.get("principals") or []),
+                    m.get("classification_reason"),
+                    m.get("source") or "scraper-engine",
+                    json.dumps(m.get("raw_data") or {}),
+                )
+            )
         await c.executemany(
             """
             INSERT INTO cash_buyer_matches
@@ -222,7 +246,9 @@ async def insert_cash_buyer_matches(
 
 
 async def insert_cash_buyer(
-    lead_id: int, job_id: Optional[str], buyer: Dict[str, Any],
+    lead_id: int,
+    job_id: Optional[str],
+    buyer: Dict[str, Any],
 ) -> bool:
     """Insert a single buyer row mapped from Propelio/Propwire payload shape.
 
@@ -262,7 +288,9 @@ async def insert_cash_buyer(
     return n > 0
 
 
-async def list_cash_buyers_for_lead(lead_id: Union[int, str], limit: int = 100) -> List[Dict[str, Any]]:
+async def list_cash_buyers_for_lead(
+    lead_id: Union[int, str], limit: int = 100
+) -> List[Dict[str, Any]]:
     async with conn() as c:
         if c is None:
             return []
@@ -273,18 +301,27 @@ async def list_cash_buyers_for_lead(lead_id: Union[int, str], limit: int = 100) 
             ORDER BY match_score DESC, created_at DESC
             LIMIT $2
             """,
-            int(lead_id), limit,
+            int(lead_id),
+            limit,
         )
         return [dict(r) for r in rows]
 
 
 # ─── distressed_listings ─────────────────────────────────────────────────────
 
+
 def _safe_num(v: Any) -> Optional[float]:
     """Coerce LLM-extracted numeric strings to float; return None for blanks / dashes."""
     if v is None:
         return None
-    s = str(v).strip().replace(",", "").replace("$", "").replace("—", "").replace("-", "")
+    s = (
+        str(v)
+        .strip()
+        .replace(",", "")
+        .replace("$", "")
+        .replace("—", "")
+        .replace("-", "")
+    )
     if not s:
         return None
     try:
@@ -294,7 +331,9 @@ def _safe_num(v: Any) -> Optional[float]:
 
 
 async def insert_distressed_listings(
-    job_id: str, listings: List[Dict[str, Any]], campaign_id: Optional[int] = None,
+    job_id: str,
+    listings: List[Dict[str, Any]],
+    campaign_id: Optional[int] = None,
 ) -> int:
     if not listings:
         return 0
@@ -302,23 +341,30 @@ async def insert_distressed_listings(
         if c is None:
             return 0
         rows = []
-        for l in listings:
-            rows.append((
-                job_id,
-                campaign_id,
-                l.get("distress_type") or "unknown",
-                l.get("address") or "Unknown",
-                l.get("city"), l.get("state"), l.get("zip"), l.get("county"),
-                l.get("parcel_id"), l.get("owner_name"),
-                l.get("sale_date"),
-                _safe_num(l.get("opening_bid")),
-                _safe_num(l.get("estimated_value")),
-                _safe_num(l.get("mortgage_balance")),
-                l.get("source") or "scraper-engine",
-                l.get("source_url"),
-                _safe_num(l.get("latitude")), _safe_num(l.get("longitude")),
-                json.dumps(l.get("raw_data") or {}),
-            ))
+        for listing in listings:
+            rows.append(
+                (
+                    job_id,
+                    campaign_id,
+                    listing.get("distress_type") or "unknown",
+                    listing.get("address") or "Unknown",
+                    listing.get("city"),
+                    listing.get("state"),
+                    listing.get("zip"),
+                    listing.get("county"),
+                    listing.get("parcel_id"),
+                    listing.get("owner_name"),
+                    listing.get("sale_date"),
+                    _safe_num(listing.get("opening_bid")),
+                    _safe_num(listing.get("estimated_value")),
+                    _safe_num(listing.get("mortgage_balance")),
+                    listing.get("source") or "scraper-engine",
+                    listing.get("source_url"),
+                    _safe_num(listing.get("latitude")),
+                    _safe_num(listing.get("longitude")),
+                    json.dumps(listing.get("raw_data") or {}),
+                )
+            )
         await c.executemany(
             """
             INSERT INTO distressed_listings
@@ -333,7 +379,9 @@ async def insert_distressed_listings(
         return len(rows)
 
 
-async def list_distressed_for_job(job_id: str, limit: int = 500) -> List[Dict[str, Any]]:
+async def list_distressed_for_job(
+    job_id: str, limit: int = 500
+) -> List[Dict[str, Any]]:
     async with conn() as c:
         if c is None:
             return []
@@ -344,13 +392,15 @@ async def list_distressed_for_job(job_id: str, limit: int = 500) -> List[Dict[st
             ORDER BY sale_date NULLS LAST, created_at DESC
             LIMIT $2
             """,
-            job_id, limit,
+            job_id,
+            limit,
         )
         return [dict(r) for r in rows]
 
 
-async def insert_property_comps(lead_id: int, source: str,
-                                comps: List[Dict[str, Any]], job_id: Optional[str] = None) -> int:
+async def insert_property_comps(
+    lead_id: int, source: str, comps: List[Dict[str, Any]], job_id: Optional[str] = None
+) -> int:
     if not comps:
         return 0
     async with conn() as c:
@@ -358,24 +408,47 @@ async def insert_property_comps(lead_id: int, source: str,
             return 0
         rows = []
         for comp in comps:
-            def _n(v): return float(str(v).replace(",","").replace("$","").strip()) if v is not None else None
-            def _i(v): return int(float(str(v).replace(",","").replace("$","").strip())) if v is not None else None
+
+            def _n(v):
+                return (
+                    float(str(v).replace(",", "").replace("$", "").strip())
+                    if v is not None
+                    else None
+                )
+
+            def _i(v):
+                return (
+                    int(float(str(v).replace(",", "").replace("$", "").strip()))
+                    if v is not None
+                    else None
+                )
+
             try:
-                rows.append((
-                    lead_id, job_id, source,
-                    comp.get("address") or "Unknown",
-                    comp.get("city"), comp.get("state"), comp.get("zip"),
-                    _i(comp.get("beds")), _n(comp.get("baths")),
-                    _i(comp.get("sqft")), _i(comp.get("lot_sqft")),
-                    _i(comp.get("year_built")),
-                    _n(comp.get("sale_price") or comp.get("price")),
-                    _n(comp.get("price_per_sqft")),
-                    comp.get("sold_date") or comp.get("soldDate"),
-                    comp.get("status"),
-                    _n(comp.get("distance_from_subject")),
-                    _n(comp.get("latitude")), _n(comp.get("longitude")),
-                    comp.get("source_url"), json.dumps(comp),
-                ))
+                rows.append(
+                    (
+                        lead_id,
+                        job_id,
+                        source,
+                        comp.get("address") or "Unknown",
+                        comp.get("city"),
+                        comp.get("state"),
+                        comp.get("zip"),
+                        _i(comp.get("beds")),
+                        _n(comp.get("baths")),
+                        _i(comp.get("sqft")),
+                        _i(comp.get("lot_sqft")),
+                        _i(comp.get("year_built")),
+                        _n(comp.get("sale_price") or comp.get("price")),
+                        _n(comp.get("price_per_sqft")),
+                        comp.get("sold_date") or comp.get("soldDate"),
+                        comp.get("status"),
+                        _n(comp.get("distance_from_subject")),
+                        _n(comp.get("latitude")),
+                        _n(comp.get("longitude")),
+                        comp.get("source_url"),
+                        json.dumps(comp),
+                    )
+                )
             except Exception as e:
                 log.debug("skip bad comp row: %s", e)
         if not rows:
@@ -394,11 +467,15 @@ async def insert_property_comps(lead_id: int, source: str,
         return len(rows)
 
 
-async def insert_property_history(lead_id: int, source: str,
-                                   sales: List[Dict[str, Any]],
-                                   mortgages: List[Dict[str, Any]]) -> int:
-    events = [{"event_type": "sale", **s} for s in sales] + \
-             [{"event_type": "mortgage", **m} for m in mortgages]
+async def insert_property_history(
+    lead_id: int,
+    source: str,
+    sales: List[Dict[str, Any]],
+    mortgages: List[Dict[str, Any]],
+) -> int:
+    events = [{"event_type": "sale", **s} for s in sales] + [
+        {"event_type": "mortgage", **m} for m in mortgages
+    ]
     if not events:
         return 0
     async with conn() as c:
@@ -406,19 +483,29 @@ async def insert_property_history(lead_id: int, source: str,
             return 0
         rows = []
         for ev in events:
-            def _n(v): return float(str(v).replace(",","").replace("$","").strip()) if v is not None else None
-            rows.append((
-                lead_id, source,
-                ev.get("event_type", "sale"),
-                ev.get("event_date") or ev.get("date") or ev.get("saleDate"),
-                _n(ev.get("sale_price") or ev.get("amount") or ev.get("price")),
-                _n(ev.get("mortgage_amount") or ev.get("loanAmount")),
-                ev.get("lender_name") or ev.get("lender"),
-                ev.get("buyer_name") or ev.get("buyer"),
-                ev.get("seller_name") or ev.get("seller"),
-                ev.get("document_type") or ev.get("docType"),
-                json.dumps(ev),
-            ))
+
+            def _n(v):
+                return (
+                    float(str(v).replace(",", "").replace("$", "").strip())
+                    if v is not None
+                    else None
+                )
+
+            rows.append(
+                (
+                    lead_id,
+                    source,
+                    ev.get("event_type", "sale"),
+                    ev.get("event_date") or ev.get("date") or ev.get("saleDate"),
+                    _n(ev.get("sale_price") or ev.get("amount") or ev.get("price")),
+                    _n(ev.get("mortgage_amount") or ev.get("loanAmount")),
+                    ev.get("lender_name") or ev.get("lender"),
+                    ev.get("buyer_name") or ev.get("buyer"),
+                    ev.get("seller_name") or ev.get("seller"),
+                    ev.get("document_type") or ev.get("docType"),
+                    json.dumps(ev),
+                )
+            )
         await c.executemany(
             """
             INSERT INTO property_history
@@ -431,12 +518,20 @@ async def insert_property_history(lead_id: int, source: str,
         return len(rows)
 
 
-async def upsert_property_tax(lead_id: int, source: str, tax: Dict[str, Any],
-                               tax_history: List[Dict[str, Any]]) -> None:
+async def upsert_property_tax(
+    lead_id: int, source: str, tax: Dict[str, Any], tax_history: List[Dict[str, Any]]
+) -> None:
     async with conn() as c:
         if c is None:
             return
-        def _n(v): return float(str(v).replace(",","").replace("$","").strip()) if v is not None else None
+
+        def _n(v):
+            return (
+                float(str(v).replace(",", "").replace("$", "").strip())
+                if v is not None
+                else None
+            )
+
         await c.execute(
             """
             INSERT INTO property_tax
@@ -446,18 +541,23 @@ async def upsert_property_tax(lead_id: int, source: str, tax: Dict[str, Any],
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
             ON CONFLICT DO NOTHING
             """,
-            lead_id, source,
-            _n(tax.get("assessed_value")), _n(tax.get("market_value")),
-            _n(tax.get("land_value")), _n(tax.get("improvement_value")),
+            lead_id,
+            source,
+            _n(tax.get("assessed_value")),
+            _n(tax.get("market_value")),
+            _n(tax.get("land_value")),
+            _n(tax.get("improvement_value")),
             _n(tax.get("annual_tax")),
             str(tax.get("tax_year") or "") or None,
-            tax.get("parcel_id"), tax.get("legal_description"),
+            tax.get("parcel_id"),
+            tax.get("legal_description"),
             json.dumps(tax_history or []),
         )
 
 
-async def insert_skip_trace_result(lead_id: Optional[int], subject_name: str,
-                                    result: Dict[str, Any]) -> None:
+async def insert_skip_trace_result(
+    lead_id: Optional[int], subject_name: str, result: Dict[str, Any]
+) -> None:
     async with conn() as c:
         if c is None:
             return
@@ -468,7 +568,8 @@ async def insert_skip_trace_result(lead_id: Optional[int], subject_name: str,
                principals, addresses, sources, raw_data)
             VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb)
             """,
-            lead_id, subject_name,
+            lead_id,
+            subject_name,
             result.get("llc_name"),
             json.dumps(result.get("phones") or []),
             json.dumps(result.get("emails") or []),

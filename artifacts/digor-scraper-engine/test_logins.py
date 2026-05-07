@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 # ── Propelio test ─────────────────────────────────────────────────────────────
 
+
 async def test_propelio():
     print("\n" + "=" * 60)
     print("PROPELIO TEST")
@@ -29,18 +30,27 @@ async def test_propelio():
         print(f"  Searching: {address}")
         prop = await search_property(address)
         elapsed = round(time.time() - t0, 1)
-        print(f"  Login + search OK ({elapsed}s) — property_id={prop.get('property_id')}")
+        print(
+            f"  Login + search OK ({elapsed}s) — property_id={prop.get('property_id')}"
+        )
         print(f"  URL: {prop.get('url')}")
 
         pid = prop.get("property_id")
         if pid:
-            print(f"  Fetching cash buyers (max 10)...")
+            print("  Fetching cash buyers (max 10)...")
             buyers = await fetch_cash_buyers(pid, max_results=10, distance_miles=10)
             print(f"  Cash buyers returned: {len(buyers)}")
             for i, b in enumerate(buyers[:5], 1):
-                print(f"    {i}. {b.get('name') or b.get('llc') or '(no name)'} "
-                      f"| props={b.get('props_count')} | avg_deal=${b.get('avg_deal')}")
-            return {"status": "ok", "property": prop, "buyers_count": len(buyers), "buyers_sample": buyers[:5]}
+                print(
+                    f"    {i}. {b.get('name') or b.get('llc') or '(no name)'} "
+                    f"| props={b.get('props_count')} | avg_deal=${b.get('avg_deal')}"
+                )
+            return {
+                "status": "ok",
+                "property": prop,
+                "buyers_count": len(buyers),
+                "buyers_sample": buyers[:5],
+            }
         else:
             return {"status": "ok_no_id", "property": prop}
 
@@ -51,6 +61,7 @@ async def test_propelio():
 
 
 # ── Propwire test ─────────────────────────────────────────────────────────────
+
 
 async def test_propwire():
     print("\n" + "=" * 60)
@@ -67,20 +78,31 @@ async def test_propwire():
         print(f"  Login + property fetch OK ({elapsed}s)")
         print(f"  URL: {result.get('url')}")
         det = result.get("details") or {}
-        print(f"  beds={det.get('beds')} baths={det.get('baths')} sqft={det.get('sqft')} "
-              f"est_value=${det.get('estimated_value')}")
+        print(
+            f"  beds={det.get('beds')} baths={det.get('baths')} sqft={det.get('sqft')} "
+            f"est_value=${det.get('estimated_value')}"
+        )
         own = result.get("owner") or {}
-        print(f"  Owner: {own.get('name')} | LLC={own.get('is_llc')} | OO={own.get('owner_occupied')}")
+        print(
+            f"  Owner: {own.get('name')} | LLC={own.get('is_llc')} | OO={own.get('owner_occupied')}"
+        )
 
         prop_url = result.get("url")
         if prop_url and "/realestate/" in prop_url:
-            print(f"  Fetching nearby cash buyers (max 10)...")
+            print("  Fetching nearby cash buyers (max 10)...")
             buyers = await fetch_cash_buyers_nearby(prop_url, max_results=10)
             print(f"  Cash buyers returned: {len(buyers)}")
             for i, b in enumerate(buyers[:5], 1):
-                print(f"    {i}. {b.get('name') or b.get('llc') or '(no name)'} "
-                      f"| props={b.get('props_count')} | avg_deal=${b.get('avg_deal')}")
-            return {"status": "ok", "property": result, "buyers_count": len(buyers), "buyers_sample": buyers[:5]}
+                print(
+                    f"    {i}. {b.get('name') or b.get('llc') or '(no name)'} "
+                    f"| props={b.get('props_count')} | avg_deal=${b.get('avg_deal')}"
+                )
+            return {
+                "status": "ok",
+                "property": result,
+                "buyers_count": len(buyers),
+                "buyers_sample": buyers[:5],
+            }
         else:
             return {"status": "ok_no_url", "property": result}
 
@@ -91,6 +113,7 @@ async def test_propwire():
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 async def main():
     # Clear stale sessions first
