@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# launch-aider.sh — Start Aider AI assistant for the Digor LLC project
+# launch-aider.sh — Start Aider AI for the Digor LLC project
 #
 # Usage:
-#   ./launch-aider.sh                          # Chat mode — just type naturally
-#   ./launch-aider.sh workers/main.py          # Open a specific file for editing
-#   ./launch-aider.sh workers/main.py db.py    # Open multiple files
+#   ./launch-aider.sh                            # Open with project context
+#   ./launch-aider.sh workers/main.py            # Also open a specific file
+#   ./launch-aider.sh workers/main.py workers/db.py  # Multiple files
 #
-# Switching between agents:
-#   Replit Agent → use the chat panel on the left (auto-commits)
-#   Aider        → run this script in the Shell tab (you commit manually)
-#
-# After Aider makes changes, commit with:
-#   git add -A && git commit -m "your message"
+# Switching agents:
+#   Replit Agent → use the chat panel (auto-commits)
+#   Aider        → run this in the Shell tab (you commit with: git add -A && git commit)
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -e
@@ -22,59 +19,86 @@ PROJECT_ROOT="/home/runner/workspace"
 
 cd "$PROJECT_ROOT"
 
-# Make sure the binary exists
 if [ ! -f "$AIDER_BIN" ]; then
-  echo "Aider not found — installing..."
+  echo "Installing Aider..."
   pip install aider-chat --quiet
   AIDER_BIN="$(which aider)"
 fi
 
-# ── Pick API key ──────────────────────────────────────────────────────────────
-if [ -n "$OPENROUTER_API_KEY" ]; then
-  echo "✓ Using OpenRouter (gpt-4o by default — edit .aider.conf.yml to switch models)"
-  export OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
+# ── Format / lint / test commands (passed as CLI flags to avoid YAML issues) ──
+FORMAT_CMD="python -m black {file}"
+LINT_CMD="python -m flake8 --max-line-length=120 --extend-ignore=E203,W503,E501 {file}"
+# TEST_CMD="pytest -q"   # uncomment when you have tests
+
+# ── Pick model based on available API keys ────────────────────────────────────
+if [ -n "$GROQ_API_KEY" ]; then
+  echo "✓ Groq (free tier) — fast, no credits needed"
+  MODEL="groq/llama-3.3-70b-versatile"
+  WEAK_MODEL="groq/llama-3.1-8b-instant"
+  MAP_TOKENS=4096
 
 elif [ -n "$ANTHROPIC_API_KEY" ]; then
-  echo "✓ Using Anthropic (Claude)"
-  EXTRA_FLAGS="--model claude-3-5-sonnet-20241022"
+  echo "✓ Anthropic Claude"
+  MODEL="claude-3-5-sonnet-20241022"
+  WEAK_MODEL="claude-3-haiku-20240307"
+  MAP_TOKENS=4096
+
+elif [ -n "$OPENROUTER_API_KEY" ]; then
+  echo "✓ OpenRouter — using small free model to save credits"
+  echo "  Tip: Add GROQ_API_KEY in Replit Secrets for unlimited free usage."
+  MODEL="openrouter/meta-llama/llama-3.1-8b-instruct:free"
+  WEAK_MODEL="openrouter/meta-llama/llama-3.1-8b-instruct:free"
+  MAP_TOKENS=512   # keep very small — free OpenRouter has tiny credit limit
 
 elif [ -n "$OPENAI_API_KEY" ]; then
-  echo "✓ Using OpenAI"
-  EXTRA_FLAGS="--model gpt-4o"
-
-elif [ -n "$GROQ_API_KEY" ]; then
-  echo "✓ Using Groq (fast, free tier)"
-  EXTRA_FLAGS="--model groq/llama-3.3-70b-versatile"
+  echo "✓ OpenAI"
+  MODEL="gpt-4o"
+  WEAK_MODEL="gpt-4o-mini"
+  MAP_TOKENS=4096
 
 else
   echo ""
   echo "⚠  No API key found!"
-  echo "   Set OPENROUTER_API_KEY in Replit Secrets (Replit Agent can do this for you)."
-  echo "   Supported keys: OPENROUTER_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY"
+  echo ""
+  echo "   Best option (free): get a Groq API key at https://console.groq.com"
+  echo "   Then add it to Replit Secrets as GROQ_API_KEY"
+  echo ""
+  echo "   Also works: ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY"
   exit 1
 fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Digor LLC — Aider AI (works just like Replit Agent)"
-echo "  Just type what you want — no special commands needed."
+echo "  Digor LLC — Aider AI (chat naturally, just like Replit Agent)"
+echo "  Model: $MODEL"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Examples:"
+echo "  Just type what you want:"
 echo "    fix the flake8 errors in workers/db.py"
-echo "    add a /health endpoint to main.py"
-echo "    refactor the skip_trace function to be async"
+echo "    add retry logic to the cash buyers fetcher"
+echo "    refactor all scrapers to use the new http_client helper"
 echo ""
-echo "  Useful slash commands:"
-echo "    /add workers/main.py    — add a file so Aider can edit it"
-echo "    /ls                     — see which files are loaded"
-echo "    /diff                   — show what Aider changed"
-echo "    /undo                   — undo the last change"
-echo "    /run flake8 workers/    — run a shell command"
-echo "    /quit                   — exit"
+echo "  Slash commands:"
+echo "    /add workers/main.py scrapers/county.py  — load files for editing"
+echo "    /ls                                       — see loaded files"
+echo "    /diff                                     — see what changed"
+echo "    /undo                                     — revert last change"
+echo "    /run pytest -q                            — run a shell command"
+echo "    /git add -A && /git commit -m 'msg'       — commit changes"
+echo "    /quit                                     — exit"
 echo ""
+echo "  Tip: Use /add to load multiple files, then describe the change once."
 echo "  To switch back to Replit Agent, just close this shell."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-exec "$AIDER_BIN" $EXTRA_FLAGS "$@"
+exec "$AIDER_BIN" \
+  --model "$MODEL" \
+  --weak-model "$WEAK_MODEL" \
+  --map-tokens "$MAP_TOKENS" \
+  --cache-prompts \
+  --format-cmd "$FORMAT_CMD" \
+  --lint-cmd "$LINT_CMD" \
+  --attribute-author false \
+  --attribute-committer false \
+  "$@"

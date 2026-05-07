@@ -71,7 +71,11 @@ attached_assets/
 
 # Exclude Replit Agent sandbox
 artifacts/mockup-sandbox/
-.aider*
+
+# Aider — keep config/scripts tracked, exclude only runtime cache/history
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v4/
 
 # Deployment configs — root level only (scraper engine has its own Dockerfile)
 /Dockerfile

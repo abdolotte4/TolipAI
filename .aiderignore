@@ -1,0 +1,53 @@
+## Files and directories Aider should NOT index or edit
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Dependencies
+node_modules/
+.pythonlibs/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Source maps (large, not useful for AI)
+*.map
+
+# Binary / media assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.webp
+*.mp4
+*.mp3
+*.pdf
+
+# Lock files (too noisy)
+pnpm-lock.yaml
+package-lock.json
+poetry.lock
+*.lock
+
+# Aider internal files
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v4/
+
+# Replit internal
+.replit
+replit.nix
+.config/
+.cache/
+.upm/
+
+# Logs
+*.log
+logs/
