@@ -369,10 +369,10 @@ async def polite_sleep(min_ms: int = 250, max_ms: int = 800) -> None:
 
 
 # ─── PDF fetch + extraction ──────────────────────────────────────────────────
-import fitz  # PyMuPDF  # noqa: E402
-import pdfplumber  # noqa: E402
-from PIL import Image  # noqa: E402
-import pytesseract  # noqa: E402
+import fitz  # PyMuPDF  # noqa: E402  # type: ignore[import]
+import pdfplumber  # noqa: E402  # type: ignore[import]
+from PIL import Image  # noqa: E402  # type: ignore[import]
+import pytesseract  # noqa: E402  # type: ignore[import]
 
 
 async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:

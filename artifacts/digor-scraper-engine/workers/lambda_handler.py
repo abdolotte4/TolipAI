@@ -442,7 +442,7 @@ def propelio_cash_buyers_handler(event: Dict[str, Any], context: Any) -> Dict[st
             cash_buyers_for_address(
                 address,
                 max_results=int(body.get("maxResults", 100)),
-                radius_miles=float(body.get("radiusMiles", 5.0)),
+                distance_miles=int(body.get("distanceMiles", 10)),
                 active_within=body.get("activeWithin", "6_MONTHS"),
             )
         )
