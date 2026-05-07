@@ -1,4 +1,4 @@
-"""TolipAI Scraper Engine — FastAPI entrypoint.
+"""Digor Scraper Engine — FastAPI entrypoint.
 
 Endpoints all return immediately with a job_id; long work runs as an asyncio
 background task that persists progress + results to Postgres.
@@ -99,6 +99,35 @@ METRICS = {
     "foreclosure_timeout": 0,
 }
 
+# ─── Mode B safety helpers ───────────────────────────────────────────────────
+
+_SCRAPER_SEM: Optional[asyncio.Semaphore] = None
+
+
+def _get_scraper_sem() -> asyncio.Semaphore:
+    global _SCRAPER_SEM
+    if _SCRAPER_SEM is None:
+        _SCRAPER_SEM = asyncio.Semaphore(int(os.getenv("BROWSER_MAX_CONCURRENT", "2")))
+    return _SCRAPER_SEM
+
+
+async def safe_get_pool():
+    """Return shared DB pool idempotently (safe to call inside tight loops)."""
+    return await db.init_pool()
+
+
+def safe_create_task(coro, *, name: Optional[str] = None) -> "asyncio.Task":
+    """Create asyncio task with an error-logging done-callback."""
+    task = asyncio.create_task(coro, name=name)
+
+    def _on_done(t: "asyncio.Task") -> None:
+        if not t.cancelled() and (exc := t.exception()) is not None:
+            log.error("Background task %s raised: %s", name or "?", exc)
+
+    task.add_done_callback(_on_done)
+    return task
+
+
 # ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -138,7 +167,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="TolipAI Scraper Engine",
+    title="Digor Scraper Engine",
     version="0.1.0",
     description="Advanced scraping + skip-trace + investor classification",
     lifespan=lifespan,
@@ -892,7 +921,7 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
                 await db.update_job(job_id, status="failed", error=err, completed=True)
 
 
-    asyncio.create_task(runner())
+    safe_create_task(runner(), name="cash_buyers")
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
 
 
@@ -917,7 +946,7 @@ async def scrape_propelio_cash_buyers(req: PropelioCashBuyersRequest) -> Dict[st
     job_id = _new_job("propelio_cash_buyers", req.model_dump())
     await db.create_job(job_id, "propelio_cash_buyers", req.model_dump(),
                         lead_id=req.lead_id, campaign_id=req.campaign_id)
-    asyncio.create_task(_run_propelio_cash_buyers(job_id, req.model_dump()))
+    safe_create_task(_run_propelio_cash_buyers(job_id, req.model_dump()), name="propelio_cash_buyers")
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
 
 
@@ -971,7 +1000,7 @@ async def scrape_propwire_cash_buyers_nearby(req: PropwireCashBuyersNearbyReques
     job_id = _new_job("propwire_cash_buyers", req.model_dump())
     await db.create_job(job_id, "propwire_cash_buyers", req.model_dump(),
                         lead_id=req.lead_id, campaign_id=req.campaign_id)
-    asyncio.create_task(_run_propwire_cash_buyers(job_id, req.model_dump()))
+    safe_create_task(_run_propwire_cash_buyers(job_id, req.model_dump()), name="propwire_cash_buyers")
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
 
 
@@ -1016,45 +1045,90 @@ async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
 
 @app.post("/google-maps")
 async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
-    """Search Google Maps via Google Places Text Search API (primary) or 503 if unconfigured."""
-    import httpx as _httpx
-    gkey = os.environ.get("GOOGLE_MAPS_API_KEY", "")
-    if not gkey:
-        raise HTTPException(
-            status_code=503,
-            detail="GOOGLE_MAPS_API_KEY not configured — ScraperAPI fallback will be used",
-        )
-
+    """Search Google Maps via Playwright (primary) or Google Places API (fallback)."""
     results: List[Dict[str, Any]] = []
     limit = min(int(req.maxResults), 200)
-    base = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+    throttle = float(os.getenv("GOOGLE_SEARCH_THROTTLE", "0.5"))
 
-    async with _httpx.AsyncClient(timeout=15) as client:
+    # ── Primary: Playwright-based Google Maps scraping (no API key needed) ────
+    async with _get_scraper_sem():
         for keyword in req.keywords[:5]:
             for location in req.locations[:10]:
                 if len(results) >= limit:
                     break
-                query = f"{keyword} near {location}"
+                query_str = f"{keyword} near {location}".replace(" ", "+")
+                url = f"https://www.google.com/maps/search/{query_str}"
                 try:
-                    r = await client.get(base, params={"query": query, "key": gkey})
-                    data = r.json()
-                    for place in (data.get("results") or []):
+                    from .http_client import fetch_html
+                    html = await fetch_html(url, render=True)
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(html, "lxml")
+                    # Google Maps result cards — stable enough class fragments
+                    for item in soup.select("[class*='Nv2PK']")[:25]:
+                        name_el   = item.select_one("[class*='fontHeadlineSmall'], [class*='qBF1Pd']")
+                        addr_el   = item.select_one("[class*='W4Efsd']:last-child")
+                        rating_el = item.select_one("[class*='MW4etd']")
+                        cat_el    = item.select_one("[class*='W4Efsd']:first-child [class*='uEubGf']")
+                        if name_el:
+                            results.append({
+                                "name":     name_el.get_text(strip=True),
+                                "category": cat_el.get_text(strip=True) if cat_el else "",
+                                "address":  addr_el.get_text(strip=True)[:120] if addr_el else "",
+                                "phone":    "",
+                                "website":  "",
+                                "rating":   rating_el.get_text(strip=True) if rating_el else "",
+                                "reviews":  "",
+                                "keyword":  keyword,
+                                "location": location,
+                                "source":   "Google Maps (Playwright)",
+                            })
                         if len(results) >= limit:
                             break
-                        results.append({
-                            "name":     place.get("name", ""),
-                            "category": ", ".join((place.get("types") or [])[:3]),
-                            "address":  place.get("formatted_address", ""),
-                            "phone":    "",
-                            "website":  "",
-                            "rating":   place.get("rating", ""),
-                            "reviews":  place.get("user_ratings_total", ""),
-                            "keyword":  keyword,
-                            "location": location,
-                            "source":   "Google Places API",
-                        })
+                    await asyncio.sleep(throttle)
                 except Exception as e:
-                    log.warning("Google Places failed for '%s near %s': %s", keyword, location, e)
+                    log.warning("Google Maps Playwright failed for '%s near %s': %s",
+                                keyword, location, e)
+                    continue
+
+    # ── Fallback: Google Places Text Search API (when Playwright yields nothing) ──
+    if not results:
+        gkey = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+        if gkey:
+            import httpx as _httpx
+            base = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+            async with _httpx.AsyncClient(timeout=15) as client:
+                for keyword in req.keywords[:5]:
+                    for location in req.locations[:10]:
+                        if len(results) >= limit:
+                            break
+                        query = f"{keyword} near {location}"
+                        try:
+                            r = await client.get(base, params={"query": query, "key": gkey})
+                            data = r.json()
+                            for place in (data.get("results") or []):
+                                if len(results) >= limit:
+                                    break
+                                results.append({
+                                    "name":     place.get("name", ""),
+                                    "category": ", ".join((place.get("types") or [])[:3]),
+                                    "address":  place.get("formatted_address", ""),
+                                    "phone":    "",
+                                    "website":  "",
+                                    "rating":   place.get("rating", ""),
+                                    "reviews":  place.get("user_ratings_total", ""),
+                                    "keyword":  keyword,
+                                    "location": location,
+                                    "source":   "Google Places API",
+                                })
+                        except Exception as e:
+                            log.warning("Google Places API failed for '%s near %s': %s",
+                                        keyword, location, e)
+
+    if not results:
+        raise HTTPException(
+            status_code=503,
+            detail="Google Maps scrape returned no results — Playwright and Places API both unavailable",
+        )
 
     return {"count": len(results), "results": results}
 
@@ -1094,9 +1168,8 @@ async def google_search_scrape(req: GoogleSearchRequest) -> Dict[str, Any]:
                         break
             except Exception as e:
                 log.warning("Google Search Playwright failed for '%s %s': %s", keyword, location, e)
-                # Continue to next keyword/location — don't abort the whole request.
-                # A 503 here would break the tryEngine() null-check in the Node server.
                 continue
+            await asyncio.sleep(float(os.getenv("GOOGLE_SEARCH_THROTTLE", "0.5")))
 
     if not results:
         raise HTTPException(status_code=503, detail="Browser scrape returned no results — Playwright may be unavailable")
@@ -1442,7 +1515,7 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
                 await db.update_job(job_id, status="failed", error=err, completed=True)
                 METRICS["distressed_failed"] += 1
 
-    asyncio.create_task(runner())
+    safe_create_task(runner(), name="distressed")
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -1591,7 +1664,7 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
 
         # Step 3: Skip-trace + DNC
         results = []
-        skip_step = 50 // max(len(enriched), 1)
+        skip_step = max(1, 50 // max(len(enriched), 1))
         for i, prop in enumerate(enriched):
             pct = 30 + i * skip_step
             street = prop.get("street") or prop.get("address", "").split(",")[0]
@@ -1624,7 +1697,7 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
                 try:
                     phones = r.get("phones") or []
                     emails = r.get("emails") or []
-                    _pool = await db.init_pool()
+                    _pool = await safe_get_pool()
                     async with _pool.acquire() as _conn:
                         await _conn.execute(
                             """INSERT INTO cash_buyer_matches
@@ -1793,6 +1866,6 @@ async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]
     job_id = _new_job("foreclosure_lead_gen", req.model_dump())
     await db.create_job(job_id, "foreclosure_lead_gen", req.model_dump(),
                         campaign_id=req.campaign_id)
-    asyncio.create_task(_run_foreclosure_lead_gen(job_id, req.model_dump()))
+    safe_create_task(_run_foreclosure_lead_gen(job_id, req.model_dump()), name="foreclosure_lead_gen")
     return {"job_id": job_id, "status": "queued", "city": req.city, "state": req.state}
 

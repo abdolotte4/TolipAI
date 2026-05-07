@@ -169,6 +169,43 @@ def _ensure_json_in_messages(messages: List[Dict[str, str]]) -> List[Dict[str, s
 
 async def _chat_inner(messages: List[Dict[str, str]], *, json_mode: bool = True,
                       temperature: float = 0.2, max_tokens: int = 1500) -> str:
+    import os as _os
+
+    # ── Amazon Bedrock short-circuit (USE_BEDROCK=1) ──────────────────────────
+    if _os.getenv("USE_BEDROCK") == "1":
+        try:
+            import boto3 as _boto3
+            import json as _json
+
+            def _bedrock_sync() -> str:
+                client = _boto3.client(
+                    "bedrock-runtime",
+                    region_name=_os.getenv("AWS_REGION", "us-east-1"),
+                )
+                body = _json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": max_tokens,
+                    "messages": [
+                        {"role": m["role"], "content": m.get("content", "")}
+                        for m in messages if m.get("role") in ("user", "assistant")
+                    ],
+                })
+                resp = client.invoke_model(
+                    modelId=_os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"),
+                    body=body,
+                    contentType="application/json",
+                    accept="application/json",
+                )
+                out = _json.loads(resp["body"].read())
+                return " ".join(c["text"] for c in out.get("content", []) if "text" in c)
+
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _bedrock_sync)
+            log.info("LLM: Bedrock response received (%d chars)", len(result))
+            return result
+        except Exception as bedrock_exc:
+            log.warning("Bedrock call failed — falling back to provider chain: %s", bedrock_exc)
+
     # Ensure Groq's json_object requirement is satisfied before any provider call
     if json_mode:
         messages = _ensure_json_in_messages(messages)

@@ -1,0 +1,27 @@
+# Keep the api-server Railway service Node-only.
+# Python (scraper-engine) is deployed as a SEPARATE Railway service.
+pyproject.toml
+uv.lock
+main.py
+.python-version
+.pythonlibs/
+__pycache__/
+
+# Don't ship the standalone scraper-engine code with the Node API
+artifacts/digor-scraper-engine/
+
+# Other artifacts the API doesn't need at runtime
+artifacts/digor-website/
+artifacts/digor-crm/
+artifacts/digor-tools/
+artifacts/mockup-sandbox/
+
+# Local-only
+.cache/
+.local/
+.replit
+backup.sql
+backup.sql~
+attached_assets/
+.aider*
+docs/

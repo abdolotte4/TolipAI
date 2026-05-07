@@ -311,6 +311,145 @@ export async function fetchPropertyDataViaAttom(
   }
 }
 
+// ─── Distressed property search (Opportunity Finder ATTOM fallback) ──────────
+
+export interface AttomDistressedResult {
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  ownerName: string | null;
+  mailingAddress: string | null;
+  isAbsenteeOwner: boolean;
+  avm: number | null;
+  assessedValue: number | null;
+  mortgageBalance: number | null;
+  equity: number | null;
+  equityPercent: number | null;
+  distressIndicators: string[];
+  source: "attom";
+}
+
+/**
+ * Search ATTOM for distressed properties in a ZIP code.
+ *
+ * Uses /property/snapshot (postal code list mode) and filters by:
+ *   - Absentee Owner  — mailing address differs from property address
+ *   - Free & Clear    — no recorded first-mortgage amount
+ *   - High Equity     — estimated equity ≥ 40 %
+ *
+ * Empty `categories` array = return ALL distress types.
+ */
+export async function fetchDistressedViaAttom(
+  zip: string,
+  categories: string[] = [],
+  maxRecords = 100,
+): Promise<AttomDistressedResult[]> {
+  try {
+    const data = await attomGet("/propertyapi/v1.0.0/property/snapshot", {
+      postalcode: zip,
+      pagesize: Math.min(maxRecords * 3, 500),
+      page: 1,
+    });
+
+    const properties: any[] = data?.property || [];
+    if (!properties.length) return [];
+
+    const wantAbsentee  = !categories.length || categories.some(c => /absentee/i.test(c));
+    const wantFreeClear = !categories.length || categories.some(c => /free|clear|no mortgage/i.test(c));
+    const wantHighEquity = !categories.length || categories.some(c => /high.?equity|equity/i.test(c));
+
+    const results: AttomDistressedResult[] = [];
+
+    for (const prop of properties) {
+      if (results.length >= maxRecords) break;
+
+      const addr     = prop?.address;
+      const owner    = prop?.owner?.owner1;
+      const assess   = prop?.assessment;
+      const mortgage = prop?.mortgage;
+      const avmBlock = prop?.avm;
+
+      const propertyLine1 = (addr?.line1 || "").toLowerCase();
+      const mailingLine   = (
+        owner?.mailingaddressoneline ||
+        owner?.mailAddr?.oneLine ||
+        owner?.mailingAddress?.oneLine ||
+        ""
+      );
+
+      const ownerName = (
+        owner?.fullname ||
+        owner?.corpname ||
+        [owner?.firstName, owner?.lastName].filter(Boolean).join(" ") ||
+        null
+      ) as string | null;
+
+      const isAbsentee = !!(
+        mailingLine &&
+        propertyLine1 &&
+        !mailingLine.toLowerCase().includes(propertyLine1.split(" ").slice(0, 2).join(" "))
+      );
+
+      const assessedValue =
+        parseFloat(assess?.assessed?.assdttlvalue || assess?.market?.mktttlvalue || "0") || null;
+      const mortgageAmt =
+        parseFloat(mortgage?.amount?.fstMtgAmt || "0") || null;
+      const avmValue =
+        parseFloat(avmBlock?.amount?.value || "0") || assessedValue;
+
+      const equity =
+        avmValue != null && mortgageAmt != null
+          ? Math.max(0, avmValue - mortgageAmt)
+          : avmValue ?? null;
+      const equityPercent =
+        equity != null && avmValue ? Math.round((equity / avmValue) * 100) : null;
+
+      const isFreeClear = !mortgageAmt || mortgageAmt === 0;
+      const isHighEquity = equityPercent != null && equityPercent >= 40;
+
+      const matches =
+        (wantAbsentee  && isAbsentee) ||
+        (wantFreeClear && isFreeClear) ||
+        (wantHighEquity && isHighEquity);
+
+      if (!matches) continue;
+
+      const propertyAddr = [addr?.line1, addr?.locality, addr?.countrySubd]
+        .filter(Boolean).join(", ");
+      if (!propertyAddr) continue;
+
+      const indicators: string[] = [];
+      if (isAbsentee)  indicators.push("Absentee Owner");
+      if (isFreeClear) indicators.push("Free & Clear");
+      if (isHighEquity) indicators.push("High Equity");
+
+      results.push({
+        address:          propertyAddr,
+        city:             addr?.locality     || "",
+        state:            addr?.countrySubd  || "",
+        zip:              addr?.postal1      || zip,
+        ownerName,
+        mailingAddress:   mailingLine || null,
+        isAbsenteeOwner:  isAbsentee,
+        avm:              avmValue    ? Math.round(avmValue)    : null,
+        assessedValue:    assessedValue ? Math.round(assessedValue) : null,
+        mortgageBalance:  mortgageAmt  ? Math.round(mortgageAmt)   : null,
+        equity:           equity       ? Math.round(equity)         : null,
+        equityPercent,
+        distressIndicators: indicators,
+        source: "attom",
+      });
+    }
+
+    logger.info({ zip, count: results.length, categories }, "[ATTOM] fetchDistressedViaAttom completed");
+    return results;
+  } catch (err: any) {
+    logger.warn({ err: err?.message, zip }, "[ATTOM] fetchDistressedViaAttom failed");
+    return [];
+  }
+}
+
 export async function fetchAttomAvm(
   street: string,
   cityStateZip: string,

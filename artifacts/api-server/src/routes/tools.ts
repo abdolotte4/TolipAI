@@ -27,6 +27,7 @@ import {
   fetchCompsViaAttom,
   fetchPropertyDataViaAttom,
   fetchAttomAvm,
+  fetchDistressedViaAttom,
 } from "../services/attomApi";
 import {
   calculateAdjustedComp,
@@ -122,6 +123,40 @@ router.post("/tools/distressed/search", requirePin, async (req: Request, res: Re
     });
   } catch (err: any) {
     if (err instanceof ScraperEngineUnavailable) {
+      // ── ATTOM fallback: when engine is unavailable but ATTOM key is configured ──
+      if (hasAttomKey()) {
+        const { zip, categories } = req.body || {};
+        const searchZip = String(zip || "").trim();
+        if (searchZip) {
+          const jobId = `attom_${randomUUID().slice(0, 8)}`;
+          const createdAt = new Date().toISOString();
+          _attomDistressedJobs.set(jobId, { status: "queued", progress: 0, result: null, error: null, createdAt });
+          distressedJobIds.push({ jobId, createdAt });
+
+          // Run ATTOM search in background (non-blocking)
+          setImmediate(async () => {
+            _attomDistressedJobs.set(jobId, { status: "running", progress: 10, result: null, error: null, createdAt });
+            try {
+              const listings = await fetchDistressedViaAttom(searchZip, categories || [], 100);
+              _attomDistressedJobs.set(jobId, {
+                status: "done", progress: 100,
+                result: { count: listings.length, listings, source: "ATTOM" },
+                error: null, createdAt,
+              });
+              logger.info({ jobId, count: listings.length, zip: searchZip }, "[tools] ATTOM distressed fallback completed");
+            } catch (attomErr: any) {
+              _attomDistressedJobs.set(jobId, {
+                status: "failed", progress: 0, result: null,
+                error: attomErr?.message || "ATTOM search failed", createdAt,
+              });
+              logger.warn({ jobId, err: attomErr?.message }, "[tools] ATTOM distressed fallback failed");
+            }
+          });
+
+          res.json({ jobId, id: jobId, jobIds: [jobId], status: "queued", progress: 0, source: "attom" });
+          return;
+        }
+      }
       res.status(503).json({ error: err.message });
     } else {
       res.status(500).json({ error: err?.message || "Failed to start distressed search" });
@@ -130,8 +165,25 @@ router.post("/tools/distressed/search", requirePin, async (req: Request, res: Re
 });
 
 router.get("/tools/distressed/status/:jobId", requirePin, async (req: Request, res: Response) => {
+  const jobId = String(req.params.jobId);
+
+  // Check ATTOM in-memory jobs first (prefix attom_ or any key stored there)
+  const attomJob = _attomDistressedJobs.get(jobId);
+  if (attomJob) {
+    res.json({
+      id: jobId,
+      type: "distressed",
+      status: attomJob.status === "done" ? "completed" : attomJob.status,
+      progress: attomJob.progress,
+      result: attomJob.result,
+      error: attomJob.error,
+      source: "attom",
+    });
+    return;
+  }
+
   try {
-    const job = await scraperEngine.getJob(String(req.params.jobId));
+    const job = await scraperEngine.getJob(jobId);
     if ((job as any).status === "done") (job as any).status = "completed";
     res.json(job);
   } catch (err: any) {
@@ -154,12 +206,27 @@ interface DistressedJobEntry {
 
 const distressedJobIds: DistressedJobEntry[] = [];
 
+// ─── ATTOM-backed distressed job store (fallback when engine unavailable) ─────
+
+interface AttomDistressedJob {
+  status: "queued" | "running" | "done" | "failed";
+  progress: number;
+  result: any | null;
+  error: string | null;
+  createdAt: string;
+}
+
+const _attomDistressedJobs = new Map<string, AttomDistressedJob>();
+
 // Auto-expire entries older than 24 h to prevent unbounded growth.
 setInterval(() => {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   let i = 0;
   while (i < distressedJobIds.length && new Date(distressedJobIds[i]!.createdAt).getTime() < cutoff) i++;
   if (i > 0) distressedJobIds.splice(0, i);
+  for (const [id, job] of _attomDistressedJobs) {
+    if (new Date(job.createdAt).getTime() < cutoff) _attomDistressedJobs.delete(id);
+  }
 }, 60 * 60 * 1000).unref();
 
 router.get("/tools/distressed/jobs", requirePin, (_req, res) => {
