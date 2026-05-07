@@ -1100,4 +1100,167 @@ router.get("/tools/skip-trace/download/:jobId", requirePin, (req: Request, res: 
   res.send(csv);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phone Finder — batch phone number lookup via scraper engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PhoneFinderJob {
+  jobId: string;
+  status: "queued" | "running" | "completed" | "failed";
+  startedAt: string;
+  totalRecords: number;
+  processed: number;
+  found: number;
+  notFound: number;
+  progressPercent: number;
+  results: Array<{
+    name: string;
+    address: string;
+    phones: string[];
+    source: string;
+    original: Record<string, string>;
+  }>;
+  errorMessage?: string;
+}
+
+const phoneFinderJobs = new Map<string, PhoneFinderJob>();
+
+// ─── POST /tools/phone-finder/upload ─────────────────────────────────────────
+
+router.post("/tools/phone-finder/upload", requirePin, async (req: Request, res: Response) => {
+  try {
+    const { records, filename } = req.body as { records: Record<string, string>[]; filename?: string };
+    if (!Array.isArray(records) || records.length === 0) {
+      res.status(400).json({ error: "No records provided" });
+      return;
+    }
+
+    const jobId = randomUUID();
+    const job: PhoneFinderJob = {
+      jobId,
+      status: "queued",
+      startedAt: new Date().toISOString(),
+      totalRecords: records.length,
+      processed: 0,
+      found: 0,
+      notFound: 0,
+      progressPercent: 0,
+      results: [],
+    };
+    phoneFinderJobs.set(jobId, job);
+
+    logger.info({ jobId, count: records.length, file: filename }, "[phone-finder] Job queued");
+    res.json({ jobId, status: "queued", totalRecords: records.length });
+
+    // Run in background
+    (async () => {
+      job.status = "running";
+      try {
+        for (let i = 0; i < records.length; i++) {
+          const raw = records[i]!;
+
+          // Auto-detect name and address columns
+          const name =
+            raw["Investor Name"] || raw["investor name"] ||
+            raw["Company"] || raw["company"] ||
+            raw["Name"] || raw["name"] ||
+            raw["LLC"] || raw["Business Name"] ||
+            Object.values(raw)[0] || "";
+
+          const addr1 =
+            raw["Buyer Adress"] || raw["Buyer Address"] || raw["buyer_address"] ||
+            raw["Address"] || raw["address"] || raw["Street"] || raw["street"] || "";
+          const addr2 =
+            raw["Buyer adress 2"] || raw["Buyer Address 2"] || raw["City State"] ||
+            raw["City"] || raw["city"] || "";
+          const address = [addr1, addr2].filter(Boolean).join(", ");
+
+          let phones: string[] = [];
+          let source = "none";
+
+          try {
+            const result = await scraperEngine.post("/phone-finder/lookup", {
+              name: name.trim(),
+              address: address.trim(),
+            });
+            phones = result.data?.phones ?? [];
+            source = result.data?.source ?? "google";
+          } catch (err: any) {
+            if (!(err instanceof ScraperEngineUnavailable)) {
+              logger.warn({ name, err: err?.message }, "[phone-finder] lookup failed for record");
+            }
+          }
+
+          job.results.push({ name, address, phones, source, original: raw });
+          job.processed = i + 1;
+          job.progressPercent = Math.round(((i + 1) / records.length) * 100);
+          if (phones.length > 0) job.found++; else job.notFound++;
+        }
+        job.status = "completed";
+        logger.info({ jobId, found: job.found, notFound: job.notFound }, "[phone-finder] Job completed");
+      } catch (err: any) {
+        job.status = "failed";
+        job.errorMessage = err?.message || "Unknown error";
+        logger.error({ jobId, err: err?.message }, "[phone-finder] Job failed");
+      }
+    })();
+  } catch (err: any) {
+    logger.error({ err: err?.message }, "[phone-finder] /upload error");
+    res.status(500).json({ error: err?.message || "Failed to start phone finder job" });
+  }
+});
+
+// ─── GET /tools/phone-finder/status/:jobId ───────────────────────────────────
+
+router.get("/tools/phone-finder/status/:jobId", requirePin, (req: Request, res: Response) => {
+  const job = phoneFinderJobs.get(String(req.params.jobId));
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  res.json({
+    jobId: job.jobId,
+    status: job.status,
+    startedAt: job.startedAt,
+    totalRecords: job.totalRecords,
+    processed: job.processed,
+    found: job.found,
+    notFound: job.notFound,
+    progressPercent: job.progressPercent,
+    errorMessage: job.errorMessage ?? null,
+    results: job.status === "completed" ? job.results.map(r => ({
+      name: r.name,
+      address: r.address,
+      phones: r.phones,
+      source: r.source,
+    })) : [],
+  });
+});
+
+// ─── GET /tools/phone-finder/download/:jobId ─────────────────────────────────
+
+router.get("/tools/phone-finder/download/:jobId", requirePin, (req: Request, res: Response) => {
+  const job = phoneFinderJobs.get(String(req.params.jobId));
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (job.status !== "completed") { res.status(409).json({ error: "Job not yet completed" }); return; }
+
+  const escape = (v: any) => {
+    const s = v == null ? "" : String(v);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const originalKeys = job.results.length > 0 ? Object.keys(job.results[0]!.original) : [];
+  const headers = [...originalKeys, "phones_found", "source"];
+
+  const rows = job.results.map(r => [
+    ...originalKeys.map(k => escape(r.original[k] ?? "")),
+    escape(r.phones.join(" | ")),
+    escape(r.source),
+  ].join(","));
+
+  const csv = [headers.join(","), ...rows].join("\n");
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="phone-finder-${job.jobId.substring(0, 8)}.csv"`);
+  res.send(csv);
+});
+
 export default router;

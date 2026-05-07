@@ -14,6 +14,7 @@ import PropertyLookup from "@/pages/PropertyLookup";
 import LeadScraper from "@/pages/LeadScraper";
 import AiDistressed from "@/pages/AiDistressed";
 import SatelliteDFD from "@/pages/SatelliteDFD";
+import PhoneFinder from "@/pages/PhoneFinder";
 
 const queryClient = new QueryClient();
 
@@ -86,6 +87,9 @@ function Router() {
       </Route>
       <Route path="/satellite-dfd">
         {() => <ProtectedRoute component={SatelliteDFD} />}
+      </Route>
+      <Route path="/phone-finder">
+        {() => <ProtectedRoute component={PhoneFinder} />}
       </Route>
       <Route component={NotFound} />
     </Switch>

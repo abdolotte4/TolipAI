@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Database, Search, Calculator, Home, LogOut,
-  Globe2, Sparkles, Satellite,
+  Globe2, Sparkles, Satellite, Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -24,6 +24,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/arv", label: "ARV Calculator", icon: Calculator },
     { href: "/property-lookup", label: "Property Lookup", icon: Home },
     { href: "/lead-scraper", label: "Lead Scraper", icon: Globe2 },
+    { href: "/phone-finder", label: "Phone Finder", icon: Phone },
   ];
 
   return (

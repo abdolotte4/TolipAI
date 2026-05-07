@@ -2142,6 +2142,83 @@ async def debug_env() -> Dict[str, Any]:
 # ─── Foreclosure Lead-Gen route ───────────────────────────────────────────────
 
 
+@app.post("/phone-finder/lookup")
+async def phone_finder_lookup(req: "PhoneFinderLookupRequest") -> Dict[str, Any]:
+    """Find phone numbers for a company/LLC via Google Search and Google Maps Places API."""
+    return await _phone_finder_lookup(req.name, req.address)
+
+
+async def _phone_finder_lookup(name: str, address: str) -> Dict[str, Any]:
+    """Internal: search Google and Google Maps for a business phone number."""
+    phones: List[str] = []
+    source = "none"
+    phone_re = re.compile(r"\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}")
+
+    # ── 1. Google Maps Places Text Search API (most reliable) ─────────────────
+    maps_key = os.getenv("GOOGLE_MAPS_API_KEY", "")
+    if maps_key and name:
+        query = f"{name} {address}".strip()
+        try:
+            async with __import__("httpx").AsyncClient(timeout=10) as client:
+                r = await client.get(
+                    "https://maps.googleapis.com/maps/api/place/textsearch/json",
+                    params={"query": query, "key": maps_key},
+                )
+                data = r.json()
+                place_ids = [p.get("place_id") for p in data.get("results", [])[:3] if p.get("place_id")]
+
+            for place_id in place_ids:
+                if phones:
+                    break
+                async with __import__("httpx").AsyncClient(timeout=10) as client:
+                    r = await client.get(
+                        "https://maps.googleapis.com/maps/api/place/details/json",
+                        params={
+                            "place_id": place_id,
+                            "fields": "formatted_phone_number,international_phone_number,name",
+                            "key": maps_key,
+                        },
+                    )
+                    detail = r.json().get("result", {})
+                    for field in ("formatted_phone_number", "international_phone_number"):
+                        val = detail.get(field, "")
+                        if val:
+                            phones.append(val)
+                            source = "Google Maps"
+        except Exception as exc:
+            log.debug("Google Maps Places API error for '%s': %s", name, exc)
+
+    # ── 2. Google Search fallback (scrape search result snippets) ─────────────
+    if not phones and name:
+        city_state = " ".join(address.split(",")[-2:]).strip() if "," in address else address
+        query_str = f"{name} phone number {city_state}".replace(" ", "+")
+        url = f"https://www.google.com/search?q={query_str}&num=5"
+        try:
+            from .http_client import fetch_html
+
+            html = await fetch_html(url, render=False)
+            found = phone_re.findall(html)
+            seen: set[str] = set()
+            for p in found:
+                normalized = re.sub(r"[-.\s]", "-", p.strip())
+                if normalized not in seen:
+                    phones.append(normalized)
+                    seen.add(normalized)
+                if len(phones) >= 3:
+                    break
+            if phones:
+                source = "Google Search"
+        except Exception as exc:
+            log.debug("Google Search scrape error for '%s': %s", name, exc)
+
+    return {"name": name, "address": address, "phones": phones[:5], "source": source}
+
+
+class PhoneFinderLookupRequest(BaseModel):
+    name: str = Field(..., description="Company or person name")
+    address: str = Field(default="", description="Address for disambiguation")
+
+
 @app.post("/lead-gen/foreclosure")
 async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
     """Start chained foreclosure lead-gen pipeline. Returns job_id immediately."""

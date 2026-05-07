@@ -2,12 +2,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # launch-aider.sh — Aider AI for the Digor LLC project
 #
-# Model priority:
+# Model priority (tries each in order until one has a valid API key):
 #   1. Kimi K2.6 — Moonshot direct API  (MOONSHOT_KIMI_API_KEY)
 #   2. Kimi K2.6 — OpenRouter proxy     (OPENROUTER_API_KEY)
-#   3. Groq Llama 3.3-70b — free        (GROQ_API_KEY)
-#   4. Claude 3.5 Sonnet                (ANTHROPIC_API_KEY)
-#   5. GPT-4o                           (OPENAI_API_KEY)
+#   3. Gemini 2.0 Flash — FREE tier     (GEMINI_API_KEY or GOOGLE_AI_API_KEY)
+#   4. Groq Llama 3.3-70b — free        (GROQ_API_KEY)
+#   5. Cerebras Llama 3.1-70b — fast    (CEREBRAS_API_KEY)
+#   6. Together AI Llama 3.3-70b        (TOGETHER_API_KEY)
+#   7. Claude 3.5 Sonnet                (ANTHROPIC_API_KEY)
+#   8. GPT-4o                           (OPENAI_API_KEY)
 #
 # After Aider exits, scripts/post-aider.sh runs automatically:
 #   - Validates all changes (black, flake8, TypeScript)
@@ -33,7 +36,7 @@ if [ ! -f "$AIDER_BIN" ]; then
   AIDER_BIN="$(which aider)"
 fi
 
-# ── Model selection ───────────────────────────────────────────────────────────
+# ── Model selection (first matching key wins) ─────────────────────────────────
 if [ -n "$MOONSHOT_KIMI_API_KEY" ]; then
   echo "✓ Kimi K2.6 — Moonshot direct (1M token context)"
   export OPENAI_API_KEY="$MOONSHOT_KIMI_API_KEY"
@@ -45,13 +48,34 @@ if [ -n "$MOONSHOT_KIMI_API_KEY" ]; then
 elif [ -n "$OPENROUTER_API_KEY" ]; then
   echo "✓ Kimi K2.6 — OpenRouter (1M token context)"
   MODEL="openrouter/moonshotai/kimi-k2.6"
-  WEAK_MODEL="openrouter/openai/gpt-4o-mini"
+  WEAK_MODEL="openrouter/google/gemini-flash-1.5-8b"
   MAP_TOKENS=8192
 
+elif [ -n "$GEMINI_API_KEY" ] || [ -n "$GOOGLE_AI_API_KEY" ]; then
+  # Gemini 2.0 Flash — Google's free tier (large context, fast)
+  KEY="${GEMINI_API_KEY:-$GOOGLE_AI_API_KEY}"
+  export GEMINI_API_KEY="$KEY"
+  echo "✓ Gemini 2.0 Flash — Google free tier (1M context)"
+  MODEL="gemini/gemini-2.0-flash"
+  WEAK_MODEL="gemini/gemini-2.0-flash-lite"
+  MAP_TOKENS=16384
+
 elif [ -n "$GROQ_API_KEY" ]; then
-  echo "✓ Groq Llama 3.3-70b (free — add MOONSHOT_KIMI_API_KEY for Kimi K2.6)"
+  echo "✓ Groq Llama 3.3-70b — free (add MOONSHOT_KIMI_API_KEY for Kimi K2.6)"
   MODEL="groq/llama-3.3-70b-versatile"
   WEAK_MODEL="groq/llama-3.1-8b-instant"
+  MAP_TOKENS=4096
+
+elif [ -n "$CEREBRAS_API_KEY" ]; then
+  echo "✓ Cerebras Llama 3.1-70b — very fast"
+  MODEL="cerebras/llama3.1-70b"
+  WEAK_MODEL="cerebras/llama3.1-8b"
+  MAP_TOKENS=4096
+
+elif [ -n "$TOGETHER_API_KEY" ]; then
+  echo "✓ Together AI Llama 3.3-70b"
+  MODEL="together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo"
+  WEAK_MODEL="together_ai/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
   MAP_TOKENS=4096
 
 elif [ -n "$ANTHROPIC_API_KEY" ]; then
@@ -69,9 +93,16 @@ elif [ -n "$OPENAI_API_KEY" ]; then
 else
   echo ""
   echo "⚠  No API key found. Set one of these in Replit Secrets:"
+  echo ""
   echo "   MOONSHOT_KIMI_API_KEY  → https://platform.moonshot.ai  (Kimi K2.6, best)"
-  echo "   OPENROUTER_API_KEY     → https://openrouter.ai"
-  echo "   GROQ_API_KEY           → https://console.groq.com  (free)"
+  echo "   GEMINI_API_KEY         → https://aistudio.google.com   (FREE — Gemini 2.0 Flash)"
+  echo "   GROQ_API_KEY           → https://console.groq.com      (FREE — Llama 3.3-70b)"
+  echo "   CEREBRAS_API_KEY       → https://cloud.cerebras.ai     (FREE — ultra fast)"
+  echo "   OPENROUTER_API_KEY     → https://openrouter.ai         (many models)"
+  echo "   TOGETHER_API_KEY       → https://api.together.ai"
+  echo "   ANTHROPIC_API_KEY      → https://console.anthropic.com"
+  echo "   OPENAI_API_KEY         → https://platform.openai.com"
+  echo ""
   exit 1
 fi
 

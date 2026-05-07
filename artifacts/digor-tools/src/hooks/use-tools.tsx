@@ -153,3 +153,30 @@ export function usePropertyLookup() {
       }, pin),
   });
 }
+
+export function useUploadPhoneFinder() {
+  const { pin } = useAuth();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const records = await parseFileToRecords(file);
+      return fetchApi("/api/tools/phone-finder/upload", {
+        method: "POST",
+        body: JSON.stringify({ records, filename: file.name }),
+        headers: { "Content-Type": "application/json" },
+      }, pin);
+    },
+  });
+}
+
+export function usePhoneFinderJobStatus(jobId: string | null) {
+  const { pin } = useAuth();
+  return useQuery({
+    queryKey: ["phoneFinder", "job", jobId],
+    queryFn: () => fetchApi(`/api/tools/phone-finder/status/${jobId}`, {}, pin),
+    enabled: !!pin && !!jobId,
+    refetchInterval: (query) => {
+      const state = query.state.data?.status;
+      return (state === "running" || state === "queued") ? 3000 : false;
+    },
+  });
+}
