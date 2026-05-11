@@ -13,6 +13,7 @@ Workflow per lead:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -180,68 +181,76 @@ async def find_cash_buyers(
     if progress_cb:
         await progress_cb(50, f"Classifying {len(candidates)} candidate buyers…")
 
-    out: List[Dict[str, Any]] = []
-    for i, cand in enumerate(candidates):
-        # Build the profile blob the LLM will reason over
-        sample_text = (
-            f"Buyer: {cand['buyer_name']} ({cand['city']}, {cand['state']} {cand['zip']})\n"
-            f"Recent purchases: {len(cand['purchases'])}\n"
-            + "\n".join(
-                f"- {p.get('address')} {p.get('city')} ${p.get('price')} "
-                f"sold {p.get('sold_date')} {p.get('beds')}bd/{p.get('baths')}ba {p.get('sqft')}sqft"
-                for p in cand["purchases"][:8]
+    # Semaphore caps concurrent LLM + skip-trace calls so we don't hammer
+    # free-tier rate limits when processing large candidate lists.
+    _sem = asyncio.Semaphore(int(__import__("os").getenv("BUYER_CONCURRENCY", "5")))
+
+    async def _profile_one(cand: Dict[str, Any]) -> Dict[str, Any]:
+        async with _sem:
+            sample_text = (
+                f"Buyer: {cand['buyer_name']} ({cand['city']}, {cand['state']} {cand['zip']})\n"
+                f"Recent purchases: {len(cand['purchases'])}\n"
+                + "\n".join(
+                    f"- {p.get('address')} {p.get('city')} ${p.get('price')} "
+                    f"sold {p.get('sold_date')} {p.get('beds')}bd/{p.get('baths')}ba {p.get('sqft')}sqft"
+                    for p in cand["purchases"][:8]
+                )
             )
-        )
 
-        try:
-            profile = await extract_investor_profile(sample_text, source="aggregated_sales")
-        except Exception as e:  # noqa: BLE001
-            log.warning("LLM profile extract failed for %s: %s", cand["buyer_name"], e)
-            profile = {"buyer_name": cand["buyer_name"], "buyer_type": "unknown"}
+            try:
+                profile = await extract_investor_profile(sample_text, source="aggregated_sales")
+            except Exception as e:  # noqa: BLE001
+                log.warning("LLM profile extract failed for %s: %s", cand["buyer_name"], e)
+                profile = {"buyer_name": cand["buyer_name"], "buyer_type": "unknown"}
 
-        # Skip trace
-        try:
-            traced = await skip_trace(
-                profile.get("buyer_name") or cand["buyer_name"],
-                llc=profile.get("llc_name"),
-                state=cand.get("state"),
-            )
-            profile["phones"] = list(set((profile.get("phones") or []) + traced.get("phones", [])))
-            profile["emails"] = list(set((profile.get("emails") or []) + traced.get("emails", [])))
-            if traced.get("principals"):
-                profile["principals"] = traced["principals"]
-            if traced.get("addresses") and not profile.get("mailing_address"):
-                profile["mailing_address"] = traced["addresses"][0]
-        except Exception as e:  # noqa: BLE001
-            log.info("Skip-trace failed for %s: %s", cand["buyer_name"], e)
+            try:
+                traced = await skip_trace(
+                    profile.get("buyer_name") or cand["buyer_name"],
+                    llc=profile.get("llc_name"),
+                    state=cand.get("state"),
+                )
+                profile["phones"] = list(set((profile.get("phones") or []) + traced.get("phones", [])))
+                profile["emails"] = list(set((profile.get("emails") or []) + traced.get("emails", [])))
+                if traced.get("principals"):
+                    profile["principals"] = traced["principals"]
+                if traced.get("addresses") and not profile.get("mailing_address"):
+                    profile["mailing_address"] = traced["addresses"][0]
+            except Exception as e:  # noqa: BLE001
+                log.info("Skip-trace failed for %s: %s", cand["buyer_name"], e)
 
-        # Match scoring vs this lead
-        try:
-            scoring = await score_buyer_match(profile, lead)
-        except Exception as e:  # noqa: BLE001
-            log.info("Match-scoring failed: %s", e)
-            scoring = {
-                "match_score": len(cand["purchases"]) * 5,
-                "match_reasons": [f"{len(cand['purchases'])} recent purchases in ZIP"],
+            try:
+                scoring = await score_buyer_match(profile, lead)
+            except Exception as e:  # noqa: BLE001
+                log.info("Match-scoring failed: %s", e)
+                scoring = {
+                    "match_score": len(cand["purchases"]) * 5,
+                    "match_reasons": [f"{len(cand['purchases'])} recent purchases in ZIP"],
+                }
+
+            prices = cand.get("prices") or []
+            return {
+                **profile,
+                "portfolio_size": profile.get("portfolio_size") or len(cand["purchases"]),
+                "portfolio_value": profile.get("portfolio_value") or (sum(prices) if prices else None),
+                "avg_purchase_price": profile.get("avg_purchase_price") or (sum(prices) / len(prices) if prices else None),
+                "last_purchase_date": profile.get("last_purchase_date") or cand.get("last_purchase_date"),
+                "city": profile.get("city") or cand.get("city"),
+                "state": profile.get("state") or cand.get("state"),
+                "zip": profile.get("zip") or cand.get("zip"),
+                "match_score": scoring["match_score"],
+                "match_reasons": scoring["match_reasons"],
+                "raw_data": {"purchases": cand["purchases"][:8]},
+                "source": "scraper-engine",
             }
 
-        prices = cand.get("prices") or []
-        record = {
-            **profile,
-            "portfolio_size": profile.get("portfolio_size") or len(cand["purchases"]),
-            "portfolio_value": profile.get("portfolio_value") or (sum(prices) if prices else None),
-            "avg_purchase_price": profile.get("avg_purchase_price") or (sum(prices) / len(prices) if prices else None),
-            "last_purchase_date": profile.get("last_purchase_date") or cand.get("last_purchase_date"),
-            "city": profile.get("city") or cand.get("city"),
-            "state": profile.get("state") or cand.get("state"),
-            "zip": profile.get("zip") or cand.get("zip"),
-            "match_score": scoring["match_score"],
-            "match_reasons": scoring["match_reasons"],
-            "raw_data": {"purchases": cand["purchases"][:8]},
-            "source": "scraper-engine",
-        }
-        out.append(record)
+    results = await asyncio.gather(*[_profile_one(c) for c in candidates], return_exceptions=True)
 
+    out: List[Dict[str, Any]] = []
+    for i, res in enumerate(results):
+        if isinstance(res, Exception):
+            log.warning("Buyer profiling failed for candidate %d: %s", i, res)
+            continue
+        out.append(res)
         if progress_cb and (i + 1) % 3 == 0:
             pct = 50 + int(40 * (i + 1) / max(len(candidates), 1))
             await progress_cb(pct, f"Profiled {i + 1}/{len(candidates)} buyers")

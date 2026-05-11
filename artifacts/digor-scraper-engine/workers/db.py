@@ -20,6 +20,7 @@ from .config import settings
 log = logging.getLogger("db")
 
 _pool: Optional[asyncpg.Pool] = None
+_pool_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def init_pool() -> Optional[asyncpg.Pool]:
@@ -30,30 +31,31 @@ async def init_pool() -> Optional[asyncpg.Pool]:
     not parse it from the DSN), then pass ssl="require" explicitly.
     """
     global _pool
-    if _pool is not None:
+    async with _pool_lock:
+        if _pool is not None:
+            return _pool
+        if not settings.database_url:
+            log.warning("DATABASE_URL not set — DB persistence disabled")
+            return None
+
+        dsn = settings.database_url
+        ssl_param = None
+        # Strip ALL query params from the DSN — asyncpg does not parse them from
+        # the URL (it doesn't support sslmode=, channel_binding=, etc.) and
+        # leaving them causes the DB name to be misread (e.g. "neondb&channel_binding=require").
+        # We detect SSL intent from the original URL before stripping.
+        if "sslmode=require" in dsn or "sslmode=verify-full" in dsn or "neon.tech" in dsn:
+            ssl_param = "require"
+        # Remove the entire query string from the DSN
+        dsn = _re.sub(r"\?.*$", "", dsn)
+
+        pool_kwargs = dict(min_size=1, max_size=8, command_timeout=30)
+        if ssl_param:
+            pool_kwargs["ssl"] = ssl_param  # type: ignore[assignment]
+
+        _pool = await asyncpg.create_pool(dsn, **pool_kwargs)
+        log.info("PG pool ready (ssl=%s)", ssl_param or "off")
         return _pool
-    if not settings.database_url:
-        log.warning("DATABASE_URL not set — DB persistence disabled")
-        return None
-
-    dsn = settings.database_url
-    ssl_param = None
-    # Strip ALL query params from the DSN — asyncpg does not parse them from
-    # the URL (it doesn't support sslmode=, channel_binding=, etc.) and
-    # leaving them causes the DB name to be misread (e.g. "neondb&channel_binding=require").
-    # We detect SSL intent from the original URL before stripping.
-    if "sslmode=require" in dsn or "sslmode=verify-full" in dsn or "neon.tech" in dsn:
-        ssl_param = "require"
-    # Remove the entire query string from the DSN
-    dsn = _re.sub(r"\?.*$", "", dsn)
-
-    pool_kwargs = dict(min_size=1, max_size=8, command_timeout=30)
-    if ssl_param:
-        pool_kwargs["ssl"] = ssl_param  # type: ignore[assignment]
-
-    _pool = await asyncpg.create_pool(dsn, **pool_kwargs)
-    log.info("PG pool ready (ssl=%s)", ssl_param or "off")
-    return _pool
 
 
 async def close_pool() -> None:

@@ -17,6 +17,7 @@ Enhancements:
 
 from __future__ import annotations
 import logging
+from urllib.parse import quote as _url_quote
 
 import httpx
 from typing import Any, Dict, List, Optional, Set
@@ -55,7 +56,7 @@ USER_AGENT = "TolipAI/1.0 (skip-trace; contact: ops@tolipai.com)"
 async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:
     """Scrape FastPeopleSearch for phones/emails."""
     try:
-        url = f"https://www.fastpeoplesearch.com/name/{name.replace(' ', '-')}/{state.lower()}"
+        url = f"https://www.fastpeoplesearch.com/name/{_url_quote(name.replace(' ', '-'), safe='')}/{_url_quote(state.lower(), safe='')}"
         html = await fetch_html(url, render=False)
         text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
         prof = await extract_investor_profile(text, source="fastpeople")
@@ -74,7 +75,7 @@ async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:
 async def _cyberbackground_lookup(name: str, state: str) -> Dict[str, Any]:
     """Scrape CyberBackgroundChecks for phones/emails."""
     try:
-        url = f"https://www.cyberbackgroundchecks.com/people/{name.replace(' ', '-')}/{state.lower()}"
+        url = f"https://www.cyberbackgroundchecks.com/people/{_url_quote(name.replace(' ', '-'), safe='')}/{_url_quote(state.lower(), safe='')}"
         html = await fetch_html(url, render=False)
         text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
         prof = await extract_investor_profile(text, source="cyberbackground")

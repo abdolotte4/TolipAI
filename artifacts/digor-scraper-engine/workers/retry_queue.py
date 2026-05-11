@@ -39,6 +39,7 @@ log = logging.getLogger("retry_queue")
 POLL_INTERVAL = 30  # seconds between queue scans
 MAX_ATTEMPTS = 3  # retries before permanently failing
 BACKOFF = [60, 300, 900]  # seconds per attempt index (0-based)
+MAX_QUEUE_SIZE = 500  # reject new retries beyond this depth to prevent memory growth
 
 
 # ─── Error classification ────────────────────────────────────────────────────
@@ -131,7 +132,15 @@ class RetryQueue:
         attempt: int = 0,
         last_error: str = "",
     ) -> bool:
-        """Push a retry. Returns False if max attempts exceeded."""
+        """Push a retry. Returns False if max attempts exceeded or queue is full."""
+        if len(self._queue) >= MAX_QUEUE_SIZE:
+            log.warning(
+                "RetryQueue full (%d entries) — dropping retry for job %s (%s)",
+                MAX_QUEUE_SIZE,
+                job_id,
+                job_type,
+            )
+            return False
         if attempt >= MAX_ATTEMPTS:
             log.warning(
                 "Job %s (%s) exhausted %d retries — permanently failed: %s",

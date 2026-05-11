@@ -98,16 +98,19 @@ async def all_jobs() -> Dict[str, Dict[str, Any]]:
     """Return a snapshot of all known jobs (memory + any Redis keys not yet in memory)."""
     if _redis is not None:
         try:
-            keys: List[str] = await _redis.keys("digor:job:*")
-            pipe = _redis.pipeline()
-            for k in keys:
-                pipe.get(k)
-            values = await pipe.execute()
-            for k, v in zip(keys, values):
-                if v:
-                    jid = k.split(":")[-1]
-                    if jid not in _memory:
-                        _memory[jid] = json.loads(v)
+            keys: List[str] = []
+            async for k in _redis.scan_iter("digor:job:*", count=100):
+                keys.append(k)
+            if keys:
+                pipe = _redis.pipeline()
+                for k in keys:
+                    pipe.get(k)
+                values = await pipe.execute()
+                for k, v in zip(keys, values):
+                    if v:
+                        jid = k.split(":")[-1]
+                        if jid not in _memory:
+                            _memory[jid] = json.loads(v)
         except Exception as exc:
             log.debug("Redis all_jobs scan: %s", exc)
     return dict(_memory)
