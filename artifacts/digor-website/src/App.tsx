@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -54,17 +55,19 @@ function App() {
   const [subscribeOpen, setSubscribeOpen] = useState(false);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <SubscribeContext.Provider value={{ openSubscribe: () => setSubscribeOpen(true) }}>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
-          <SubscribeModal isOpen={subscribeOpen} onClose={() => setSubscribeOpen(false)} />
-          <Toaster />
-        </SubscribeContext.Provider>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <SubscribeContext.Provider value={{ openSubscribe: () => setSubscribeOpen(true) }}>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <Router />
+            </WouterRouter>
+            <SubscribeModal isOpen={subscribeOpen} onClose={() => setSubscribeOpen(false)} />
+            <Toaster />
+          </SubscribeContext.Provider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

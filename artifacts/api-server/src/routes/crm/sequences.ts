@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { crmEmailSequences, crmSequenceSteps, crmSequenceLogs, crmLeads, crmUsers } from "@workspace/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.get("/", crmAuth, async (req, res) => {
 
     res.json(withSteps);
   } catch (err) {
-    console.error("List sequences error:", err);
+    logger.error(err, "List sequences error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -48,7 +49,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
 
     res.status(201).json({ ...seq, steps: [] });
   } catch (err) {
-    console.error("Create sequence error:", err);
+    logger.error(err, "Create sequence error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -73,7 +74,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     const steps = await db.select().from(crmSequenceSteps).where(eq(crmSequenceSteps.sequenceId, id)).orderBy(crmSequenceSteps.dayOffset);
     res.json({ ...seq, steps });
   } catch (err) {
-    console.error("Update sequence error:", err);
+    logger.error(err, "Update sequence error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -107,7 +108,7 @@ router.post("/:id/steps", crmAuth, crmAdminOnly, async (req, res) => {
     }).returning();
     res.status(201).json(step);
   } catch (err) {
-    console.error("Create step error:", err);
+    logger.error(err, "Create step error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -143,7 +144,16 @@ router.delete("/:id/steps/:stepId", crmAuth, crmAdminOnly, async (req, res) => {
 // GET /crm/sequences/logs/:leadId - get email log for a lead
 router.get("/logs/:leadId", crmAuth, async (req, res) => {
   try {
+    const user = (req as any).crmUser;
     const leadId = parseInt(req.params["leadId"] as string);
+
+    // Verify the lead belongs to the caller's campaign (non-super-admins only)
+    if (user.role !== "super_admin" && user.campaignId) {
+      const [lead] = await db.select({ campaignId: crmLeads.campaignId }).from(crmLeads).where(eq(crmLeads.id, leadId)).limit(1);
+      if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
+      if (lead.campaignId !== user.campaignId) { res.status(403).json({ error: "Forbidden" }); return; }
+    }
+
     const logs = await db
       .select({ log: crmSequenceLogs, step: crmSequenceSteps })
       .from(crmSequenceLogs)
@@ -152,6 +162,7 @@ router.get("/logs/:leadId", crmAuth, async (req, res) => {
       .orderBy(desc(crmSequenceLogs.sentAt));
     res.json(logs.map(r => ({ ...r.log, subject: r.step?.subject })));
   } catch (err) {
+    logger.error({ err }, "Sequence logs fetch error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -259,7 +270,7 @@ export async function runEmailSequenceJob() {
             } catch (err: any) {
               status = "failed";
               errorMessage = err?.message || "Unknown error";
-              console.error(`Email sequence send failed for lead ${lead.id}:`, err);
+              logger.error(`Email sequence send failed for lead ${lead.id}:`, err);
             }
 
             // Log it
@@ -275,6 +286,6 @@ export async function runEmailSequenceJob() {
       }
     }
   } catch (err) {
-    console.error("Email sequence job error:", err);
+    logger.error(err, "Email sequence job error");
   }
 }

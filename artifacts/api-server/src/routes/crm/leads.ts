@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers, crmNotifications, crmComps } from "@workspace/db/schema";
 import { eq, desc, ilike, and, or, sql, ne } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
+import { logger } from "../../lib/logger";
 import { onLeadCreated, onLeadStatusChanged } from "../../services/automation";
 import { fetchPropertyData, checkCooldown, recordFetch, runSkipTrace, checkSkipTraceCooldown, recordSkipTrace, getLastSkipTraceError, calculateAdjustedComp, calculateArvFromComps, calculateMao, getMaoDiscount, checkFetchCompsCooldown, recordFetchComps, pollCompsExport, downloadComps, getKeyPoolSize } from "../../services/propertyApi";
 import { parseMoney } from "../../services/coreCalculations";
@@ -153,7 +154,7 @@ async function notifyFollowers(leadId: number, excludeUserId: number, content: s
       followers.map(f => ({ userId: f.userId, leadId, type, content, read: false }))
     );
   } catch (err) {
-    console.error("notifyFollowers failed (non-fatal):", err);
+    logger.error(err, "notifyFollowers failed (non-fatal)");
   }
 }
 
@@ -215,7 +216,7 @@ router.get("/", crmAuth, async (req, res) => {
       limit: limitNum,
     });
   } catch (err) {
-    console.error("CRM get leads error:", err);
+    logger.error(err, "CRM get leads error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -277,11 +278,11 @@ router.post("/", crmAuth, async (req, res) => {
         campaignId: lead.campaignId,
         actorUserId: crmUser.userId,
         actorName: actorUser?.name || "A team member",
-      }).catch(e => console.error("automation.onLeadCreated error:", e));
+      }).catch(e => logger.error(e, "automation.onLeadCreated error"));
     }
     res.status(201).json(formatLead(lead));
   } catch (err) {
-    console.error("CRM create lead error:", err);
+    logger.error(err, "CRM create lead error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -336,7 +337,7 @@ router.get("/:id", crmAuth, async (req, res) => {
       isFollowing,
     });
   } catch (err) {
-    console.error("CRM get lead error:", err);
+    logger.error(err, "CRM get lead error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -395,7 +396,7 @@ router.get("/:id/full", crmAuth, async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error("CRM get lead full error:", err);
+    logger.error(err, "CRM get lead full error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -494,12 +495,12 @@ router.patch("/:id", crmAuth, async (req, res) => {
     // Automation: auto-close tasks if lead status changed to a closed state
     if (data.status !== undefined && data.status !== existing.status) {
       onLeadStatusChanged(id, existing.status, data.status)
-        .catch(e => console.error("automation.onLeadStatusChanged error:", e));
+        .catch(e => logger.error(e, "automation.onLeadStatusChanged error"));
     }
 
     res.json(formatLead(lead));
   } catch (err) {
-    console.error("CRM update lead error:", err);
+    logger.error(err, "CRM update lead error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -727,7 +728,7 @@ router.post("/:id/estimate", crmAuth, async (req, res) => {
     await db.update(crmLeads).set({ estimatedRepairCost: totalERC.toString(), mao: mao ? mao.toString() : null, updatedAt: new Date() }).where(eq(crmLeads.id, id));
     res.json({ estimatedRepairCost: totalERC, breakdown, notes: `Estimate based on ${sqft} sqft ${propertyType} in condition ${condition}/10.`, arv: arvEstimate, mao });
   } catch (err) {
-    console.error("CRM estimate error:", err);
+    logger.error(err, "CRM estimate error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -795,7 +796,7 @@ Do not include markdown, only the raw JSON object.`;
 
     if (!aiRes.ok) {
       const errText = await aiRes.text().catch(() => "");
-      console.error("AI repair estimate error:", errText);
+      logger.error({ errText }, "AI repair estimate error");
       res.status(502).json({ error: "AI service returned an error. Please try again." }); return;
     }
 
@@ -808,7 +809,7 @@ Do not include markdown, only the raw JSON object.`;
       const cleaned = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
       parsed = JSON.parse(cleaned);
     } catch (parseErr) {
-      console.error("AI repair estimate parse error. Raw content:", rawContent, "Parse err:", parseErr);
+      logger.error("AI repair estimate parse error. Raw content:", rawContent, "Parse err:", parseErr);
       res.status(502).json({ error: "AI returned an unexpected format. Please try again." }); return;
     }
 
@@ -831,7 +832,7 @@ Do not include markdown, only the raw JSON object.`;
       mao: mao != null ? Math.max(0, mao) : null,
     });
   } catch (err) {
-    console.error("AI repair estimate error:", err);
+    logger.error(err, "AI repair estimate error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -887,7 +888,7 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
       return;
     }
 
-    console.log(`[fetch-property-data] Source: ${source}`);
+    logger.info(`[fetch-property-data] Source: ${source}`);
 
     // ── Record fetch only on success ───────────────────────────────────────
     if (!isSuperAdmin) recordFetch(id, campaignId);
@@ -912,8 +913,8 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
     }
 
     // Log what was returned vs what changed for debugging
-    console.log("[fetch-property-data] API returned:", JSON.stringify({ beds: data.beds, baths: data.baths, sqft: data.sqft, yearBuilt: data.yearBuilt, ownerName: data.ownerName, lastSaleDate: data.lastSaleDate, lastSalePrice: data.lastSalePrice, propertyType: data.propertyType, avm: data.avm }));
-    console.log("[fetch-property-data] Fields being updated:", Object.keys(updates).filter(k => k !== "updatedAt"));
+    logger.info({ data: { beds: data.beds, baths: data.baths, sqft: data.sqft, yearBuilt: data.yearBuilt, ownerName: data.ownerName, lastSaleDate: data.lastSaleDate, lastSalePrice: data.lastSalePrice, propertyType: data.propertyType, avm: data.avm } }, "[fetch-property-data] API returned");
+    logger.info({ fields: Object.keys(updates).filter(k => k !== "updatedAt") }, "[fetch-property-data] Fields being updated");
 
     await db.update(crmLeads).set(updates).where(eq(crmLeads.id, id));
 
@@ -941,7 +942,7 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
       cooldownBypassed: isSuperAdmin,
     });
   } catch (err) {
-    console.error("Fetch property data error:", err);
+    logger.error(err, "Fetch property data error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1041,7 +1042,7 @@ router.post("/:id/skip-trace", crmAuth, async (req, res) => {
       cooldownBypassed: isSuperAdmin,
     });
   } catch (err) {
-    console.error("Skip trace error:", err);
+    logger.error(err, "Skip trace error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1082,7 +1083,7 @@ router.post("/:id/comp-address-lookup", crmAuth, async (req, res) => {
       creditsRemaining: data.creditsRemaining,
     });
   } catch (err) {
-    console.error("Comp address lookup error:", err);
+    logger.error(err, "Comp address lookup error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1134,7 +1135,7 @@ async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
     });
 
     if (!aiRes.ok) {
-      console.error("[AI comps fallback] AI call failed:", aiRes.status);
+      logger.error({ status: aiRes.status }, "[AI comps fallback] AI call failed");
       return { added: 0, comps: [], arv: null, mao: null };
     }
 
@@ -1204,7 +1205,7 @@ const rawComps: any[] = parsed?.comps ?? [];
 
     return { added: insertedComps.length, comps: insertedComps, arv: newArv, mao: newMao };
   } catch (err) {
-    console.error("[AI comps fallback] error:", err);
+    logger.error(err, "[AI comps fallback] error");
     return { added: 0, comps: [], arv: null, mao: null };
   }
 }
@@ -1245,12 +1246,12 @@ async function fetchCompsViaScraperEngine(
       const data = await res.json() as any;
       const comps = (data.comps ?? []).map(normalizeComp).filter(Boolean) as import("../../services/attomApi").AttomComp[];
       if (comps.length > 0) {
-        console.log(`[scraper-engine comps] Propelio returned ${comps.length} comps for "${address}"`);
+        logger.info(`[scraper-engine comps] Propelio returned ${comps.length} comps for "${address}"`);
         return comps;
       }
     }
   } catch (e) {
-    console.warn("[scraper-engine comps] Propelio request failed:", (e as Error)?.message);
+    logger.warn({ err: e }, "[scraper-engine comps] Propelio request failed");
   }
 
   // 2) Try Propwire as second fallback
@@ -1265,12 +1266,12 @@ async function fetchCompsViaScraperEngine(
       const data = await res.json() as any;
       const comps = (data.comps ?? []).map(normalizeComp).filter(Boolean) as import("../../services/attomApi").AttomComp[];
       if (comps.length > 0) {
-        console.log(`[scraper-engine comps] Propwire returned ${comps.length} comps for "${address}"`);
+        logger.info(`[scraper-engine comps] Propwire returned ${comps.length} comps for "${address}"`);
         return comps;
       }
     }
   } catch (e) {
-    console.warn("[scraper-engine comps] Propwire request failed:", (e as Error)?.message);
+    logger.warn({ err: e }, "[scraper-engine comps] Propwire request failed");
   }
 
   return [];
@@ -1387,13 +1388,13 @@ router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
     try {
       rawComps = await fetchCompsViaAttom(lat, lng, radiusMiles, 8, subjectProp.sqft, lead.propertyType);
     } catch (attomErr: any) {
-      console.error("[ATTOM comps] failed:", attomErr?.message);
+      logger.error(attomErr?.message, "[ATTOM comps] failed");
       // Fallback chain: Propelio → Propwire → AI
       const leadAddr = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
       rawComps = await fetchCompsViaScraperEngine(leadAddr, radiusMiles);
       if (rawComps.length > 0) {
         compsSource = "propelio_propwire";
-        console.log(`[comps] Scraper-engine fallback returned ${rawComps.length} comps`);
+        logger.info(`[comps] Scraper-engine fallback returned ${rawComps.length} comps`);
       } else {
         const aiResult = await fetchCompsViaAI(lead, id, subjectProp);
         if (aiResult.added > 0) {
@@ -1473,7 +1474,7 @@ router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
       comps: insertedComps,
     });
   } catch (err) {
-    console.error("Fetch comps start error:", err);
+    logger.error(err, "Fetch comps start error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1602,7 +1603,7 @@ router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
       comps: insertedComps,
     });
   } catch (err) {
-    console.error("Fetch comps poll error:", err);
+    logger.error(err, "Fetch comps poll error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1646,7 +1647,7 @@ router.post("/:id/fetch-comps-ai", crmAuth, async (req, res) => {
       mao: aiResult.mao,
     });
   } catch (err) {
-    console.error("AI fetch comps error:", err);
+    logger.error(err, "AI fetch comps error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1786,7 +1787,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       mao: newMao,
     });
   } catch (err) {
-    console.error("AI detect-condition error:", err);
+    logger.error(err, "AI detect-condition error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1886,7 +1887,7 @@ Reply ONLY with this JSON:
 
     if (!aiRes.ok) { 
       const e = await aiRes.text().catch(() => ""); 
-      console.error("AI deal score error:", e); 
+      logger.error({ response: e }, "AI deal score error"); 
       res.status(502).json({ error: "AI service returned an error." }); 
       return; 
     }
@@ -1899,7 +1900,7 @@ Reply ONLY with this JSON:
 
     res.json(JSON.parse(cleaned));
   } catch (err) {
-    console.error("AI deal score error:", err);
+    logger.error(err, "AI deal score error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1974,7 +1975,7 @@ Reply ONLY with this JSON structure:
 
     if (!aiRes.ok) {
       const e = await aiRes.text();
-      console.error("AI Script Error:", e);
+      logger.error({ response: e }, "AI Script Error");
       res.status(502).json({ error: "AI service returned an error." });
       return;
     }
@@ -1986,7 +1987,7 @@ Reply ONLY with this JSON structure:
     res.json(JSON.parse(cleaned));
 
   } catch (err) {
-    console.error("AI Seller Script error:", err);
+    logger.error(err, "AI Seller Script error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2054,7 +2055,7 @@ Reply ONLY with this JSON structure:
 
     if (!aiRes.ok) { 
       const e = await aiRes.text().catch(() => ""); 
-      console.error("AI offer letter error:", e); 
+      logger.error({ response: e }, "AI offer letter error"); 
       res.status(502).json({ error: "AI service returned an error." }); 
       return; 
     }
@@ -2064,7 +2065,7 @@ Reply ONLY with this JSON structure:
 
     res.json(JSON.parse(cleaned));
   } catch (err) {
-    console.error("AI offer letter error:", err);
+    logger.error(err, "AI offer letter error");
         res.status(500).json({ error: "Internal server error" });
   }
 }); 
@@ -2097,7 +2098,7 @@ router.post("/:id/attom-avm", crmAuth, async (req, res) => {
 
     res.json(result);
   } catch (err: any) {
-    console.error("[ATTOM AVM route]", err);
+    logger.error(err, "[ATTOM AVM route]");
     res.status(500).json({ error: err?.message || "Internal server error" });
   }
 });
@@ -2143,7 +2144,7 @@ router.post("/:id/rentcast-valuation", crmAuth, async (req, res) => {
 
     res.json(result);
   } catch (err: any) {
-    console.error("[Rentcast AVM route]", err);
+    logger.error(err, "[Rentcast AVM route]");
     res.status(500).json({ error: err?.message || "Internal server error" });
   }
 });

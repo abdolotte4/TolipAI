@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { crmBuyers, crmCampaigns } from "@workspace/db/schema";
 import { eq, and, desc, ilike, or } from "drizzle-orm";
 import { crmAuth } from "./middleware";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -63,7 +64,7 @@ router.get("/", crmAuth, async (req, res) => {
 
     res.json(buyers);
   } catch (err) {
-    console.error("buyers list error:", err);
+    logger.error(err, "buyers list error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -91,7 +92,7 @@ router.post("/", crmAuth, async (req, res) => {
     }).returning();
     res.status(201).json(buyer);
   } catch (err) {
-    console.error("buyers create error:", err);
+    logger.error(err, "buyers create error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -108,9 +109,20 @@ router.post("/upload", crmAuth, async (req, res) => {
     return;
   }
 
+  const CSV_SIZE_LIMIT = 5 * 1024 * 1024; // 5 MB
+  const CSV_ROW_LIMIT = 10_000;
+  if (Buffer.byteLength(csvText, "utf8") > CSV_SIZE_LIMIT) {
+    res.status(413).json({ error: "CSV file too large (max 5 MB)" });
+    return;
+  }
+
   const lines = csvText.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) {
     res.status(400).json({ error: "CSV must have a header row and at least one data row" });
+    return;
+  }
+  if (lines.length - 1 > CSV_ROW_LIMIT) {
+    res.status(413).json({ error: `CSV exceeds maximum row limit of ${CSV_ROW_LIMIT.toLocaleString()} rows` });
     return;
   }
 
@@ -159,7 +171,7 @@ router.post("/upload", crmAuth, async (req, res) => {
     }
     res.json({ success: true, inserted, skipped });
   } catch (err) {
-    console.error("buyers upload error:", err);
+    logger.error(err, "buyers upload error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, boolean, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const crmCampaigns = pgTable("crm_campaigns", {
   id: serial("id").primaryKey(),
@@ -123,6 +123,8 @@ export const crmLeadFollowers = pgTable("crm_lead_followers", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("crm_lead_followers_lead_id_idx").on(t.leadId),
+  index("crm_lead_followers_user_id_idx").on(t.userId),
+  uniqueIndex("crm_lead_followers_lead_user_uniq").on(t.leadId, t.userId),
 ]);
 
 export const crmNotifications = pgTable("crm_notifications", {
@@ -133,7 +135,11 @@ export const crmNotifications = pgTable("crm_notifications", {
   content: text("content").notNull(),
   read: boolean("read").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("crm_notifications_user_id_idx").on(t.userId),
+  index("crm_notifications_read_idx").on(t.read),
+  index("crm_notifications_created_at_idx").on(t.createdAt),
+]);
 
 export const crmOpenPhoneMessages = pgTable("crm_openphone_messages", {
   id: serial("id").primaryKey(),
@@ -167,6 +173,10 @@ export const crmTasks = pgTable("crm_tasks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("crm_tasks_lead_id_idx").on(t.leadId),
+  index("crm_tasks_campaign_id_idx").on(t.campaignId),
+  index("crm_tasks_assigned_to_idx").on(t.assignedTo),
+  index("crm_tasks_status_idx").on(t.status),
+  index("crm_tasks_due_date_idx").on(t.dueDate),
 ]);
 
 export const crmEmailSequences = pgTable("crm_email_sequences", {
@@ -177,7 +187,10 @@ export const crmEmailSequences = pgTable("crm_email_sequences", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("crm_email_sequences_campaign_id_idx").on(t.campaignId),
+  index("crm_email_sequences_is_active_idx").on(t.isActive),
+]);
 
 export const crmSequenceSteps = pgTable("crm_sequence_steps", {
   id: serial("id").primaryKey(),
@@ -196,7 +209,11 @@ export const crmSequenceLogs = pgTable("crm_sequence_logs", {
   status: text("status").notNull().default("sent"),
   errorMessage: text("error_message"),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("crm_sequence_logs_lead_id_idx").on(t.leadId),
+  index("crm_sequence_logs_step_id_idx").on(t.stepId),
+  index("crm_sequence_logs_sent_at_idx").on(t.sentAt),
+]);
 
 export const crmComps = pgTable("crm_comps", {
   id: serial("id").primaryKey(),
@@ -226,7 +243,10 @@ export const crmBuyers = pgTable("crm_buyers", {
   notes: text("notes"),
   uploadedBy: integer("uploaded_by").references(() => crmUsers.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("crm_buyers_campaign_id_idx").on(t.campaignId),
+  index("crm_buyers_created_at_idx").on(t.createdAt),
+]);
 
 export const crmSubmissionLinks = pgTable("crm_submission_links", {
   id: serial("id").primaryKey(),
@@ -238,7 +258,10 @@ export const crmSubmissionLinks = pgTable("crm_submission_links", {
   createdBy: integer("created_by").references(() => crmUsers.id),
   submissionsCount: integer("submissions_count").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("crm_submission_links_campaign_id_idx").on(t.campaignId),
+  index("crm_submission_links_active_idx").on(t.active),
+]);
 
 // ─── Advanced Scraper Engine (Python service) ────────────────────────────────
 // Generic job tracking for any async scrape kicked off by the Python engine.
