@@ -88,6 +88,8 @@ from .cache import cache  # noqa: E402
 from .retry_queue import retry_queue, is_transient  # noqa: E402
 from .scrapers import propelio_v2, propwire  # noqa: E402
 from .scrapers import satellite_dfd  # noqa: E402
+from .proxy_pool import proxy_pool  # noqa: E402
+from .browser_pool import browser_pool  # noqa: E402
 
 logging.basicConfig(
     level=settings.log_level.upper(),
@@ -261,6 +263,9 @@ async def lifespan(app: FastAPI):
 
     _mem_task = asyncio.create_task(_memory_monitor(), name="memory_monitor")
 
+    # ── Browser pool (warm Playwright instances, idle eviction) ──────────────
+    browser_pool.start()
+
     log.info(
         "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s, "
         "retry_backend=%s, cache_s3=%s)",
@@ -277,6 +282,7 @@ async def lifespan(app: FastAPI):
     retry_queue.stop()
     _mem_task.cancel()
     await asyncio.gather(_mem_task, return_exceptions=True)
+    await browser_pool.stop()
     await job_store.close()
     await http_client.close_client()
     await db.close_pool()
@@ -284,7 +290,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Digor Scraper Engine",
-    version="0.1.0",
+    version="0.2.0",
     description="Advanced scraping + skip-trace + investor classification",
     lifespan=lifespan,
 )
@@ -446,6 +452,7 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
 
 
 async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    register_job(job_id)
     try:
         lead = await db.get_lead(params["lead_id"])
         if not lead:
@@ -485,9 +492,12 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
         return {"count": 0}
+    finally:
+        unregister_job(job_id)
 
 
 async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    register_job(job_id)
     listings: List[Dict[str, Any]] = []
     partial = False
     try:
@@ -573,9 +583,12 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
             _set_status(job_id, "failed", error=str(e))
             await db.update_job(job_id, status="failed", error=str(e), completed=True)
         return {"count": len(listings)}
+    finally:
+        unregister_job(job_id)
 
 
 async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    register_job(job_id)
     try:
         _jobs.setdefault(
             job_id,
@@ -623,9 +636,12 @@ async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
         return {"count": 0}
+    finally:
+        unregister_job(job_id)
 
 
 async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    register_job(job_id)
     try:
         _jobs.setdefault(
             job_id,
@@ -670,6 +686,8 @@ async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
         return {"count": 0}
+    finally:
+        unregister_job(job_id)
 
 
 # ─── Retry-queue DB callbacks ────────────────────────────────────────────────

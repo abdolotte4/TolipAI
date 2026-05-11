@@ -24,12 +24,30 @@
           {
             "Effect": "Allow",
             "Action": [
-              "secretsmanager:GetSecretValue",
-              "ssm:GetParameters",
-              "kms:Decrypt"
+              "secretsmanager:GetSecretValue"
             ],
             "Resource": [
               "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/*"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/digor/scraper/*"
+            ]
+          },
+          {
+            "_comment": "kms:Decrypt resource must be the KMS key ARN, NOT the Secrets Manager secret ARN. Replace with your actual CMK ARN or remove if using the AWS-managed default key (aws/secretsmanager), which ECS resolves automatically via the execution role.",
+            "Effect": "Allow",
+            "Action": [
+              "kms:Decrypt"
+            ],
+            "Resource": [
+              "arn:aws:kms:us-east-1:ACCOUNT_ID:key/YOUR_CMK_KEY_ID"
             ]
           }
         ]

@@ -153,9 +153,11 @@ class CircuitBreaker:
     @asynccontextmanager
     async def __call__(self) -> AsyncIterator[None]:
         """Use as: `async with breaker('propelio'):`"""
-        current_state = self.state
-
+        # Read state INSIDE the lock to avoid a TOCTOU race on the
+        # OPEN → HALF_OPEN transition (which is time-based and can flip
+        # between the property read and the gate check).
         async with self._lock:
+            current_state = self.state  # evaluated under lock
             if current_state == State.OPEN:
                 self._total_rejected += 1
                 raise CircuitOpenError(self.name, self.reopen_in_seconds)

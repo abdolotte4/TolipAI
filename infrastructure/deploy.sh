@@ -40,11 +40,13 @@ IMAGE_TAG="${IMAGE_TAG:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || e
 DO_BUILD=true
 ENV="production"
 
-for arg in "$@"; do
-  case "$arg" in
-    --no-build) DO_BUILD=false ;;
-    --env=*) ENV="${arg#--env=}" ;;
-    --env) shift; ENV="$1" ;;
+# Use a while loop so we can safely advance past two-word flags (--env production)
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-build) DO_BUILD=false; shift ;;
+    --env=*)    ENV="${1#--env=}"; shift ;;
+    --env)      ENV="${2:?--env requires a value}"; shift 2 ;;
+    *)          shift ;;
   esac
 done
 

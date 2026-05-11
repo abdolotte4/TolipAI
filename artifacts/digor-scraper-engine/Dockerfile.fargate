@@ -34,7 +34,10 @@ COPY requirements.fargate.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.fargate.txt
 
-# Install Playwright Chromium browser binary inside the venv layer
+# Install Playwright Chromium browser binary into /app/.cache so the non-root
+# scraper user can read it in the final stage (browsers in /root/.cache would
+# be inaccessible to non-root users).
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
 RUN playwright install chromium --with-deps 2>/dev/null || \
     playwright install chromium 2>/dev/null || true
 
@@ -79,17 +82,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Misc
     curl \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy Python env from builder
 COPY --from=builder /venv /venv
-COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
+# Browser cache already lives under /app/.cache in the builder — copy it here
+# so it stays under /app and is chowned to the scraper user below.
+COPY --from=builder /app/.cache /app/.cache
 
 ENV PATH="/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
 
 # ── App code ──────────────────────────────────────────────────────────────────
 COPY workers/ ./workers/

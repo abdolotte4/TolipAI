@@ -19,7 +19,7 @@
     },
     {
       "filterName": "SpotInterruptions",
-      "filterPattern": "{ $.msg = \"Fargate Spot interruption detected\" }",
+      "filterPattern": "{ $.msg = \"*Fargate Spot interruption detected*\" }",
       "metricTransformations": [
         {
           "metricName": "SpotInterruptions",
@@ -31,7 +31,7 @@
     },
     {
       "filterName": "CircuitBreakerOpen",
-      "filterPattern": "{ $.msg = \"OPENED\" }",
+      "filterPattern": "{ $.msg = \"*OPENED*\" }",
       "metricTransformations": [
         {
           "metricName": "CircuitBreakerOpenEvents",
