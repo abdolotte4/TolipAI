@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import re
+import signal
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -69,7 +70,9 @@ def _patch_ld_library_path() -> None:
 
 _patch_ld_library_path()
 
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import FastAPI, HTTPException, Request  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
@@ -88,6 +91,34 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 log = logging.getLogger("main")
+
+
+class _PIIFilter(logging.Filter):
+    """Redact phone numbers, emails, and SSNs from all log records."""
+
+    _PHONE = re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b')
+    _EMAIL = re.compile(r'\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b')
+    _SSN = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+            msg = self._PHONE.sub('[PHONE]', msg)
+            msg = self._EMAIL.sub('[EMAIL]', msg)
+            msg = self._SSN.sub('[SSN]', msg)
+            record.msg = msg
+            record.args = ()
+        except Exception:
+            pass
+        return True
+
+
+_pii_filter = _PIIFilter()
+for _h in logging.root.handlers:
+    _h.addFilter(_pii_filter)
+
+# ─── Graceful shutdown flag ──────────────────────────────────────────────────
+_shutting_down: bool = False
 
 # Job state — aliased to job_store._memory so sync helpers (_set_status,
 # _new_job) work unchanged while async paths also persist to Redis.
@@ -160,6 +191,42 @@ async def lifespan(app: FastAPI):
         on_exhaust=_on_retry_exhausted,
     )
 
+    # ── SIGTERM / SIGINT graceful-shutdown handler ───────────────────────────
+    global _shutting_down
+
+    def _handle_sigterm(sig: int, frame: Any) -> None:
+        global _shutting_down
+        _shutting_down = True
+        log.warning(
+            "Signal %d received — graceful shutdown initiated (in-flight jobs will finish)",
+            sig,
+        )
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+    signal.signal(signal.SIGINT, _handle_sigterm)
+
+    # ── Memory pressure monitor ──────────────────────────────────────────────
+    async def _memory_monitor() -> None:
+        try:
+            import psutil  # type: ignore[import]
+
+            while True:
+                pct = psutil.virtual_memory().percent
+                if pct > 85:
+                    log.warning(
+                        "Memory pressure: %.1f%% RAM used — "
+                        "new browser jobs may be deferred (BROWSER_MAX_CONCURRENT=%s)",
+                        pct,
+                        os.getenv("BROWSER_MAX_CONCURRENT", "2"),
+                    )
+                await asyncio.sleep(10)
+        except ImportError:
+            log.info("psutil not installed — memory monitoring disabled")
+        except asyncio.CancelledError:
+            pass
+
+    _mem_task = asyncio.create_task(_memory_monitor(), name="memory_monitor")
+
     log.info(
         "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s)",
         os.getenv("PORT", str(settings.port)),
@@ -169,6 +236,8 @@ async def lifespan(app: FastAPI):
     )
     yield
     retry_queue.stop()
+    _mem_task.cancel()
+    await asyncio.gather(_mem_task, return_exceptions=True)
     await job_store.close()
     await http_client.close_client()
     await db.close_pool()
@@ -180,6 +249,56 @@ app = FastAPI(
     description="Advanced scraping + skip-trace + investor classification",
     lifespan=lifespan,
 )
+
+# ─── CORS ────────────────────────────────────────────────────────────────────
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()] or ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ─── Security middleware ──────────────────────────────────────────────────────
+_EXEMPT_PATHS = frozenset({"/health", "/healthz", "/metrics", "/docs", "/openapi.json", "/redoc"})
+_MAX_BODY_BYTES = 1_048_576  # 1 MB
+
+
+@app.middleware("http")
+async def _security_middleware(request: Request, call_next):
+    """Enforce API key auth + request body size limit + shutdown guard."""
+    if request.url.path not in _EXEMPT_PATHS:
+        # ── Body size guard ──────────────────────────────────────────────────
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_BODY_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large (max 1 MB)"},
+            )
+
+        # ── API key auth ─────────────────────────────────────────────────────
+        _api_key = os.getenv("SCRAPER_API_KEY")
+        if _api_key:
+            auth_header = request.headers.get("Authorization", "")
+            provided = request.headers.get("X-API-Key") or (
+                auth_header[7:] if auth_header.startswith("Bearer ") else auth_header
+            )
+            if provided != _api_key:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or missing API key. Set X-API-Key header."},
+                )
+
+        # ── Shutdown guard ───────────────────────────────────────────────────
+        if _shutting_down and request.method not in ("GET", "HEAD"):
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Service shutting down — retry in a few seconds"},
+                headers={"Retry-After": "5"},
+            )
+
+    return await call_next(request)
 
 
 # ─── Request models ──────────────────────────────────────────────────────────

@@ -30,6 +30,10 @@ class Settings:
     # ── Service ─────────────────────────────────────────────────────────────
     port: int = int(os.getenv("PORT", "8765"))
     log_level: str = _env("LOG_LEVEL", "info") or "info"
+    # Required in production: all non-health endpoints enforce this key via
+    # X-API-Key header (or Authorization: Bearer <key>).  Leave unset only in
+    # local development where the engine is not internet-exposed.
+    scraper_api_key: Optional[str] = _env("SCRAPER_API_KEY")
 
     # ── Database ────────────────────────────────────────────────────────────
     database_url: Optional[str] = _env("DATABASE_URL")

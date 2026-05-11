@@ -10,6 +10,7 @@ which is fine: we just re-login on cold start.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -135,6 +136,51 @@ def _proxy_settings(service: Optional[str] = None) -> Optional[Dict[str, str]]:
 
 _STATE_DIR = Path(os.getenv("BROWSER_STATE_DIR", "/tmp")).resolve()
 _STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+_REDIS_SESSION_TTL = 60 * 60 * 24 * 7  # 7 days
+
+
+async def _redis_save_state(service: str, state_path: Path) -> None:
+    """Persist session state JSON to Redis (7-day TTL) alongside the file."""
+    try:
+        from ..job_store import _redis as _r
+
+        if _r is None:
+            return
+        data = state_path.read_text()
+        await _r.setex(f"digor:session:{service}", _REDIS_SESSION_TTL, data)
+        log.debug("[%s] session state saved to Redis", service)
+    except Exception as exc:
+        log.warning("[%s] Redis session save failed: %s", service, str(exc)[:120])
+
+
+async def _redis_load_state(service: str) -> Optional[str]:
+    """Return stored session JSON from Redis, or None if unavailable."""
+    try:
+        from ..job_store import _redis as _r
+
+        if _r is None:
+            return None
+        raw = await _r.get(f"digor:session:{service}")
+        if raw:
+            log.debug("[%s] session state restored from Redis", service)
+            return raw.decode() if isinstance(raw, bytes) else raw
+    except Exception as exc:
+        log.warning("[%s] Redis session load failed: %s", service, str(exc)[:120])
+    return None
+
+
+async def _redis_delete_state(service: str) -> None:
+    """Remove session key from Redis on invalidation."""
+    try:
+        from ..job_store import _redis as _r
+
+        if _r is None:
+            return
+        await _r.delete(f"digor:session:{service}")
+        log.debug("[%s] Redis session key deleted", service)
+    except Exception as exc:
+        log.warning("[%s] Redis session delete failed: %s", service, str(exc)[:80])
 
 # ─── Shared stealth script (extracted for reuse on re-created contexts) ───────
 _STEALTH_SCRIPT = """
@@ -315,7 +361,20 @@ async def browser_context(
         raise RuntimeError("playwright not installed — run `playwright install chromium`") from e
 
     state_file = _state_path(service)
-    storage_state: Optional[str] = str(state_file) if state_file.exists() else None
+
+    # ── Session resolution: Redis → file → fresh login ────────────────────────
+    # On Railway every deploy wipes /tmp; Redis survives across deploys so we
+    # always try Redis first and fall back to the local file if Redis is absent.
+    storage_state: Optional[str] = None
+    _redis_state = await _redis_load_state(service)
+    if _redis_state:
+        # Write to disk so Playwright can read it via file path
+        state_file.write_text(_redis_state)
+        storage_state = str(state_file)
+        log.info("[%s] session restored from Redis", service)
+    elif state_file.exists():
+        storage_state = str(state_file)
+        log.info("[%s] session restored from local file", service)
 
     # Lazy one-time Nix LD_LIBRARY_PATH setup (skipped at import time to avoid
     # expensive glob scan of /nix/store on Replit).
@@ -377,6 +436,8 @@ async def browser_context(
                         await login_fn(page)
                         await ctx.storage_state(path=str(state_file))
                         log.info("[%s] saved storage_state to %s", service, state_file)
+                        # Persist to Redis so sessions survive Railway redeploys
+                        await _redis_save_state(service, state_file)
                     finally:
                         await page.close()
                 else:
@@ -405,14 +466,16 @@ async def browser_context(
 
 
 async def invalidate_session(service: str) -> None:
-    """Delete the cached session — next call will re-login."""
+    """Delete the cached session from disk AND Redis — next call will re-login."""
     p = _state_path(service)
     if p.exists():
         try:
             p.unlink()
-            log.info("[%s] session invalidated", service)
+            log.info("[%s] local session file deleted", service)
         except Exception as e:
-            log.warning("[%s] failed to invalidate session: %s", service, e)
+            log.warning("[%s] failed to delete local session file: %s", service, e)
+    await _redis_delete_state(service)
+    log.info("[%s] session invalidated", service)
 
 
 def dump_cookies(state: Dict[str, Any]) -> str:
