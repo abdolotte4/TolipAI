@@ -48,16 +48,15 @@ const PHONE_TEST  = /(?:\+?1[\s.\-]?)?(?:\(?\d{3}\)?[\s.\-])?\d{3}[\s.\-]\d{4}/;
 
 function extractPhone(text: string): string {
   if (!text) return "";
-  const matches = text.match(PHONE_REGEX);
-  if (!matches) return "";
-  const valid = matches.filter(m => m.replace(/\D/g, "").length >= 10);
-  return valid[0] || "";
+  const matches: string[] = (text.match(PHONE_REGEX) as string[] | null) ?? [];
+  const valid = matches.filter((m) => m.replace(/\D/g, "").length >= 10);
+  return valid[0] ?? "";
 }
 
 function extractPhones(text: string): string[] {
   if (!text) return [];
-  const matches = text.match(PHONE_REGEX) || [];
-  return [...new Set(matches.filter(m => m.replace(/\D/g, "").length >= 10))];
+  const matches: string[] = (text.match(PHONE_REGEX) as string[] | null) ?? [];
+  return [...new Set(matches.filter((m) => m.replace(/\D/g, "").length >= 10))];
 }
 
 // ─── ScraperAPI / ScrapingBee key-rotation helpers ────────────────────────────
