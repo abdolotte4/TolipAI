@@ -1,0 +1,62 @@
+# ── Digor Scraper Engine — Fargate Spot requirements ──────────────────────────
+# Optimised for ARM64 (Graviton3) Fargate tasks.
+# Install: pip install -r requirements.fargate.txt
+
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+uvloop==0.21.0           # faster event loop on Linux/ARM64
+httptools==0.6.4
+
+# ── Database ──────────────────────────────────────────────────────────────────
+asyncpg==0.30.0
+python-dotenv==1.0.1
+
+# ── HTTP clients ──────────────────────────────────────────────────────────────
+httpx[http2]==0.28.1
+tenacity==9.0.0
+aiohttp==3.11.18
+
+# ── Browser automation (pre-installed in image, listed for version pinning) ──
+playwright==1.51.0
+crawl4ai==0.6.3
+
+# ── Redis (job store + retry queue + cache) ───────────────────────────────────
+redis[hiredis]==5.2.1     # includes hiredis for speed on ARM64
+
+# ── S3 cache (optional — only used when S3_CACHE_BUCKET is set) ──────────────
+aioboto3==13.4.0
+
+# ── AI / LLM ──────────────────────────────────────────────────────────────────
+openai==1.75.0
+anthropic==0.51.0
+groq==0.23.1
+
+# ── Data processing ───────────────────────────────────────────────────────────
+pydantic==2.11.3
+beautifulsoup4==4.13.3
+lxml==5.3.1
+pandas==2.2.3
+numpy==2.2.4
+
+# ── PDF + OCR ─────────────────────────────────────────────────────────────────
+PyMuPDF==1.25.5
+pdfplumber==0.11.5
+pytesseract==0.3.13
+Pillow==11.2.1
+
+# ── Computer vision (satellite DFD) ──────────────────────────────────────────
+ultralytics==8.3.103
+opencv-python-headless==4.11.0.86
+
+# ── Geo / maps ────────────────────────────────────────────────────────────────
+geopy==2.4.1
+shapely==2.1.0
+
+# ── Structured logging ────────────────────────────────────────────────────────
+python-json-logger==3.3.0
+
+# ── Misc utils ────────────────────────────────────────────────────────────────
+cachetools==5.5.2
+python-multipart==0.0.20
+orjson==3.10.16

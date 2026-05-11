@@ -82,6 +82,9 @@ from . import job_store  # noqa: E402
 from . import osint_skip_trace  # noqa: E402
 from .scrapers import homeharvest_scraper  # noqa: E402
 from .config import settings  # noqa: E402
+from .spot_handler import spot_handler, is_interrupted, register_job, unregister_job  # noqa: E402
+from .circuit_breaker import all_breaker_states, reset_breaker  # noqa: E402
+from .cache import cache  # noqa: E402
 from .retry_queue import retry_queue, is_transient  # noqa: E402
 from .scrapers import propelio_v2, propwire  # noqa: E402
 from .scrapers import satellite_dfd  # noqa: E402
@@ -180,6 +183,9 @@ async def lifespan(app: FastAPI):
     if recovered:
         log.warning("Startup: reset %d interrupted job(s) from previous run", recovered)
 
+    # ── Redis Streams retry queue init ───────────────────────────────────────
+    await retry_queue.init()
+
     # Register retry runners (see _run_* functions below).
     retry_queue.register("cash_buyers", _run_cash_buyers)
     retry_queue.register("distressed", _run_distressed)
@@ -191,19 +197,47 @@ async def lifespan(app: FastAPI):
         on_exhaust=_on_retry_exhausted,
     )
 
-    # ── SIGTERM / SIGINT graceful-shutdown handler ───────────────────────────
+    # ── Fargate Spot SIGTERM / SIGINT handler ────────────────────────────────
+    # spot_handler replaces the old _handle_sigterm — it sets the global
+    # _shutting_down flag AND performs a 90-second ordered drain before exit,
+    # giving in-flight jobs time to finish and flushing state to Redis before
+    # AWS issues the hard SIGKILL at t=120s.
     global _shutting_down
 
-    def _handle_sigterm(sig: int, frame: Any) -> None:
+    # Register shutdown callbacks so spot_handler can flush state
+    from .spot_handler import on_shutdown as _on_shutdown
+
+    async def _flush_on_spot() -> None:
+        log.info("Spot shutdown: stopping retry queue and closing connections...")
+        retry_queue.stop()
+        await job_store.close()
+        await http_client.close_client()
+        await db.close_pool()
+
+    _on_shutdown(_flush_on_spot)
+
+    # Wire _shutting_down to spot_handler's interrupted flag
+    import ctypes as _ctypes  # noqa: F401
+
+    from . import spot_handler as _spot_mod
+
+    def _sync_shutdown_flag(sig: int, frame: Any) -> None:
         global _shutting_down
         _shutting_down = True
-        log.warning(
-            "Signal %d received — graceful shutdown initiated (in-flight jobs will finish)",
-            sig,
-        )
 
-    signal.signal(signal.SIGTERM, _handle_sigterm)
-    signal.signal(signal.SIGINT, _handle_sigterm)
+    spot_handler.install()
+    # Also keep _shutting_down in sync for code that polls it directly
+    import signal as _sig
+    _orig_sigterm = _sig.getsignal(_sig.SIGTERM)
+
+    def _combined_sigterm(sig: int, frame: Any) -> None:
+        global _shutting_down
+        _shutting_down = True
+        if callable(_orig_sigterm):
+            _orig_sigterm(sig, frame)
+
+    _sig.signal(_sig.SIGTERM, _combined_sigterm)
+    _sig.signal(_sig.SIGINT,  _combined_sigterm)
 
     # ── Memory pressure monitor ──────────────────────────────────────────────
     async def _memory_monitor() -> None:
@@ -228,13 +262,18 @@ async def lifespan(app: FastAPI):
     _mem_task = asyncio.create_task(_memory_monitor(), name="memory_monitor")
 
     log.info(
-        "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s)",
+        "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s, "
+        "retry_backend=%s, cache_s3=%s)",
         os.getenv("PORT", str(settings.port)),
         settings.has_llm(),
         bool(settings.proxy_url()),
         job_store._redis is not None,
+        "redis_streams" if retry_queue._use_redis else "in_memory",
+        bool(os.getenv("S3_CACHE_BUCKET")),
     )
     yield
+    # Spot handler drain fires on SIGTERM; here we just stop the retry loop
+    # and clean up resources for normal (non-spot) shutdowns.
     retry_queue.stop()
     _mem_task.cancel()
     await asyncio.gather(_mem_task, return_exceptions=True)
@@ -828,6 +867,20 @@ async def health() -> Dict[str, Any]:
             "total": len(distressed.list_sources()),
             "categories": len(distressed.list_categories()),
         },
+        "circuit_breakers": all_breaker_states(),
+        "retry_queue": {
+            "backend": "redis_streams" if retry_queue._use_redis else "in_memory",
+            "size": await retry_queue.size_async(),
+        },
+        "cache": await cache.stats(),
+        "spot_handler": {
+            "interrupted": is_interrupted(),
+            "active_jobs": len([j for j in _jobs.values() if j.get("status") == "running"]),
+        },
+        "fargate": {
+            "task_arn": os.getenv("ECS_CONTAINER_METADATA_URI_V4", "not_fargate").split("/")[-1] if os.getenv("ECS_CONTAINER_METADATA_URI_V4") else "local",
+            "spot_exit_deadline_seconds": int(os.getenv("SPOT_EXIT_DEADLINE_SECONDS", "90")),
+        },
     }
 
 
@@ -868,6 +921,56 @@ async def health_keys() -> Dict[str, Any]:
             "property_api_keys": len(settings.property_api_keys),
         },
     }
+
+
+# ─── Circuit breaker admin endpoints ────────────────────────────────────────
+
+
+@app.get("/admin/circuit-breakers")
+async def get_circuit_breakers() -> Dict[str, Any]:
+    """Return status of all registered circuit breakers."""
+    return {"circuit_breakers": all_breaker_states()}
+
+
+@app.post("/admin/circuit-breakers/{service}/reset")
+async def reset_circuit_breaker_endpoint(service: str) -> Dict[str, Any]:
+    """Manually reset a named circuit breaker to CLOSED state."""
+    ok = reset_breaker(service)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"No circuit breaker named '{service}'")
+    return {"status": "reset", "service": service}
+
+
+# ─── Spot handler status ──────────────────────────────────────────────────────
+
+
+@app.get("/admin/spot")
+async def get_spot_status() -> Dict[str, Any]:
+    """Return Fargate Spot interruption status and active job list."""
+    from .spot_handler import health_payload
+    return health_payload()
+
+
+# ─── Retry queue status ───────────────────────────────────────────────────────
+
+
+@app.get("/admin/retry-queue")
+async def get_retry_queue() -> Dict[str, Any]:
+    """Return pending retries across all job types."""
+    return {
+        "backend": "redis_streams" if retry_queue._use_redis else "in_memory",
+        "size": await retry_queue.size_async(),
+        "pending": await retry_queue.pending_async(),
+    }
+
+
+# ─── Cache stats ──────────────────────────────────────────────────────────────
+
+
+@app.get("/admin/cache")
+async def get_cache_stats() -> Dict[str, Any]:
+    """Return cache layer statistics (Redis + S3)."""
+    return await cache.stats()
 
 
 # ─── Proxy diagnostics ───────────────────────────────────────────────────────

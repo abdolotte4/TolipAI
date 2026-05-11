@@ -1,8 +1,16 @@
 [project]
 name = "digor-scraper-engine"
-version = "0.1.0"
-description = "Digor advanced scraping + skip-trace + investor classification engine"
+version = "0.2.0"
+description = "Digor advanced scraping + skip-trace + investor classification engine — AWS Fargate Spot"
 requires-python = ">=3.11,<3.13"
+
+[project.optional-dependencies]
+fargate = [
+    "uvloop>=0.21.0",
+    "aioboto3>=13.4.0",
+    "redis[hiredis]>=5.2.1",
+    "python-json-logger>=3.3.0",
+]
 
 [tool.uv]
 managed = false
@@ -10,3 +18,19 @@ managed = false
 [tool.ruff]
 line-length = 110
 target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
+ignore  = ["E501"]
+
+[project.urls]
+Repository = "https://github.com/Agawish24/Digor"
+
+# ── New modules (Week 1–4 upgrade) ───────────────────────────────────────────
+# workers/spot_handler.py    — Fargate Spot SIGTERM → 90s graceful drain
+# workers/circuit_breaker.py — Per-service circuit breaker (CLOSED/OPEN/HALF_OPEN)
+# workers/cache.py           — Dual-layer Redis + S3 cache with ETag support
+# workers/retry_queue.py     — Redis Streams primary, asyncio.deque fallback
+# infrastructure/            — ECS task definition, service, deploy.sh, CloudWatch
+# Dockerfile.fargate         — ARM64 multi-stage Fargate Spot image
+# requirements.fargate.txt   — Pinned Fargate dependencies

@@ -816,3 +816,198 @@ artifacts/api-server/src/
 └── lib/
     └── logger.ts             # Pino structured logging
 ```
+
+---
+
+## Scraper Engine — AWS Fargate Spot Architecture
+
+The Digor Scraper Engine (`artifacts/digor-scraper-engine/`) runs as a standalone
+Python service (FastAPI + Playwright) deployed on **AWS Fargate Spot** — giving
+~70% cost reduction versus on-demand Fargate while maintaining reliability through
+graceful spot interruption handling, Redis job persistence, and automatic retry.
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         AWS VPC                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │           ECS Cluster (Fargate Spot)                 │   │
+│  │                                                      │   │
+│  │   ┌─────────┐  ┌─────────┐  ┌─────────┐            │   │
+│  │   │ Worker  │  │ Worker  │  │ Worker  │  Auto-scale │   │
+│  │   │ 2vCPU   │  │ 2vCPU   │  │ 2vCPU   │  2–20 tasks │   │
+│  │   │ 4GB ARM │  │ 4GB ARM │  │ 4GB ARM │             │   │
+│  │   └────┬────┘  └────┬────┘  └────┬────┘             │   │
+│  │        └─────────────┴─────────────┘                 │   │
+│  │                      │                               │   │
+│  │           ┌──────────┴──────────┐                   │   │
+│  │           │  ElastiCache Redis  │                   │   │
+│  │           │  (Jobs + Sessions   │                   │   │
+│  │           │   + Retry Streams)  │                   │   │
+│  │           └─────────────────────┘                   │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │
+│  │ RDS Postgre │  │ S3 (cache + │  │ Secrets Manager │   │
+│  │ (persistent)│  │  exports)   │  │ (all creds)     │   │
+│  └─────────────┘  └─────────────┘  └─────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Internal ALB  →  /health every 30s                 │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Fargate Spot vs Lambda — Why We Migrated
+
+| Concern | Lambda | Fargate Spot |
+|---|---|---|
+| Max runtime | 15 minutes | Unlimited |
+| Browser support | No (no Playwright) | Full Chromium via Playwright |
+| Cold start | 2–8s | 60s (one-time per task) |
+| Memory | Max 10 GB | 4–30 GB configurable |
+| Cost | $0.0000166667/GB-s | ~70% less than on-demand |
+| Spot interruption | N/A | 2-min warning → graceful drain |
+| Redis Streams | Manual bridge | Native (same VPC) |
+
+### Week 1–4 Code Upgrade Roadmap
+
+#### Week 1: Core Infrastructure (Completed ✓)
+
+| Module | Description |
+|---|---|
+| `workers/spot_handler.py` | Catches SIGTERM, drains active jobs in 90s, closes browsers, exits cleanly |
+| `workers/retry_queue.py` | Redis Streams primary backend (survives restarts), asyncio.deque fallback |
+| `workers/circuit_breaker.py` | Per-service CLOSED/OPEN/HALF_OPEN state machine, configurable thresholds |
+| `workers/cache.py` | Dual-layer Redis + S3 cache, ETag/Last-Modified support |
+| `workers/job_store.py` | Redis-backed (already done), TTL=24h, memory warm-cache |
+| `Dockerfile.fargate` | ARM64 (Graviton3) multi-stage image — 20% cheaper than x86 |
+
+#### Week 2: Scraper Reliability (Planned)
+
+- Rewrite `propelio_v2.py` — session reuse, proxy rotation, CAPTCHA handling
+- Rewrite `propwire.py` — same patterns
+- Rewrite `distressed.py` — tiered strategy: API → HTML → Browser → AI fallback
+- Circuit breaker wired into every external HTTP call
+
+#### Week 3: Observability (Planned)
+
+- Structured JSON logging with correlation IDs via `python-json-logger`
+- Prometheus metrics endpoint (`/metrics`) — success rates, queue depth, LLM costs
+- Deep health checks for DB, Redis, browser pool, and all proxy tiers
+- CloudWatch alarms: error rate > 5%, queue depth > 50, memory > 80%
+
+#### Week 4: Performance (Planned)
+
+- Redis caching for scraped pages, LLM responses, and session tokens
+- Request batching for LLM calls and DB inserts
+- Connection pooling tuning for HTTPX and asyncpg
+- S3 + CloudFront for CSV exports
+
+### Fargate Spot Interruption Flow
+
+AWS gives a **2-minute SIGTERM warning** before terminating a Spot task.
+`spot_handler.py` handles this automatically:
+
+```
+t=0s    SIGTERM received
+         → _shutting_down = True (rejects new HTTP job requests with 503)
+         → Logs "Fargate Spot interruption detected"
+
+t=0–60s  Drain phase:
+         → Waits for active jobs to finish naturally (max 60s)
+         → Any jobs still running after 60s are logged and will be
+           recovered from Redis on the next container start
+
+t=60s   Shutdown callbacks:
+         → retry_queue.stop() (flushes Redis Streams)
+         → job_store.close() (all job state already in Redis)
+         → http_client.close_client()
+         → db.close_pool()
+
+t=90s   sys.exit(0)  ← well before AWS hard-kills at t=120s
+```
+
+In-flight jobs survive because their state is persisted to Redis via `job_store.py`
+(TTL=24h). On next container start, `recover_interrupted_jobs()` scans Postgres for
+`running`/`queued` jobs and marks them `interrupted` so the UI shows a clear error
+instead of spinning.
+
+### Infrastructure Files
+
+```
+infrastructure/
+├── ecs-task-definition.json  — ECS task def: ARM64, 2vCPU/4GB, secrets from Secrets Manager
+├── ecs-service.json          — Fargate Spot capacity strategy (80% Spot, 20% on-demand base)
+├── deploy.sh                 — Build ARM64 image → push ECR → register task def → update service
+├── ecr-push.sh               — Image-only build+push (for CI pipelines)
+├── cloudwatch-config.json    — Metric filters, alarms, and Logs Insights saved queries
+└── iam-policies.json         — Task role (S3 + CloudWatch) and execution role (ECR + Secrets)
+```
+
+### Deploying to AWS
+
+**Prerequisites:** AWS CLI v2, Docker Buildx with QEMU (for ARM64 cross-compile), `jq`
+
+```bash
+# 1. Set your AWS config
+export AWS_ACCOUNT_ID=123456789012
+export AWS_REGION=us-east-1
+
+# 2. Store secrets in Secrets Manager (one-time)
+aws secretsmanager create-secret \
+  --name digor/scraper/database-url \
+  --secret-string "postgresql://user:pass@rds-host:5432/digor"
+
+# 3. Create the ECS cluster (one-time)
+aws ecs create-cluster --cluster-name digor-scraper-cluster \
+  --capacity-providers FARGATE_SPOT FARGATE \
+  --default-capacity-provider-strategy \
+    capacityProvider=FARGATE_SPOT,weight=4 \
+    capacityProvider=FARGATE,weight=1
+
+# 4. Deploy (builds ARM64 image, pushes ECR, updates ECS service)
+./infrastructure/deploy.sh
+
+# 5. Tail logs
+aws logs tail /ecs/digor-scraper --follow --region $AWS_REGION
+```
+
+### New Admin Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Full health check — now includes circuit breakers, retry queue, cache, spot status |
+| `GET /admin/circuit-breakers` | Per-service circuit breaker states (CLOSED/OPEN/HALF_OPEN) |
+| `POST /admin/circuit-breakers/{service}/reset` | Manually reset a tripped circuit breaker |
+| `GET /admin/spot` | Current spot interruption status and active job list |
+| `GET /admin/retry-queue` | Pending retries (Redis Streams or in-memory) |
+| `GET /admin/cache` | Cache layer stats (Redis keys, S3 enabled, memory entries) |
+
+### Scraper Engine Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `REDIS_URL` | Yes (Fargate) | ElastiCache Redis URL — jobs, sessions, retry queue, cache |
+| `S3_CACHE_BUCKET` | No | S3 bucket for persistent page cache (cross-container) |
+| `PORT` | No | HTTP port (default: 8765) |
+| `LOG_LEVEL` | No | Log level: debug/info/warning/error (default: info) |
+| `BROWSER_MAX_CONCURRENT` | No | Max simultaneous Playwright sessions (default: 3 on Fargate) |
+| `SPOT_EXIT_DEADLINE_SECONDS` | No | Seconds before forced exit after SIGTERM (default: 90) |
+| `CIRCUIT_FAILURE_THRESHOLD` | No | Failures before opening a circuit (default: 5) |
+| `CIRCUIT_RECOVERY_TIMEOUT` | No | Seconds before probing a closed circuit (default: 120) |
+| `CACHE_DEFAULT_TTL` | No | Cache TTL in seconds (default: 3600) |
+| `GROQ_API_KEY` | Yes (LLM) | Groq inference key |
+| `OPENROUTER_API_KEY` | No | OpenRouter fallback LLM key |
+| `ATTOM_API_KEY` | Yes (comps) | ATTOM Data API key |
+| `BRIGHTDATA_USERNAME` | No | BrightData residential proxy username |
+| `BRIGHTDATA_PASSWORD` | No | BrightData residential proxy password |
+| `PROPELIO_EMAIL` | No | Propelio account email for browser session |
+| `PROPELIO_PASSWORD` | No | Propelio account password |
+| `PROPWIRE_EMAIL` | No | Propwire account email |
+| `PROPWIRE_PASSWORD` | No | Propwire account password |
+| `TWILIO_ACCOUNT_SID` | No | Twilio SID (for call webhook features) |
+| `TWILIO_AUTH_TOKEN` | No | Twilio auth token |
+
