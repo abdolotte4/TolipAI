@@ -1,9 +1,13 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
 
 function getKey(): Buffer {
-  const secret = process.env.JWT_SECRET;
+  // Use a dedicated ENCRYPTION_KEY so rotating JWT_SECRET doesn't invalidate
+  // AES-encrypted values (Twilio auth tokens, etc.) stored in the database.
+  // Fall back to JWT_SECRET only for backward-compatibility with existing rows
+  // that were encrypted before ENCRYPTION_KEY was introduced.
+  const secret = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
   if (!secret) {
-    throw new Error("JWT_SECRET environment variable is not set — cannot encrypt/decrypt passwords");
+    throw new Error("ENCRYPTION_KEY environment variable is not set — cannot encrypt/decrypt values");
   }
   return createHash("sha256").update(secret).digest();
 }

@@ -3,8 +3,8 @@ import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import { crmUsers, crmCampaigns, crmNotifications } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { crmAuth, crmAdminOnly, crmSuperAdminOnly } from "./middleware";
-import { encryptPassword, decryptPassword } from "./crypto-util";
+import { crmAuth, crmAdminOnly } from "./middleware";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -95,7 +95,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
         }
       }
     } catch (err) {
-      console.error("User limit check error:", err);
+      logger.error({ err }, "User limit check error");
       res.status(500).json({ error: "Internal server error" });
       return;
     }
@@ -107,7 +107,6 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
       name,
       email: email.toLowerCase(),
       passwordHash,
-      encryptedPassword: encryptPassword(password),
       role: role || "sales",
       status: status || "active",
       campaignId: targetCampaignId,
@@ -123,7 +122,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
             content: `New user created: ${name} (${role})`, read: false,
           });
         }
-      } catch (e) { console.error("super_admin notify error:", e); }
+      } catch (e) { logger.error({ err: e }, "super_admin notify error"); }
     }
     res.status(201).json(formatUser(user, ownerUserId));
   } catch (err: any) {
@@ -203,7 +202,6 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     if (status) updates.status = status;
     if (password) {
       updates.passwordHash = await bcrypt.hash(password, 12);
-      updates.encryptedPassword = encryptPassword(password);
     }
 
     const [user] = await db.update(crmUsers).set(updates).where(eq(crmUsers.id, id)).returning();
@@ -259,27 +257,6 @@ router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     res.json({ success: true, message: "User deleted" });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// GET /crm/users/:id/password — super admin only: reveal decrypted password
-router.get("/:id/password", crmAuth, crmSuperAdminOnly, async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  try {
-    const [user] = await db.select({ encryptedPassword: crmUsers.encryptedPassword, name: crmUsers.name })
-      .from(crmUsers).where(eq(crmUsers.id, id)).limit(1);
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
-    if (!user.encryptedPassword) {
-      res.status(404).json({ error: "No password on record — user has not logged in yet after this feature was added. Reset their password to record it." });
-      return;
-    }
-    const plaintext = decryptPassword(user.encryptedPassword);
-    res.json({ password: plaintext, name: user.name });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to decrypt password" });
   }
 });
 

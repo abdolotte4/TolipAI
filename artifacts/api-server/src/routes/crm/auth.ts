@@ -5,7 +5,6 @@ import { db } from "@workspace/db";
 import { crmUsers, crmCampaigns } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { crmAuth, getJwtSecret } from "./middleware";
-import { encryptPassword } from "./crypto-util";
 
 const router = Router();
 
@@ -32,7 +31,7 @@ router.post("/auth/login", async (req, res) => {
     }
 
     await db.update(crmUsers)
-      .set({ lastLoginAt: new Date(), encryptedPassword: encryptPassword(password) })
+      .set({ lastLoginAt: new Date() })
       .where(eq(crmUsers.id, user.id));
 
     let campaignName: string | null = null;
@@ -60,7 +59,7 @@ router.post("/auth/login", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("CRM login error:", err);
+    req.log.error({ err }, "CRM login error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

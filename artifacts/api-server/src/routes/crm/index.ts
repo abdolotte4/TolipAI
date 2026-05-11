@@ -122,7 +122,7 @@ router.post("/crm/public/submit/:token", async (req, res) => {
     await db.update(crmSubmissionLinks).set({ submissionsCount: sql`${crmSubmissionLinks.submissionsCount} + 1` }).where(eq(crmSubmissionLinks.id, link.id));
     res.status(201).json({ success: true, message: "Thank you! Your property has been submitted. We will be in touch soon." });
   } catch (err) {
-    console.error("Public submission error:", err);
+    req.log.error({ err }, "Public submission error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,6 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import express from "express";
 import Stripe from "stripe";
 import jwt from "jsonwebtoken";
+import { logger } from "../lib/logger";
 
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers.authorization;
@@ -106,7 +108,7 @@ router.post("/stripe/checkout", async (req: Request, res: Response) => {
 
     res.json({ url: session.url });
   } catch (err: any) {
-    console.error("Stripe checkout error:", err.message);
+    logger.error({ err: err.message }, "Stripe checkout error");
     res.status(500).json({ error: err.message || "Failed to create checkout session" });
   }
 });
@@ -170,9 +172,89 @@ router.get("/stripe/subscriptions", authMiddleware, async (req: Request, res: Re
 
     res.json({ subscriptions: result, total: result.length });
   } catch (err: any) {
-    console.error("Stripe subscriptions fetch error:", err.message);
+    logger.error({ err: err.message }, "Stripe subscriptions fetch error");
     res.status(500).json({ error: err.message || "Failed to fetch subscriptions" });
   }
 });
+
+// ── POST /api/stripe/webhook ──────────────────────────────────────────────────
+// Stripe sends events here for subscription lifecycle management.
+// Requires STRIPE_WEBHOOK_SECRET env var (from Stripe dashboard → Webhooks).
+// The route uses express.raw() so the raw body is available for sig verification.
+
+router.post(
+  "/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req: Request, res: Response) => {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      logger.warn("STRIPE_WEBHOOK_SECRET not set — webhook ignored");
+      res.status(200).json({ received: true });
+      return;
+    }
+
+    const sig = req.headers["stripe-signature"] as string | undefined;
+    if (!sig) {
+      res.status(400).json({ error: "Missing stripe-signature header" });
+      return;
+    }
+
+    let event: Stripe.Event;
+    try {
+      const stripe = getStripe();
+      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
+    } catch (err: any) {
+      logger.warn({ err: err.message }, "Stripe webhook signature verification failed");
+      res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+      return;
+    }
+
+    // Always acknowledge quickly so Stripe doesn't retry
+    res.status(200).json({ received: true });
+
+    // Process the event asynchronously
+    try {
+      switch (event.type) {
+        case "customer.subscription.created":
+        case "customer.subscription.updated": {
+          const sub = event.data.object as Stripe.Subscription;
+          logger.info(
+            { subscriptionId: sub.id, status: sub.status, customerId: sub.customer },
+            `[stripe webhook] subscription ${event.type}`
+          );
+          break;
+        }
+        case "customer.subscription.deleted": {
+          const sub = event.data.object as Stripe.Subscription;
+          logger.info(
+            { subscriptionId: sub.id, customerId: sub.customer },
+            "[stripe webhook] subscription cancelled/deleted"
+          );
+          break;
+        }
+        case "invoice.payment_succeeded": {
+          const inv = event.data.object as Stripe.Invoice;
+          logger.info(
+            { invoiceId: inv.id, customerId: inv.customer, amount: inv.amount_paid },
+            "[stripe webhook] invoice payment succeeded"
+          );
+          break;
+        }
+        case "invoice.payment_failed": {
+          const inv = event.data.object as Stripe.Invoice;
+          logger.warn(
+            { invoiceId: inv.id, customerId: inv.customer, amount: inv.amount_due },
+            "[stripe webhook] invoice payment FAILED"
+          );
+          break;
+        }
+        default:
+          logger.info({ type: event.type }, "[stripe webhook] unhandled event type");
+      }
+    } catch (err) {
+      logger.error(err, "[stripe webhook] error processing event");
+    }
+  }
+);
 
 export default router;

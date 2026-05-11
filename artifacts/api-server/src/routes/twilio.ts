@@ -355,10 +355,79 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
 });
 
 // ── POST /api/twilio/webhook ──────────────────────────────────────────────────
-// Inbound SMS webhook — public (no auth). Register in Twilio console.
+// Inbound SMS webhook — public (no auth). Validates Twilio signature when
+// the receiving campaign has Twilio credentials configured.
+
+async function validateTwilioSignature(req: any): Promise<boolean> {
+  const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
+  if (!twilioSig) return false;
+
+  // Determine which campaign owns this number
+  const toNumber = req.body?.To as string | undefined;
+  if (!toNumber) return false;
+
+  const campaigns = await db
+    .select({ twilioAuthToken: crmCampaigns.twilioAuthToken, twilioPhoneNumber: crmCampaigns.twilioPhoneNumber })
+    .from(crmCampaigns)
+    .where(eq(crmCampaigns.twilioEnabled, true));
+
+  const { decryptPassword } = await import("./crm/crypto-util");
+
+  let authToken: string | null = null;
+  for (const c of campaigns) {
+    if (!c.twilioPhoneNumber) continue;
+    const normalize = (p: string) => p.replace(/\D/g, "");
+    if (normalize(c.twilioPhoneNumber) === normalize(toNumber)) {
+      try {
+        authToken = c.twilioAuthToken
+          ? (c.twilioAuthToken.includes(":") ? decryptPassword(c.twilioAuthToken) : c.twilioAuthToken)
+          : null;
+      } catch {
+        authToken = c.twilioAuthToken;
+      }
+      break;
+    }
+  }
+
+  if (!authToken) return false;
+
+  // Reconstruct the full URL Twilio signed
+  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+  const host = (req.headers["x-forwarded-host"] as string) || req.headers.host || "localhost";
+  const url = `${proto}://${host}${req.originalUrl}`;
+
+  // Build the validation string: URL + sorted POST params
+  const params = req.body as Record<string, string>;
+  const sortedKeys = Object.keys(params).sort();
+  const signingStr = url + sortedKeys.map(k => `${k}${params[k]}`).join("");
+
+  const { createHmac } = await import("crypto");
+  const expected = createHmac("sha1", authToken).update(signingStr).digest("base64");
+
+  // Constant-time comparison
+  if (expected.length !== twilioSig.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ twilioSig.charCodeAt(i);
+  }
+  return diff === 0;
+}
 
 router.post("/twilio/webhook", async (req, res) => {
+  // Always respond immediately so Twilio doesn't retry
   res.set("Content-Type", "text/xml").send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+
+  // Validate signature — reject silently (response already sent, just log)
+  try {
+    const valid = await validateTwilioSignature(req);
+    if (!valid) {
+      logger.warn({ url: req.originalUrl }, "[twilio webhook] invalid or missing X-Twilio-Signature — ignoring");
+      return;
+    }
+  } catch (err) {
+    logger.error(err, "[twilio webhook] signature validation error — ignoring request");
+    return;
+  }
 
   try {
     const fromNumber = req.body?.From;
