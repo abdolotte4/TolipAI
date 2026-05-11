@@ -7,7 +7,7 @@ import { crmAuth } from "./middleware";
 const router = Router();
 
 router.get("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const campaignFilter = crmUser.role !== "super_admin" && crmUser.campaignId
       ? eq(crmLeads.campaignId, crmUser.campaignId)

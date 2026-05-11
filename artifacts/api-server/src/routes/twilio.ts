@@ -40,9 +40,9 @@ interface TwilioCreds {
 
 async function getCampaignTwilioCreds(campaignId: number): Promise<TwilioCreds> {
   const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);
-  const sid = (campaign as any)?.twilioAccountSid as string | null;
-  const encToken = (campaign as any)?.twilioAuthToken as string | null;
-  const phoneNumber = (campaign as any)?.twilioPhoneNumber as string | null;
+  const sid = campaign?.twilioAccountSid ?? null;
+  const encToken = campaign?.twilioAuthToken ?? null;
+  const phoneNumber = campaign?.twilioPhoneNumber ?? null;
 
   if (!sid || !encToken) {
     throw Object.assign(
@@ -95,15 +95,15 @@ async function twilioFetch(
 // ── GET /api/twilio/config ────────────────────────────────────────────────────
 
 router.get("/twilio/config", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const [campaign] = await db.select().from(crmCampaigns)
       .where(eq(crmCampaigns.id, crmUser.campaignId)).limit(1);
-    const sid = (campaign as any)?.twilioAccountSid as string | null;
-    const token = (campaign as any)?.twilioAuthToken as string | null;
-    const phone = (campaign as any)?.twilioPhoneNumber as string | null;
-    const enabled = (campaign as any)?.twilioEnabled as boolean ?? false;
+    const sid = campaign?.twilioAccountSid ?? null;
+    const token = campaign?.twilioAuthToken ?? null;
+    const phone = campaign?.twilioPhoneNumber ?? null;
+    const enabled = campaign?.twilioEnabled ?? false;
     res.json({
       configured: !!(sid && token),
       twilioEnabled: enabled,
@@ -119,7 +119,7 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
 // ── POST /api/twilio/config ───────────────────────────────────────────────────
 
 router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
 
   const { accountSid, authToken, phoneNumber, twilioEnabled } = req.body;
@@ -131,7 +131,10 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     const encToken = encryptPassword(authToken);
     await db.update(crmCampaigns)
       .set({
-        ...(({ twilioAccountSid: accountSid, twilioAuthToken: encToken, twilioPhoneNumber: phoneNumber || null, twilioEnabled: twilioEnabled !== false }) as any),
+        twilioAccountSid: accountSid,
+        twilioAuthToken: encToken,
+        twilioPhoneNumber: phoneNumber || null,
+        twilioEnabled: twilioEnabled !== false,
       })
       .where(eq(crmCampaigns.id, crmUser.campaignId));
 
@@ -144,7 +147,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
 // ── GET /api/twilio/phone-numbers ─────────────────────────────────────────────
 
 router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const creds = await getCampaignTwilioCreds(crmUser.campaignId);
@@ -164,7 +167,7 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
 // ── GET /api/twilio/messages ──────────────────────────────────────────────────
 
 router.get("/twilio/messages", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { phoneNumberId, contactPhone } = req.query as Record<string, string>;
   if (!phoneNumberId || !contactPhone) {
     res.status(400).json({ error: "phoneNumberId and contactPhone are required" }); return;
@@ -209,7 +212,7 @@ router.get("/twilio/lead-messages/:leadId", crmAuth, async (req, res) => {
 // ── POST /api/twilio/messages ─────────────────────────────────────────────────
 
 router.post("/twilio/messages", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { phoneNumberId, to, content, leadId, campaignId } = req.body;
   if (!phoneNumberId || !to || !content) {
     res.status(400).json({ error: "phoneNumberId, to, and content are required" }); return;
@@ -246,7 +249,7 @@ router.post("/twilio/messages", crmAuth, async (req, res) => {
 // ── GET /api/twilio/calls ─────────────────────────────────────────────────────
 
 router.get("/twilio/calls", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { phoneNumberId, contactPhone } = req.query as Record<string, string>;
   if (!phoneNumberId || !contactPhone) {
     res.status(400).json({ error: "phoneNumberId and contactPhone are required" }); return;
@@ -291,7 +294,7 @@ router.get("/twilio/twiml/call", (req, res) => {
 // ── POST /api/twilio/click-to-call ────────────────────────────────────────────
 
 router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { fromNumber, agentPhone, leadPhone } = req.body;
   if (!fromNumber || !agentPhone || !leadPhone) {
     res.status(400).json({ error: "fromNumber, agentPhone, and leadPhone are required" }); return;
@@ -321,7 +324,7 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
 // ── POST /api/twilio/setup-webhooks ──────────────────────────────────────────
 
 router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const creds = await getCampaignTwilioCreds(crmUser.campaignId);

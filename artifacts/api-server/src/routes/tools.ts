@@ -44,7 +44,7 @@ const router: Router = Router();
 function requirePin(req: Request, res: Response, next: NextFunction) {
   const toolsPin = process.env.TOOLS_PIN;
   if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured" }); return; }
-  const provided = (req.headers["x-tools-pin"] as string | undefined) || (req.body as any)?.pin;
+  const provided = (req.headers["x-tools-pin"] as string | undefined) || (req.body as Record<string, unknown>)?.pin as string | undefined;
   if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN" }); return; }
   next();
 }
@@ -55,7 +55,7 @@ router.post("/tools/auth/verify", (req, res) => {
   const toolsPin = process.env.TOOLS_PIN;
   if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured" }); return; }
   const fromHeader = req.headers["x-tools-pin"] as string | undefined;
-  const fromBody   = (req.body as any)?.pin as string | undefined;
+  const fromBody   = (req.body as Record<string, unknown>)?.pin as string | undefined;
   const provided   = fromHeader || fromBody;
   if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN" }); return; }
   res.json({
@@ -184,8 +184,8 @@ router.get("/tools/distressed/status/:jobId", requirePin, async (req: Request, r
 
   try {
     const job = await scraperEngine.getJob(jobId);
-    if ((job as any).status === "done") (job as any).status = "completed";
-    res.json(job);
+    const normalized = job.status === "done" ? { ...job, status: "completed" } : job;
+    res.json(normalized);
   } catch (err: any) {
     if (err instanceof ScraperEngineUnavailable) {
       res.status(503).json({ error: err.message });

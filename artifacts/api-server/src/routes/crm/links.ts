@@ -28,7 +28,7 @@ function formatLink(link: typeof crmSubmissionLinks.$inferSelect, baseUrl: strin
 }
 
 router.get("/", crmAuth, crmAdminOnly, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const conditions: any[] = [];
     if (crmUser.role !== "super_admin" && crmUser.campaignId) {
@@ -44,7 +44,7 @@ router.get("/", crmAuth, crmAdminOnly, async (req, res) => {
 });
 
 router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { label, leadSource, campaignId: reqCampaignId } = req.body;
   const campaignId = crmUser.role === "super_admin"
     ? (reqCampaignId ? parseInt(reqCampaignId) : null)
@@ -64,7 +64,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
 
 router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { label, leadSource, active } = req.body;
   try {
     const [existing] = await db.select().from(crmSubmissionLinks).where(eq(crmSubmissionLinks.id, id)).limit(1);
@@ -85,7 +85,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
 
 router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const [existing] = await db.select().from(crmSubmissionLinks).where(eq(crmSubmissionLinks.id, id)).limit(1);
     if (!existing) { res.status(404).json({ error: "Link not found" }); return; }

@@ -8,7 +8,7 @@ const router = Router();
 
 // GET /crm/notifications — list notifications for current user
 router.get("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const notifications = await db.select().from(crmNotifications)
       .where(eq(crmNotifications.userId, crmUser.userId))
@@ -33,7 +33,7 @@ router.get("/", crmAuth, async (req, res) => {
 
 // POST /crm/notifications/:id/read — mark one notification as read
 router.post("/:id/read", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const id = parseInt(req.params.id as string);
   try {
     await db.update(crmNotifications)
@@ -47,7 +47,7 @@ router.post("/:id/read", crmAuth, async (req, res) => {
 
 // POST /crm/notifications/read-all — mark all as read
 router.post("/read-all", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     await db.update(crmNotifications)
       .set({ read: true })

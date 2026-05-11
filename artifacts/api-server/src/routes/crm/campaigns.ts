@@ -21,8 +21,8 @@ function validateMaxUsers(value: unknown): { value: number | null } | { error: s
 }
 
 function formatCampaign(c: CampaignWithCounts) {
-  const sid = (c as any).twilioAccountSid as string | null ?? null;
-  const encToken = (c as any).twilioAuthToken as string | null ?? null;
+  const sid = c.twilioAccountSid ?? null;
+  const encToken = c.twilioAuthToken ?? null;
   return {
     id: c.id,
     name: c.name,
@@ -33,14 +33,14 @@ function formatCampaign(c: CampaignWithCounts) {
     ownerUserId: c.ownerUserId ?? null,
     skipTraceDailyLimit: c.skipTraceDailyLimit ?? 1,
     fetchCompsDailyLimit: c.fetchCompsDailyLimit ?? 1,
-    openPhoneNumberId: (c as any).openPhoneNumberId ?? null,
-    openPhoneNumber: (c as any).openPhoneNumber ?? null,
-    dialerEnabled: (c as any).dialerEnabled ?? false,
+    openPhoneNumberId: c.openPhoneNumberId ?? null,
+    openPhoneNumber: c.openPhoneNumber ?? null,
+    dialerEnabled: c.dialerEnabled ?? false,
     // Twilio per-campaign config
     twilioConfigured: !!(sid && encToken),
-    twilioEnabled: (c as any).twilioEnabled ?? false,
+    twilioEnabled: c.twilioEnabled ?? false,
     twilioAccountSid: sid,
-    twilioPhoneNumber: (c as any).twilioPhoneNumber ?? null,
+    twilioPhoneNumber: c.twilioPhoneNumber ?? null,
     // never expose the auth token — callers use /twilio/config for masked view
     createdAt: c.createdAt.toISOString(),
     userCount: c.userCount,
@@ -50,7 +50,7 @@ function formatCampaign(c: CampaignWithCounts) {
 
 // GET /crm/campaigns — super admin: all campaigns; campaign admin: their own
 router.get("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
   try {
     if (crmUser.role === "super_admin") {
       const campaigns = await db.select().from(crmCampaigns).orderBy(crmCampaigns.createdAt);
@@ -139,7 +139,7 @@ router.post("/", crmAuth, crmSuperAdminOnly, async (req, res) => {
 // PATCH /crm/campaigns/:id — super admin only for maxUsers/allowLeadDeletion; campaign admin for name/active only
 router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
 
   if (crmUser.role !== "super_admin" && crmUser.campaignId !== id) {
     res.status(403).json({ error: "You can only update your own campaign" });
@@ -156,7 +156,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     if (crmUser.role === "admin" || crmUser.role === "super_admin") {
       // Twilio config — campaign admin sets their own credentials
       // Auth token is encrypted by the /twilio/config endpoint; campaigns.ts just passes through
-      if (req.body.twilioEnabled !== undefined) (updates as any).twilioEnabled = req.body.twilioEnabled === true || req.body.twilioEnabled === "true";
+      if (req.body.twilioEnabled !== undefined) updates.twilioEnabled = req.body.twilioEnabled === true || req.body.twilioEnabled === "true";
     }
 
     // Only super admin can change governance settings
@@ -172,9 +172,9 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
       if (allowLeadDeletion !== undefined) updates.allowLeadDeletion = allowLeadDeletion === true || allowLeadDeletion === "true";
       if (skipTraceDailyLimit !== undefined) updates.skipTraceDailyLimit = Math.max(1, parseInt(String(skipTraceDailyLimit), 10) || 1);
       if (fetchCompsDailyLimit !== undefined) updates.fetchCompsDailyLimit = Math.max(1, parseInt(String(fetchCompsDailyLimit), 10) || 1);
-      if (openPhoneNumberId !== undefined) (updates as any).openPhoneNumberId = openPhoneNumberId || null;
-      if (openPhoneNumber !== undefined) (updates as any).openPhoneNumber = openPhoneNumber || null;
-      if (dialerEnabled !== undefined) (updates as any).dialerEnabled = dialerEnabled === true || dialerEnabled === "true";
+      if (openPhoneNumberId !== undefined) updates.openPhoneNumberId = openPhoneNumberId || null;
+      if (openPhoneNumber !== undefined) updates.openPhoneNumber = openPhoneNumber || null;
+      if (dialerEnabled !== undefined) updates.dialerEnabled = dialerEnabled === true || dialerEnabled === "true";
     }
 
     const [campaign] = await db.update(crmCampaigns).set(updates).where(eq(crmCampaigns.id, id)).returning();
@@ -195,7 +195,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
 // DELETE /crm/campaigns/:id — super admin only, requires password confirmation
 router.delete("/:id", crmAuth, crmSuperAdminOnly, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
   const { superAdminPassword } = req.body;
 
   if (!superAdminPassword) {

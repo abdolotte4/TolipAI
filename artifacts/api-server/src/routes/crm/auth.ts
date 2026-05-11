@@ -66,7 +66,7 @@ router.post("/auth/login", async (req, res) => {
 });
 
 router.get("/me", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
   try {
     const [user] = await db.select().from(crmUsers).where(eq(crmUsers.id, crmUser.userId)).limit(1);
     if (!user) {

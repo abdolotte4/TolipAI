@@ -10,7 +10,7 @@ const router = Router();
 // GET /crm/sequences - list sequences for campaign
 router.get("/", crmAuth, async (req, res) => {
   try {
-    const user = (req as any).crmUser;
+    const user = req.crmUser!;
     const sequences = await db
       .select()
       .from(crmEmailSequences)
@@ -36,7 +36,7 @@ router.get("/", crmAuth, async (req, res) => {
 // POST /crm/sequences - create sequence
 router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
   try {
-    const user = (req as any).crmUser;
+    const user = req.crmUser!;
     const { name, description, isActive } = req.body;
     if (!name) { res.status(400).json({ error: "Name is required" }); return; }
 
@@ -58,7 +58,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
 router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   try {
     const id = parseInt(req.params["id"] as string);
-    const user = (req as any).crmUser;
+    const user = req.crmUser!;
     const { name, description, isActive } = req.body;
 
     const [existing] = await db.select().from(crmEmailSequences).where(eq(crmEmailSequences.id, id)).limit(1);
@@ -83,7 +83,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
 router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   try {
     const id = parseInt(req.params["id"] as string);
-    const user = (req as any).crmUser;
+    const user = req.crmUser!;
     const [existing] = await db.select().from(crmEmailSequences).where(eq(crmEmailSequences.id, id)).limit(1);
     if (!existing) { res.status(404).json({ error: "Sequence not found" }); return; }
     if (user.campaignId && existing.campaignId !== user.campaignId) { res.status(403).json({ error: "Forbidden" }); return; }
@@ -144,7 +144,7 @@ router.delete("/:id/steps/:stepId", crmAuth, crmAdminOnly, async (req, res) => {
 // GET /crm/sequences/logs/:leadId - get email log for a lead
 router.get("/logs/:leadId", crmAuth, async (req, res) => {
   try {
-    const user = (req as any).crmUser;
+    const user = req.crmUser!;
     const leadId = parseInt(req.params["leadId"] as string);
 
     // Verify the lead belongs to the caller's campaign (non-super-admins only)

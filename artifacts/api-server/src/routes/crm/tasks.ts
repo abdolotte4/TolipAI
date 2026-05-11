@@ -27,8 +27,8 @@ function formatTask(t: any) {
 }
 
 router.get("/", crmAuth, async (req, res) => {
-  const { leadId, status } = req.query as any;
-  const crmUser = (req as any).crmUser;
+  const { leadId, status } = req.query as Record<string, string | undefined>;
+  const crmUser = req.crmUser!;
   try {
     const conditions: any[] = [];
     if (crmUser.role !== "super_admin" && crmUser.campaignId) conditions.push(eq(crmTasks.campaignId, crmUser.campaignId));
@@ -50,7 +50,7 @@ router.get("/", crmAuth, async (req, res) => {
 });
 
 router.post("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { leadId, assignedTo, title, description, dueDate, status } = req.body;
   if (!title) { res.status(400).json({ error: "Title required" }); return; }
   const campaignId = crmUser.campaignId ?? (req.body.campaignId ? parseInt(req.body.campaignId) : null);

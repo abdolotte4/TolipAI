@@ -34,7 +34,7 @@ function parseCsvLine(line: string): string[] {
 
 // GET /api/crm/buyers — list buyers for the current campaign
 router.get("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
   const campaignId = getCampaignId(crmUser);
   const search = req.query.search as string | undefined;
 
@@ -71,7 +71,7 @@ router.get("/", crmAuth, async (req, res) => {
 
 // POST /api/crm/buyers — add a single buyer
 router.post("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
   const campaignId = getCampaignId(crmUser) ?? req.body.campaignId;
   const { name, phone, email, address, notes } = req.body;
 
@@ -100,7 +100,7 @@ router.post("/", crmAuth, async (req, res) => {
 // POST /api/crm/buyers/upload — bulk import from CSV/TSV text body
 // Expects multipart or raw text; we accept JSON body with { csv: "..." }
 router.post("/upload", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
   const campaignId = getCampaignId(crmUser) ?? req.body.campaignId;
 
   const csvText: string = req.body.csv || "";
@@ -178,7 +178,7 @@ router.post("/upload", crmAuth, async (req, res) => {
 
 // DELETE /api/crm/buyers/:id
 router.delete("/:id", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!
   const id = parseInt(req.params.id as string);
   try {
     const [buyer] = await db.select().from(crmBuyers).where(eq(crmBuyers.id, id)).limit(1);

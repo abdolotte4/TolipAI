@@ -31,7 +31,7 @@ async function getCampaignOwnerUserId(campaignId: number): Promise<number | null
 // GET /crm/users — list users in the caller's campaign (or all for super_admin)
 // Any authenticated user can list campaign members (for @mentions, assignment, etc.)
 router.get("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     let users;
     let ownerUserId: number | null = null;
@@ -55,7 +55,7 @@ router.get("/", crmAuth, async (req, res) => {
 
 // POST /crm/users — create user within the caller's campaign
 router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { name, email, password, role, status, campaignId: reqCampaignId } = req.body;
   if (!name || !email || !role) {
     res.status(400).json({ error: "Name, email, and role required" });
@@ -138,7 +138,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
 // PATCH /crm/users/:id — update user (scoped to campaign)
 router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const isSelf = crmUser.userId === id;
   let { name, email, password, role, status } = req.body;
 
@@ -217,7 +217,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
 // DELETE /crm/users/:id — delete user (scoped to campaign)
 router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (crmUser.userId === id) {
     res.status(400).json({ error: "Cannot delete your own account" });
     return;

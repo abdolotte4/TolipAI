@@ -159,8 +159,8 @@ async function notifyFollowers(leadId: number, excludeUserId: number, content: s
 }
 
 router.get("/", crmAuth, async (req, res) => {
-  const { status, search, page = "1", limit = "20", archived } = req.query as any;
-  const crmUser = (req as any).crmUser;
+  const { status, search, page = "1", limit = "20", archived } = req.query as Record<string, string | undefined>;
+  const crmUser = req.crmUser!;
   const pageNum = parseInt(page);
   const limitNum = parseInt(limit);
   const offset = (pageNum - 1) * limitNum;
@@ -222,7 +222,7 @@ router.get("/", crmAuth, async (req, res) => {
 });
 
 router.post("/", crmAuth, async (req, res) => {
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (crmUser.role === "va") {
     res.status(403).json({ error: "VAs cannot create leads directly" });
     return;
@@ -289,7 +289,7 @@ router.post("/", crmAuth, async (req, res) => {
 
 router.get("/:id", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
     if (!lead) {
@@ -345,7 +345,7 @@ router.get("/:id", crmAuth, async (req, res) => {
 // GET /:id/full — lead + comps in a single round-trip (used by LeadDetail page)
 router.get("/:id/full", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
     if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
@@ -403,7 +403,7 @@ router.get("/:id/full", crmAuth, async (req, res) => {
 
 router.patch("/:id", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const [existing] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
     if (!existing) {
@@ -425,7 +425,7 @@ router.patch("/:id", crmAuth, async (req, res) => {
     const conditionForMao = data.condition != null ? Number(data.condition) : (existing.condition ?? null);
     const maoOverride = data.maoDiscountOverride !== undefined
       ? parseMoney(data.maoDiscountOverride)
-      : parseMoney((existing as any).maoDiscountOverride);
+      : parseMoney(existing.maoDiscountOverride);
     const mao = arv !== null && erc !== null
       ? calculateMao(arv, erc, conditionForMao, maoOverride)
       : (data.mao !== undefined ? parseMoney(data.mao) : parseMoney(existing.mao));
@@ -460,8 +460,8 @@ router.patch("/:id", crmAuth, async (req, res) => {
     for (const field of auditFields) {
       if (data[field] === undefined) continue;
       const label = FIELD_LABELS[field] || field;
-      const oldRaw = (existing as any)[field];
-      const newRaw = (lead as any)[field];
+      const oldRaw = (existing as Record<string, unknown>)[field];
+      const newRaw = (lead as Record<string, unknown>)[field];
       const oldStr = formatFieldValue(field, oldRaw);
       const newStr = formatFieldValue(field, newRaw);
       if (oldStr !== newStr) {
@@ -507,7 +507,7 @@ router.patch("/:id", crmAuth, async (req, res) => {
 
 router.delete("/:id", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const [existing] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
     if (!existing) {
@@ -540,7 +540,7 @@ router.delete("/:id", crmAuth, async (req, res) => {
 // Archive a lead (admin or super_admin only)
 router.post("/:id/archive", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (crmUser.role !== "super_admin" && crmUser.role !== "admin") {
     res.status(403).json({ error: "Only admins can archive leads." });
     return;
@@ -552,7 +552,7 @@ router.post("/:id/archive", crmAuth, async (req, res) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
     await db.update(crmLeads).set({ archived: true, archivedAt: new Date(), updatedAt: new Date() }).where(eq(crmLeads.id, id));
-    await db.insert(crmNotes).values({ leadId: id, userId: crmUser.id, content: "Lead archived.", noteType: "audit" });
+    await db.insert(crmNotes).values({ leadId: id, userId: crmUser.userId, content: "Lead archived.", noteType: "audit" });
     res.json({ success: true, message: "Lead archived" });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -562,7 +562,7 @@ router.post("/:id/archive", crmAuth, async (req, res) => {
 // Unarchive a lead (admin or super_admin only)
 router.post("/:id/unarchive", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (crmUser.role !== "super_admin" && crmUser.role !== "admin") {
     res.status(403).json({ error: "Only admins can unarchive leads." });
     return;
@@ -574,7 +574,7 @@ router.post("/:id/unarchive", crmAuth, async (req, res) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
     await db.update(crmLeads).set({ archived: false, archivedAt: null, updatedAt: new Date() }).where(eq(crmLeads.id, id));
-    await db.insert(crmNotes).values({ leadId: id, userId: crmUser.id, content: "Lead unarchived.", noteType: "audit" });
+    await db.insert(crmNotes).values({ leadId: id, userId: crmUser.userId, content: "Lead unarchived.", noteType: "audit" });
     res.json({ success: true, message: "Lead unarchived" });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -599,7 +599,7 @@ router.get("/:id/notes", crmAuth, async (req, res) => {
 
 router.post("/:id/notes", crmAuth, async (req, res) => {
   const leadId = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { content } = req.body;
   if (!content) {
     res.status(400).json({ error: "Content required" });
@@ -657,7 +657,7 @@ router.post("/:id/notes", crmAuth, async (req, res) => {
 // Follow/unfollow a lead
 router.get("/:id/followers", crmAuth, async (req, res) => {
   const leadId = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const followers = await db.select().from(crmLeadFollowers).where(eq(crmLeadFollowers.leadId, leadId));
     const isFollowing = followers.some(f => f.userId === crmUser.userId);
@@ -669,7 +669,7 @@ router.get("/:id/followers", crmAuth, async (req, res) => {
 
 router.post("/:id/follow", crmAuth, async (req, res) => {
   const leadId = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const existing = await db.select().from(crmLeadFollowers).where(
       and(eq(crmLeadFollowers.leadId, leadId), eq(crmLeadFollowers.userId, crmUser.userId))
@@ -685,7 +685,7 @@ router.post("/:id/follow", crmAuth, async (req, res) => {
 
 router.delete("/:id/follow", crmAuth, async (req, res) => {
   const leadId = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     await db.delete(crmLeadFollowers).where(
       and(eq(crmLeadFollowers.leadId, leadId), eq(crmLeadFollowers.userId, crmUser.userId))
@@ -698,7 +698,7 @@ router.delete("/:id/follow", crmAuth, async (req, res) => {
 
 router.post("/:id/estimate", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
     if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
@@ -736,7 +736,7 @@ router.post("/:id/estimate", crmAuth, async (req, res) => {
 // POST /crm/leads/:id/ai-repair-estimate — AI-powered repair cost estimator from free-text description
 router.post("/:id/ai-repair-estimate", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const { description } = req.body as { description: string };
 
   if (!description || description.trim().length < 5) {
@@ -841,7 +841,7 @@ Do not include markdown, only the raw JSON object.`;
 // Cooldown rules: per-lead max 2 fetches w/ 5h gap; per-campaign 10min gap; super_admin bypasses all
 router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
-  const user = (req as any).crmUser;
+  const user = req.crmUser!;
   const isSuperAdmin = user?.role === "super_admin";
 
   try {
@@ -950,7 +950,7 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
 // POST /crm/leads/:id/skip-trace
 router.post("/:id/skip-trace", crmAuth, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
 
   try {
@@ -1006,8 +1006,19 @@ router.post("/:id/skip-trace", crmAuth, async (req, res) => {
     const updates: Record<string, any> = { updatedAt: new Date() };
     const fieldsUpdated: string[] = [];
 
-    // Cast result to any to prevent "Property does not exist" errors
-    const skipResult = result as any;
+    const skipResult = result as unknown as {
+      phones?: Array<{ number: string; isDisconnected?: boolean }>;
+      emails?: string[];
+      name?: string;
+      names?: string[];
+      addresses?: string[];
+      relatives?: string[];
+      associates?: string[];
+      liens?: string[];
+      matchStatus?: string;
+      creditsRemaining?: number;
+      rawResponse?: unknown;
+    };
 
     const bestPhone = skipResult.phones?.find((p: any) => !p.isDisconnected)?.number ?? skipResult.phones?.[0]?.number;
     const bestEmail = skipResult.emails?.[0];
@@ -1139,10 +1150,8 @@ async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
       return { added: 0, comps: [], arv: null, mao: null };
     }
 
-    // Add 'as any' here to fix the error
-const json = await aiRes.json() as any; 
-
-const raw = json?.choices?.[0]?.message?.content ?? "";
+    const json = await aiRes.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = json?.choices?.[0]?.message?.content ?? "";
 const content = raw
   .replace(/^```json\s*/i, "")
   .replace(/^```\s*/i, "")
@@ -1280,7 +1289,7 @@ async function fetchCompsViaScraperEngine(
 // POST /crm/leads/:id/fetch-comps — starts async export job, returns immediately
 router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
 
@@ -1612,7 +1621,7 @@ router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
 // Persists comps + recalculated ARV/MAO to the DB so they don't disappear on refresh.
 router.post("/:id/fetch-comps-ai", crmAuth, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
 
   try {
@@ -1657,7 +1666,7 @@ router.post("/:id/fetch-comps-ai", crmAuth, async (req, res) => {
 // MAO can be recalculated with the right discount factor (70/80/90 rule).
 router.post("/:id/detect-condition", crmAuth, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
 
   try {
@@ -1795,7 +1804,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
 // ─── AI Deal Scorer (Complete Backend) ───────────────────────────
 router.post("/:id/ai-deal-score", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
 
   try {
     // 1. Fetch Lead
@@ -1909,7 +1918,7 @@ Reply ONLY with this JSON:
 // ─── AI Seller Script (Fixed for Hallucinations) ─────────────────────────────
 router.post("/:id/ai-seller-script", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
 
   try {
     // 1. FETCH LEAD (This fixes the "Cannot find name 'lead'" errors)
@@ -1997,7 +2006,7 @@ Reply ONLY with this JSON structure:
 // ─── AI Offer Letter (Fixed for Length and Hallucination) ─────────────────────
 router.post("/:id/ai-offer-letter", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const crmUser = (req as any).crmUser;
+  const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
     if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
@@ -2023,13 +2032,13 @@ Seller: ${lead.sellerName || "Property Owner"}
 Property: ${address}, ${lead.city}, ${lead.state}
 Offer Price: ${mao ? "$" + mao.toLocaleString() : "[To be determined]"}
 Timeline: ${lead.howSoon || "30 days"}
-Company/Buyer: ${crmUser.name || "Our Investment Group"}
+Company/Buyer: ${crmUser.email || "Our Investment Group"}
 
 INSTRUCTIONS:
 1. Subject line must include the address: ${address}.
 2. Use professional, non-combative language.
 3. Explicitly state the offer is ALL-CASH and "AS-IS".
-4. Signature should use: ${crmUser.name || "Acquisitions Manager"}.
+4. Signature should use: ${crmUser.email.split("@")[0] || "Acquisitions Manager"}.
 
 Reply ONLY with this JSON structure:
 {
