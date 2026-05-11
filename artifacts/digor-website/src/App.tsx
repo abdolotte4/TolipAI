@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, lazy, Suspense, createContext, useContext } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Home from "@/pages/Home";
-import Admin from "@/pages/Admin";
-import Terms from "@/pages/Terms";
-import CheckoutSuccess from "@/pages/CheckoutSuccess";
-import MissionVisionValues from "@/pages/MissionVisionValues";
-import NotFound from "@/pages/not-found";
 import { SubscribeModal } from "@/components/SubscribeModal";
+
+const Home               = lazy(() => import("@/pages/Home"));
+const Admin              = lazy(() => import("@/pages/Admin"));
+const Terms              = lazy(() => import("@/pages/Terms"));
+const CheckoutSuccess    = lazy(() => import("@/pages/CheckoutSuccess"));
+const MissionVisionValues = lazy(() => import("@/pages/MissionVisionValues"));
+const NotFound           = lazy(() => import("@/pages/not-found"));
 
 const WP_PARAMS = ["p", "page_id", "cat", "tag", "author", "feed", "s", "attachment_id"];
 const searchParams = new URLSearchParams(window.location.search);
@@ -24,12 +25,6 @@ const queryClient = new QueryClient({
   },
 });
 
-export const SubscribeModalContext = {
-  open: () => {},
-};
-
-import { createContext, useContext } from "react";
-
 export const SubscribeContext = createContext<{ openSubscribe: () => void }>({
   openSubscribe: () => {},
 });
@@ -38,16 +33,28 @@ export function useSubscribe() {
   return useContext(SubscribeContext);
 }
 
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="animate-pulse text-muted-foreground tracking-widest font-mono text-sm">
+        Loading…
+      </div>
+    </div>
+  );
+}
+
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/admin" component={Admin} />
-      <Route path="/terms-of-service" component={Terms} />
-      <Route path="/checkout-success" component={CheckoutSuccess} />
-      <Route path="/mission-vision-values" component={MissionVisionValues} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/admin" component={Admin} />
+        <Route path="/terms-of-service" component={Terms} />
+        <Route path="/checkout-success" component={CheckoutSuccess} />
+        <Route path="/mission-vision-values" component={MissionVisionValues} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
