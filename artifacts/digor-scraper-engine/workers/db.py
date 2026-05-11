@@ -245,6 +245,63 @@ async def insert_cash_buyer_matches(
         return len(rows)
 
 
+async def insert_cash_buyers_batch(
+    lead_id: int,
+    job_id: Optional[str],
+    buyers: List[Dict[str, Any]],
+) -> int:
+    """Insert a list of Propelio/Propwire-shaped buyer dicts in a single DB round-trip.
+
+    Replaces the anti-pattern of calling insert_cash_buyer() in a for loop,
+    which opens a new pool connection per buyer.  This version acquires one
+    connection and issues one executemany for the entire batch.
+
+    Args:
+        lead_id: CRM lead row ID.
+        job_id:  Scraper job ID (for traceability).
+        buyers:  List of buyer dicts in Propelio/Propwire shape.
+
+    Returns:
+        Number of rows successfully inserted.
+    """
+    if not buyers:
+        return 0
+
+    matches: List[Dict[str, Any]] = []
+    for buyer in buyers:
+        types = buyer.get("types") or []
+        btype = "unknown"
+        if "flipper" in types and "landlord" not in types:
+            btype = "flipper"
+        elif "landlord" in types:
+            btype = "landlord"
+
+        matches.append(
+            {
+                "buyer_name":         buyer.get("name") or buyer.get("llc") or "Unknown",
+                "llc_name":           buyer.get("llc"),
+                "buyer_type":         btype,
+                "match_score":        int(min(100, max(0, (buyer.get("props_count") or 0) * 2))),
+                "match_reasons":      [f"{buyer.get('props_count', 0)} recent buys"],
+                "portfolio_size":     buyer.get("props_count"),
+                "portfolio_value":    buyer.get("total_deal"),
+                "avg_purchase_price": buyer.get("avg_deal"),
+                "last_purchase_date": buyer.get("last_deal"),
+                "city":               buyer.get("city"),
+                "state":              buyer.get("state"),
+                "zip":                buyer.get("zip"),
+                "mailing_address":    buyer.get("address"),
+                "phones":             buyer.get("phones") or [],
+                "emails":             buyer.get("emails") or [],
+                "principals":         buyer.get("principals") or [],
+                "source":             buyer.get("source") or "scraper-engine",
+                "raw_data":           buyer.get("raw") or buyer,
+            }
+        )
+
+    return await insert_cash_buyer_matches(job_id or "manual", lead_id, matches)
+
+
 async def insert_cash_buyer(
     lead_id: int,
     job_id: Optional[str],

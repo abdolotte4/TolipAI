@@ -90,6 +90,7 @@ from .scrapers import propelio_v2, propwire  # noqa: E402
 from .scrapers import satellite_dfd  # noqa: E402
 from .proxy_pool import proxy_pool  # noqa: E402
 from .browser_pool import browser_pool  # noqa: E402
+from . import spot_checkpoint  # noqa: E402
 
 logging.basicConfig(
     level=settings.log_level.upper(),
@@ -199,6 +200,11 @@ async def lifespan(app: FastAPI):
         on_exhaust=_on_retry_exhausted,
     )
 
+    # ── Spot checkpoint recovery (re-queue jobs lost on previous Spot task) ──
+    recovered = await spot_checkpoint.recover_checkpoints(retry_queue)
+    if recovered:
+        log.info("Spot checkpoint recovery: %d job(s) re-queued", recovered)
+
     # ── Fargate Spot SIGTERM / SIGINT handler ────────────────────────────────
     # spot_handler replaces the old _handle_sigterm — it sets the global
     # _shutting_down flag AND performs a 90-second ordered drain before exit,
@@ -217,6 +223,9 @@ async def lifespan(app: FastAPI):
         await db.close_pool()
 
     _on_shutdown(_flush_on_spot)
+
+    # Flush all in-progress job checkpoints to S3 before the Spot task dies
+    _on_shutdown(spot_checkpoint.flush_all_checkpoints)
 
     # Wire _shutting_down to spot_handler's interrupted flag
     import ctypes as _ctypes  # noqa: F401
@@ -617,11 +626,11 @@ async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
         )
         buyers = result.get("buyers") or []
         if params.get("persist") and params.get("lead_id"):
-            for b in buyers:
-                try:
-                    await db.insert_cash_buyer(params["lead_id"], job_id, b)
-                except Exception as e:
-                    log.debug("persist buyer failed on retry: %s", str(e)[:120])
+            try:
+                inserted = await db.insert_cash_buyers_batch(params["lead_id"], job_id, buyers)
+                log.debug("propelio_cash_buyers: batch-inserted %d buyers for job %s", inserted, job_id)
+            except Exception as e:
+                log.debug("persist buyers batch failed on retry: %s", str(e)[:120])
         _set_status(job_id, "done", progress=100, result=result)
         await db.update_job(
             job_id,
@@ -666,11 +675,11 @@ async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
             progress_cb=cb,
         )
         if params.get("persist") and params.get("lead_id"):
-            for b in buyers:
-                try:
-                    await db.insert_cash_buyer(params["lead_id"], job_id, b)
-                except Exception as e:
-                    log.debug("persist buyer failed on retry: %s", str(e)[:120])
+            try:
+                inserted = await db.insert_cash_buyers_batch(params["lead_id"], job_id, buyers)
+                log.debug("propwire_cash_buyers: batch-inserted %d buyers for job %s", inserted, job_id)
+            except Exception as e:
+                log.debug("persist buyers batch failed on retry: %s", str(e)[:120])
         result = {"count": len(buyers), "buyers": buyers}
         _set_status(job_id, "done", progress=100, result=result)
         await db.update_job(
