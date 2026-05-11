@@ -25,6 +25,7 @@ import CashBuyersAll from "@/pages/buyers/CashBuyersAll";
 import DistressedLeadGen from "@/pages/leadgen/DistressedLeadGen";
 import ProperioConnect from "@/pages/integrations/ProperioConnect";
 import PropwireConnect from "@/pages/integrations/PropwireConnect";
+import TwilioConnect from "@/pages/integrations/TwilioConnect";
 import IntegrationsDashboard from "@/pages/integrations/IntegrationsDashboard";
 
 const queryClient = new QueryClient({
@@ -59,6 +60,7 @@ function Router() {
       <Route path="/integrations"><AppLayout><IntegrationsDashboard /></AppLayout></Route>
       <Route path="/integrations/propelio"><AppLayout><ProperioConnect /></AppLayout></Route>
       <Route path="/integrations/propwire"><AppLayout><PropwireConnect /></AppLayout></Route>
+      <Route path="/integrations/twilio"><AppLayout><TwilioConnect /></AppLayout></Route>
       <Route><AppLayout><NotFound /></AppLayout></Route>
     </Switch>
   );

@@ -1709,7 +1709,7 @@ export default function LeadDetail() {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formDataRef = useRef<any>({});
 
-  // ── SignalWire state ───────────────────────────────────────────────────────
+  // ── Twilio state ──────────────────────────────────────────────────────────
   const [opPhoneNumbers, setOpPhoneNumbers] = useState<any[]>([]);
   const [opSelectedId, setOpSelectedId] = useState<string>("");
   const [opMessages, setOpMessages] = useState<any[]>([]);
@@ -1729,9 +1729,7 @@ export default function LeadDetail() {
 
   function opFetch(path: string, options?: RequestInit) {
     const token = localStorage.getItem("crm_token");
-    // Redirect openphone paths to signalwire equivalent
-    const swPath = path.replace("/openphone/", "/signalwire/");
-    return fetch(`/api${swPath}`, {
+    return fetch(`/api${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -1740,12 +1738,12 @@ export default function LeadDetail() {
       },
     }).then(async r => {
       const json = await r.json();
-      if (!r.ok) throw new Error(json?.error || "SignalWire error");
+      if (!r.ok) throw new Error(json?.error || "Twilio error");
       return json;
     });
   }
 
-  // State-match helper — finds OpenPhone number matching lead's state
+  // State-match helper — finds Twilio number matching lead's state
   function pickNumberForState(numbers: any[], state: string | null | undefined): string | null {
     if (!state || !numbers.length) return null;
     const abbr = state.trim().toUpperCase().slice(0, 2);
@@ -1761,13 +1759,13 @@ export default function LeadDetail() {
 
   // Load phone numbers once + auto-select by campaign → state → first
   useEffect(() => {
-    opFetch("/openphone/phone-numbers")
+    opFetch("/twilio/phone-numbers")
       .then(d => {
         const numbers = d.phoneNumbers || [];
         setOpPhoneNumbers(numbers);
         // Priority 1: campaign's assigned number
-        if (campaignData?.openPhoneNumberId) {
-          const campaignNum = numbers.find((n: any) => n.id === campaignData.openPhoneNumberId);
+        if (campaignData?.twilioPhoneNumber) {
+          const campaignNum = numbers.find((n: any) => n.id === campaignData.twilioPhoneNumber || n.number === campaignData.twilioPhoneNumber);
           if (campaignNum) { setOpSelectedId(campaignNum.id); return; }
         }
         // Priority 2: state match
@@ -1778,19 +1776,19 @@ export default function LeadDetail() {
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaignData?.openPhoneNumberId, lead?.state]);
+  }, [campaignData?.twilioPhoneNumber, lead?.state]);
 
-  // Load stored messages from DB (includes inbound replies) + live calls from OpenPhone API
+  // Load stored messages from DB (includes inbound replies) + live calls from Twilio
   const loadStoredMessages = () => {
     if (!leadId) return;
     setOpLoadingMsgs(true);
     setOpError("");
     const callsPromise = opSelectedId && lead?.phone
-      ? opFetch(`/openphone/calls?phoneNumberId=${encodeURIComponent(opSelectedId)}&contactPhone=${encodeURIComponent(lead.phone)}`)
+      ? opFetch(`/twilio/calls?phoneNumberId=${encodeURIComponent(opSelectedId)}&contactPhone=${encodeURIComponent(lead.phone)}`)
           .then(d => d.calls || []).catch(() => [])
       : Promise.resolve([]);
     Promise.all([
-      opFetch(`/openphone/lead-messages/${leadId}`).then(d => d.messages || []).catch(() => []),
+      opFetch(`/twilio/lead-messages/${leadId}`).then(d => d.messages || []).catch(() => []),
       callsPromise,
     ])
       .then(([msgs, calls]) => {
@@ -1818,7 +1816,7 @@ export default function LeadDetail() {
     setOpSending(true);
     setOpError("");
     try {
-      await opFetch("/openphone/messages", {
+      await opFetch("/twilio/messages", {
         method: "POST",
         body: JSON.stringify({
           phoneNumberId: opSelectedId,
@@ -1848,7 +1846,7 @@ export default function LeadDetail() {
       // Normalize agent phone to E.164 before sending
       const digits = agentPhone.replace(/\D/g, "");
       const agentPhoneE164 = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : agentPhone;
-      const resp = await fetch("/api/signalwire/click-to-call", {
+      const resp = await fetch("/api/twilio/click-to-call", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ fromNumber: opSelectedId, agentPhone: agentPhoneE164, leadPhone: lead.phone }),
@@ -2190,7 +2188,7 @@ export default function LeadDetail() {
             )}
           </Card>
 
-          {/* ── SignalWire Communication Panel ─────────────────────────────── */}
+          {/* ── Twilio Communication Panel ────────────────────────────────── */}
           {/* ── Click-to-Call Modal ── */}
           {callModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setCallModalOpen(false)}>
@@ -2249,7 +2247,7 @@ export default function LeadDetail() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Your Personal Cell (SignalWire calls you first)</label>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Your Personal Cell (Twilio calls you first)</label>
                   <input
                     type="tel"
                     placeholder="Your cell, e.g. (703) 555-9876"
@@ -2267,9 +2265,9 @@ export default function LeadDetail() {
                 {callErr && (
                   <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
                     {callErr}
-                    {callErr.includes("Trial") && (
+                    {callErr.toLowerCase().includes("trial") && (
                       <p className="mt-2 text-yellow-400/90">
-                        Fix: In your <strong>SignalWire dashboard</strong>, go to <strong>Phone Numbers → Verified Caller IDs</strong> and verify your personal cell number. Or upgrade your SignalWire Space from Trial.
+                        Fix: In your <strong>Twilio Console</strong>, go to <strong>Phone Numbers → Verified Caller IDs</strong> and verify your personal cell. Or upgrade your Twilio account from trial.
                       </p>
                     )}
                   </div>
@@ -2357,7 +2355,7 @@ export default function LeadDetail() {
               </div>
             ) : opPhoneNumbers.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground text-sm">
-                No phone numbers configured. Add a number in your SignalWire account to enable calling & texting.
+                No Twilio numbers found. <a href="/integrations/twilio" className="text-primary hover:underline">Configure Twilio</a> to enable calling &amp; texting.
               </div>
             ) : (
               <div className="flex flex-col">

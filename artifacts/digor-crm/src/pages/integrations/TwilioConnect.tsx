@@ -1,0 +1,330 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import {
+  Phone, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2,
+  ExternalLink, RefreshCw, Zap, ShieldCheck, MessageSquare,
+  PhoneCall, ChevronRight, ArrowLeft, Info, Copy, Check,
+} from "lucide-react";
+import { Link } from "wouter";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { useCrmGetMe } from "@workspace/api-client-react";
+
+function apiFetch(path: string, options?: RequestInit) {
+  const token = localStorage.getItem("crm_token");
+  return fetch(`/api${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers || {}),
+    },
+  }).then(async (r) => {
+    const json = await r.json();
+    if (!r.ok) throw new Error(json?.error || `Request failed: ${r.status}`);
+    return json;
+  });
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className="text-muted-foreground hover:text-foreground transition-colors"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
+export default function TwilioConnect() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: me } = useCrmGetMe();
+  const isAdmin = me?.role === "admin" || me?.role === "super_admin";
+
+  const [accountSid, setAccountSid] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
+
+  const { data: config, isLoading } = useQuery<any>({
+    queryKey: ["twilio-config"],
+    queryFn: () => apiFetch("/twilio/config"),
+    retry: false,
+  });
+
+  const { data: guide } = useQuery<any>({
+    queryKey: ["twilio-setup-guide"],
+    queryFn: () => apiFetch("/twilio/setup-guide"),
+    retry: false,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (body: { accountSid: string; authToken: string; phoneNumber: string; twilioEnabled: boolean }) =>
+      apiFetch("/twilio/config", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      toast({ title: "Twilio credentials saved", description: "Your campaign is now connected to Twilio." });
+      setAccountSid("");
+      setAuthToken("");
+      setPhoneNumber("");
+      qc.invalidateQueries({ queryKey: ["twilio-config"] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Save failed", description: err.message, variant: "destructive" }),
+  });
+
+  async function handleSetupWebhooks() {
+    setSettingUp(true);
+    try {
+      const result = await apiFetch("/twilio/setup-webhooks", { method: "POST" });
+      toast({
+        title: `Webhooks configured on ${result.configured} number(s)`,
+        description: "Inbound SMS will now appear automatically in the CRM.",
+      });
+      qc.invalidateQueries({ queryKey: ["twilio-config"] });
+    } catch (err: any) {
+      toast({ title: "Webhook setup failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSettingUp(false);
+    }
+  }
+
+  const isConfigured = config?.configured;
+  const isEnabled = config?.twilioEnabled;
+
+  return (
+    <div className="space-y-6 pb-20 max-w-3xl">
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
+        <Link href="/integrations">
+          <Button variant="ghost" size="icon" className="rounded-xl border border-white/10 bg-card hover:bg-secondary">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+        </Link>
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-display font-bold">Twilio Integration</h1>
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            ) : isConfigured && isEnabled ? (
+              <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 border text-xs">Active</Badge>
+            ) : isConfigured ? (
+              <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 border text-xs">Disabled</Badge>
+            ) : (
+              <Badge className="bg-secondary text-muted-foreground border-white/10 border text-xs">Not configured</Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground text-sm mt-0.5">Click-to-call and two-way SMS for your campaign leads.</p>
+        </div>
+      </motion.div>
+
+      {/* Status Card */}
+      {isConfigured && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+            <div className="p-5 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isEnabled ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
+                  {isEnabled ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertCircle className="w-5 h-5 text-amber-400" />}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">Campaign Connected</p>
+                  <p className="text-xs text-muted-foreground">
+                    Account SID: <span className="font-mono">{config?.accountSid?.slice(0, 8)}...{config?.accountSid?.slice(-4)}</span>
+                    {config?.phoneNumber && <span> · {config.phoneNumber}</span>}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`h-8 text-xs gap-1.5 ${settingUp ? "" : "border-blue-500/30 text-blue-400 hover:bg-blue-500/10"}`}
+                  disabled={settingUp || !isEnabled}
+                  onClick={handleSetupWebhooks}
+                >
+                  {settingUp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                  Auto-Configure Webhooks
+                </Button>
+                <a href="https://console.twilio.com/" target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5">
+                    <ExternalLink className="w-3.5 h-3.5" /> Twilio Console
+                  </Button>
+                </a>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-border border-t border-border">
+              {[
+                { icon: MessageSquare, label: "SMS", desc: "Send & receive texts" },
+                { icon: PhoneCall, label: "Click-to-Call", desc: "Bridge calls via Twilio" },
+                { icon: ShieldCheck, label: "Webhooks", desc: "Inbound message sync" },
+              ].map(({ icon: Icon, label, desc }) => (
+                <div key={label} className="p-4 flex flex-col items-center text-center gap-1">
+                  <Icon className="w-4 h-4 text-primary mb-1" />
+                  <p className="text-xs font-semibold">{label}</p>
+                  <p className="text-[10px] text-muted-foreground">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Credentials Form */}
+      {isAdmin && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+            <div className="p-5 border-b border-border bg-secondary/20">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Phone className="w-4 h-4 text-primary" />
+                {isConfigured ? "Update Credentials" : "Connect Twilio"}
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Find your credentials at{" "}
+                <a href="https://console.twilio.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                  console.twilio.com
+                </a>
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="space-y-2">
+                <Label>Account SID</Label>
+                <div className="relative">
+                  <Input
+                    className="bg-background/50 rounded-xl font-mono text-sm pr-10"
+                    placeholder={isConfigured ? config?.accountSid || "AC••••••••••••••••••••••••••••••••" : "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+                    value={accountSid}
+                    onChange={e => setAccountSid(e.target.value)}
+                  />
+                  {accountSid && (
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                      <CopyButton text={accountSid} />
+                    </div>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">Starts with "AC" — found on your Twilio Console dashboard.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Auth Token</Label>
+                <div className="relative">
+                  <Input
+                    type={showToken ? "text" : "password"}
+                    className="bg-background/50 rounded-xl font-mono text-sm pr-10"
+                    placeholder={isConfigured ? config?.authTokenMasked || "••••••••••••••••••••••••" : "Your Auth Token"}
+                    value={authToken}
+                    onChange={e => setAuthToken(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">Stored encrypted — never sent to third parties.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Phone Number <span className="text-muted-foreground font-normal">(optional — leave blank to auto-select from account)</span></Label>
+                <Input
+                  className="bg-background/50 rounded-xl font-mono text-sm"
+                  placeholder={isConfigured && config?.phoneNumber ? config.phoneNumber : "+1 (555) 000-0000"}
+                  value={phoneNumber}
+                  onChange={e => setPhoneNumber(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">Your Twilio number in E.164 format, e.g. +17035551234</p>
+              </div>
+              <Button
+                className="w-full gap-2"
+                disabled={saveMutation.isPending || (!accountSid && !isConfigured) || (!authToken && !isConfigured)}
+                onClick={() => saveMutation.mutate({ accountSid, authToken, phoneNumber, twilioEnabled: true })}
+              >
+                {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                {isConfigured ? "Update Credentials" : "Connect Twilio"}
+              </Button>
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Setup Guide */}
+      {guide && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+            <div className="p-5 border-b border-border bg-secondary/20">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Info className="w-4 h-4 text-blue-400" /> Setup Guide
+              </h2>
+            </div>
+            <div className="divide-y divide-border">
+              {(guide.steps || []).map((s: any) => (
+                <div key={s.step} className="p-4 flex gap-4 items-start">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                    {s.step}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold">{s.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>
+                    {s.url && (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1.5"
+                      >
+                        Open <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/40 flex-shrink-0 mt-0.5" />
+                </div>
+              ))}
+            </div>
+            {guide.tips?.length > 0 && (
+              <div className="p-5 border-t border-border bg-blue-500/5">
+                <p className="text-xs font-semibold text-blue-400 mb-2">Pro Tips</p>
+                <ul className="space-y-1.5">
+                  {guide.tips.map((tip: string, i: number) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                      <span className="text-blue-400/60 mt-0.5">·</span>
+                      {tip}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Disable / Reset */}
+      {isAdmin && isConfigured && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
+          <Card className="rounded-2xl border-white/5 bg-card p-5">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Danger Zone</h3>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs gap-1.5 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
+              disabled={saveMutation.isPending}
+              onClick={() => {
+                if (confirm("This will clear your Twilio credentials and disable the dialer for this campaign. Continue?")) {
+                  saveMutation.mutate({ accountSid: "", authToken: "", phoneNumber: "", twilioEnabled: false });
+                }
+              }}
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Disconnect Twilio
+            </Button>
+          </Card>
+        </motion.div>
+      )}
+    </div>
+  );
+}
