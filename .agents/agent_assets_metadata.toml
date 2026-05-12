@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "HUNYFUncrXV0gFOWE0tu7"
+uri = "file://AUDIT_REPORT.md"
+type = "text"
+title = "Full Codebase Audit Report"

@@ -834,7 +834,7 @@ async def health() -> Dict[str, Any]:
 
     return {
         "status": overall,
-        "version": "0.1.0",
+        "version": app.version,
         "llm": {
             "groq": llm_groq,
             "cerebras": llm_cerebras,
@@ -2322,7 +2322,8 @@ async def _phone_finder_lookup(name: str, address: str) -> Dict[str, Any]:
     if maps_key and name:
         query = f"{name} {address}".strip()
         try:
-            async with __import__("httpx").AsyncClient(timeout=10) as client:
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(
                     "https://maps.googleapis.com/maps/api/place/textsearch/json",
                     params={"query": query, "key": maps_key},
@@ -2333,7 +2334,7 @@ async def _phone_finder_lookup(name: str, address: str) -> Dict[str, Any]:
             for place_id in place_ids:
                 if phones:
                     break
-                async with __import__("httpx").AsyncClient(timeout=10) as client:
+                async with _httpx.AsyncClient(timeout=10) as client:
                     r = await client.get(
                         "https://maps.googleapis.com/maps/api/place/details/json",
                         params={

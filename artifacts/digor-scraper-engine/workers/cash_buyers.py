@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from . import db
@@ -183,7 +184,7 @@ async def find_cash_buyers(
 
     # Semaphore caps concurrent LLM + skip-trace calls so we don't hammer
     # free-tier rate limits when processing large candidate lists.
-    _sem = asyncio.Semaphore(int(__import__("os").getenv("BUYER_CONCURRENCY", "5")))
+    _sem = asyncio.Semaphore(int(os.getenv("BUYER_CONCURRENCY", "5")))
 
     async def _profile_one(cand: Dict[str, Any]) -> Dict[str, Any]:
         async with _sem:
