@@ -7,11 +7,9 @@ import crypto from "crypto";
 
 const router = Router();
 
-function getBaseUrl(req: any) {
+function getBaseUrl(): string {
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
-  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
-  const host = req.headers.host || "localhost";
-  return `${protocol}://${host}`;
+  throw new Error("PUBLIC_URL is required");
 }
 
 function formatLink(link: typeof crmSubmissionLinks.$inferSelect, baseUrl: string) {
@@ -37,7 +35,7 @@ router.get("/", crmAuth, crmAdminOnly, async (req, res) => {
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const links = await db.select().from(crmSubmissionLinks).where(where).orderBy(crmSubmissionLinks.createdAt);
-    const base = getBaseUrl(req);
+    const base = getBaseUrl();
     res.json(links.map(l => formatLink(l, base)));
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -56,7 +54,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
       campaignId, token, label: label || null, leadSource: leadSource || null, active: true,
       createdBy: crmUser.userId, submissionsCount: 0,
     }).returning();
-    const base = getBaseUrl(req);
+    const base = getBaseUrl();
     res.status(201).json(formatLink(link, base));
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -78,7 +76,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     if (leadSource !== undefined) updates.leadSource = leadSource;
     if (active !== undefined) updates.active = active;
     const [link] = await db.update(crmSubmissionLinks).set(updates).where(eq(crmSubmissionLinks.id, id)).returning();
-    res.json(formatLink(link, getBaseUrl(req)));
+    res.json(formatLink(link, getBaseUrl()));
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
   }

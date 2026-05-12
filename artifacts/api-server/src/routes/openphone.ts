@@ -68,6 +68,7 @@ router.get("/openphone/messages", crmAuth, async (req, res) => {
   }
   try {
     const e164 = toE164(contactPhone);
+    if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     // Build URL manually to ensure + is encoded as %2B (not space)
     const url = `/messages?phoneNumberId=${encodeURIComponent(phoneNumberId)}&participants%5B%5D=${encodeURIComponent(e164)}&maxResults=${maxResults}`;
     const data = await opFetch(url);
@@ -104,9 +105,11 @@ router.post("/openphone/messages", crmAuth, async (req, res) => {
     return;
   }
   try {
+    const toE164Result = toE164(to);
+    if (!toE164Result) { res.status(400).json({ error: "Invalid destination phone number" }); return; }
     const data = await opFetch("/messages", {
       method: "POST",
-      body: JSON.stringify({ phoneNumberId, to: [toE164(to)], content }),
+      body: JSON.stringify({ phoneNumberId, to: [toE164Result], content }),
     });
     // Store outbound message locally
     const msg = data.data;
@@ -136,7 +139,9 @@ router.post("/openphone/calls", crmAuth, async (req, res) => {
     return;
   }
   try {
-    const payload: any = { phoneNumberId, to: toE164(to) };
+    const toE164Result = toE164(to);
+    if (!toE164Result) { res.status(400).json({ error: "Invalid destination phone number" }); return; }
+    const payload: any = { phoneNumberId, to: toE164Result };
     if (userId) payload.userId = userId;
     const data = await opFetch("/calls", { method: "POST", body: JSON.stringify(payload) });
     res.json({ call: data.data });
@@ -154,6 +159,7 @@ router.get("/openphone/calls", crmAuth, async (req, res) => {
   }
   try {
     const e164 = toE164(contactPhone);
+    if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const url = `/calls?phoneNumberId=${encodeURIComponent(phoneNumberId)}&participants%5B%5D=${encodeURIComponent(e164)}&maxResults=${maxResults}`;
     const data = await opFetch(url);
     res.json({ calls: data.data ?? [] });

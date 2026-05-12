@@ -251,9 +251,72 @@ export default function SatelliteDFD() {
   const [minScore, setMinScore] = useState(30);
   const [maxResults, setMaxResults] = useState(50);
   const [loading, setLoading] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  async function useMyLocation() {
+    if (!navigator.geolocation) {
+      setGpsError("Geolocation is not supported by your browser");
+      return;
+    }
+    setGpsLoading(true);
+    setGpsError(null);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          // Reverse geocode using a public API
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+            { headers: { "User-Agent": "DigorTools/1.0" } }
+          );
+          if (resp.ok) {
+            const data = await resp.json();
+            const addr = data?.address;
+            if (addr?.postcode) setZip(addr.postcode.slice(0, 5));
+            if (addr?.city || addr?.town || addr?.village) {
+              setCity(addr.city || addr.town || addr.village || "");
+            }
+            if (addr?.state) {
+              // Convert state name to 2-letter abbreviation for common states
+              const stateAbbrevMap: Record<string, string> = {
+                "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
+                "Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA",
+                "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS",
+                "Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA",
+                "Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT",
+                "Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM",
+                "New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK",
+                "Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC",
+                "South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT",
+                "Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY",
+              };
+              setState(stateAbbrevMap[addr.state] || addr.state.slice(0, 2).toUpperCase());
+            }
+          }
+        } catch {
+          // Reverse geocode failed; GPS coords obtained but can't resolve address
+          setGpsError("Location found but could not resolve ZIP/city. Please enter manually.");
+        } finally {
+          setGpsLoading(false);
+        }
+      },
+      (err) => {
+        setGpsLoading(false);
+        if (err.code === 1) {
+          setGpsError("Location permission denied. Please allow location access in your browser.");
+        } else if (err.code === 2) {
+          setGpsError("Location unavailable. Please enter your location manually.");
+        } else {
+          setGpsError("Could not get your location. Please try again or enter manually.");
+        }
+      },
+      { timeout: 10000, maximumAge: 60000 }
+    );
+  }
 
   async function runScan() {
     if (!zip && !(city && state)) {
@@ -328,8 +391,25 @@ export default function SatelliteDFD() {
       {/* Scan Form */}
       <Card className="border-border">
         <CardHeader className="pb-4">
-          <CardTitle className="text-base">Scan Area</CardTitle>
-          <CardDescription>Enter a ZIP code or City + State to scan</CardDescription>
+          <CardTitle className="flex items-center justify-between text-base">
+            Scan Area
+            <button
+              type="button"
+              onClick={useMyLocation}
+              disabled={gpsLoading}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50 transition-colors"
+            >
+              {gpsLoading ? (
+                <><span className="inline-block w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" /> Locating…</>
+              ) : (
+                <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/><circle cx="12" cy="12" r="8" strokeDasharray="3 3"/></svg>Use my location</>
+              )}
+            </button>
+          </CardTitle>
+          <CardDescription>
+            Enter a ZIP code or City + State to scan
+            {gpsError && <span className="block text-orange-500 text-xs mt-1">{gpsError}</span>}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

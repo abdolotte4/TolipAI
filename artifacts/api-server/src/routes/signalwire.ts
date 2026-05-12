@@ -61,6 +61,7 @@ router.get("/signalwire/messages", crmAuth, async (req, res) => {
   }
   try {
     const e164 = toE164(contactPhone);
+    if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const params = new URLSearchParams({ PageSize: "50" });
     // Fetch sent + received messages
     const [sent, recv] = await Promise.all([
@@ -104,9 +105,11 @@ router.post("/signalwire/messages", crmAuth, async (req, res) => {
     return;
   }
   try {
+    const toE164Result = toE164(to);
+    if (!toE164Result) { res.status(400).json({ error: "Invalid destination phone number" }); return; }
     const body = new URLSearchParams({
       From: phoneNumberId,
-      To: toE164(to),
+      To: toE164Result,
       Body: content,
     });
     const data = await swFetch("/Messages.json", {
@@ -121,7 +124,7 @@ router.post("/signalwire/messages", crmAuth, async (req, res) => {
         openPhoneMessageId: data.sid,
         direction: "outgoing",
         fromNumber: phoneNumberId,
-        toNumber: toE164(to),
+        toNumber: toE164Result,
         content,
         status: data.status || "sent",
       }).onConflictDoNothing();
@@ -141,6 +144,7 @@ router.get("/signalwire/calls", crmAuth, async (req, res) => {
   }
   try {
     const e164 = toE164(contactPhone);
+    if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const [outCalls, inCalls] = await Promise.all([
       swFetch(`/Calls.json?From=${encodeURIComponent(phoneNumberId)}&To=${encodeURIComponent(e164)}&PageSize=20`).catch(() => ({ calls: [] })),
       swFetch(`/Calls.json?From=${encodeURIComponent(e164)}&To=${encodeURIComponent(phoneNumberId)}&PageSize=20`).catch(() => ({ calls: [] })),
@@ -186,6 +190,8 @@ router.post("/signalwire/click-to-call", crmAuth, async (req, res) => {
 
   const leadE164 = toE164(leadPhone);
   const agentE164 = toE164(agentPhone);
+  if (!leadE164) { res.status(400).json({ error: "Invalid lead phone number" }); return; }
+  if (!agentE164) { res.status(400).json({ error: "Invalid agent phone number" }); return; }
 
   // TwiML URL: when agent picks up, connect them to the lead
   const baseUrl = process.env.SIGNALWIRE_WEBHOOK_URL?.replace("/webhook", "") || "https://tolipai.com/api/signalwire";

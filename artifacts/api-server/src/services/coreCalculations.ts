@@ -26,12 +26,13 @@ export function parseMoney(v: unknown): number | null {
 /**
  * Normalise any US phone number to E.164 format (+1XXXXXXXXXX).
  * Handles: (555) 555-1234, 555-555-1234, +15551234, etc.
+ * Returns null for invalid lengths (not 10 digits or 11 digits starting with 1).
  */
-export function toE164(phone: string): string {
+export function toE164(phone: string): string | null {
   const digits = phone.replace(/\D/g, "");
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return phone;
+  return null;
 }
 
 /**

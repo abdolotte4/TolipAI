@@ -176,6 +176,7 @@ router.get("/twilio/messages", crmAuth, async (req, res) => {
   try {
     const creds = await getCampaignTwilioCreds(crmUser.campaignId);
     const e164 = toE164(contactPhone);
+    if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const params = new URLSearchParams({ PageSize: "50" });
     const [sent, recv] = await Promise.all([
       twilioFetch(creds, `/Messages.json?From=${encodeURIComponent(phoneNumberId)}&To=${encodeURIComponent(e164)}&${params}`).catch(() => ({ messages: [] })),
@@ -221,9 +222,11 @@ router.post("/twilio/messages", crmAuth, async (req, res) => {
   if (!campId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const creds = await getCampaignTwilioCreds(campId);
+    const toE164Result = toE164(to);
+    if (!toE164Result) { res.status(400).json({ error: "Invalid destination phone number" }); return; }
     const body = new URLSearchParams({
       From: phoneNumberId,
-      To: toE164(to),
+      To: toE164Result,
       Body: content,
     });
     const data = await twilioFetch(creds, "/Messages.json", { method: "POST", body: body.toString() });
@@ -235,7 +238,7 @@ router.post("/twilio/messages", crmAuth, async (req, res) => {
         openPhoneMessageId: data.sid,
         direction: "outgoing",
         fromNumber: phoneNumberId,
-        toNumber: toE164(to),
+        toNumber: toE164Result,
         content,
         status: data.status || "sent",
       }).onConflictDoNothing();
@@ -258,6 +261,7 @@ router.get("/twilio/calls", crmAuth, async (req, res) => {
   try {
     const creds = await getCampaignTwilioCreds(crmUser.campaignId);
     const e164 = toE164(contactPhone);
+    if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const [outCalls, inCalls] = await Promise.all([
       twilioFetch(creds, `/Calls.json?From=${encodeURIComponent(phoneNumberId)}&To=${encodeURIComponent(e164)}&PageSize=20`).catch(() => ({ calls: [] })),
       twilioFetch(creds, `/Calls.json?From=${encodeURIComponent(e164)}&To=${encodeURIComponent(phoneNumberId)}&PageSize=20`).catch(() => ({ calls: [] })),
@@ -303,6 +307,8 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
 
   const leadE164 = toE164(leadPhone);
   const agentE164 = toE164(agentPhone);
+  if (!leadE164) { res.status(400).json({ error: "Invalid lead phone number" }); return; }
+  if (!agentE164) { res.status(400).json({ error: "Invalid agent phone number" }); return; }
   const apiBase = process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
   const twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(leadE164)}&callerId=${encodeURIComponent(fromNumber)}`;
 

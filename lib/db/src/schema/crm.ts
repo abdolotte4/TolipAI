@@ -196,7 +196,8 @@ export const crmSequenceSteps = pgTable("crm_sequence_steps", {
   id: serial("id").primaryKey(),
   sequenceId: integer("sequence_id").notNull().references(() => crmEmailSequences.id, { onDelete: "cascade" }),
   dayOffset: integer("day_offset").notNull().default(0),
-  subject: text("subject").notNull(),
+  type: text("type").notNull().default("email"), // email | sms | direct_mail
+  subject: text("subject").notNull().default(""),
   body: text("body").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -206,6 +207,7 @@ export const crmSequenceLogs = pgTable("crm_sequence_logs", {
   leadId: integer("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
   sequenceId: integer("sequence_id").notNull().references(() => crmEmailSequences.id, { onDelete: "cascade" }),
   stepId: integer("step_id").notNull().references(() => crmSequenceSteps.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("email"), // email | sms | direct_mail
   status: text("status").notNull().default("sent"),
   errorMessage: text("error_message"),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
@@ -213,6 +215,16 @@ export const crmSequenceLogs = pgTable("crm_sequence_logs", {
   index("crm_sequence_logs_lead_id_idx").on(t.leadId),
   index("crm_sequence_logs_step_id_idx").on(t.stepId),
   index("crm_sequence_logs_sent_at_idx").on(t.sentAt),
+]);
+
+export const crmSmsOptOuts = pgTable("crm_sms_opt_outs", {
+  id: serial("id").primaryKey(),
+  phone: text("phone").notNull().unique(),
+  campaignId: integer("campaign_id").references(() => crmCampaigns.id),
+  optedOutAt: timestamp("opted_out_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_sms_opt_outs_campaign_id_idx").on(t.campaignId),
+  index("crm_sms_opt_outs_phone_idx").on(t.phone),
 ]);
 
 export const crmComps = pgTable("crm_comps", {
