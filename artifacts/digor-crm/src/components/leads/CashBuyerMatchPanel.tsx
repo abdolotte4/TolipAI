@@ -526,3 +526,5 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
     </Card>
   );
 }
+
+export default CashBuyerMatchPanel;

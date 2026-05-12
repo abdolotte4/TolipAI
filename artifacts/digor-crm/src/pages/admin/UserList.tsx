@@ -169,7 +169,7 @@ export default function UserList() {
   const { data: me } = useCrmGetMe();
   const isSuperAdmin = me?.role === "super_admin";
   const isAdmin = me?.role === "admin" || isSuperAdmin;
-  const amIOwner = me?.isOwner === true || isSuperAdmin;
+  const amIOwner = (me as any)?.isOwner === true || isSuperAdmin;
 
   const searchParams = new URLSearchParams(window.location.search);
   const filterCampaignId = searchParams.get("campaign") ? parseInt(searchParams.get("campaign")!) : (isSuperAdmin ? undefined : (me?.campaignId ?? undefined));

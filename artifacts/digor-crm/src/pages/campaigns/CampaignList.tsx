@@ -64,6 +64,7 @@ async function createCampaign(data: {
   adminName: string; adminEmail: string; adminPassword: string;
   maxUsers: number | null; allowLeadDeletion: boolean;
   skipTraceDailyLimit: number; fetchCompsDailyLimit: number;
+  openPhoneNumberId?: string | null; openPhoneNumber?: string | null; dialerEnabled?: boolean;
 }): Promise<Campaign> {
   const r = await fetch(apiUrl("/campaigns"), {
     method: "POST",

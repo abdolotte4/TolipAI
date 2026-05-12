@@ -695,7 +695,7 @@ function _CompsSectionPlaceholder({ leadId, lead }: { leadId: number; lead: any 
   });
 
   // Summary stats from adjusted prices
-  const { avgAdjusted, arv, askingPrice, dealRatio, dealFlag } = useMemo(() => {
+  const { avgAdjusted, arv, askingPrice, dealRatio, dealFlag, compsWithAdj } = useMemo(() => {
     const compsWithAdj = (comps as any[]).filter((c: any) => c.adjustedPrice != null && c.adjustedPrice > 0);
     const avgAdjusted = compsWithAdj.length > 0
       ? Math.round(compsWithAdj.reduce((s: number, c: any) => s + c.adjustedPrice, 0) / compsWithAdj.length)
@@ -706,7 +706,7 @@ function _CompsSectionPlaceholder({ leadId, lead }: { leadId: number; lead: any 
     const dealFlag = dealRatio != null
       ? (dealRatio >= 1.7 ? "good" : dealRatio >= 1.3 ? "warning" : "bad")
       : null;
-    return { avgAdjusted, arv, askingPrice, dealRatio, dealFlag };
+    return { avgAdjusted, arv, askingPrice, dealRatio, dealFlag, compsWithAdj };
   }, [comps, lead?.arv, lead?.askingPrice]);
 
   return (
@@ -2964,7 +2964,7 @@ export default function LeadDetail() {
 
       {/* Cash Buyer AI Match — lazy loaded, full width */}
       <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
-        <CashBuyerMatchPanel leadId={leadId} leadAddress={lead.address} />
+        <CashBuyerMatchPanel leadId={String(leadId)} leadAddress={lead.address} />
       </Suspense>
 
       {/* Zillow + Realtor Lookup — full width at bottom */}

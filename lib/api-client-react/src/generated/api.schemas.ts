@@ -317,6 +317,7 @@ export interface CrmSubmissionFormInfo {
   label?: string | null;
   leadSource?: string | null;
   active: boolean;
+  campaignName?: string | null;
 }
 
 export interface CrmPublicLeadInput {
