@@ -180,7 +180,9 @@ def _build_headers(url: str) -> dict[str, str]:
     return base
 
 
-def _ssl_ctx() -> Any:
+def _ssl_ctx(verify: bool = False) -> Any:
+    if verify:
+        return True  # httpx uses OS trust store
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -191,18 +193,13 @@ def _ssl_ctx() -> Any:
 async def fetch_direct(url: str, *, use_proxy: bool = True, verify_ssl: bool = False) -> Any:
     """Plain httpx fetch with rotating UA + optional residential proxy.
     Returns .text for HTML, raw bytes for PDFs.
+    Reuses the persistent client (connection pooling) when no proxy is needed.
     """
     proxy = settings.proxy_url() if use_proxy else None
     headers = _build_headers(url)
-    ssl_context: Any = _ssl_ctx() if not verify_ssl else True
+    ssl_context: Any = _ssl_ctx(verify=verify_ssl)
 
-    async with httpx.AsyncClient(
-        timeout=settings.request_timeout,
-        proxy=proxy,
-        follow_redirects=True,
-        headers=headers,
-        verify=ssl_context,
-    ) as cli:
+    async def _do_request(cli: httpx.AsyncClient) -> Any:
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(2),
             wait=wait_exponential(min=0.5, max=3),
@@ -210,13 +207,24 @@ async def fetch_direct(url: str, *, use_proxy: bool = True, verify_ssl: bool = F
             reraise=True,
         ):
             with attempt:
-                r = await cli.get(url)
+                r = await cli.get(url, headers=headers, follow_redirects=True)
                 r.raise_for_status()
                 ctype = r.headers.get("Content-Type", "").lower()
                 if "pdf" in ctype or url.lower().endswith(".pdf"):
                     return r.content  # raw bytes
                 return r.text
-    return ""
+        return ""
+
+    if proxy is None and _persistent_client and not _persistent_client.is_closed:
+        return await _do_request(_persistent_client)
+
+    async with httpx.AsyncClient(
+        timeout=settings.request_timeout,
+        proxy=proxy,
+        follow_redirects=True,
+        verify=ssl_context,
+    ) as cli:
+        return await _do_request(cli)
 
 
 # ─── Tiered fetch ────────────────────────────────────────────────────────────

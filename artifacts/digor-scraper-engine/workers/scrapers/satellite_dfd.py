@@ -14,13 +14,8 @@ import os
 import httpx
 from typing import Any, Dict, List, Optional
 
-try:
-    from ultralytics import YOLO as _YOLO_CLASS
-
-    _YOLO_AVAILABLE = True
-except ImportError:
-    _YOLO_CLASS = None  # type: ignore
-    _YOLO_AVAILABLE = False
+_YOLO_CLASS = None  # type: ignore
+_YOLO_AVAILABLE = False
 
 # ─── Google Cloud Vision availability ────────────────────────────────────────
 _GCV_API_KEY: Optional[str] = None

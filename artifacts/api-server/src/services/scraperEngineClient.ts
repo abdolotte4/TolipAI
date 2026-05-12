@@ -1,13 +1,13 @@
 /**
  * HTTP client for the Python digor-scraper-engine FastAPI service.
  *
- * The engine URL is configured via SCRAPER_ENGINE_URL (defaults to
- * the Railway deployment).  All calls fail soft — if the engine
- * is unreachable, callers get a 503 with a clear message instead of a 500.
+ * The engine URL is configured via SCRAPER_ENGINE_URL.  All calls fail soft —
+ * if the engine is unreachable, callers get a 503 with a clear message instead of a 500.
+ * Requests are authenticated via SCRAPER_API_KEY (X-API-Key header).
  */
 import { logger } from "../lib/logger";
 
-const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app").replace(/\/$/, "");
+const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "").replace(/\/$/, "");
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 export class ScraperEngineUnavailable extends Error {
@@ -25,11 +25,13 @@ async function request<T = any>(
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const apiKey = process.env.SCRAPER_API_KEY;
     const res = await fetch(`${ENGINE_URL}${path}`, {
       ...rest,
       signal: controller.signal,
       headers: {
         "content-type": "application/json",
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
         ...(rest.headers || {}),
       },
     });
@@ -49,7 +51,7 @@ async function request<T = any>(
     }
     if (e?.cause?.code === "ECONNREFUSED" || /ECONNREFUSED|fetch failed/.test(e?.message || "")) {
       throw new ScraperEngineUnavailable(
-        `Cannot reach scraper engine at ${ENGINE_URL}. Set SCRAPER_ENGINE_URL or start the service.`,
+        `Cannot reach scraper engine${ENGINE_URL ? ` at ${ENGINE_URL}` : ""}. Set SCRAPER_ENGINE_URL to enable.`,
       );
     }
     throw e;

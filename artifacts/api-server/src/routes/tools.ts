@@ -61,7 +61,7 @@ router.post("/tools/auth/verify", (req, res) => {
   res.json({
     success: true,
     attomConfigured: hasAttomKey(),
-    engineConfigured: !!(process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app"),
+    engineConfigured: !!process.env.SCRAPER_ENGINE_URL,
     skipTraceConfigured: !!(getNextApiKey() || process.env.PEOPLEDATALABS_API_KEY),
   });
 });
@@ -433,7 +433,7 @@ router.get("/tools/arv/config", requirePin, (_req, res) => {
   res.json({
     attomConfigured: hasAttomKey(),
     propertyApiConfigured: !!getNextApiKey(),
-    engineConfigured: !!(process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app"),
+    engineConfigured: !!process.env.SCRAPER_ENGINE_URL,
     defaultRadiusMiles: 0.5,
     defaultMaxComps: 8,
     adjustmentFactors: {

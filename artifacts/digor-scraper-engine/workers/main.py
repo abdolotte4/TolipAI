@@ -16,60 +16,6 @@ import signal
 import uuid
 from typing import Any, Dict, List, Optional
 
-
-def _patch_ld_library_path() -> None:
-    """Dynamically resolve Nix-store paths for Playwright system libs.
-
-    On Railway (nixpacks / Ubuntu) the libs are already on the standard path —
-    this is a no-op there.  On Replit (NixOS) the Nix store hashes change with
-    every package bump, so we find them at runtime instead of hardcoding hashes.
-    """
-    nix = "/nix/store"
-    if not os.path.isdir(nix):
-        return
-    needed = {
-        "libX11.so.6": r"libX11-1\.",
-        "libXcomposite.so.1": r"libXcomposite-",
-        "libXdamage.so.1": r"libx?Xdamage-",
-        "libXext.so.6": r"libXext-",
-        "libXfixes.so.3": r"libXfixes-",
-        "libXrandr.so.2": r"libXrandr-|libxrandr-",
-        "libxcb.so.1": r"libxcb-1\.",
-        "libgbm.so.1": r"mesa-libgbm-|mesa-[0-9]",
-        "libexpat.so.1": r"expat-2\.",
-        "libudev.so.1": r"eudev-|libudev-zero-",
-    }
-    skip = {
-        "-dev",
-        "-man",
-        "-doc",
-        "-debug",
-        "-spirv",
-        "-opencl",
-        "-osmesa",
-        "-opengl",
-        "-driversdev",
-    }
-    dirs: set[str] = set()
-    try:
-        entries = os.listdir(nix)
-    except OSError:
-        return
-    for soname, pattern in needed.items():
-        for entry in entries:
-            if re.search(pattern, entry) and not entry.endswith(".drv") and not any(s in entry for s in skip):
-                lib_dir = f"{nix}/{entry}/lib"
-                if os.path.isdir(lib_dir) and os.path.exists(f"{lib_dir}/{soname}"):
-                    dirs.add(lib_dir)
-                    break
-    if dirs:
-        extra = ":".join(sorted(dirs))
-        existing = os.environ.get("LD_LIBRARY_PATH", "")
-        os.environ["LD_LIBRARY_PATH"] = f"{extra}:{existing}" if existing else extra
-
-
-_patch_ld_library_path()
-
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
@@ -142,6 +88,14 @@ METRICS = {
     "foreclosure_failed": 0,
     "foreclosure_timeout": 0,
 }
+_METRICS_LOCK: Optional[asyncio.Lock] = None
+
+
+def _get_metrics_lock() -> asyncio.Lock:
+    global _METRICS_LOCK
+    if _METRICS_LOCK is None:
+        _METRICS_LOCK = asyncio.Lock()
+    return _METRICS_LOCK
 
 # ─── Mode B safety helpers ───────────────────────────────────────────────────
 
@@ -305,7 +259,7 @@ app = FastAPI(
 )
 
 # ─── CORS ────────────────────────────────────────────────────────────────────
-_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()] or ["*"]
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()] or []
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -343,6 +297,17 @@ async def _security_middleware(request: Request, call_next):
                     status_code=401,
                     content={"detail": "Invalid or missing API key. Set X-API-Key header."},
                 )
+
+        # ── Admin endpoint additional auth ───────────────────────────────────
+        if request.url.path.startswith("/admin/"):
+            _admin_key = os.getenv("ADMIN_API_KEY")
+            if _admin_key:
+                provided_admin = request.headers.get("X-Admin-Key") or request.headers.get("X-API-Key")
+                if provided_admin != _admin_key:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Invalid or missing admin API key. Set X-Admin-Key header."},
+                    )
 
         # ── Shutdown guard ───────────────────────────────────────────────────
         if _shutting_down and request.method not in ("GET", "HEAD"):
@@ -1137,55 +1102,25 @@ async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
 @app.post("/session/propelio/test")
 async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
     """Test Propelio credentials by attempting a real login; returns success/error."""
-    import os as _os
-
-    orig_email = _os.environ.get("PROPELIO_EMAIL")
-    orig_pw = _os.environ.get("PROPELIO_PASSWORD")
-    _os.environ["PROPELIO_EMAIL"] = req.email
-    _os.environ["PROPELIO_PASSWORD"] = req.password
     await _invalidate_session("propelio")
     try:
-        await propelio_v2.search_property("123 Main St, Dallas, TX 75201")
+        await propelio_v2.test_login_credentials(req.email, req.password)
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
         log.warning("Propelio login test failed: %s", str(e)[:120])
         return {"success": False, "error": str(e)[:300]}
-    finally:
-        if orig_email is not None:
-            _os.environ["PROPELIO_EMAIL"] = orig_email
-        else:
-            _os.environ.pop("PROPELIO_EMAIL", None)
-        if orig_pw is not None:
-            _os.environ["PROPELIO_PASSWORD"] = orig_pw
-        else:
-            _os.environ.pop("PROPELIO_PASSWORD", None)
 
 
 @app.post("/session/propwire/test")
 async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
     """Test Propwire credentials by attempting a real login; returns success/error."""
-    import os as _os
-
-    orig_email = _os.environ.get("PROPWIRE_EMAIL")
-    orig_pw = _os.environ.get("PROPWIRE_PASSWORD")
-    _os.environ["PROPWIRE_EMAIL"] = req.email
-    _os.environ["PROPWIRE_PASSWORD"] = req.password
     await _invalidate_session("propwire")
     try:
-        await propwire.fetch_property("123 Main St, Dallas, TX 75201")
+        await propwire.test_login_credentials(req.email, req.password)
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
         log.warning("Propwire login test failed: %s", str(e)[:120])
         return {"success": False, "error": str(e)[:300]}
-    finally:
-        if orig_email is not None:
-            _os.environ["PROPWIRE_EMAIL"] = orig_email
-        else:
-            _os.environ.pop("PROPWIRE_EMAIL", None)
-        if orig_pw is not None:
-            _os.environ["PROPWIRE_PASSWORD"] = orig_pw
-        else:
-            _os.environ.pop("PROPWIRE_PASSWORD", None)
 
 
 # ─── AI Research ────────────────────────────────────────────────────────────
@@ -1281,7 +1216,8 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
                     result_count=len(results),
                     completed=True,
                 )
-                METRICS["cash_buyers_success"] += 1
+                async with _get_metrics_lock():
+                    METRICS["cash_buyers_success"] += 1
 
             except asyncio.TimeoutError:
                 log.error("cash_buyers job %s timed out after 900s", job_id)
@@ -1292,7 +1228,8 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
                     error="timeout_exceeded",
                     completed=True,
                 )
-                METRICS["cash_buyers_timeout"] += 1
+                async with _get_metrics_lock():
+                    METRICS["cash_buyers_timeout"] += 1
 
         except Exception as e:  # noqa: BLE001
             err = str(e)
@@ -1954,12 +1891,14 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
                 result_count=len(listings),
                 completed=True,
             )
-            METRICS["distressed_success"] += 1
+            async with _get_metrics_lock():
+                METRICS["distressed_success"] += 1
         except asyncio.TimeoutError:
             log.error("Distressed job %s timed out after 900s", job_id)
             _set_status(job_id, "failed", error="timeout_exceeded")
             await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
-            METRICS["distressed_timeout"] += 1
+            async with _get_metrics_lock():
+                METRICS["distressed_timeout"] += 1
         except Exception as e:
             err = str(e)
             if is_transient(e) and retry_queue.enqueue(job_id, "distressed", req.model_dump(), last_error=err):
@@ -1974,7 +1913,8 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
                 log.exception("Distressed job %s failed (fatal)", job_id)
                 _set_status(job_id, "failed", error=err)
                 await db.update_job(job_id, status="failed", error=err, completed=True)
-                METRICS["distressed_failed"] += 1
+                async with _get_metrics_lock():
+                    METRICS["distressed_failed"] += 1
 
     safe_create_task(runner(), name="distressed")
     return {"job_id": job_id, "status": "queued"}
@@ -2127,7 +2067,8 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
             }
             _set_status(job_id, "done", progress=100, result=summary)
             await db.update_job(job_id, status="done", progress=100, result_count=0, completed=True)
-            METRICS["foreclosure_success"] += 1
+            async with _get_metrics_lock():
+                METRICS["foreclosure_success"] += 1
             return
 
         await cb(25, f"Found {len(listings)} listings — estimating equity…")
@@ -2247,18 +2188,21 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
             result_count=len(results),
             completed=True,
         )
-        METRICS["foreclosure_success"] += 1
+        async with _get_metrics_lock():
+            METRICS["foreclosure_success"] += 1
 
     except asyncio.TimeoutError:
         log.error("Foreclosure job %s timed out after 900s", job_id)
         _set_status(job_id, "failed", error="timeout_exceeded")
         await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
-        METRICS["foreclosure_timeout"] += 1
+        async with _get_metrics_lock():
+            METRICS["foreclosure_timeout"] += 1
     except Exception as e:
         log.exception("Foreclosure lead-gen job %s failed: %s", job_id, e)
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
-        METRICS["foreclosure_failed"] += 1
+        async with _get_metrics_lock():
+            METRICS["foreclosure_failed"] += 1
 
 
 # ─── Foreclosure Lead-Gen result alias ───────────────────────────────────────
@@ -2352,39 +2296,9 @@ async def debug_satellite() -> Dict[str, Any]:
         "google_maps_configured": bool(gkey),
         "google_maps_key_prefix": (gkey[:8] + "…") if gkey else None,
         "yolo_available": _YOLO_AVAILABLE,
-        "yolo_note": "Install ultralytics to enable YOLO visual distress detection"
-        if not _YOLO_AVAILABLE
-        else "YOLO ready",
+        "yolo_note": "YOLO is disabled — AI-based scoring uses LLM instead",
         "satellite_endpoint": "POST /ai/satellite-dfd",
         "required_params": {"city": "str", "state": "str (or zip: str)"},
-    }
-
-
-@app.get("/debug/env")
-async def debug_env() -> Dict[str, Any]:
-    """Show all configured env vars with values masked — useful for verifying Railway secrets."""
-
-    def _check(name: str) -> Dict[str, Any]:
-        val = os.environ.get(name, "")
-        return {"set": bool(val), "length": len(val)}
-
-    return {
-        "database_url": _check("DATABASE_URL"),
-        "brightdata_username": _check("BRIGHTDATA_USERNAME"),
-        "brightdata_password": _check("BRIGHTDATA_PASSWORD"),
-        "google_maps_api_key": _check("GOOGLE_MAPS_API_KEY"),
-        "groq_api_key": _check("GROQ_API_KEY"),
-        "cerebras_api_key": _check("CEREBRAS_API_KEY"),
-        "nvidia_api_key": _check("NVIDIA_API_KEY"),
-        "openrouter_api_key": _check("OPENROUTER_API_KEY"),
-        "propelio_email": _check("PROPELIO_EMAIL"),
-        "propelio_password": _check("PROPELIO_PASSWORD"),
-        "propwire_email": _check("PROPWIRE_EMAIL"),
-        "propwire_password": _check("PROPWIRE_PASSWORD"),
-        "twilio_account_sid": _check("TWILIO_ACCOUNT_SID"),
-        "twilio_auth_token": _check("TWILIO_AUTH_TOKEN"),
-        "redis_url": _check("REDIS_URL"),
-        "port": os.environ.get("PORT", "8765"),
     }
 
 

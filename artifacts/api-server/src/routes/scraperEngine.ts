@@ -464,19 +464,21 @@ router.get("/scraper-engine/jobs/:jobId", async (req: Request, res: Response) =>
 
 // ─── Catch-all proxy for every other /scraper-engine/* route ─────────────────
 
-const _ENGINE_URL = (
-  process.env.SCRAPER_ENGINE_URL || "https://scraper-engine-production-6207.up.railway.app"
-).replace(/\/$/, "");
+const _ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "").replace(/\/$/, "");
 
-router.all("/scraper-engine/{*path}", async (req: Request, res: Response) => {
+router.all("/scraper-engine/{*path}", crmAuth, async (req: Request, res: Response) => {
   const subPath = req.path.slice("/scraper-engine".length) || "/";
   const isBodyMethod = !["GET", "HEAD", "DELETE"].includes(req.method.toUpperCase());
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 180_000);
+  const apiKey = process.env.SCRAPER_API_KEY;
   try {
     const upstream = await fetch(`${_ENGINE_URL}${subPath}`, {
       method: req.method,
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
+      },
       ...(isBodyMethod ? { body: JSON.stringify(req.body) } : {}),
       signal: controller.signal,
     });

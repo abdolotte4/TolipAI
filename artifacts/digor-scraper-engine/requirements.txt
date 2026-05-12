@@ -1,6 +1,6 @@
 # ── Digor Scraper Engine — Fargate Spot requirements ──────────────────────────
 # Optimised for ARM64 (Graviton3) Fargate tasks.
-# Install: pip install -r requirements.fargate.txt
+# Install: pip install -r requirements.txt
 
 # ── Web framework ─────────────────────────────────────────────────────────────
 fastapi==0.115.12
@@ -29,25 +29,17 @@ aioboto3==13.4.0
 
 # ── AI / LLM ──────────────────────────────────────────────────────────────────
 openai==1.75.0
-anthropic==0.51.0
-groq==0.23.1
 
 # ── Data processing ───────────────────────────────────────────────────────────
 pydantic==2.11.3
 beautifulsoup4==4.13.3
 lxml==5.3.1
-pandas==2.2.3
-numpy==2.2.4
 
 # ── PDF + OCR ─────────────────────────────────────────────────────────────────
 PyMuPDF==1.25.5
 pdfplumber==0.11.5
 pytesseract==0.3.13
 Pillow==11.2.1
-
-# ── Computer vision (satellite DFD) ──────────────────────────────────────────
-ultralytics==8.3.103
-opencv-python-headless==4.11.0.86
 
 # ── Geo / maps ────────────────────────────────────────────────────────────────
 geopy==2.4.1

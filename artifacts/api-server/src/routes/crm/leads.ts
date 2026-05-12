@@ -81,8 +81,12 @@ function formatLead(lead: any, assignedUser?: any, campaignName?: string | null)
     yearBuilt: lead.yearBuilt,
     lastSaleDate: lead.lastSaleDate,
     lastSalePrice: lead.lastSalePrice ? parseFloat(lead.lastSalePrice) : null,
-    skipTracedPhones: lead.skipTracedPhones ? JSON.parse(lead.skipTracedPhones) : [],
-    skipTracedEmails: lead.skipTracedEmails ? JSON.parse(lead.skipTracedEmails) : [],
+    skipTracedPhones: Array.isArray(lead.skipTracedPhones)
+      ? lead.skipTracedPhones
+      : lead.skipTracedPhones ? (() => { try { return JSON.parse(lead.skipTracedPhones); } catch { return []; } })() : [],
+    skipTracedEmails: Array.isArray(lead.skipTracedEmails)
+      ? lead.skipTracedEmails
+      : lead.skipTracedEmails ? (() => { try { return JSON.parse(lead.skipTracedEmails); } catch { return []; } })() : [],
     skipTracedName: lead.skipTracedName ?? null,
     rentcastAvm: lead.rentcastAvmValue != null ? {
       price: parseFloat(lead.rentcastAvmValue),
@@ -190,27 +194,29 @@ router.get("/", crmAuth, async (req, res) => {
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [leads, [{ count }]] = await Promise.all([
-      db.select().from(crmLeads).where(where).orderBy(desc(crmLeads.createdAt)).limit(limitNum).offset(offset),
+    const [[{ count }], rows] = await Promise.all([
       db.select({ count: sql<number>`count(*)::int` }).from(crmLeads).where(where),
+      db
+        .select({
+          lead: crmLeads,
+          assignedToName: crmUsers.name,
+          campaignName: crmCampaigns.name,
+        })
+        .from(crmLeads)
+        .leftJoin(crmUsers, eq(crmLeads.assignedTo, crmUsers.id))
+        .leftJoin(crmCampaigns, eq(crmLeads.campaignId, crmCampaigns.id))
+        .where(where)
+        .orderBy(desc(crmLeads.createdAt))
+        .limit(limitNum)
+        .offset(offset),
     ]);
 
-    const userIds = [...new Set(leads.map(l => l.assignedTo).filter(Boolean))];
-    let usersMap: Record<number, string> = {};
-    if (userIds.length > 0) {
-      const users = await db.select({ id: crmUsers.id, name: crmUsers.name }).from(crmUsers);
-      usersMap = Object.fromEntries(users.map(u => [u.id, u.name]));
-    }
-
-    // For super admin: fetch campaign names
-    let campaignsMap: Record<number, string> = {};
-    if (crmUser.role === "super_admin") {
-      const camps = await db.select({ id: crmCampaigns.id, name: crmCampaigns.name }).from(crmCampaigns);
-      campaignsMap = Object.fromEntries(camps.map(c => [c.id, c.name]));
-    }
-
     res.json({
-      leads: leads.map(l => formatLeadSummary(l, l.assignedTo ? { name: usersMap[l.assignedTo!] } : null, l.campaignId ? campaignsMap[l.campaignId] : null)),
+      leads: rows.map(r => formatLeadSummary(
+        r.lead,
+        r.assignedToName ? { name: r.assignedToName } : null,
+        r.campaignName ?? null,
+      )),
       total: count,
       page: pageNum,
       limit: limitNum,

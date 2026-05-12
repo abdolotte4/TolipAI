@@ -30,9 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-COPY requirements.fargate.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.fargate.txt
+    pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright Chromium browser binary into /app/.cache so the non-root
 # scraper user can read it in the final stage (browsers in /root/.cache would
@@ -79,6 +79,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgl1 \
     libglib2.0-0 \
+    libpq5 \
     # Misc
     curl \
     ca-certificates \

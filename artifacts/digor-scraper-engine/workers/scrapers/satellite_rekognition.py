@@ -126,8 +126,7 @@ async def run_rekognition_dfd(
     )
 
     # satellite_dfd._gcv_signals_from_url() is already guarded by USE_REKOGNITION;
-    # here we just ensure the env var is set and call scan_area normally.
-    os.environ["USE_REKOGNITION"] = "1"
+    # call scan_area normally — USE_REKOGNITION must be set in the environment.
     result = await scan_area(
         zip_code=zip_code,
         city=city,

@@ -34,9 +34,9 @@ SERVICE = "propwire"
 # ─── Login ───────────────────────────────────────────────────────────────────
 
 
-async def _do_login(page) -> None:
-    email = os.getenv("PROPWIRE_EMAIL")
-    password = os.getenv("PROPWIRE_PASSWORD")
+async def _do_login(page, email: str | None = None, password: str | None = None) -> None:
+    email = email or os.getenv("PROPWIRE_EMAIL")
+    password = password or os.getenv("PROPWIRE_PASSWORD")
     if not (email and password):
         raise RuntimeError("PROPWIRE_EMAIL / PROPWIRE_PASSWORD not set")
 
@@ -123,6 +123,18 @@ async def _do_login(page) -> None:
         raise RuntimeError(f"Propwire login failed (still on /login). " f"Page error: {err_text or 'none detected'}")
 
     log.info("Propwire: login OK, now at %s", page.url)
+
+
+# ─── Test helper ─────────────────────────────────────────────────────────────
+
+
+async def test_login_credentials(email: str, password: str) -> None:
+    """Test login with explicit credentials without caching or mutating env vars."""
+    from functools import partial
+    login_fn = partial(_do_login, email=email, password=password)
+    async with browser_context(SERVICE, login_fn=login_fn) as ctx:
+        page = await ctx.new_page()
+        await page.close()
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
