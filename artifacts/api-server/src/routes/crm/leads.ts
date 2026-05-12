@@ -1744,6 +1744,10 @@ router.post("/:id/fetch-comps-ai", crmAuth, async (req, res) => {
 // and infer the property condition (1-10), then persists it to the lead so
 // MAO can be recalculated with the right discount factor (70/80/90 rule).
 router.post("/:id/detect-condition", crmAuth, async (req, res) => {
+  if (aiBreaker.isOpen()) {
+    res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
+    return;
+  }
   const id = parseInt(req.params["id"] as string);
   const crmUser = req.crmUser!;
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
@@ -1875,6 +1879,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       mao: newMao,
     });
   } catch (err) {
+    aiBreaker.recordFailure();
     logger.error(err, "AI detect-condition error");
     res.status(500).json({ error: "Internal server error" });
   }
