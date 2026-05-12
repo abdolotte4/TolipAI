@@ -48,6 +48,9 @@ shapely==2.1.0
 # ── Structured logging ────────────────────────────────────────────────────────
 python-json-logger==3.3.0
 
+# ── Crypto (AES-256-CBC credential decrypt — matches Node.js crypto-util.ts) ──
+cryptography==44.0.2
+
 # ── Misc utils ────────────────────────────────────────────────────────────────
 cachetools==5.5.2
 python-multipart==0.0.20

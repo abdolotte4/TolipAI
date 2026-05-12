@@ -9,6 +9,7 @@ Run:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -1099,12 +1100,42 @@ async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
 # ─── Session login tests ─────────────────────────────────────────────────────
 
 
+def _decrypt_password(ciphertext: str) -> str:
+    """AES-256-CBC decrypt — matches Node.js crypto-util.ts exactly.
+
+    Key   = sha256(ENCRYPTION_KEY or JWT_SECRET) → 32 bytes
+    Format: ivHex ":" encryptedHex
+    Padding: PKCS7 (same as Node's default for AES-CBC)
+    """
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import padding as crypto_padding
+
+    secret = os.getenv("ENCRYPTION_KEY") or os.getenv("JWT_SECRET")
+    if not secret:
+        raise ValueError("ENCRYPTION_KEY or JWT_SECRET env var is required for credential decryption")
+
+    key = hashlib.sha256(secret.encode()).digest()
+    iv_hex, enc_hex = ciphertext.split(":", 1)
+    iv = bytes.fromhex(iv_hex)
+    encrypted = bytes.fromhex(enc_hex)
+
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+    decryptor = cipher.decryptor()
+    padded = decryptor.update(encrypted) + decryptor.finalize()
+
+    unpadder = crypto_padding.PKCS7(128).unpadder()
+    return (unpadder.update(padded) + unpadder.finalize()).decode("utf-8")
+
+
 @app.post("/session/propelio/test")
 async def test_propelio_login(req: SessionTestRequest) -> Dict[str, Any]:
     """Test Propelio credentials by attempting a real login; returns success/error."""
     await _invalidate_session("propelio")
     try:
-        await propelio_v2.test_login_credentials(req.email, req.password)
+        email = _decrypt_password(req.email)
+        password = _decrypt_password(req.password)
+        await propelio_v2.test_login_credentials(email, password)
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
         log.warning("Propelio login test failed: %s", str(e)[:120])
@@ -1116,7 +1147,9 @@ async def test_propwire_login(req: SessionTestRequest) -> Dict[str, Any]:
     """Test Propwire credentials by attempting a real login; returns success/error."""
     await _invalidate_session("propwire")
     try:
-        await propwire.test_login_credentials(req.email, req.password)
+        email = _decrypt_password(req.email)
+        password = _decrypt_password(req.password)
+        await propwire.test_login_credentials(email, password)
         return {"success": True, "detail": "Login OK"}
     except Exception as e:
         log.warning("Propwire login test failed: %s", str(e)[:120])

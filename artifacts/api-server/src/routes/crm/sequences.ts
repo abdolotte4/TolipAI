@@ -7,6 +7,25 @@ import { logger } from "../../lib/logger";
 
 const router = Router();
 
+// ─── Async semaphore — limits concurrent email sends to avoid SMTP throttling ──
+function makeSemaphore(concurrency: number) {
+  let running = 0;
+  const queue: Array<() => void> = [];
+  return async function<T>(fn: () => Promise<T>): Promise<T> {
+    if (running >= concurrency) {
+      await new Promise<void>(resolve => queue.push(resolve));
+    }
+    running++;
+    try {
+      return await fn();
+    } finally {
+      running--;
+      queue.shift()?.();
+    }
+  };
+}
+const emailSemaphore = makeSemaphore(5);
+
 // GET /crm/sequences - list sequences for campaign
 router.get("/", crmAuth, async (req, res) => {
   try {
@@ -283,18 +302,18 @@ export async function runEmailSequenceJob() {
               if (campaignAdmin?.email) replyToEmail = campaignAdmin.email;
             }
 
-            // Send with retry + back-off
+            // Send with retry + back-off — semaphore limits to 5 concurrent sends
             let status = "sent";
             let errorMessage: string | null = null;
             try {
-              await brevoSendWithRetry({
+              await emailSemaphore(() => brevoSendWithRetry({
                 sender: { name: "TolipAI CRM", email: process.env.BREVO_SENDER_EMAIL },
                 to: [{ email: lead.email!, name: lead.sellerName }],
                 replyTo: { email: replyToEmail },
                 subject,
                 textContent: body,
                 htmlContent: body.replace(/\n/g, "<br>"),
-              });
+              }));
             } catch (err: any) {
               status = "failed";
               errorMessage = err?.message || "Unknown error";

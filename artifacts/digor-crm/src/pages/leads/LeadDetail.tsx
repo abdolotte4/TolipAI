@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo, useMemo } from "react";
+import { useState, useEffect, useRef, memo, useMemo, lazy, Suspense } from "react";
 import { apiFetch } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -31,7 +31,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { CashBuyerMatchPanel } from "@/components/leads/CashBuyerMatchPanel";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -421,8 +420,10 @@ function ZillowCard({ address, city, state, zip }: { address?: string; city?: st
   );
 }
 
-// ─── Comps Section ────────────────────────────────────────────────────────────
-function CompsSection({ leadId, lead }: { leadId: number; lead: any }) {
+// ─── [Extracted] Comps Section — see components/leads/CompsSection.tsx ────────
+// (kept as a placeholder comment; component is lazy-loaded below)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _CompsSectionPlaceholder({ leadId, lead }: { leadId: number; lead: any }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -1098,8 +1099,9 @@ function EmailHistory({ leadId }: { leadId: number }) {
   );
 }
 
-// ─── AI Repair Estimator ──────────────────────────────────────────────────────
-const AiRepairEstimator = memo(function AiRepairEstimator({ leadId, onApplied }: { leadId: number; onApplied: (total: number) => void }) {
+// ─── [Extracted] AI components — lazy-loaded; see components/leads/Ai*.tsx ────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _AiRepairEstimatorPlaceholder = memo(function _AiRepairEstimatorPlaceholder({ leadId, onApplied }: { leadId: number; onApplied: (total: number) => void }) {
   const { toast } = useToast();
   const [desc, setDesc] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1207,7 +1209,7 @@ const AiRepairEstimator = memo(function AiRepairEstimator({ leadId, onApplied }:
 
 
 
-const AiDealScorer = memo(function AiDealScorer({ leadId }: { leadId: number }) {
+const _AiDealScorerPlaceholder = memo(function _AiDealScorerPlaceholder({ leadId }: { leadId: number }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any | null>(null);
@@ -1335,7 +1337,7 @@ const AiDealScorer = memo(function AiDealScorer({ leadId }: { leadId: number }) 
 
 
 // ─── AI Seller Script ──────────────────────────────────────────────────────────
-const AiSellerScript = memo(function AiSellerScript({ leadId }: { leadId: number }) {
+const _AiSellerScriptPlaceholder = memo(function _AiSellerScriptPlaceholder({ leadId }: { leadId: number }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any | null>(null);
@@ -1429,7 +1431,7 @@ const AiSellerScript = memo(function AiSellerScript({ leadId }: { leadId: number
 });
 
 // ─── AI Offer Letter ───────────────────────────────────────────────────────────
-const AiOfferLetter = memo(function AiOfferLetter({ leadId }: { leadId: number }) {
+const _AiOfferLetterPlaceholder = memo(function _AiOfferLetterPlaceholder({ leadId }: { leadId: number }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ subject: string; letter: string } | null>(null);
@@ -1492,6 +1494,14 @@ const AiOfferLetter = memo(function AiOfferLetter({ leadId }: { leadId: number }
 });
 
 // ─── Main Component ────────────────────────────────────────────────────────────
+// Lazy-loaded heavy components — code-split for faster initial render
+const CompsSection     = lazy(() => import("@/components/leads/CompsSection"));
+const AiRepairEstimator = lazy(() => import("@/components/leads/AiRepairEstimator"));
+const AiDealScorer     = lazy(() => import("@/components/leads/AiDealScorer"));
+const AiSellerScript   = lazy(() => import("@/components/leads/AiSellerScript"));
+const AiOfferLetter    = lazy(() => import("@/components/leads/AiOfferLetter"));
+const CashBuyerMatchPanel = lazy(() => import("@/components/leads/CashBuyerMatchPanel"));
+
 function useDebouncedValue<T>(value: T, delay: number = 200): T {
   const [debounced, setDebounced] = useState<T>(value);
   useEffect(() => {
@@ -1515,18 +1525,22 @@ export default function LeadDetail() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Eager: lead + notes + tasks + followers (no comps — loaded lazily below)
+  // Eager: lead + tasks + followers (no comps, no notes — separate queries below)
   const { data: lead, isLoading } = useQuery<any>({
     queryKey: [`/api/crm/leads/${leadId}`],
-    queryFn: () => apiFetch(`/leads/${leadId}/full?include=notes,tasks,followers`),
+    queryFn: () => apiFetch(`/leads/${leadId}/full?include=tasks,followers`),
     enabled: !!leadId,
     staleTime: 30 * 1000,
   });
-  const notes: any[] = (lead as any)?.notes ?? [];
+  // Notes — separate paginated query so note activity doesn't bust the lead cache
+  const { data: notesData } = useQuery<any[]>({
+    queryKey: [`/api/crm/leads/${leadId}/notes`],
+    queryFn: () => apiFetch(`/leads/${leadId}/notes?limit=20`),
+    enabled: !!leadId,
+    staleTime: 30 * 1000,
+  });
+  const notes: any[] = notesData ?? [];
   const tasks: any[] = (lead as any)?.tasks ?? [];
-
-  // Comps are fetched lazily by the CompsSection component itself via useCrmGetComps
-  // (not included in the initial /full load above, so the first page render is faster)
 
   // Campaign governance — changes rarely, cache 5 minutes
   const { data: campaignData } = useQuery<any>({
@@ -2661,8 +2675,10 @@ export default function LeadDetail() {
             </div>
           </Card>
 
-          {/* Comps */}
-          <CompsSection leadId={leadId} lead={lead} />
+          {/* Comps — lazy loaded */}
+          <Suspense fallback={<div className="h-32 animate-pulse bg-secondary/30 rounded-2xl" />}>
+            <CompsSection leadId={leadId} lead={lead} />
+          </Suspense>
 
           {/* Unsaved changes indicator + Archive / Delete */}
           <div className="flex gap-3 flex-wrap items-center">
@@ -2798,22 +2814,25 @@ export default function LeadDetail() {
             </div>
           </Card>
 
-          {/* AI Repair Estimator */}
-          <AiRepairEstimator
-            leadId={leadId}
-            onApplied={(total) => {
-              field("estimatedRepairCost")(total);
-            }}
-          />
+          {/* AI tools — lazy loaded */}
+          <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
+            <AiRepairEstimator
+              leadId={leadId}
+              onApplied={(total) => { field("estimatedRepairCost")(total); }}
+            />
+          </Suspense>
 
-          {/* AI Deal Scorer */}
-          <AiDealScorer leadId={leadId} />
+          <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
+            <AiDealScorer leadId={leadId} />
+          </Suspense>
 
-          {/* AI Seller Script */}
-          <AiSellerScript leadId={leadId} />
+          <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
+            <AiSellerScript leadId={leadId} />
+          </Suspense>
 
-          {/* AI Offer Letter */}
-          <AiOfferLetter leadId={leadId} />
+          <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
+            <AiOfferLetter leadId={leadId} />
+          </Suspense>
 
           {/* Notes */}
           <Card className="rounded-2xl border-white/5 bg-card shadow-lg flex flex-col">
@@ -2892,8 +2911,10 @@ export default function LeadDetail() {
         </div>
       </div>
 
-      {/* Cash Buyer AI Match — full width */}
-      <CashBuyerMatchPanel leadId={leadId} leadAddress={lead.address} />
+      {/* Cash Buyer AI Match — lazy loaded, full width */}
+      <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
+        <CashBuyerMatchPanel leadId={leadId} leadAddress={lead.address} />
+      </Suspense>
 
       {/* Zillow + Realtor Lookup — full width at bottom */}
       <ZillowCard

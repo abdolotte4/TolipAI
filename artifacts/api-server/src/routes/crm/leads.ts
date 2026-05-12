@@ -31,6 +31,33 @@ setInterval(() => {
   }
 }, 60_000);
 
+// ─── Circuit breaker — protects AI endpoints from cascading failures ──────────
+class CircuitBreaker {
+  private failures = 0;
+  private lastFailure = 0;
+  private readonly threshold = 5;
+  private readonly resetMs = 60_000;
+
+  isOpen(): boolean {
+    if (this.failures < this.threshold) return false;
+    if (Date.now() - this.lastFailure > this.resetMs) {
+      this.failures = 0; // half-open: let one through
+      return false;
+    }
+    return true;
+  }
+
+  recordFailure() {
+    this.failures++;
+    this.lastFailure = Date.now();
+  }
+
+  recordSuccess() {
+    this.failures = 0;
+  }
+}
+const aiBreaker = new CircuitBreaker();
+
 const router = Router();
 
 const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -776,6 +803,10 @@ router.post("/:id/estimate", crmAuth, async (req, res) => {
 
 // POST /crm/leads/:id/ai-repair-estimate — AI-powered repair cost estimator from free-text description
 router.post("/:id/ai-repair-estimate", crmAuth, async (req, res) => {
+  if (aiBreaker.isOpen()) {
+    res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
+    return;
+  }
   const id = parseInt(req.params.id as string);
   const crmUser = req.crmUser!;
   const { description } = req.body as { description: string };
@@ -873,6 +904,7 @@ Do not include markdown, only the raw JSON object.`;
       mao: mao != null ? Math.max(0, mao) : null,
     });
   } catch (err) {
+    aiBreaker.recordFailure();
     logger.error(err, "AI repair estimate error");
     res.status(500).json({ error: "Internal server error" });
   }
@@ -1850,6 +1882,10 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
 
 // ─── AI Deal Scorer (Complete Backend) ───────────────────────────
 router.post("/:id/ai-deal-score", crmAuth, async (req, res) => {
+  if (aiBreaker.isOpen()) {
+    res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
+    return;
+  }
   const id = parseInt(req.params.id as string);
   const crmUser = req.crmUser!;
 
@@ -1955,6 +1991,7 @@ Reply ONLY with this JSON:
 
     res.json(JSON.parse(cleaned));
   } catch (err) {
+    aiBreaker.recordFailure();
     logger.error(err, "AI deal score error");
     res.status(500).json({ error: "Internal server error" });
   }
@@ -1963,6 +2000,10 @@ Reply ONLY with this JSON:
 
 // ─── AI Seller Script (Fixed for Hallucinations) ─────────────────────────────
 router.post("/:id/ai-seller-script", crmAuth, async (req, res) => {
+  if (aiBreaker.isOpen()) {
+    res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
+    return;
+  }
   const id = parseInt(req.params.id as string);
   const crmUser = req.crmUser!;
 
@@ -2041,6 +2082,7 @@ Reply ONLY with this JSON structure:
     res.json(JSON.parse(cleaned));
 
   } catch (err) {
+    aiBreaker.recordFailure();
     logger.error(err, "AI Seller Script error");
     res.status(500).json({ error: "Internal server error" });
   }
@@ -2050,6 +2092,10 @@ Reply ONLY with this JSON structure:
 
 // ─── AI Offer Letter (Fixed for Length and Hallucination) ─────────────────────
 router.post("/:id/ai-offer-letter", crmAuth, async (req, res) => {
+  if (aiBreaker.isOpen()) {
+    res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
+    return;
+  }
   const id = parseInt(req.params.id as string);
   const crmUser = req.crmUser!;
   try {
@@ -2117,10 +2163,11 @@ Reply ONLY with this JSON structure:
 
     res.json(JSON.parse(cleaned));
   } catch (err) {
+    aiBreaker.recordFailure();
     logger.error(err, "AI offer letter error");
-        res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error" });
   }
-}); 
+});
 
 // ── POST /:id/attom-avm ─────────────────────────────────────────────────────
 router.post("/:id/attom-avm", crmAuth, async (req, res) => {

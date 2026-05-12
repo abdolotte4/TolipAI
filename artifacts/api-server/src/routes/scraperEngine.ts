@@ -150,15 +150,8 @@ router.post(
         res.status(422).json({ success: false, error: "No credentials saved yet" });
         return;
       }
-      let email: string, pass: string;
-      try {
-        email = decryptPassword(rawEmail);
-        pass = decryptPassword(rawPass);
-      } catch {
-        res.status(500).json({ success: false, error: "Failed to decrypt stored credentials — please re-save your credentials." });
-        return;
-      }
-      res.json(await scraperEngine.testSession("propelio", email, pass));
+      // Send encrypted credentials to Python — Python decrypts using ENCRYPTION_KEY (P1 #12)
+      res.json(await scraperEngine.testSession("propelio", rawEmail, rawPass));
     } catch (err: unknown) {
       handleEngineError(err, res);
     }
@@ -237,15 +230,8 @@ router.post(
         res.status(422).json({ success: false, error: "No credentials saved yet" });
         return;
       }
-      let email: string, pass: string;
-      try {
-        email = decryptPassword(rawEmail);
-        pass = decryptPassword(rawPass);
-      } catch {
-        res.status(500).json({ success: false, error: "Failed to decrypt stored credentials — please re-save your credentials." });
-        return;
-      }
-      res.json(await scraperEngine.testSession("propwire", email, pass));
+      // Send encrypted credentials to Python — Python decrypts using ENCRYPTION_KEY (P1 #12)
+      res.json(await scraperEngine.testSession("propwire", rawEmail, rawPass));
     } catch (err: unknown) {
       handleEngineError(err, res);
     }
