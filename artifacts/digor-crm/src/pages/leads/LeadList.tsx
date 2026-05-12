@@ -143,11 +143,12 @@ export default function LeadList() {
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {data?.leads.map((lead) => {
-            const createdDate = new Date((lead as any).createdAt);
-            const updatedDate = new Date((lead as any).updatedAt || (lead as any).createdAt);
-            const daysSinceUpdate = Math.floor((Date.now() - updatedDate.getTime()) / 86400000);
-            const createdLabel = createdDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-            const updatedLabel = daysSinceUpdate < 1 ? "today" : daysSinceUpdate === 1 ? "yesterday" : `${daysSinceUpdate}d ago`;
+            const createdLabel = (lead as any).createdAtFormatted
+              ?? new Date((lead as any).createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+            const daysSinceUpdate: number = (lead as any).daysSinceUpdate
+              ?? Math.floor((Date.now() - new Date((lead as any).updatedAt || (lead as any).createdAt).getTime()) / 86400000);
+            const updatedLabel = (lead as any).updatedAtRelative
+              ?? (daysSinceUpdate < 1 ? "today" : daysSinceUpdate === 1 ? "yesterday" : `${daysSinceUpdate}d ago`);
             const statusClass = STATUS_COLORS[lead.status] ?? "bg-secondary text-muted-foreground border-border";
 
             return (

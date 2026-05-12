@@ -1492,6 +1492,15 @@ const AiOfferLetter = memo(function AiOfferLetter({ leadId }: { leadId: number }
 });
 
 // ─── Main Component ────────────────────────────────────────────────────────────
+function useDebouncedValue<T>(value: T, delay: number = 200): T {
+  const [debounced, setDebounced] = useState<T>(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function LeadDetail() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
@@ -1506,19 +1515,18 @@ export default function LeadDetail() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch lead + comps in one round-trip, pre-populate comps cache for child panels
+  // Eager: lead + notes + tasks + followers (no comps — loaded lazily below)
   const { data: lead, isLoading } = useQuery<any>({
     queryKey: [`/api/crm/leads/${leadId}`],
-    queryFn: async () => {
-      const r = await apiFetch(`/leads/${leadId}/full`);
-      queryClient.setQueryData([`/api/crm/leads/${leadId}/comps`], r.comps ?? []);
-      return r;
-    },
+    queryFn: () => apiFetch(`/leads/${leadId}/full?include=notes,tasks,followers`),
     enabled: !!leadId,
     staleTime: 30 * 1000,
   });
   const notes: any[] = (lead as any)?.notes ?? [];
   const tasks: any[] = (lead as any)?.tasks ?? [];
+
+  // Comps are fetched lazily by the CompsSection component itself via useCrmGetComps
+  // (not included in the initial /full load above, so the first page render is faster)
 
   // Campaign governance — changes rarely, cache 5 minutes
   const { data: campaignData } = useQuery<any>({
@@ -1533,12 +1541,13 @@ export default function LeadDetail() {
     staleTime: 300_000,
   });
 
-  // Campaign users — changes rarely, cache 2 minutes
+  // Campaign users — never changes during a session, cache forever
   const { data: campaignUsers = [] } = useQuery<any[]>({
     queryKey: ["crm-users-campaign"],
     queryFn: () => apiFetch("/users"),
     enabled: !!me,
-    staleTime: 120_000,
+    staleTime: Infinity,
+    gcTime: Infinity,
   });
 
   // Follow state — derived from lead detail response (no separate fetch needed)
@@ -1698,6 +1707,14 @@ export default function LeadDetail() {
   const initializedRef = useRef(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formDataRef = useRef<any>({});
+
+  // Local state for debounced text inputs (avoids full re-render on every keystroke)
+  const [sellerNameInput, setSellerNameInput] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const debouncedSellerName = useDebouncedValue(sellerNameInput, 200);
+  const debouncedPhone = useDebouncedValue(phoneInput, 200);
+  const debouncedEmail = useDebouncedValue(emailInput, 200);
 
   // ── Twilio state ──────────────────────────────────────────────────────────
   const [opPhoneNumbers, setOpPhoneNumbers] = useState<any[]>([]);
@@ -1863,10 +1880,34 @@ export default function LeadDetail() {
     if (lead && !initializedRef.current) {
       setFormData(lead);
       formDataRef.current = lead;
+      setSellerNameInput(lead.sellerName || "");
+      setPhoneInput(lead.phone || "");
+      setEmailInput(lead.email || "");
       initializedRef.current = true;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sync debounced text inputs → formData (only fires after user stops typing)
+  // Uses setFormData/setIsDirty directly (not `field`) to avoid reference-before-init issue
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    setIsDirty(true);
+    setFormData((f: any) => ({ ...f, sellerName: debouncedSellerName }));
+    formDataRef.current = { ...formDataRef.current, sellerName: debouncedSellerName };
+  }, [debouncedSellerName]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    setIsDirty(true);
+    setFormData((f: any) => ({ ...f, phone: debouncedPhone }));
+    formDataRef.current = { ...formDataRef.current, phone: debouncedPhone };
+  }, [debouncedPhone]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    setIsDirty(true);
+    setFormData((f: any) => ({ ...f, email: debouncedEmail }));
+    formDataRef.current = { ...formDataRef.current, email: debouncedEmail };
+  }, [debouncedEmail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save: 1.5 s after the last change, save silently.
   useEffect(() => {
@@ -2101,15 +2142,15 @@ export default function LeadDetail() {
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Seller Name</Label>
-                <Input className="bg-background/50 rounded-xl" value={formData.sellerName || ""} onChange={e => field("sellerName")(e.target.value)} />
+                <Input className="bg-background/50 rounded-xl" value={sellerNameInput} onChange={e => setSellerNameInput(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Phone Number</Label>
-                <Input className="bg-background/50 rounded-xl" value={formData.phone || ""} onChange={e => field("phone")(e.target.value)} />
+                <Input className="bg-background/50 rounded-xl" value={phoneInput} onChange={e => setPhoneInput(e.target.value)} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Email</Label>
-                <Input type="email" className="bg-background/50 rounded-xl" value={formData.email || ""} onChange={e => field("email")(e.target.value)} />
+                <Input type="email" className="bg-background/50 rounded-xl" value={emailInput} onChange={e => setEmailInput(e.target.value)} />
               </div>
               <SelectField label="Lead Source" value={formData.leadSource || ""} onChange={field("leadSource")} options={LEAD_SOURCES} />
               {isAdmin && (

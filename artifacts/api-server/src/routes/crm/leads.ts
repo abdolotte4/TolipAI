@@ -33,7 +33,24 @@ setInterval(() => {
 
 const router = Router();
 
+const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function _fmtDate(d: Date): string {
+  return `${_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+function _fmtRelative(d: Date): string {
+  const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (diff < 1) return "today";
+  if (diff === 1) return "1 day ago";
+  return `${diff} days ago`;
+}
+
 function formatLeadSummary(lead: any, assignedUser?: any, campaignName?: string | null) {
+  const createdAt = lead.createdAt instanceof Date ? lead.createdAt : new Date(lead.createdAt);
+  const updatedAt = lead.updatedAt instanceof Date ? lead.updatedAt : new Date(lead.updatedAt);
+  const daysSinceUpdate = Math.floor((Date.now() - updatedAt.getTime()) / 86400000);
+  const updatedAtRelative = updatedAt.getTime() !== createdAt.getTime() ? _fmtRelative(updatedAt) : null;
   return {
     id: lead.id,
     campaignId: lead.campaignId,
@@ -66,8 +83,11 @@ function formatLeadSummary(lead: any, assignedUser?: any, campaignName?: string 
     archivedAt: lead.archivedAt ? lead.archivedAt.toISOString() : null,
     assignedTo: lead.assignedTo,
     assignedToName: assignedUser?.name || null,
-    createdAt: lead.createdAt.toISOString(),
-    updatedAt: lead.updatedAt.toISOString(),
+    createdAt: createdAt.toISOString(),
+    updatedAt: updatedAt.toISOString(),
+    createdAtFormatted: _fmtDate(createdAt),
+    updatedAtRelative,
+    daysSinceUpdate,
   };
 }
 
@@ -81,12 +101,8 @@ function formatLead(lead: any, assignedUser?: any, campaignName?: string | null)
     yearBuilt: lead.yearBuilt,
     lastSaleDate: lead.lastSaleDate,
     lastSalePrice: lead.lastSalePrice ? parseFloat(lead.lastSalePrice) : null,
-    skipTracedPhones: Array.isArray(lead.skipTracedPhones)
-      ? lead.skipTracedPhones
-      : lead.skipTracedPhones ? (() => { try { return JSON.parse(lead.skipTracedPhones); } catch { return []; } })() : [],
-    skipTracedEmails: Array.isArray(lead.skipTracedEmails)
-      ? lead.skipTracedEmails
-      : lead.skipTracedEmails ? (() => { try { return JSON.parse(lead.skipTracedEmails); } catch { return []; } })() : [],
+    skipTracedPhones: Array.isArray(lead.skipTracedPhones) ? lead.skipTracedPhones : [],
+    skipTracedEmails: Array.isArray(lead.skipTracedEmails) ? lead.skipTracedEmails : [],
     skipTracedName: lead.skipTracedName ?? null,
     rentcastAvm: lead.rentcastAvmValue != null ? {
       price: parseFloat(lead.rentcastAvmValue),
@@ -602,11 +618,17 @@ router.post("/:id/unarchive", crmAuth, async (req, res) => {
 
 router.get("/:id/notes", crmAuth, async (req, res) => {
   const id = parseInt(req.params.id as string);
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+  const offset = parseInt(req.query.offset as string) || 0;
   try {
     const notes = await db.select({
       id: crmNotes.id, leadId: crmNotes.leadId, userId: crmNotes.userId,
       content: crmNotes.content, noteType: crmNotes.noteType, createdAt: crmNotes.createdAt, userName: crmUsers.name,
-    }).from(crmNotes).leftJoin(crmUsers, eq(crmNotes.userId, crmUsers.id)).where(eq(crmNotes.leadId, id)).orderBy(crmNotes.createdAt);
+    }).from(crmNotes).leftJoin(crmUsers, eq(crmNotes.userId, crmUsers.id))
+      .where(eq(crmNotes.leadId, id))
+      .orderBy(crmNotes.createdAt)
+      .limit(limit)
+      .offset(offset);
     res.json(notes.map(n => ({
       id: n.id, leadId: n.leadId, userId: n.userId, userName: n.userName || "Unknown",
       content: n.content, noteType: n.noteType || "note", createdAt: n.createdAt.toISOString(),

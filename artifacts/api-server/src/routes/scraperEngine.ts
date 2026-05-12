@@ -478,6 +478,7 @@ router.all("/scraper-engine/{*path}", crmAuth, async (req: Request, res: Respons
       headers: {
         "content-type": "application/json",
         ...(apiKey ? { "X-API-Key": apiKey } : {}),
+        ...(req.headers.authorization ? { "Authorization": req.headers.authorization } : {}),
       },
       ...(isBodyMethod ? { body: JSON.stringify(req.body) } : {}),
       signal: controller.signal,
