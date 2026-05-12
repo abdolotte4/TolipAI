@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -13,26 +14,6 @@ import {
   Plus, Trash2, Mail, ChevronDown, ChevronRight, Edit2, Check, X, Clock
 } from "lucide-react";
 
-function apiUrl(path: string) {
-  return `/api/crm${path}`;
-}
-
-async function apiFetch(path: string, options?: RequestInit) {
-  const token = localStorage.getItem("crm_token");
-  const res = await fetch(apiUrl(path), {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(err.error || "Request failed");
-  }
-  return res.json();
-}
 
 type Step = { id: number; sequenceId: number; dayOffset: number; subject: string; body: string };
 type Sequence = { id: number; name: string; description: string | null; isActive: boolean; steps: Step[]; createdAt: string };

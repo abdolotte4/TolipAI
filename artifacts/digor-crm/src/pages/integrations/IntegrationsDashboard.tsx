@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiRawFetch as apiFetch } from "@/lib/api";
 import { motion } from "framer-motion";
 import { AlertCircle, CheckCircle2, Clock3, Loader2, Shield, Wifi, WifiOff, Phone, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
@@ -7,19 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCrmGetMe } from "@workspace/api-client-react";
 
-function apiFetch(path: string) {
-  const token = localStorage.getItem("crm_token");
-  return fetch(`/api${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  }).then(async (r) => {
-    const json = await r.json();
-    if (!r.ok) throw new Error(json?.error || `Request failed: ${r.status}`);
-    return json;
-  });
-}
 
 function statusTone(active: boolean) {
   return active ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" : "bg-secondary text-muted-foreground border-white/10";

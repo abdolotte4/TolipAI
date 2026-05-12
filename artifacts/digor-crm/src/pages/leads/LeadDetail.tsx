@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo, useMemo } from "react";
+import { apiFetch } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { format, differenceInDays } from "date-fns";
@@ -56,24 +57,6 @@ function parseFullAddress(raw: string): { address?: string; city?: string; state
   return null;
 }
 
-// ─── apiFetch helper ─────────────────────────────────────────────────────────
-async function apiFetch(path: string, options?: RequestInit) {
-  const token = localStorage.getItem("crm_token");
-  const r = await fetch(`/api/crm${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers || {}),
-    },
-  });
-  if (r.status === 401) {
-    localStorage.removeItem("crm_token");
-    window.location.href = "/login";
-    throw new Error("Session expired — please log in again.");
-  }
-  return r.json();
-}
 
 function fmt$(v: any) {
   if (!v && v !== 0) return "—";
@@ -454,13 +437,13 @@ function CompsSection({ leadId, lead }: { leadId: number; lead: any }) {
   const leadKey = [`/api/crm/leads/${leadId}`];
 
   // Derive the market $/sqft rate used in adjustments — median of (salePrice/sqft) across all comps
-  const marketSqftRate = (() => {
+  const marketSqftRate = useMemo(() => {
     const rates = (comps as any[])
       .filter((c: any) => c.salePrice > 0 && c.sqft > 0)
       .map((c: any) => c.salePrice / c.sqft)
       .sort((a: number, b: number) => a - b);
     return rates.length > 0 ? rates[Math.floor(rates.length / 2)] : 50;
-  })();
+  }, [comps]);
 
   function calcBreakdown(comp: any) {
     const subjectBeds  = lead?.beds != null ? Number(lead.beds) : null;
@@ -711,18 +694,19 @@ function CompsSection({ leadId, lead }: { leadId: number; lead: any }) {
   });
 
   // Summary stats from adjusted prices
-  const compsWithAdj = (comps as any[]).filter((c: any) => c.adjustedPrice != null && c.adjustedPrice > 0);
-  const avgAdjusted = compsWithAdj.length > 0
-    ? Math.round(compsWithAdj.reduce((s: number, c: any) => s + c.adjustedPrice, 0) / compsWithAdj.length)
-    : null;
-
-  // Deal quality flag: ARV / asking price
-  const arv = lead?.arv ? parseFloat(lead.arv) : null;
-  const askingPrice = lead?.askingPrice ? parseFloat(lead.askingPrice) : null;
-  const dealRatio = arv && askingPrice ? arv / askingPrice : null;
-  const dealFlag = dealRatio != null
-    ? (dealRatio >= 1.7 ? "good" : dealRatio >= 1.3 ? "warning" : "bad")
-    : null;
+  const { avgAdjusted, arv, askingPrice, dealRatio, dealFlag } = useMemo(() => {
+    const compsWithAdj = (comps as any[]).filter((c: any) => c.adjustedPrice != null && c.adjustedPrice > 0);
+    const avgAdjusted = compsWithAdj.length > 0
+      ? Math.round(compsWithAdj.reduce((s: number, c: any) => s + c.adjustedPrice, 0) / compsWithAdj.length)
+      : null;
+    const arv = lead?.arv ? parseFloat(lead.arv) : null;
+    const askingPrice = lead?.askingPrice ? parseFloat(lead.askingPrice) : null;
+    const dealRatio = arv && askingPrice ? arv / askingPrice : null;
+    const dealFlag = dealRatio != null
+      ? (dealRatio >= 1.7 ? "good" : dealRatio >= 1.3 ? "warning" : "bad")
+      : null;
+    return { avgAdjusted, arv, askingPrice, dealRatio, dealFlag };
+  }, [comps, lead?.arv, lead?.askingPrice]);
 
   return (
     <Card className="rounded-2xl border-white/5 bg-card shadow-lg overflow-hidden">
@@ -1115,7 +1099,7 @@ function EmailHistory({ leadId }: { leadId: number }) {
 }
 
 // ─── AI Repair Estimator ──────────────────────────────────────────────────────
-function AiRepairEstimator({ leadId, onApplied }: { leadId: number; onApplied: (total: number) => void }) {
+const AiRepairEstimator = memo(function AiRepairEstimator({ leadId, onApplied }: { leadId: number; onApplied: (total: number) => void }) {
   const { toast } = useToast();
   const [desc, setDesc] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1219,11 +1203,11 @@ function AiRepairEstimator({ leadId, onApplied }: { leadId: number; onApplied: (
       </div>
     </Card>
   );
-}
+});
 
 
 
-function AiDealScorer({ leadId }: { leadId: number }) {
+const AiDealScorer = memo(function AiDealScorer({ leadId }: { leadId: number }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any | null>(null);
@@ -1346,12 +1330,12 @@ function AiDealScorer({ leadId }: { leadId: number }) {
       </div>
     </Card>
   );
-}
+});
 
 
 
 // ─── AI Seller Script ──────────────────────────────────────────────────────────
-function AiSellerScript({ leadId }: { leadId: number }) {
+const AiSellerScript = memo(function AiSellerScript({ leadId }: { leadId: number }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any | null>(null);
@@ -1442,10 +1426,10 @@ function AiSellerScript({ leadId }: { leadId: number }) {
       </div>
     </Card>
   );
-}
+});
 
 // ─── AI Offer Letter ───────────────────────────────────────────────────────────
-function AiOfferLetter({ leadId }: { leadId: number }) {
+const AiOfferLetter = memo(function AiOfferLetter({ leadId }: { leadId: number }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ subject: string; letter: string } | null>(null);
@@ -1505,7 +1489,7 @@ function AiOfferLetter({ leadId }: { leadId: number }) {
       </div>
     </Card>
   );
-}
+});
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function LeadDetail() {
@@ -1881,7 +1865,8 @@ export default function LeadDetail() {
       formDataRef.current = lead;
       initializedRef.current = true;
     }
-  }, [lead]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-save: 1.5 s after the last change, save silently.
   useEffect(() => {

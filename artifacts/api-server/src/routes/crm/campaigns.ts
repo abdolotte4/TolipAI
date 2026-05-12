@@ -192,6 +192,12 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   }
 });
 
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
+
 // DELETE /crm/campaigns/:id — super admin only, requires password confirmation
 router.delete("/:id", crmAuth, crmSuperAdminOnly, async (req, res) => {
   const id = parseInt(req.params.id as string);
@@ -241,27 +247,35 @@ router.delete("/:id", crmAuth, crmSuperAdminOnly, async (req, res) => {
 
     // Delete all related records in the correct order to satisfy FK constraints
     if (seqIds.length > 0) {
-      await db.delete(crmSequenceLogs).where(inArray(crmSequenceLogs.sequenceId, seqIds));
-      await db.delete(crmSequenceSteps).where(inArray(crmSequenceSteps.sequenceId, seqIds));
+      for (const chunk of chunkArray(seqIds, 500)) {
+        await db.delete(crmSequenceLogs).where(inArray(crmSequenceLogs.sequenceId, chunk));
+        await db.delete(crmSequenceSteps).where(inArray(crmSequenceSteps.sequenceId, chunk));
+      }
     }
     await db.delete(crmEmailSequences).where(eq(crmEmailSequences.campaignId, id));
     await db.delete(crmSubmissionLinks).where(eq(crmSubmissionLinks.campaignId, id));
     await db.delete(crmBuyers).where(eq(crmBuyers.campaignId, id));
 
     if (leadIds.length > 0) {
-      await db.delete(crmComps).where(inArray(crmComps.leadId, leadIds));
-      await db.delete(crmNotes).where(inArray(crmNotes.leadId, leadIds));
-      await db.delete(crmLeadFollowers).where(inArray(crmLeadFollowers.leadId, leadIds));
-      await db.delete(crmNotifications).where(inArray(crmNotifications.leadId, leadIds));
+      for (const chunk of chunkArray(leadIds, 500)) {
+        await db.delete(crmComps).where(inArray(crmComps.leadId, chunk));
+        await db.delete(crmNotes).where(inArray(crmNotes.leadId, chunk));
+        await db.delete(crmLeadFollowers).where(inArray(crmLeadFollowers.leadId, chunk));
+        await db.delete(crmNotifications).where(inArray(crmNotifications.leadId, chunk));
+      }
     }
     if (userIds.length > 0) {
-      await db.delete(crmNotifications).where(inArray(crmNotifications.userId, userIds));
+      for (const chunk of chunkArray(userIds, 500)) {
+        await db.delete(crmNotifications).where(inArray(crmNotifications.userId, chunk));
+      }
     }
     await db.delete(crmTasks).where(eq(crmTasks.campaignId, id));
     // Nullify assignedTo before deleting leads/users
     if (leadIds.length > 0) {
-      await db.update(crmLeads).set({ assignedTo: null }).where(inArray(crmLeads.id, leadIds));
-      await db.delete(crmLeads).where(inArray(crmLeads.id, leadIds));
+      for (const chunk of chunkArray(leadIds, 500)) {
+        await db.update(crmLeads).set({ assignedTo: null }).where(inArray(crmLeads.id, chunk));
+        await db.delete(crmLeads).where(inArray(crmLeads.id, chunk));
+      }
     }
     await db.delete(crmUsers).where(eq(crmUsers.campaignId, id));
     await db.delete(crmCampaigns).where(eq(crmCampaigns.id, id));

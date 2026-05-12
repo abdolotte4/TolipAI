@@ -103,50 +103,8 @@ _DOMAIN_HEADERS: dict[str, dict[str, str]] = {
     },
 }
 
-# Stealth JS injected into every Crawl4AI page before navigation.
-# Hides headless signals that Zillow/Cloudflare use to detect bots.
-_STEALTH_JS = """
-// Remove webdriver flag
-Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-
-// Realistic plugin list
-Object.defineProperty(navigator, 'plugins', {
-    get: () => {
-        const arr = [
-            {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format'},
-            {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: ''},
-            {name: 'Native Client', filename: 'internal-nacl-plugin', description: ''},
-        ];
-        arr.__proto__ = PluginArray.prototype;
-        return arr;
-    }
-});
-
-// Realistic language list
-Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-
-// Permissions API — spoof notifications query
-const _origQuery = window.navigator.permissions.query.bind(navigator.permissions);
-window.navigator.permissions.query = (params) =>
-    params.name === 'notifications'
-        ? Promise.resolve({state: Notification.permission})
-        : _origQuery(params);
-
-// Hide automation-related Chrome properties
-try {
-    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
-    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
-    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
-} catch(_) {}
-
-// Spoof hardware concurrency (bots often show 1)
-Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
-
-// Spoof screen size
-Object.defineProperty(screen, 'width',      {get: () => 1920});
-Object.defineProperty(screen, 'height',     {get: () => 1080});
-Object.defineProperty(screen, 'colorDepth', {get: () => 24});
-"""
+# Import the canonical stealth script from _browser_session to avoid duplication.
+from .scrapers._browser_session import _STEALTH_SCRIPT as _STEALTH_JS
 
 # Persistent shared client
 _persistent_client: Optional[httpx.AsyncClient] = None

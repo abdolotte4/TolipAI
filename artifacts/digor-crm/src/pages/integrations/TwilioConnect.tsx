@@ -6,6 +6,7 @@ import {
   ExternalLink, RefreshCw, Zap, ShieldCheck, MessageSquare,
   PhoneCall, ChevronRight, ArrowLeft, Info, Copy, Check,
 } from "lucide-react";
+import { apiRawFetch as apiFetch } from "@/lib/api";
 import { Link } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,21 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useCrmGetMe } from "@workspace/api-client-react";
 
-function apiFetch(path: string, options?: RequestInit) {
-  const token = localStorage.getItem("crm_token");
-  return fetch(`/api${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers || {}),
-    },
-  }).then(async (r) => {
-    const json = await r.json();
-    if (!r.ok) throw new Error(json?.error || `Request failed: ${r.status}`);
-    return json;
-  });
-}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);

@@ -5,6 +5,7 @@ import {
   KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2,
   ExternalLink, RefreshCw, Trash2, Building2, Wifi, WifiOff, ShieldCheck,
 } from "lucide-react";
+import { apiRawFetch as apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,21 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useCrmGetMe } from "@workspace/api-client-react";
 
-function apiFetch(path: string, options?: RequestInit) {
-  const token = localStorage.getItem("crm_token");
-  return fetch(`/api${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers || {}),
-    },
-  }).then(async (r) => {
-    const json = await r.json();
-    if (!r.ok) throw new Error(json?.error || `Request failed: ${r.status}`);
-    return json;
-  });
-}
 
 export default function ProperioConnect() {
   const { toast } = useToast();

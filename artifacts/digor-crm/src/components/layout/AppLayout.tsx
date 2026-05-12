@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { useLocation, Link } from "wouter";
 import {
   LayoutDashboard,
@@ -52,17 +53,6 @@ function playNotificationSound() {
   } catch (_) {}
 }
 
-function apiFetch(path: string, options?: RequestInit) {
-  const token = localStorage.getItem("crm_token");
-  return fetch(`/api/crm${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers || {}),
-    },
-  }).then(r => r.json());
-}
 
 function NotificationBell() {
   const [open, setOpen] = useState(false);

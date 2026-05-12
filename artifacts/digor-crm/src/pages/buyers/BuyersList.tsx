@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -12,18 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCrmGetMe } from "@workspace/api-client-react";
-
-function apiFetch(path: string, options?: RequestInit) {
-  const token = localStorage.getItem("crm_token");
-  return fetch(`/api/crm${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers || {}),
-    },
-  }).then(r => r.json());
-}
 
 const TEMPLATE_CSV = `name,phone,email,address,notes
 John Smith,(555) 123-4567,john@example.com,123 Oak St Atlanta GA 30301,All cash 14 day close
