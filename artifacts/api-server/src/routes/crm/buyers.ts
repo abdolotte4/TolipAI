@@ -165,10 +165,12 @@ router.post("/upload", crmAuth, async (req, res) => {
   try {
     const BATCH = 100;
     let inserted = 0;
-    for (let i = 0; i < toInsert.length; i += BATCH) {
-      await db.insert(crmBuyers).values(toInsert.slice(i, i + BATCH));
-      inserted += Math.min(BATCH, toInsert.length - i);
-    }
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < toInsert.length; i += BATCH) {
+        await tx.insert(crmBuyers).values(toInsert.slice(i, i + BATCH));
+        inserted += Math.min(BATCH, toInsert.length - i);
+      }
+    });
     res.json({ success: true, inserted, skipped });
   } catch (err) {
     logger.error(err, "buyers upload error");

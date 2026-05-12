@@ -155,8 +155,8 @@ router.post(
         email = decryptPassword(rawEmail);
         pass = decryptPassword(rawPass);
       } catch {
-        email = rawEmail;
-        pass = rawPass;
+        res.status(500).json({ success: false, error: "Failed to decrypt stored credentials — please re-save your credentials." });
+        return;
       }
       res.json(await scraperEngine.testSession("propelio", email, pass));
     } catch (err: unknown) {
@@ -242,8 +242,8 @@ router.post(
         email = decryptPassword(rawEmail);
         pass = decryptPassword(rawPass);
       } catch {
-        email = rawEmail;
-        pass = rawPass;
+        res.status(500).json({ success: false, error: "Failed to decrypt stored credentials — please re-save your credentials." });
+        return;
       }
       res.json(await scraperEngine.testSession("propwire", email, pass));
     } catch (err: unknown) {

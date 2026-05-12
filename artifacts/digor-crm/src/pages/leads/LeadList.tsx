@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Search, Plus, MapPin, Phone, User, Filter, Clock, AlertTriangle, Trash2, Building2, Calendar, RefreshCw } from "lucide-react";
-import { differenceInDays, format, formatDistanceToNow } from "date-fns";
 import { useCrmGetLeads, useCrmDeleteLead } from "@workspace/api-client-react";
 import { useCampaignGovernance } from "@/hooks/use-campaign-governance";
 import { Card } from "@/components/ui/card";
@@ -24,19 +23,36 @@ import { useToast } from "@/hooks/use-toast";
 
 const PAGE_SIZE = 20;
 
+const STATUS_COLORS: Record<string, string> = {
+  new: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  contacted: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+  qualified: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  negotiating: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  under_contract: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  closed: "bg-green-500/10 text-green-400 border-green-500/20",
+  dead: "bg-red-500/10 text-red-400 border-red-500/20",
+};
+
 export default function LeadList() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; address: string } | null>(null);
   const [, setLocation] = useLocation();
 
-  // Reset to page 1 whenever search or filter changes
-  const handleSearch = (val: string) => { setSearch(val); setPage(1); };
+  const handleSearch = (val: string) => {
+    setSearch(val);
+    setPage(1);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => setDebouncedSearch(val), 400);
+  };
+
   const handleStatusFilter = (val: string) => { setStatusFilter(val); setPage(1); };
 
   const { data, isLoading, isError, refetch } = useCrmGetLeads({
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     status: statusFilter || undefined,
     page,
     limit: PAGE_SIZE,
@@ -47,19 +63,6 @@ export default function LeadList() {
   const deleteMutation = useCrmDeleteLead();
   const qc = useQueryClient();
   const { toast } = useToast();
-
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'new': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      case 'contacted': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-      case 'qualified': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      case 'negotiating': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-      case 'under_contract': return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
-      case 'closed': return 'bg-green-500/10 text-green-400 border-green-500/20';
-      case 'dead': return 'bg-red-500/10 text-red-400 border-red-500/20';
-      default: return 'bg-secondary text-muted-foreground border-border';
-    }
-  };
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
@@ -139,93 +142,98 @@ export default function LeadList() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {data?.leads.map((lead, i) => (
-            <motion.div 
-              key={lead.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="relative group"
-            >
-              <Link href={`/leads/${lead.id}`}>
-                <Card className="p-0 rounded-2xl border-white/5 bg-card hover:bg-secondary/40 transition-colors cursor-pointer group shadow-sm hover:shadow-md">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center p-5 gap-5">
-                    <div className="flex-1 space-y-3 w-full">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-display font-semibold text-lg text-foreground group-hover:text-primary transition-colors truncate pr-2">
-                            {lead.address}
-                          </h3>
-                          <div className="flex items-center text-sm text-muted-foreground mt-1 gap-4 flex-wrap">
-                            <span className="flex items-center"><User className="w-3.5 h-3.5 mr-1.5"/> {lead.sellerName}</span>
-                            {lead.phone && <span className="flex items-center"><Phone className="w-3.5 h-3.5 mr-1.5"/> {lead.phone}</span>}
-                            {lead.city && <span className="flex items-center"><MapPin className="w-3.5 h-3.5 mr-1.5"/> {lead.city}, {lead.state}</span>}
-                            {isSuperAdmin && (lead as any).campaignName && (
-                              <span className="flex items-center gap-1 text-xs text-primary/80 bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
-                                <Building2 className="w-3 h-3" />{(lead as any).campaignName}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 mt-1.5 flex-wrap">
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground/55">
-                              <Calendar className="w-3 h-3" />
-                              Submitted {format(new Date((lead as any).createdAt), "MMM d, yyyy")}
-                            </span>
-                            {(lead as any).updatedAt && (lead as any).updatedAt !== (lead as any).createdAt && (
+          {data?.leads.map((lead) => {
+            const createdDate = new Date((lead as any).createdAt);
+            const updatedDate = new Date((lead as any).updatedAt || (lead as any).createdAt);
+            const daysSinceUpdate = Math.floor((Date.now() - updatedDate.getTime()) / 86400000);
+            const createdLabel = createdDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+            const updatedLabel = daysSinceUpdate < 1 ? "today" : daysSinceUpdate === 1 ? "yesterday" : `${daysSinceUpdate}d ago`;
+            const statusClass = STATUS_COLORS[lead.status] ?? "bg-secondary text-muted-foreground border-border";
+
+            return (
+              <motion.div
+                key={lead.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.15 }}
+                className="relative group"
+              >
+                <Link href={`/leads/${lead.id}`}>
+                  <Card className="p-0 rounded-2xl border-white/5 bg-card hover:bg-secondary/40 transition-colors cursor-pointer group shadow-sm hover:shadow-md">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center p-5 gap-5">
+                      <div className="flex-1 space-y-3 w-full">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-display font-semibold text-lg text-foreground group-hover:text-primary transition-colors truncate pr-2">
+                              {lead.address}
+                            </h3>
+                            <div className="flex items-center text-sm text-muted-foreground mt-1 gap-4 flex-wrap">
+                              <span className="flex items-center"><User className="w-3.5 h-3.5 mr-1.5"/> {lead.sellerName}</span>
+                              {lead.phone && <span className="flex items-center"><Phone className="w-3.5 h-3.5 mr-1.5"/> {lead.phone}</span>}
+                              {lead.city && <span className="flex items-center"><MapPin className="w-3.5 h-3.5 mr-1.5"/> {lead.city}, {lead.state}</span>}
+                              {isSuperAdmin && (lead as any).campaignName && (
+                                <span className="flex items-center gap-1 text-xs text-primary/80 bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                                  <Building2 className="w-3 h-3" />{(lead as any).campaignName}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 mt-1.5 flex-wrap">
                               <span className="flex items-center gap-1 text-xs text-muted-foreground/55">
-                                <RefreshCw className="w-3 h-3" />
-                                Updated {formatDistanceToNow(new Date((lead as any).updatedAt), { addSuffix: true })}
+                                <Calendar className="w-3 h-3" />
+                                Submitted {createdLabel}
+                              </span>
+                              {(lead as any).updatedAt && (lead as any).updatedAt !== (lead as any).createdAt && (
+                                <span className="flex items-center gap-1 text-xs text-muted-foreground/55">
+                                  <RefreshCw className="w-3 h-3" />
+                                  Updated {updatedLabel}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {daysSinceUpdate >= 14 && (
+                              <span className="flex items-center gap-1 text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full">
+                                <AlertTriangle className="w-3 h-3" />{daysSinceUpdate}d
                               </span>
                             )}
+                            {daysSinceUpdate >= 7 && daysSinceUpdate < 14 && (
+                              <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full">
+                                <Clock className="w-3 h-3" />{daysSinceUpdate}d
+                              </span>
+                            )}
+                            <Badge variant="outline" className={`capitalize px-3 py-1 ${statusClass}`}>
+                              {lead.status.replace("_", " ")}
+                            </Badge>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {(() => {
-                            const days = differenceInDays(new Date(), new Date((lead as any).updatedAt || lead.createdAt));
-                            if (days >= 14) return (
-                              <span className="flex items-center gap-1 text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full">
-                                <AlertTriangle className="w-3 h-3" />{days}d
-                              </span>
-                            );
-                            if (days >= 7) return (
-                              <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full">
-                                <Clock className="w-3 h-3" />{days}d
-                              </span>
-                            );
-                            return null;
-                          })()}
-                          <Badge variant="outline" className={`capitalize px-3 py-1 ${getStatusColor(lead.status)}`}>
-                            {lead.status.replace('_', ' ')}
-                          </Badge>
+                      </div>
+
+                      <div className="w-full sm:w-auto flex sm:flex-col justify-between sm:items-end gap-2 sm:gap-1 bg-background/50 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none border sm:border-none border-border">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider">Est. Value</div>
+                        <div className="font-semibold text-emerald-400">
+                          {lead.arv ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(lead.arv) : "TBD"}
                         </div>
                       </div>
                     </div>
+                  </Card>
+                </Link>
 
-                    <div className="w-full sm:w-auto flex sm:flex-col justify-between sm:items-end gap-2 sm:gap-1 bg-background/50 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none border sm:border-none border-border">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Est. Value</div>
-                      <div className="font-semibold text-emerald-400">
-                        {lead.arv ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(lead.arv) : 'TBD'}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </Link>
-
-              {canDeleteLeads && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDeleteTarget({ id: lead.id, address: lead.address });
-                  }}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-muted-foreground/0 group-hover:text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                  title="Delete lead"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </motion.div>
-          ))}
+                {canDeleteLeads && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeleteTarget({ id: lead.id, address: lead.address });
+                    }}
+                    className="absolute top-3 right-3 p-1.5 rounded-lg text-muted-foreground/0 group-hover:text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                    title="Delete lead"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </motion.div>
+            );
+          })}
           {data?.leads.length === 0 && (
             <div className="text-center py-20 bg-card rounded-2xl border border-white/5">
               <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">

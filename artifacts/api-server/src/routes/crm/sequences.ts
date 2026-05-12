@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { crmEmailSequences, crmSequenceSteps, crmSequenceLogs, crmLeads, crmUsers } from "@workspace/db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
 
@@ -169,12 +169,47 @@ router.get("/logs/:leadId", crmAuth, async (req, res) => {
 
 export default router;
 
+// ─── Brevo send with retry + exponential back-off on 429 ─────────────────────
+async function brevoSendWithRetry(payload: object): Promise<void> {
+  const maxAttempts = 3;
+  let delayMs = 1_000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": process.env.BREVO_API_KEY || "",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (r.ok) return;
+    if (r.status === 429 && attempt < maxAttempts) {
+      await new Promise<void>(res => setTimeout(res, delayMs));
+      delayMs *= 2;
+      continue;
+    }
+    throw new Error(await r.text().catch(() => `HTTP ${r.status}`));
+  }
+}
+
 // ─── Background email job ─────────────────────────────────────────────────────
+// Module-level guard: fast-path skip within the same process (single instance).
+// The Postgres advisory lock below is the true multi-instance gate.
 let lastEmailJobRun = 0;
 
 export async function runEmailSequenceJob() {
   const now = Date.now();
-  if (now - lastEmailJobRun < 60 * 60 * 1000) return; // max once per hour
+  if (now - lastEmailJobRun < 60 * 60 * 1000) return; // same-process fast-path
+
+  // Acquire Postgres advisory lock so only one Fargate task runs at a time
+  const lockResult = await db.execute(sql`SELECT pg_try_advisory_lock(44332211) AS locked`);
+  const locked = (lockResult.rows[0] as any)?.locked ?? false;
+  if (!locked) {
+    logger.info("[emailJob] Another instance holds the lock — skipping this run");
+    return;
+  }
+
   lastEmailJobRun = now;
 
   try {
@@ -194,18 +229,22 @@ export async function runEmailSequenceJob() {
 
       if (!steps.length) continue;
 
-      // Get leads for this campaign that have email addresses
-      const leads = await db
-        .select()
-        .from(crmLeads)
-        .where(
-          seq.campaignId
-            ? and(eq(crmLeads.campaignId, seq.campaignId))
-            : undefined
-        );
+      // Batch leads in pages of 200 to avoid loading entire table into memory
+      const PAGE = 200;
+      let offset = 0;
+      while (true) {
+        const leads = await db
+          .select()
+          .from(crmLeads)
+          .where(seq.campaignId ? and(eq(crmLeads.campaignId, seq.campaignId)) : undefined)
+          .limit(PAGE)
+          .offset(offset);
 
-      const emailLeads = leads.filter(l => l.email && l.status !== "dead" && l.status !== "closed");
-      if (emailLeads.length > 0) {
+        if (leads.length === 0) break;
+        offset += PAGE;
+
+        const emailLeads = leads.filter(l => l.email && l.status !== "dead" && l.status !== "closed");
+
         for (const lead of emailLeads) {
           const leadCreatedAt = lead.createdAt.getTime();
           const daysSinceCreation = Math.floor((now - leadCreatedAt) / (1000 * 60 * 60 * 24));
@@ -233,7 +272,7 @@ export async function runEmailSequenceJob() {
               .replace(/\{\{name\}\}/g, lead.sellerName)
               .replace(/\{\{address\}\}/g, lead.address || "");
 
-                        // Find campaign admin email for Reply-To
+            // Find campaign admin email for Reply-To
             let replyToEmail = process.env.BREVO_SENDER_EMAIL || "";
             if (seq.campaignId) {
               const [campaignAdmin] = await db
@@ -244,29 +283,18 @@ export async function runEmailSequenceJob() {
               if (campaignAdmin?.email) replyToEmail = campaignAdmin.email;
             }
 
-            // Send email via Brevo
+            // Send with retry + back-off
             let status = "sent";
             let errorMessage: string | null = null;
             try {
-              const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
-                method: "POST",
-                headers: {
-                  "api-key": process.env.BREVO_API_KEY || "",
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  sender: { name: "TolipAI CRM", email: process.env.BREVO_SENDER_EMAIL },
-                  to: [{ email: lead.email!, name: lead.sellerName }],
-                  replyTo: { email: replyToEmail },
-                  subject,
-                  textContent: body,
-                  htmlContent: body.replace(/\n/g, "<br>"),
-                }),
+              await brevoSendWithRetry({
+                sender: { name: "TolipAI CRM", email: process.env.BREVO_SENDER_EMAIL },
+                to: [{ email: lead.email!, name: lead.sellerName }],
+                replyTo: { email: replyToEmail },
+                subject,
+                textContent: body,
+                htmlContent: body.replace(/\n/g, "<br>"),
               });
-              if (!brevoRes.ok) {
-                const errText = await brevoRes.text();
-                throw new Error(errText);
-              }
             } catch (err: any) {
               status = "failed";
               errorMessage = err?.message || "Unknown error";
@@ -283,9 +311,13 @@ export async function runEmailSequenceJob() {
             });
           }
         }
+
+        if (leads.length < PAGE) break;
       }
     }
   } catch (err) {
     logger.error(err, "Email sequence job error");
+  } finally {
+    await db.execute(sql`SELECT pg_advisory_unlock(44332211)`).catch(() => {});
   }
 }

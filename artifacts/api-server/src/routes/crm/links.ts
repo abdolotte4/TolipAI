@@ -8,8 +8,9 @@ import crypto from "crypto";
 const router = Router();
 
 function getBaseUrl(req: any) {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
   const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost";
+  const host = req.headers.host || "localhost";
   return `${protocol}://${host}`;
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { format, differenceInDays } from "date-fns";
@@ -57,16 +57,22 @@ function parseFullAddress(raw: string): { address?: string; city?: string; state
 }
 
 // ─── apiFetch helper ─────────────────────────────────────────────────────────
-function apiFetch(path: string, options?: RequestInit) {
+async function apiFetch(path: string, options?: RequestInit) {
   const token = localStorage.getItem("crm_token");
-  return fetch(`/api/crm${path}`, {
+  const r = await fetch(`/api/crm${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers || {}),
     },
-  }).then(r => r.json());
+  });
+  if (r.status === 401) {
+    localStorage.removeItem("crm_token");
+    window.location.href = "/login";
+    throw new Error("Session expired — please log in again.");
+  }
+  return r.json();
 }
 
 function fmt$(v: any) {
@@ -126,7 +132,7 @@ function SelectField({ label, value, onChange, options }: { label: string; value
 }
 
 // ─── @Mention Textarea ────────────────────────────────────────────────────────
-function MentionTextarea({
+const MentionTextarea = memo(function MentionTextarea({
   value, onChange, users, placeholder,
 }: {
   value: string;
@@ -197,7 +203,7 @@ function MentionTextarea({
       )}
     </div>
   );
-}
+});
 
 // ─── Offer Letter ─────────────────────────────────────────────────────────────
 function openOfferLetter(lead: any, mao: number, campaign?: any) {
@@ -1898,8 +1904,9 @@ export default function LeadDetail() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
+  // formData is read via formDataRef.current inside the callback — not a dep
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDirty, formData]);
+  }, [isDirty]);
 
   if (isLoading || !lead) return <div className="p-8 text-center text-muted-foreground animate-pulse">Loading property details...</div>;
 

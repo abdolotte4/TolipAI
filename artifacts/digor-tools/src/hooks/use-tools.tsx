@@ -9,7 +9,13 @@ async function fetchApi(endpoint: string, options: RequestInit = {}, pin: string
   if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(endpoint, { ...options, headers });
+  const signal = options.signal ?? AbortSignal.timeout(60_000);
+  const res = await fetch(endpoint, { ...options, headers, signal });
+  if (res.status === 401) {
+    localStorage.removeItem("digor_tools_pin");
+    window.location.href = "/";
+    throw new Error("Session expired — please log in again.");
+  }
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.error || `API Error: ${res.status}`);

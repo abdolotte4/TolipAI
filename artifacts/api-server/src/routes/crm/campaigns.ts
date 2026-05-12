@@ -1,5 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { db } from "@workspace/db";
 import {
   crmCampaigns, crmUsers, crmLeads, crmNotes, crmTasks, crmBuyers,
@@ -39,7 +40,6 @@ function formatCampaign(c: CampaignWithCounts) {
     // Twilio per-campaign config
     twilioConfigured: !!(sid && encToken),
     twilioEnabled: c.twilioEnabled ?? false,
-    twilioAccountSid: sid,
     twilioPhoneNumber: c.twilioPhoneNumber ?? null,
     // never expose the auth token — callers use /twilio/config for masked view
     createdAt: c.createdAt.toISOString(),
@@ -215,7 +215,9 @@ router.delete("/:id", crmAuth, crmSuperAdminOnly, async (req, res) => {
 
     // Verify against the env secret first (authoritative), then fall back to DB hash
     const envPassword = process.env.CRM_ADMIN_PASSWORD || "";
-    const envMatch = envPassword.length > 0 && superAdminPassword === envPassword;
+    const envMatch = envPassword.length > 0 &&
+      envPassword.length === superAdminPassword.length &&
+      crypto.timingSafeEqual(Buffer.from(superAdminPassword), Buffer.from(envPassword));
     const hashMatch = !envMatch && await bcrypt.compare(superAdminPassword, superAdmin.passwordHash);
     if (!envMatch && !hashMatch) {
       res.status(403).json({ error: "Incorrect password. Campaign deletion cancelled." });

@@ -359,21 +359,34 @@ router.get("/:id/full", crmAuth, async (req, res) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
 
+    const includeSet = new Set(
+      (req.query.include as string | undefined ?? "notes,tasks,followers,comps")
+        .split(",").map(s => s.trim())
+    );
+
     const [notes, tasks, followers, assignedUserRow, comps] = await Promise.all([
-      db.select({
-        id: crmNotes.id, leadId: crmNotes.leadId, userId: crmNotes.userId,
-        content: crmNotes.content, noteType: crmNotes.noteType, createdAt: crmNotes.createdAt, userName: crmUsers.name,
-      }).from(crmNotes).leftJoin(crmUsers, eq(crmNotes.userId, crmUsers.id)).where(eq(crmNotes.leadId, id)).orderBy(crmNotes.createdAt),
-      db.select({
-        id: crmTasks.id, leadId: crmTasks.leadId, assignedTo: crmTasks.assignedTo,
-        title: crmTasks.title, description: crmTasks.description, dueDate: crmTasks.dueDate,
-        status: crmTasks.status, createdAt: crmTasks.createdAt, assignedToName: crmUsers.name,
-      }).from(crmTasks).leftJoin(crmUsers, eq(crmTasks.assignedTo, crmUsers.id)).where(eq(crmTasks.leadId, id)).orderBy(crmTasks.dueDate),
-      db.select().from(crmLeadFollowers).where(eq(crmLeadFollowers.leadId, id)),
+      includeSet.has("notes")
+        ? db.select({
+            id: crmNotes.id, leadId: crmNotes.leadId, userId: crmNotes.userId,
+            content: crmNotes.content, noteType: crmNotes.noteType, createdAt: crmNotes.createdAt, userName: crmUsers.name,
+          }).from(crmNotes).leftJoin(crmUsers, eq(crmNotes.userId, crmUsers.id)).where(eq(crmNotes.leadId, id)).orderBy(crmNotes.createdAt).limit(50)
+        : Promise.resolve([] as any[]),
+      includeSet.has("tasks")
+        ? db.select({
+            id: crmTasks.id, leadId: crmTasks.leadId, assignedTo: crmTasks.assignedTo,
+            title: crmTasks.title, description: crmTasks.description, dueDate: crmTasks.dueDate,
+            status: crmTasks.status, createdAt: crmTasks.createdAt, assignedToName: crmUsers.name,
+          }).from(crmTasks).leftJoin(crmUsers, eq(crmTasks.assignedTo, crmUsers.id)).where(eq(crmTasks.leadId, id)).orderBy(crmTasks.dueDate).limit(30)
+        : Promise.resolve([] as any[]),
+      includeSet.has("followers")
+        ? db.select().from(crmLeadFollowers).where(eq(crmLeadFollowers.leadId, id))
+        : Promise.resolve([] as any[]),
       lead.assignedTo
         ? db.select().from(crmUsers).where(eq(crmUsers.id, lead.assignedTo)).limit(1).then(r => r[0] ?? null)
         : Promise.resolve(null),
-      db.select().from(crmComps).where(eq(crmComps.leadId, id)).orderBy(desc(crmComps.createdAt)),
+      includeSet.has("comps")
+        ? db.select().from(crmComps).where(eq(crmComps.leadId, id)).orderBy(desc(crmComps.createdAt))
+        : Promise.resolve([] as any[]),
     ]);
 
     const isFollowing = followers.some(f => f.userId === crmUser.userId);
@@ -1253,7 +1266,7 @@ async function fetchCompsViaScraperEngine(
   try {
     const res = await fetch(`${scraperUrl}/scrape/comps`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-API-Key": process.env.SCRAPER_API_KEY || "" },
       body: JSON.stringify({ address, radius_miles: radiusMiles, max_results: 12 }),
       signal: AbortSignal.timeout(120_000),
     });
@@ -1273,7 +1286,7 @@ async function fetchCompsViaScraperEngine(
   try {
     const res = await fetch(`${scraperUrl}/scrape/propwire/comps`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-API-Key": process.env.SCRAPER_API_KEY || "" },
       body: JSON.stringify({ query: address }),
       signal: AbortSignal.timeout(120_000),
     });
@@ -1567,26 +1580,32 @@ router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
       });
     }
 
-        // ── Recalculate ARV ─────────────────────────────────────────────────────
+        // ── Recalculate ARV — parallel updates instead of N+1 sequential ──────
     const allComps = await db.select().from(crmComps).where(eq(crmComps.leadId, id));
-    const adjustedPrices: number[] = [];
 
-    for (const comp of allComps) {
-      if (!comp.salePrice) continue;
-      const adj = calculateAdjustedComp(
-        { beds: job.subjectProp.beds, baths: job.subjectProp.baths, sqft: job.subjectProp.sqft, yearBuilt: job.subjectProp.yearBuilt },
-        { 
-          salePrice: parseFloat(comp.salePrice as string), 
-          beds: comp.beds ?? null, 
-          baths: comp.baths ? parseFloat(comp.baths as string) : null, 
-          sqft: comp.sqft ?? null, 
-          yearBuilt: comp.yearBuilt ?? null, 
-          soldDate: comp.soldDate ?? null 
-        },
-      );
-      await db.update(crmComps).set({ adjustedPrice: adj.toString() }).where(eq(crmComps.id, comp.id));
-      adjustedPrices.push(adj);
-    }
+    const compCalcs = allComps
+      .filter(comp => !!comp.salePrice)
+      .map(comp => ({
+        id: comp.id,
+        adj: calculateAdjustedComp(
+          { beds: job.subjectProp.beds, baths: job.subjectProp.baths, sqft: job.subjectProp.sqft, yearBuilt: job.subjectProp.yearBuilt },
+          {
+            salePrice: parseFloat(comp.salePrice as string),
+            beds: comp.beds ?? null,
+            baths: comp.baths ? parseFloat(comp.baths as string) : null,
+            sqft: comp.sqft ?? null,
+            yearBuilt: comp.yearBuilt ?? null,
+            soldDate: comp.soldDate ?? null,
+          },
+        ),
+      }));
+
+    await Promise.all(
+      compCalcs.map(({ id: compId, adj }) =>
+        db.update(crmComps).set({ adjustedPrice: adj.toString() }).where(eq(crmComps.id, compId))
+      )
+    );
+    const adjustedPrices = compCalcs.map(c => c.adj);
 
     // FIX: Handle the potential null from the ARV calculation
     const calculatedArv = calculateArvFromComps(adjustedPrices);
@@ -1890,11 +1909,10 @@ Reply ONLY with this JSON:
       method: "POST",
       headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile", // Use the 70B model for accurate math/reasoning
+        model: "llama-3.3-70b-versatile",
         max_tokens: 1200,
-        response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: "You are a Real Estate Wholesaling Coach. Your goal is to maximize buyer profit by keeping the purchase price below the MAO." },
+          { role: "system", content: "You are a Real Estate Wholesaling Coach. Your goal is to maximize buyer profit by keeping the purchase price below the MAO. Reply ONLY with valid JSON." },
           { role: "user", content: prompt },
         ],
       }),
@@ -1980,7 +1998,6 @@ Reply ONLY with this JSON structure:
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         max_tokens: 1200,
-        response_format: { type: "json_object" },
         messages: [
           { role: "system", content: "You are a real estate wholesaling coach. You must output valid JSON." },
           { role: "user", content: prompt },
@@ -2056,10 +2073,8 @@ Reply ONLY with this JSON structure:
       method: "POST",
       headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile", 
-        // FIX: Increased to 1200. 400 is too short for a letter and will break the JSON.
-        max_tokens: 1200, 
-        response_format: { type: "json_object" },
+        model: "llama-3.3-70b-versatile",
+        max_tokens: 1200,
         messages: [
           { role: "system", content: "You are a professional real estate acquisitions specialist. Reply ONLY with valid JSON." },
           { role: "user", content: prompt },
