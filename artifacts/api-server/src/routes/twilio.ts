@@ -27,6 +27,7 @@ import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotification
 import { eq, desc } from "drizzle-orm";
 import { toE164 } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
