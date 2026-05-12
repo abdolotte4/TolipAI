@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { crmEmailSequences, crmSequenceSteps, crmSequenceLogs, crmLeads, crmUsers, crmSmsOptOuts } from "@workspace/db/schema";
+import { crmEmailSequences, crmSequenceSteps, crmSequenceLogs, crmLeads, crmUsers, crmSmsOptOuts, crmSmsConversations, crmCampaigns } from "@workspace/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
 import { sendSms } from "../../services/smsService";
 import { sendDirectMail, extractAddressForDirectMail } from "../../services/directMailService";
+import { generateAiSmsReply, AI_SMS_COST_USD } from "../../services/aiSmsService";
 
 const router = Router();
 
@@ -381,6 +382,59 @@ export async function runEmailSequenceJob() {
               });
               status = result.status === "sent" ? "sent" : result.status;
               errorMessage = result.errorMessage;
+
+            } else if (stepType === "ai_sms") {
+              if (!lead.phone) continue;
+              if (!seq.campaignId) continue;
+
+              const [campaign] = await db
+                .select({ aiSmsPersonality: crmCampaigns.aiSmsPersonality })
+                .from(crmCampaigns)
+                .where(eq(crmCampaigns.id, seq.campaignId))
+                .limit(1);
+
+              const history = await db
+                .select({ direction: crmSmsConversations.direction, body: crmSmsConversations.body, createdAt: crmSmsConversations.createdAt })
+                .from(crmSmsConversations)
+                .where(eq(crmSmsConversations.leadId, lead.id))
+                .orderBy(desc(crmSmsConversations.createdAt))
+                .limit(10);
+
+              const aiReply = await generateAiSmsReply({
+                lead: {
+                  sellerName: lead.sellerName,
+                  address: lead.address,
+                  city: lead.city,
+                  state: lead.state,
+                  askingPrice: lead.askingPrice,
+                  arv: lead.arv,
+                },
+                inboundMessage: "",
+                conversationHistory: history.reverse(),
+                personality: campaign?.aiSmsPersonality || "professional_investor",
+                promptOverride: step.body || null,
+              });
+
+              const smsResult = await sendSms({
+                to: lead.phone,
+                body: aiReply,
+                campaignId: seq.campaignId,
+              });
+              status = smsResult.status === "sent" ? "sent" : smsResult.status;
+              errorMessage = smsResult.errorMessage;
+
+              if (smsResult.status === "sent" && smsResult.sid) {
+                await db.insert(crmSmsConversations).values({
+                  leadId: lead.id,
+                  campaignId: seq.campaignId,
+                  direction: "outbound",
+                  body: aiReply,
+                  aiGenerated: true,
+                  twilioSid: smsResult.sid ?? null,
+                  aiModel: process.env.AI_SMS_MODEL || process.env.AI_MODEL || "openai/gpt-4o-mini",
+                  aiCostUsd: AI_SMS_COST_USD.toString(),
+                }).catch(e => logger.error(e, "Failed to log ai_sms to crmSmsConversations"));
+              }
 
             } else if (stepType === "direct_mail") {
               if (!seq.campaignId) continue;

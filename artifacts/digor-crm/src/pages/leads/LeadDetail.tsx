@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo, useMemo, lazy, Suspense } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiRawFetch } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { format, differenceInDays } from "date-fns";
@@ -1063,6 +1063,56 @@ function _CompsSectionPlaceholder({ leadId, lead }: { leadId: number; lead: any 
             })()}
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+// ─── AI SMS Conversations ──────────────────────────────────────────────────────
+function SmsConversations({ leadId }: { leadId: number }) {
+  const { data: msgs = [] } = useQuery<any[]>({
+    queryKey: ["crm-sms-conversations", leadId],
+    queryFn: () => apiRawFetch(`/twilio/sms-conversations/${leadId}`),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  if (msgs.length === 0) return null;
+  const aiCount = msgs.filter((m: any) => m.aiGenerated).length;
+  return (
+    <Card className="rounded-2xl border-white/5 bg-card shadow-lg overflow-hidden">
+      <div className="bg-secondary/30 p-4 border-b border-border flex items-center gap-2">
+        <MessageSquare className="w-5 h-5 text-purple-400" />
+        <h2 className="font-display font-semibold">AI SMS Conversation</h2>
+        <Badge variant="secondary" className="text-xs">{msgs.length}</Badge>
+        {aiCount > 0 && (
+          <Badge className="text-xs bg-purple-500/20 text-purple-400 border-purple-500/30 border">
+            {aiCount} AI
+          </Badge>
+        )}
+      </div>
+      <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
+        {msgs.map((msg: any) => {
+          const isOut = msg.direction === "outbound";
+          return (
+            <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[78%] px-3 py-2 rounded-2xl text-sm ${
+                isOut
+                  ? "bg-purple-600/80 text-white rounded-br-sm"
+                  : "bg-secondary text-foreground rounded-bl-sm"
+              }`}>
+                <p>{msg.body}</p>
+                <div className={`flex items-center gap-1.5 mt-1 ${isOut ? "justify-end" : "justify-start"}`}>
+                  {msg.aiGenerated && (
+                    <span className="text-[10px] text-purple-200 font-medium">🤖 AI</span>
+                  )}
+                  <span className={`text-[10px] ${isOut ? "text-purple-200" : "text-muted-foreground"}`}>
+                    {msg.createdAt ? format(new Date(msg.createdAt), "MMM d, h:mm a") : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </Card>
   );
@@ -2908,6 +2958,7 @@ export default function LeadDetail() {
           </Card>
 
           <EmailHistory leadId={leadId} />
+          <SmsConversations leadId={leadId} />
         </div>
       </div>
 

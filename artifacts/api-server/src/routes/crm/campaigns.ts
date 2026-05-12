@@ -152,11 +152,21 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     if (name !== undefined) updates.name = name;
     if (active !== undefined) updates.active = active;
 
-    // Campaign admins can manage their own Twilio settings
+    // Campaign admins can manage their own Twilio settings + AI SMS settings
     if (crmUser.role === "admin" || crmUser.role === "super_admin") {
       // Twilio config — campaign admin sets their own credentials
       // Auth token is encrypted by the /twilio/config endpoint; campaigns.ts just passes through
       if (req.body.twilioEnabled !== undefined) updates.twilioEnabled = req.body.twilioEnabled === true || req.body.twilioEnabled === "true";
+      // AI SMS auto-reply settings
+      if (req.body.aiSmsEnabled !== undefined) updates.aiSmsEnabled = req.body.aiSmsEnabled === true || req.body.aiSmsEnabled === "true";
+      if (req.body.aiSmsPersonality !== undefined) {
+        const valid = ["professional_investor", "friendly", "aggressive"];
+        if (valid.includes(req.body.aiSmsPersonality)) updates.aiSmsPersonality = req.body.aiSmsPersonality;
+      }
+      if (req.body.aiSmsMaxRepliesPerDay !== undefined) {
+        const max = Math.min(50, Math.max(1, parseInt(String(req.body.aiSmsMaxRepliesPerDay), 10) || 5));
+        updates.aiSmsMaxRepliesPerDay = max;
+      }
     }
 
     // Only super admin can change governance settings

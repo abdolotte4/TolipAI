@@ -23,13 +23,20 @@
 import { Router, type IRouter } from "express";
 import { crmAuth, crmAdminOnly } from "./crm/middleware";
 import { db } from "@workspace/db";
-import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations } from "@workspace/db/schema";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { toE164 } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
 import { logger } from "../lib/logger";
+import { generateAiSmsReply, isOptOutMessage, isHumanHandoffRequest, AI_SMS_COST_USD } from "../services/aiSmsService";
+import { sendSms } from "../services/smsService";
 
 const router: IRouter = Router();
+
+// In-memory cooldown map: leadId → last AI reply timestamp (ms)
+// Acceptable for single-process deployment per spec
+const aiSmsReplyThrottle = new Map<number, number>();
+const THROTTLE_MS = 5 * 60 * 1000; // 5 minutes per lead
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -475,9 +482,152 @@ router.post("/twilio/webhook", async (req, res) => {
           }))
         );
       }
+
+      // ── AI SMS Auto-Reply ────────────────────────────────────────────────────
+      // Fire-and-forget — do not let this block the webhook response
+      setImmediate(async () => {
+        try {
+          const [campaign] = await db
+            .select({
+              aiSmsEnabled: crmCampaigns.aiSmsEnabled,
+              aiSmsPersonality: crmCampaigns.aiSmsPersonality,
+              aiSmsMaxRepliesPerDay: crmCampaigns.aiSmsMaxRepliesPerDay,
+              twilioEnabled: crmCampaigns.twilioEnabled,
+            })
+            .from(crmCampaigns)
+            .where(eq(crmCampaigns.id, lead.campaignId!))
+            .limit(1);
+
+          if (!campaign?.aiSmsEnabled || !campaign.twilioEnabled) return;
+
+          // Opt-out keyword → record and stop
+          if (isOptOutMessage(content)) {
+            await db.insert(crmSmsOptOuts).values({
+              phone: fromNumber,
+              campaignId: lead.campaignId,
+            }).onConflictDoNothing();
+            logger.info({ leadId: lead.id, from: fromNumber }, "[aiSms] opt-out recorded");
+            return;
+          }
+
+          // Check if already opted out
+          const [optOut] = await db
+            .select({ id: crmSmsOptOuts.id })
+            .from(crmSmsOptOuts)
+            .where(eq(crmSmsOptOuts.phone, fromNumber))
+            .limit(1);
+          if (optOut) return;
+
+          // Throttle: 5-min cooldown per lead
+          const lastReply = aiSmsReplyThrottle.get(lead.id) ?? 0;
+          if (Date.now() - lastReply < THROTTLE_MS) {
+            logger.info({ leadId: lead.id }, "[aiSms] throttled — skipping");
+            return;
+          }
+
+          // Daily reply limit
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          const [{ todayCount }] = await db
+            .select({ todayCount: sql<number>`count(*)::int` })
+            .from(crmSmsConversations)
+            .where(
+              and(
+                eq(crmSmsConversations.leadId, lead.id),
+                eq(crmSmsConversations.aiGenerated, true),
+                sql`${crmSmsConversations.createdAt} >= ${todayStart.toISOString()}`
+              )
+            );
+          const maxPerDay = campaign.aiSmsMaxRepliesPerDay ?? 5;
+          if (todayCount >= maxPerDay) {
+            logger.info({ leadId: lead.id, todayCount, maxPerDay }, "[aiSms] daily limit reached");
+            return;
+          }
+
+          // Fetch full lead for context + conversation history
+          const [fullLead] = await db
+            .select({
+              sellerName: crmLeads.sellerName,
+              address: crmLeads.address,
+              city: crmLeads.city,
+              state: crmLeads.state,
+              askingPrice: crmLeads.askingPrice,
+              arv: crmLeads.arv,
+            })
+            .from(crmLeads)
+            .where(eq(crmLeads.id, lead.id))
+            .limit(1);
+
+          const history = await db
+            .select({ direction: crmSmsConversations.direction, body: crmSmsConversations.body })
+            .from(crmSmsConversations)
+            .where(eq(crmSmsConversations.leadId, lead.id))
+            .orderBy(desc(crmSmsConversations.createdAt))
+            .limit(10);
+
+          // Log inbound to crmSmsConversations
+          await db.insert(crmSmsConversations).values({
+            leadId: lead.id,
+            campaignId: lead.campaignId,
+            direction: "inbound",
+            body: content,
+            aiGenerated: false,
+            twilioSid: sid || null,
+          }).onConflictDoNothing();
+
+          const humanHandoff = isHumanHandoffRequest(content);
+
+          const aiReply = await generateAiSmsReply({
+            lead: fullLead ?? {},
+            inboundMessage: content,
+            conversationHistory: history.reverse(),
+            personality: campaign.aiSmsPersonality || "professional_investor",
+            promptOverride: humanHandoff ? "The lead is asking to speak with a human — acknowledge and say a team member will follow up shortly." : null,
+          });
+
+          // Send via smsService (uses campaign Twilio credentials)
+          const smsResult = await sendSms({ to: fromNumber, body: aiReply, campaignId: lead.campaignId! });
+
+          if (smsResult.status === "sent") {
+            aiSmsReplyThrottle.set(lead.id, Date.now());
+            await db.insert(crmSmsConversations).values({
+              leadId: lead.id,
+              campaignId: lead.campaignId,
+              direction: "outbound",
+              body: aiReply,
+              aiGenerated: true,
+              twilioSid: smsResult.sid ?? null,
+              aiModel: process.env.AI_SMS_MODEL || process.env.AI_MODEL || "openai/gpt-4o-mini",
+              aiCostUsd: AI_SMS_COST_USD.toString(),
+            });
+            logger.info({ leadId: lead.id, from: fromNumber, len: aiReply.length }, "[aiSms] reply sent");
+          } else {
+            logger.warn({ leadId: lead.id, status: smsResult.status, err: smsResult.errorMessage }, "[aiSms] send failed");
+          }
+        } catch (err) {
+          logger.error(err, "[aiSms] auto-reply error");
+        }
+      });
     }
   } catch (err) {
-    console.error("[twilio webhook]", err);
+    logger.error(err, "[twilio webhook] handler error");
+  }
+});
+
+// ── GET /api/twilio/sms-conversations/:leadId — AI SMS thread ─────────────────
+router.get("/twilio/sms-conversations/:leadId", crmAuth, async (req, res) => {
+  const leadId = parseInt(req.params.leadId as string);
+  if (isNaN(leadId)) { res.status(400).json({ error: "Invalid leadId" }); return; }
+  try {
+    const msgs = await db
+      .select()
+      .from(crmSmsConversations)
+      .where(eq(crmSmsConversations.leadId, leadId))
+      .orderBy(crmSmsConversations.createdAt);
+    res.json(msgs);
+  } catch (err) {
+    logger.error(err, "GET /twilio/sms-conversations error");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

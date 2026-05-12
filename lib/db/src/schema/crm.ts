@@ -24,6 +24,10 @@ export const crmCampaigns = pgTable("crm_campaigns", {
   // Propwire: per-campaign login (AES-256 encrypted passwords)
   scraperPropwireEmail: text("scraper_propwire_email"),
   scraperPropwirePassword: text("scraper_propwire_password"),
+  // AI SMS auto-reply — per-campaign settings
+  aiSmsEnabled: boolean("ai_sms_enabled").notNull().default(false),
+  aiSmsPersonality: text("ai_sms_personality").default("professional_investor"),
+  aiSmsMaxRepliesPerDay: integer("ai_sms_max_replies_per_day").notNull().default(5),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -225,6 +229,22 @@ export const crmSmsOptOuts = pgTable("crm_sms_opt_outs", {
 }, (t) => [
   index("crm_sms_opt_outs_campaign_id_idx").on(t.campaignId),
   index("crm_sms_opt_outs_phone_idx").on(t.phone),
+]);
+
+export const crmSmsConversations = pgTable("crm_sms_conversations", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
+  campaignId: integer("campaign_id").references(() => crmCampaigns.id),
+  direction: text("direction", { enum: ["inbound", "outbound"] }).notNull(),
+  body: text("body").notNull(),
+  aiGenerated: boolean("ai_generated").default(false),
+  twilioSid: text("twilio_sid"),
+  aiModel: text("ai_model"),
+  aiCostUsd: numeric("ai_cost_usd"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index("crm_sms_conv_lead_id_idx").on(t.leadId, t.createdAt),
+  index("crm_sms_conv_campaign_id_idx").on(t.campaignId),
 ]);
 
 export const crmComps = pgTable("crm_comps", {

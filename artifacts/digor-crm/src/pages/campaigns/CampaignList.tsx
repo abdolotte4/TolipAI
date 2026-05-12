@@ -30,6 +30,9 @@ interface Campaign {
   openPhoneNumberId: string | null;
   openPhoneNumber: string | null;
   dialerEnabled: boolean;
+  aiSmsEnabled: boolean;
+  aiSmsPersonality: string | null;
+  aiSmsMaxRepliesPerDay: number;
   userCount: number;
   leadCount: number;
   createdAt: string;
@@ -76,6 +79,7 @@ async function updateGovernance(id: number, data: {
   maxUsers: number | null; allowLeadDeletion: boolean;
   skipTraceDailyLimit: number; fetchCompsDailyLimit: number;
   openPhoneNumberId?: string | null; openPhoneNumber?: string | null; dialerEnabled?: boolean;
+  aiSmsEnabled?: boolean; aiSmsPersonality?: string; aiSmsMaxRepliesPerDay?: number;
 }): Promise<Campaign> {
   const r = await fetch(apiUrl(`/campaigns/${id}`), {
     method: "PATCH",
@@ -171,6 +175,9 @@ export default function CampaignList() {
   const [editOpenPhoneNumberId, setEditOpenPhoneNumberId] = useState<string>("");
   const [editOpenPhoneNumber, setEditOpenPhoneNumber] = useState<string>("");
   const [editDialerEnabled, setEditDialerEnabled] = useState(false);
+  const [editAiSmsEnabled, setEditAiSmsEnabled] = useState(false);
+  const [editAiSmsPersonality, setEditAiSmsPersonality] = useState("professional_investor");
+  const [editAiSmsMaxReplies, setEditAiSmsMaxReplies] = useState("5");
   const [opPhoneNumbers, setOpPhoneNumbers] = useState<OpenPhoneNumber[]>([]);
 
   useEffect(() => {
@@ -219,6 +226,9 @@ export default function CampaignList() {
     setEditOpenPhoneNumberId(campaign.openPhoneNumberId ?? "");
     setEditOpenPhoneNumber(campaign.openPhoneNumber ?? "");
     setEditDialerEnabled(campaign.dialerEnabled ?? false);
+    setEditAiSmsEnabled(campaign.aiSmsEnabled ?? false);
+    setEditAiSmsPersonality(campaign.aiSmsPersonality ?? "professional_investor");
+    setEditAiSmsMaxReplies(String(campaign.aiSmsMaxRepliesPerDay ?? 5));
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
@@ -235,6 +245,9 @@ export default function CampaignList() {
         openPhoneNumberId: editOpenPhoneNumberId || null,
         openPhoneNumber: selectedNum?.number || editOpenPhoneNumber || null,
         dialerEnabled: editDialerEnabled,
+        aiSmsEnabled: editAiSmsEnabled,
+        aiSmsPersonality: editAiSmsPersonality,
+        aiSmsMaxRepliesPerDay: Math.min(50, Math.max(1, parseInt(editAiSmsMaxReplies) || 5)),
       },
     });
   };
@@ -602,6 +615,49 @@ export default function CampaignList() {
                   <p className="text-xs text-muted-foreground">When enabled, campaign users see Call and Text buttons on every lead.</p>
                 </div>
               </div>
+            </div>
+
+            {/* AI SMS Settings */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🤖</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI SMS Auto-Reply</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch checked={editAiSmsEnabled} onCheckedChange={setEditAiSmsEnabled} />
+                <div>
+                  <p className="text-sm font-medium">{editAiSmsEnabled ? "AI auto-reply enabled" : "AI auto-reply disabled"}</p>
+                  <p className="text-xs text-muted-foreground">When enabled, inbound SMS from leads are automatically answered by AI. Requires Twilio to be configured.</p>
+                </div>
+              </div>
+              {editAiSmsEnabled && (
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-xs">AI Personality</Label>
+                    <select
+                      value={editAiSmsPersonality}
+                      onChange={e => setEditAiSmsPersonality(e.target.value)}
+                      className="w-full h-9 pl-3 pr-8 rounded-xl border border-border bg-background/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
+                    >
+                      <option value="professional_investor">Professional Investor — formal, concise, offer-focused</option>
+                      <option value="friendly">Friendly — warm, conversational, relationship-building</option>
+                      <option value="aggressive">Aggressive — direct, urgency-creating, deal-focused</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max AI Replies per Lead per Day</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={editAiSmsMaxReplies}
+                      onChange={e => setEditAiSmsMaxReplies(e.target.value)}
+                      className="h-8 text-sm bg-background/50 border-white/10 rounded-xl"
+                    />
+                    <p className="text-xs text-muted-foreground">Prevents the AI from over-messaging. Recommended: 3–10 per day.</p>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex gap-3 pt-2">
