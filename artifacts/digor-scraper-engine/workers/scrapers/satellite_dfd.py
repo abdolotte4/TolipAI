@@ -1,6 +1,6 @@
 """Satellite Drive-For-Dollars engine.
 
-Fuses property signals + Google Maps imagery + YOLO visual detections +
+Fuses property signals + Google Maps imagery + Google Cloud Vision detections +
 LLM reasoning to score property distress 0-100.
 """
 
@@ -13,9 +13,6 @@ import os
 
 import httpx
 from typing import Any, Dict, List, Optional
-
-_YOLO_CLASS = None  # type: ignore
-_YOLO_AVAILABLE = False
 
 # ─── Google Cloud Vision availability ────────────────────────────────────────
 _GCV_API_KEY: Optional[str] = None
@@ -151,86 +148,6 @@ async def _download_image(url: str, fname: str) -> Optional[str]:
         return None
 
 
-# ─── YOLO visual distress detection ──────────────────────────────────────────
-# YOLOv8n is trained on COCO80. Map detected COCO classes → distress proxies.
-# Classes that actually appear in street/aerial property imagery:
-_COCO_DISTRESS_MAP: Dict[str, str] = {
-    "couch": "furniture_outside",  # sofa on lawn = vacancy / eviction
-    "bed": "furniture_outside",  # mattress outside = eviction
-    "chair": "items_outside",  # outdoor chairs = neglect
-    "suitcase": "items_piled_outside",  # bags piled up = eviction
-    "backpack": "items_outside",
-    "bottle": "litter",  # scattered bottles = neglect
-    "cup": "litter",
-    "car": "vehicle_clutter",  # will count occurrences below
-    "truck": "vehicle_clutter",
-    "motorcycle": "vehicle_clutter",
-    "bicycle": "vehicle_clutter",
-    "potted plant": "overgrown_vegetation",
-}
-# Threshold: if ≥ N vehicles detected, flag vehicle clutter
-_VEHICLE_CLUTTER_MIN = 3
-
-_yolo_model = None  # lazy-loaded singleton to avoid OOM at startup
-_yolo_lock: Optional[asyncio.Lock] = None  # protects concurrent model-load races
-
-
-def _get_yolo_lock() -> asyncio.Lock:
-    global _yolo_lock
-    if _yolo_lock is None:
-        _yolo_lock = asyncio.Lock()
-    return _yolo_lock
-
-
-def _get_yolo():
-    """Synchronous getter — only call from non-async context or after lock acquired."""
-    global _yolo_model
-    if _yolo_model is None:
-        if not _YOLO_AVAILABLE:
-            return None
-        try:
-            _yolo_model = _YOLO_CLASS("yolov8n.pt")
-            log.info("YOLOv8n model loaded (%.1f MB)", _yolo_model_size_mb())
-        except Exception as e:
-            log.warning("YOLO model load failed: %s", e)
-            return None
-    return _yolo_model
-
-
-def _yolo_model_size_mb() -> float:
-    try:
-        import os as _os
-
-        p = "yolov8n.pt"
-        return _os.path.getsize(p) / 1024 / 1024 if _os.path.exists(p) else 0.0
-    except Exception:
-        return 0.0
-
-
-def _yolo_signals(image_path: str) -> Dict[str, bool]:
-    """Run YOLOv8n on an image and return distress signal dict."""
-    model = _get_yolo()
-    if model is None:
-        return {}
-    try:
-        results = model(image_path, verbose=False)
-        names = results[0].names
-        detected = [names[int(cls)] for cls in results[0].boxes.cls]
-        vehicle_count = sum(1 for d in detected if d in ("car", "truck", "motorcycle", "bicycle"))
-        out: Dict[str, bool] = {
-            "furniture_outside": any(d in ("couch", "bed") for d in detected),
-            "items_piled_outside": any(d in ("suitcase", "backpack", "chair") for d in detected),
-            "litter": any(d in ("bottle", "cup") for d in detected),
-            "vehicle_clutter": vehicle_count >= _VEHICLE_CLUTTER_MIN,
-            "overgrown_vegetation": "potted plant" in detected,
-        }
-        log.debug("YOLO detections: %s → signals: %s", detected[:10], out)
-        return {k: v for k, v in out.items() if v}  # only return True signals
-    except Exception as e:
-        log.warning("YOLO inference failed: %s", e)
-        return {}
-
-
 # ─── Google Cloud Vision distress detection ──────────────────────────────────
 # Distress-relevant GCV label categories mapped to signal keys
 _GCV_DISTRESS_LABELS: Dict[str, str] = {
@@ -305,21 +222,11 @@ async def _gcv_signals_from_url(image_url: str) -> Dict[str, bool]:
         return {}
 
 
-async def _visual_signals(image_path: Optional[str], image_url: Optional[str]) -> Dict[str, bool]:
-    """Merge YOLO (local file) and GCV (remote URL) visual signals."""
-    yolo: Dict[str, bool] = {}
-    gcv: Dict[str, bool] = {}
-
-    if image_path:
-        loop = asyncio.get_event_loop()
-        yolo = await loop.run_in_executor(None, _yolo_signals, image_path)
-
+async def _visual_signals(image_url: Optional[str]) -> Dict[str, bool]:
+    """Fetch visual distress signals via Google Cloud Vision."""
     if image_url and _get_gcv_key():
-        gcv = await _gcv_signals_from_url(image_url)
-
-    # Merge: YOLO takes priority for keys it provides; GCV fills gaps
-    merged = {**gcv, **yolo}
-    return merged
+        return await _gcv_signals_from_url(image_url)
+    return {}
 
 
 # ─── AI distress reasoning ───────────────────────────────────────────────────
@@ -327,7 +234,7 @@ async def _ai_distress_score(
     address: str,
     signals: Dict[str, Any],
     base_score: int,
-    yolo_signals: Dict[str, bool],
+    visual_signals: Dict[str, bool],
 ) -> Dict[str, Any]:
     sys_msg = (
         "You are a real estate distress analyst. Score property distress 0-100. "
@@ -335,9 +242,9 @@ async def _ai_distress_score(
         "where category is one of: low, medium, high, severe."
     )
     sig_lines = "\n".join(f"- {k}: {v}" for k, v in signals.items() if v)
-    yolo_lines = "\n".join(f"- VISUAL: {k}" for k, v in yolo_signals.items() if v)
+    vis_lines = "\n".join(f"- VISUAL: {k}" for k, v in visual_signals.items() if v)
     user_msg = f"Property: {address}\nBase score: {base_score}\n" f"Signals:\n{sig_lines}" + (
-        f"\nVisual detections (YOLO):\n{yolo_lines}" if yolo_lines else ""
+        f"\nVisual detections:\n{vis_lines}" if vis_lines else ""
     )
     try:
         raw = await _chat(
@@ -476,7 +383,6 @@ async def scan_area(
         min_score,
     )
     has_google = bool(_google_key())
-    has_yolo = _YOLO_AVAILABLE
 
     listings = await _fetch_listings(zip_code=zip_code, city=city, state=state)
     log.info("DFD: fetched %d listings", len(listings))
@@ -520,29 +426,20 @@ async def scan_area(
             sat_url = _satellite_url(float(lat), float(lon))
             sv_url = _streetview_url(float(lat), float(lon))
 
-        # ── Visual distress detection: YOLO (local) + Google Cloud Vision ───────
-        yolo_sigs: Dict[str, bool] = {}
+        # ── Visual distress detection via Google Cloud Vision ────────────────
+        visual_sigs: Dict[str, bool] = {}
         _has_gcv = bool(_get_gcv_key())
-        _run_visual = (base_score >= 40) and (has_google or _has_gcv)
-        if _run_visual:
-            img_path: Optional[str] = None
-            if has_yolo and has_google and sv_url:
-                fname = f"/tmp/sv_{lat}_{lon}.jpg"
-                img_path = await _download_image(sv_url, fname)
-
-            # Use YOLO (requires local file) + GCV (uses satellite URL directly)
-            # _visual_signals() gracefully skips whichever source is unavailable
-            async with _get_yolo_lock():
-                yolo_sigs = await _visual_signals(img_path, sat_url if _has_gcv else None)
-
+        _run_visual = (base_score >= 40) and _has_gcv
+        if _run_visual and sat_url:
+            visual_sigs = await _visual_signals(sat_url)
             # Each confirmed visual signal bumps score by 5 pts (cap at +20)
-            visual_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
+            visual_boost = min(20, sum(5 for v in visual_sigs.values() if v))
             base_score = min(100, base_score + visual_boost)
 
         # ── AI reasoning ─────────────────────────────────────────────────────
         if use_ai_scoring:
             async with _get_ai_sem():
-                scored = await _ai_distress_score(p.get("address", ""), signals, base_score, yolo_sigs)
+                scored = await _ai_distress_score(p.get("address", ""), signals, base_score, visual_sigs)
         else:
             scored = {
                 "score": base_score,
@@ -577,7 +474,7 @@ async def scan_area(
                 "year_built": year_built,
                 "source": p.get("source", "zillow"),
                 "signals": signals,
-                "visual_signals": yolo_sigs,
+                "visual_signals": visual_sigs,
             }
         )
 
@@ -595,7 +492,7 @@ async def scan_area(
         "total_above_threshold": total_above,
         "min_score_filter": min_score,
         "google_imagery": has_google,
-        "yolo_available": has_yolo,
+        "gcv_available": _has_gcv,
         "results": top,
         "count": len(top),
     }

@@ -2288,15 +2288,15 @@ async def debug_playwright() -> Dict[str, Any]:
 
 @app.get("/debug/satellite")
 async def debug_satellite() -> Dict[str, Any]:
-    """Show satellite DFD config: Google Maps API status, YOLO availability."""
-    from .scrapers.satellite_dfd import _google_key, _YOLO_AVAILABLE
+    """Show satellite DFD config: Google Maps API status, GCV availability."""
+    from .scrapers.satellite_dfd import _google_key, _get_gcv_key
 
     gkey = _google_key()
+    gcv_key = _get_gcv_key()
     return {
         "google_maps_configured": bool(gkey),
         "google_maps_key_prefix": (gkey[:8] + "…") if gkey else None,
-        "yolo_available": _YOLO_AVAILABLE,
-        "yolo_note": "YOLO is disabled — AI-based scoring uses LLM instead",
+        "gcv_configured": bool(gcv_key),
         "satellite_endpoint": "POST /ai/satellite-dfd",
         "required_params": {"city": "str", "state": "str (or zip: str)"},
     }

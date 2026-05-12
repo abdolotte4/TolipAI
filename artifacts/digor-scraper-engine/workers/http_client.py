@@ -148,7 +148,7 @@ def _ssl_ctx(verify: bool = False) -> Any:
 
 
 # ─── Direct fetch ────────────────────────────────────────────────────────────
-async def fetch_direct(url: str, *, use_proxy: bool = True, verify_ssl: bool = False) -> Any:
+async def fetch_direct(url: str, *, use_proxy: bool = True, verify_ssl: bool = True) -> Any:
     """Plain httpx fetch with rotating UA + optional residential proxy.
     Returns .text for HTML, raw bytes for PDFs.
     Reuses the persistent client (connection pooling) when no proxy is needed.
@@ -194,7 +194,7 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us", is_
     gov_site = _should_skip_proxy(url)
 
     try:
-        return await fetch_direct(url, use_proxy=not gov_site, verify_ssl=False)
+        return await fetch_direct(url, use_proxy=not gov_site)
     except Exception as e:
         errors.append(f"direct: {e}")
         log.debug("Direct fetch failed for %s: %s", url, e)
@@ -346,10 +346,13 @@ async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
     try:
         proxy = settings.proxy_url() if use_proxy else None
         headers = _build_headers(url)
-        async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout) as cli:
-            r = await cli.get(url)
-            r.raise_for_status()
-            pdf_bytes = r.content
+        if proxy is None and _persistent_client and not _persistent_client.is_closed:
+            r = await _persistent_client.get(url, headers=headers, follow_redirects=True)
+        else:
+            async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout) as cli:
+                r = await cli.get(url, follow_redirects=True)
+        r.raise_for_status()
+        pdf_bytes = r.content
     except Exception as e:
         log.warning("PDF fetch failed for %s: %s", url, str(e)[:120])
         return ""
