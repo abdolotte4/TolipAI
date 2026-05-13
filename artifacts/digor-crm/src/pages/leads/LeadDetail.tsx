@@ -1070,21 +1070,46 @@ function _CompsSectionPlaceholder({ leadId, lead }: { leadId: number; lead: any 
 
 // ─── AI SMS Conversations ──────────────────────────────────────────────────────
 function SmsConversations({ leadId }: { leadId: number }) {
-  const { data: msgs = [], isError, error } = useQuery<any[]>({
+  const { data: rawMsgs, isError, error, isLoading } = useQuery<any[]>({
     queryKey: ["crm-sms-conversations", leadId],
-    queryFn: () => apiRawFetch(`/twilio/sms-conversations/${leadId}`),
+    queryFn: async () => {
+      try {
+        return await apiRawFetch(`/twilio/sms-conversations/${leadId}`);
+      } catch (err: any) {
+        // ✅ Don't let apiRawFetch throw crash the component
+        console.log("[SmsConversations] Fetch error:", err.message);
+        return [];
+      }
+    },
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
-  
-  // ✅ Graceful error handling — don't crash the page
+
+  // ✅ Normalize to array immediately — never undefined
+  const msgs = Array.isArray(rawMsgs) ? rawMsgs : [];
+
+  // ✅ Show nothing while loading or empty — no flash
+  if (isLoading || msgs.length === 0) return null;
+
+  // ✅ Log error but still render if we have cached data
   if (isError) {
-    console.log("[SmsConversations] Error loading conversations:", error);
-    return null;  // Silently hide if SMS not available
+    console.log("[SmsConversations] Query error:", error);
   }
-  
-  if (!msgs || msgs.length === 0) return null;
+
   const aiCount = msgs.filter((m: any) => m.aiGenerated).length;
+
+  // ✅ Safe date formatting helper
+  const safeFormat = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "";
+      return format(d, "MMM d, h:mm a");
+    } catch {
+      return "";
+    }
+  };
+
   return (
     <Card className="rounded-2xl border-white/5 bg-card shadow-lg overflow-hidden">
       <div className="bg-secondary/30 p-4 border-b border-border flex items-center gap-2">
@@ -1101,19 +1126,19 @@ function SmsConversations({ leadId }: { leadId: number }) {
         {msgs.map((msg: any) => {
           const isOut = msg.direction === "outbound";
           return (
-            <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+            <div key={msg.id || msg.twilioSid || Math.random()} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[78%] px-3 py-2 rounded-2xl text-sm ${
                 isOut
                   ? "bg-purple-600/80 text-white rounded-br-sm"
                   : "bg-secondary text-foreground rounded-bl-sm"
               }`}>
-                <p>{msg.body}</p>
+                <p>{msg.body || "(no content)"}</p>
                 <div className={`flex items-center gap-1.5 mt-1 ${isOut ? "justify-end" : "justify-start"}`}>
                   {msg.aiGenerated && (
                     <span className="text-[10px] text-purple-200 font-medium">🤖 AI</span>
                   )}
                   <span className={`text-[10px] ${isOut ? "text-purple-200" : "text-muted-foreground"}`}>
-                    {msg.createdAt ? format(new Date(msg.createdAt), "MMM d, h:mm a") : ""}
+                    {safeFormat(msg.createdAt)}
                   </span>
                 </div>
               </div>
@@ -1124,7 +1149,6 @@ function SmsConversations({ leadId }: { leadId: number }) {
     </Card>
   );
 }
-
 // ─── Email History ─────────────────────────────────────────────────────────────
 function EmailHistory({ leadId }: { leadId: number }) {
   const { data: logs = [] } = useQuery<any[]>({
