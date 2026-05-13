@@ -1985,7 +1985,7 @@ function opFetch(path: string, options?: RequestInit) {
       initializedRef.current = true;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lead]); 
 
   // Sync debounced text inputs → formData (only fires after user stops typing)
   // Uses setFormData/setIsDirty directly (not `field`) to avoid reference-before-init issue
