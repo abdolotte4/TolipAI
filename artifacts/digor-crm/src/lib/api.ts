@@ -24,7 +24,10 @@ export function apiFetch(path: string, options?: RequestInit): Promise<any> {
 }
 
 /** For non-CRM routes: /api/... (scraper-engine integrations, twilio, etc.) */
-export function apiRawFetch(path: string, options?: RequestInit): Promise<any> {
+export function apiRawFetch(
+  path: string, 
+  options?: RequestInit & { suppressErrors?: boolean }
+): Promise<any> {
   const token = localStorage.getItem("crm_token");
   return fetch(`/api${path}`, {
     ...options,
@@ -39,8 +42,11 @@ export function apiRawFetch(path: string, options?: RequestInit): Promise<any> {
       window.location.href = "/login";
       throw new Error("Session expired — please log in again.");
     }
-    const json = await r.json();
-    if (!r.ok) throw new Error(json?.error || `Request failed: ${r.status}`);
+    const json = await r.json().catch(() => ({}));
+    // ✅ Don't throw if caller suppresses errors (e.g., Twilio not configured)
+    if (!r.ok && !options?.suppressErrors) {
+      throw new Error(json?.error || `Request failed: ${r.status}`);
+    }
     return json;
   });
 }

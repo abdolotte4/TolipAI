@@ -1070,13 +1070,20 @@ function _CompsSectionPlaceholder({ leadId, lead }: { leadId: number; lead: any 
 
 // ─── AI SMS Conversations ──────────────────────────────────────────────────────
 function SmsConversations({ leadId }: { leadId: number }) {
-  const { data: msgs = [] } = useQuery<any[]>({
+  const { data: msgs = [], isError, error } = useQuery<any[]>({
     queryKey: ["crm-sms-conversations", leadId],
     queryFn: () => apiRawFetch(`/twilio/sms-conversations/${leadId}`),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
-  if (msgs.length === 0) return null;
+  
+  // ✅ Graceful error handling — don't crash the page
+  if (isError) {
+    console.log("[SmsConversations] Error loading conversations:", error);
+    return null;  // Silently hide if SMS not available
+  }
+  
+  if (!msgs || msgs.length === 0) return null;
   const aiCount = msgs.filter((m: any) => m.aiGenerated).length;
   return (
     <Card className="rounded-2xl border-white/5 bg-card shadow-lg overflow-hidden">
@@ -1797,8 +1804,7 @@ export default function LeadDetail() {
   const [callDialing, setCallDialing] = useState(false);
   const [callSuccess, setCallSuccess] = useState("");
   const [callErr, setCallErr] = useState("");
-
-  function opFetch(path: string, options?: RequestInit) {
+function opFetch(path: string, options?: RequestInit) {
     const token = localStorage.getItem("crm_token");
     return fetch(`/api${path}`, {
       ...options,
@@ -1808,8 +1814,10 @@ export default function LeadDetail() {
         ...(options?.headers || {}),
       },
     }).then(async r => {
-      const json = await r.json();
-      if (!r.ok) throw new Error(json?.error || "Twilio error");
+      const json = await r.json().catch(() => ({}));  // ✅ Just return {} on parse fail
+      if (!r.ok && r.status !== 400 && r.status !== 404) {
+        throw new Error(json?.error || `Twilio error ${r.status}`);
+      }
       return json;
     });
   }
@@ -1829,10 +1837,10 @@ export default function LeadDetail() {
   }
 
   // Load phone numbers once + auto-select by campaign → state → first
-  useEffect(() => {
+ useEffect(() => {
     opFetch("/twilio/phone-numbers")
       .then(d => {
-        const numbers = d.phoneNumbers || [];
+        const numbers = d?.phoneNumbers || [];
         setOpPhoneNumbers(numbers);
         // Priority 1: campaign's assigned number
         if (campaignData?.twilioPhoneNumber) {
@@ -1849,17 +1857,17 @@ export default function LeadDetail() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignData?.twilioPhoneNumber, lead?.state]);
 
-  // Load stored messages from DB (includes inbound replies) + live calls from Twilio
+    // Load stored messages from DB (includes inbound replies) + live calls from Twilio
   const loadStoredMessages = () => {
     if (!leadId) return;
     setOpLoadingMsgs(true);
     setOpError("");
     const callsPromise = opSelectedId && lead?.phone
       ? opFetch(`/twilio/calls?phoneNumberId=${encodeURIComponent(opSelectedId)}&contactPhone=${encodeURIComponent(lead.phone)}`)
-          .then(d => d.calls || []).catch(() => [])
+          .then(d => d?.calls || []).catch(() => [])
       : Promise.resolve([]);
     Promise.all([
-      opFetch(`/twilio/lead-messages/${leadId}`).then(d => d.messages || []).catch(() => []),
+      opFetch(`/twilio/lead-messages/${leadId}`).then(d => d?.messages || []).catch(() => []),
       callsPromise,
     ])
       .then(([msgs, calls]) => {
@@ -1887,7 +1895,7 @@ export default function LeadDetail() {
     setOpSending(true);
     setOpError("");
     try {
-      await opFetch("/twilio/messages", {
+      const result = await opFetch("/twilio/messages", {
         method: "POST",
         body: JSON.stringify({
           phoneNumberId: opSelectedId,
@@ -1897,6 +1905,9 @@ export default function LeadDetail() {
           campaignId: (lead as any)?.campaignId,
         }),
       });
+      // ✅ Check if backend returned an error (e.g., Twilio not configured)
+      if (result?.error) throw new Error(result.error);
+      
       setOpSmsContent("");
       addNoteMutation.mutate({ id: leadId, data: { content: `📱 SMS sent: "${opSmsContent.trim()}"` } });
       setTimeout(refreshOpMessages, 1500);
@@ -2958,7 +2969,10 @@ export default function LeadDetail() {
           </Card>
 
           <EmailHistory leadId={leadId} />
-          <SmsConversations leadId={leadId} />
+          {/* ✅ Only render SMS conversations if Twilio is configured */}
+{(campaignData?.twilioConfigured || campaignData?.twilioEnabled) && (
+  <SmsConversations leadId={leadId} />
+)}
         </div>
       </div>
 

@@ -156,7 +156,10 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
 
 router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
-  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  if (!crmUser.campaignId) { 
+    res.json({ phoneNumbers: [] });  // ✅ Return empty, don't crash
+    return; 
+  }
   try {
     const creds = await getCampaignTwilioCreds(crmUser.campaignId);
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
@@ -168,7 +171,9 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
     }));
     res.json({ phoneNumbers: numbers });
   } catch (err: any) {
-    res.status(err.status || 500).json({ error: err.message });
+    // ✅ Return empty array on ANY error — don't crash the frontend
+    console.error("[twilio/phone-numbers] error:", err.message);
+    res.json({ phoneNumbers: [] });
   }
 });
 
