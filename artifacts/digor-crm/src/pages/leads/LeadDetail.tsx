@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo, useMemo, lazy, Suspense } from "react";
+import BrowserDialer from "@/components/leads/BrowserDialer";
 import { apiFetch, apiRawFetch } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -1822,7 +1823,7 @@ export default function LeadDetail() {
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [opLoadingMsgs, setOpLoadingMsgs] = useState(false);
   const [opError, setOpError] = useState("");
-  const [opTab, setOpTab] = useState<"messages" | "calls">("messages");
+  const [opTab, setOpTab] = useState<"messages" | "calls" | "browser">("messages");
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [agentPhone, setAgentPhone] = useState(() => localStorage.getItem("crm_agent_phone") || "");
   const [callDialing, setCallDialing] = useState(false);
@@ -2496,6 +2497,7 @@ function opFetch(path: string, options?: RequestInit) {
                   {([
                     { key: "messages", label: "Messages", count: opMessages.length },
                     { key: "calls", label: "Calls", count: opCalls.length },
+                    ...(campaignData?.twilioVoiceAppSid || isSuperAdmin ? [{ key: "browser" as const, label: "Browser Dialer", count: 0 }] : []),
                   ] as const).map(t => (
                     <button
                       key={t.key}
@@ -2577,6 +2579,18 @@ function opFetch(path: string, options?: RequestInit) {
                       </div>
                     </div>
                   </>
+                )}
+
+                {/* Browser Dialer tab */}
+                {opTab === "browser" && (
+                  <div className="p-4">
+                    <BrowserDialer
+                      leadPhone={lead?.phone}
+                      leadId={lead?.id}
+                      leadName={lead?.sellerName || undefined}
+                      onCallLogged={() => { /* refresh calls list */ refreshOpMessages(); }}
+                    />
+                  </div>
                 )}
 
                 {/* Calls tab */}

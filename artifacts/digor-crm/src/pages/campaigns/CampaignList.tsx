@@ -183,7 +183,7 @@ export default function CampaignList() {
 
   useEffect(() => {
     const token = localStorage.getItem("crm_token");
-    fetch("/api/signalwire/phone-numbers", {
+    fetch("/api/twilio/phone-numbers", {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     })
       .then(r => r.json())

@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   Phone, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2,
   ExternalLink, RefreshCw, Zap, ShieldCheck, MessageSquare,
-  PhoneCall, ChevronRight, ArrowLeft, Info, Copy, Check,
+  PhoneCall, ChevronRight, ArrowLeft, Info, Copy, Check, Mic,
 } from "lucide-react";
 import { apiRawFetch as apiFetch } from "@/lib/api";
 import { Link } from "wouter";
@@ -38,7 +38,11 @@ export default function TwilioConnect() {
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [apiKeySid, setApiKeySid] = useState("");
+  const [apiKeySecret, setApiKeySecret] = useState("");
+  const [voiceAppSid, setVoiceAppSid] = useState("");
   const [showToken, setShowToken] = useState(false);
+  const [showApiSecret, setShowApiSecret] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
 
   const { data: config, isLoading } = useQuery<any>({
@@ -54,13 +58,14 @@ export default function TwilioConnect() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (body: { accountSid: string; authToken: string; phoneNumber: string; twilioEnabled: boolean }) =>
-      apiFetch("/twilio/config", { method: "POST", body: JSON.stringify(body) }),
+    mutationFn: (body: {
+      accountSid: string; authToken: string; phoneNumber: string; twilioEnabled: boolean;
+      apiKeySid: string; apiKeySecret: string; voiceAppSid: string;
+    }) => apiFetch("/twilio/config", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       toast({ title: "Twilio credentials saved", description: "Your campaign is now connected to Twilio." });
-      setAccountSid("");
-      setAuthToken("");
-      setPhoneNumber("");
+      setAccountSid(""); setAuthToken(""); setPhoneNumber("");
+      setApiKeySid(""); setApiKeySecret(""); setVoiceAppSid("");
       qc.invalidateQueries({ queryKey: ["twilio-config"] });
     },
     onError: (err: Error) =>
@@ -85,6 +90,7 @@ export default function TwilioConnect() {
 
   const isConfigured = config?.configured;
   const isEnabled = config?.twilioEnabled;
+  const isVoiceConfigured = config?.voiceConfigured;
 
   return (
     <div className="space-y-6 pb-20 max-w-3xl">
@@ -107,7 +113,12 @@ export default function TwilioConnect() {
               <Badge className="bg-secondary text-muted-foreground border-white/10 border text-xs">Not configured</Badge>
             )}
           </div>
-          <p className="text-muted-foreground text-sm mt-0.5">Click-to-call and two-way SMS for your campaign leads.</p>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            {me?.campaignName ? (
+              <span>Campaign: <span className="text-foreground font-medium">{me.campaignName}</span> · </span>
+            ) : null}
+            Click-to-call, browser dialer, and two-way SMS for your campaign leads.
+          </p>
         </div>
       </motion.div>
 
@@ -146,16 +157,17 @@ export default function TwilioConnect() {
                 </a>
               </div>
             </div>
-            <div className="grid grid-cols-3 divide-x divide-border border-t border-border">
+            <div className="grid grid-cols-4 divide-x divide-border border-t border-border">
               {[
                 { icon: MessageSquare, label: "SMS", desc: "Send & receive texts" },
                 { icon: PhoneCall, label: "Click-to-Call", desc: "Bridge calls via Twilio" },
+                { icon: Mic, label: "Browser Dialer", desc: isVoiceConfigured ? "Configured" : "Needs API Key", active: isVoiceConfigured },
                 { icon: ShieldCheck, label: "Webhooks", desc: "Inbound message sync" },
-              ].map(({ icon: Icon, label, desc }) => (
+              ].map(({ icon: Icon, label, desc, active }) => (
                 <div key={label} className="p-4 flex flex-col items-center text-center gap-1">
-                  <Icon className="w-4 h-4 text-primary mb-1" />
+                  <Icon className={`w-4 h-4 mb-1 ${active === false ? "text-amber-400" : "text-primary"}`} />
                   <p className="text-xs font-semibold">{label}</p>
-                  <p className="text-[10px] text-muted-foreground">{desc}</p>
+                  <p className={`text-[10px] ${active === false ? "text-amber-400" : "text-muted-foreground"}`}>{desc}</p>
                 </div>
               ))}
             </div>
@@ -179,58 +191,145 @@ export default function TwilioConnect() {
                 </a>
               </p>
             </div>
-            <div className="p-5 space-y-4">
-              <div className="space-y-2">
-                <Label>Account SID</Label>
-                <div className="relative">
-                  <Input
-                    className="bg-background/50 rounded-xl font-mono text-sm pr-10"
-                    placeholder={isConfigured ? config?.accountSid || "AC••••••••••••••••••••••••••••••••" : "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
-                    value={accountSid}
-                    onChange={e => setAccountSid(e.target.value)}
-                  />
-                  {accountSid && (
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                      <CopyButton text={accountSid} />
+            <div className="p-5 space-y-5">
+
+              {/* ── SMS / Core Credentials ── */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Core SMS Credentials</p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Account SID</Label>
+                    <div className="relative">
+                      <Input
+                        className="bg-background/50 rounded-xl font-mono text-sm pr-10"
+                        placeholder={isConfigured ? config?.accountSid || "AC••••••••••••••••••••••••••••••••" : "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+                        value={accountSid}
+                        onChange={e => setAccountSid(e.target.value)}
+                      />
+                      {accountSid && (
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                          <CopyButton text={accountSid} />
+                        </div>
+                      )}
                     </div>
-                  )}
+                    <p className="text-[11px] text-muted-foreground">Starts with "AC" — found on your Twilio Console dashboard.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Auth Token</Label>
+                    <div className="relative">
+                      <Input
+                        type={showToken ? "text" : "password"}
+                        className="bg-background/50 rounded-xl font-mono text-sm pr-10"
+                        placeholder={isConfigured ? config?.authTokenMasked || "••••••••••••••••••••••••" : "Your Auth Token"}
+                        value={authToken}
+                        onChange={e => setAuthToken(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowToken(v => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Stored encrypted — never sent to third parties.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Phone Number <span className="text-muted-foreground font-normal">(optional — leave blank to auto-select from account)</span></Label>
+                    <Input
+                      className="bg-background/50 rounded-xl font-mono text-sm"
+                      placeholder={isConfigured && config?.phoneNumber ? config.phoneNumber : "+1 (555) 000-0000"}
+                      value={phoneNumber}
+                      onChange={e => setPhoneNumber(e.target.value)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Your Twilio number in E.164 format, e.g. +17035551234</p>
+                  </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground">Starts with "AC" — found on your Twilio Console dashboard.</p>
               </div>
-              <div className="space-y-2">
-                <Label>Auth Token</Label>
-                <div className="relative">
-                  <Input
-                    type={showToken ? "text" : "password"}
-                    className="bg-background/50 rounded-xl font-mono text-sm pr-10"
-                    placeholder={isConfigured ? config?.authTokenMasked || "••••••••••••••••••••••••" : "Your Auth Token"}
-                    value={authToken}
-                    onChange={e => setAuthToken(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowToken(v => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+
+              {/* ── Browser Voice / API Key Credentials ── */}
+              <div className="pt-2 border-t border-border">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Browser Calling (Voice SDK)</p>
+                <p className="text-[11px] text-muted-foreground mb-3">
+                  Required for in-browser calling. Create an API Key at{" "}
+                  <a href="https://console.twilio.com/us1/account/keys-credentials/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    console.twilio.com → API Keys
+                  </a>
+                  {" "}and a TwiML App at{" "}
+                  <a href="https://console.twilio.com/us1/develop/voice/twiml-apps" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    TwiML Apps
+                  </a>.
+                </p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>API Key SID</Label>
+                    <div className="relative">
+                      <Input
+                        className="bg-background/50 rounded-xl font-mono text-sm pr-10"
+                        placeholder={isConfigured ? config?.apiKeySid || "SK••••••••••••••••••••••••••••••••" : "SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+                        value={apiKeySid}
+                        onChange={e => setApiKeySid(e.target.value)}
+                      />
+                      {apiKeySid && (
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                          <CopyButton text={apiKeySid} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Starts with "SK" — used to generate browser Voice tokens.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Key Secret</Label>
+                    <div className="relative">
+                      <Input
+                        type={showApiSecret ? "text" : "password"}
+                        className="bg-background/50 rounded-xl font-mono text-sm pr-10"
+                        placeholder={isConfigured ? config?.apiKeySecretMasked || "••••••••••••••••••••••••" : "API Key Secret"}
+                        value={apiKeySecret}
+                        onChange={e => setApiKeySecret(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiSecret(v => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showApiSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Stored encrypted — only displayed once by Twilio when created.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>TwiML App SID (Voice)</Label>
+                    <div className="relative">
+                      <Input
+                        className="bg-background/50 rounded-xl font-mono text-sm pr-10"
+                        placeholder={isConfigured ? config?.voiceAppSid || "AP••••••••••••••••••••••••••••••••" : "APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+                        value={voiceAppSid}
+                        onChange={e => setVoiceAppSid(e.target.value)}
+                      />
+                      {voiceAppSid && (
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                          <CopyButton text={voiceAppSid} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Starts with "AP". Set its Voice Request URL to:{" "}
+                      <span className="font-mono text-primary">
+                        {window.location.origin}/api/twilio/voice/answer
+                      </span>
+                    </p>
+                  </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground">Stored encrypted — never sent to third parties.</p>
               </div>
-              <div className="space-y-2">
-                <Label>Phone Number <span className="text-muted-foreground font-normal">(optional — leave blank to auto-select from account)</span></Label>
-                <Input
-                  className="bg-background/50 rounded-xl font-mono text-sm"
-                  placeholder={isConfigured && config?.phoneNumber ? config.phoneNumber : "+1 (555) 000-0000"}
-                  value={phoneNumber}
-                  onChange={e => setPhoneNumber(e.target.value)}
-                />
-                <p className="text-[11px] text-muted-foreground">Your Twilio number in E.164 format, e.g. +17035551234</p>
-              </div>
+
               <Button
                 className="w-full gap-2"
                 disabled={saveMutation.isPending || (!accountSid && !isConfigured) || (!authToken && !isConfigured)}
-                onClick={() => saveMutation.mutate({ accountSid, authToken, phoneNumber, twilioEnabled: true })}
+                onClick={() => saveMutation.mutate({
+                  accountSid, authToken, phoneNumber, twilioEnabled: true,
+                  apiKeySid, apiKeySecret, voiceAppSid,
+                })}
               >
                 {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                 {isConfigured ? "Update Credentials" : "Connect Twilio"}
@@ -302,7 +401,10 @@ export default function TwilioConnect() {
               disabled={saveMutation.isPending}
               onClick={() => {
                 if (confirm("This will clear your Twilio credentials and disable the dialer for this campaign. Continue?")) {
-                  saveMutation.mutate({ accountSid: "", authToken: "", phoneNumber: "", twilioEnabled: false });
+                  saveMutation.mutate({
+                    accountSid: "", authToken: "", phoneNumber: "", twilioEnabled: false,
+                    apiKeySid: "", apiKeySecret: "", voiceAppSid: "",
+                  });
                 }
               }}
             >

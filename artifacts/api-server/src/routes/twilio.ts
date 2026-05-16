@@ -32,7 +32,6 @@ import { generateAiSmsReply, isOptOutMessage, isHumanHandoffRequest, AI_SMS_COST
 import { sendSms } from "../services/smsService";
 
 const router: IRouter = Router();
-import twilioVoiceRouter from "./twilio-voice";
 
 
 // In-memory cooldown map: leadId → last AI reply timestamp (ms)
@@ -114,12 +113,20 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
     const token = campaign?.twilioAuthToken ?? null;
     const phone = campaign?.twilioPhoneNumber ?? null;
     const enabled = campaign?.twilioEnabled ?? false;
+    const apiKeySid = campaign?.twilioApiKeySid ?? null;
+    const apiKeySecret = campaign?.twilioApiKeySecret ?? null;
+    const voiceAppSid = campaign?.twilioVoiceAppSid ?? null;
+    const voiceConfigured = !!(sid && apiKeySid && apiKeySecret && voiceAppSid && phone);
     res.json({
       configured: !!(sid && token),
+      voiceConfigured,
       twilioEnabled: enabled,
       accountSid: sid || null,
       authTokenMasked: token ? "••••••••••••••••••••••••" + token.slice(-4) : null,
       phoneNumber: phone || null,
+      apiKeySid: apiKeySid || null,
+      apiKeySecretMasked: apiKeySecret ? "••••••••••••••••••••••••" + apiKeySecret.slice(-4) : null,
+      voiceAppSid: voiceAppSid || null,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -132,19 +139,24 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
   const crmUser = req.crmUser!;
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
 
-  const { accountSid, authToken, phoneNumber, twilioEnabled } = req.body;
+  const { accountSid, authToken, phoneNumber, twilioEnabled, apiKeySid, apiKeySecret, voiceAppSid } = req.body;
   if (!accountSid || !authToken) {
     res.status(400).json({ error: "accountSid and authToken are required" }); return;
   }
 
   try {
     const encToken = encryptPassword(authToken);
+    const encApiSecret = apiKeySecret ? encryptPassword(apiKeySecret) : undefined;
+
     await db.update(crmCampaigns)
       .set({
         twilioAccountSid: accountSid,
         twilioAuthToken: encToken,
         twilioPhoneNumber: phoneNumber || null,
         twilioEnabled: twilioEnabled !== false,
+        twilioApiKeySid: apiKeySid || null,
+        twilioApiKeySecret: encApiSecret ?? null,
+        twilioVoiceAppSid: voiceAppSid || null,
       })
       .where(eq(crmCampaigns.id, crmUser.campaignId));
 

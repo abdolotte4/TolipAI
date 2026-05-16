@@ -15,7 +15,10 @@ export const crmCampaigns = pgTable("crm_campaigns", {
   dialerEnabled: boolean("dialer_enabled").notNull().default(false),
   // Twilio: per-campaign credentials so each campaign uses their own Twilio account
   twilioAccountSid: text("twilio_account_sid"),
-  twilioAuthToken: text("twilio_auth_token"),  // stored AES-256 encrypted
+  twilioAuthToken: text("twilio_auth_token"),           // stored AES-256 encrypted
+  twilioApiKeySid: text("twilio_api_key_sid"),          // SK... — for Voice SDK tokens
+  twilioApiKeySecret: text("twilio_api_key_secret"),    // stored AES-256 encrypted
+  twilioVoiceAppSid: text("twilio_voice_app_sid"),      // AP... — TwiML App for browser calling
   twilioPhoneNumber: text("twilio_phone_number"),
   twilioEnabled: boolean("twilio_enabled").notNull().default(false),
   // Propelio: per-campaign login (AES-256 encrypted passwords)
@@ -219,6 +222,32 @@ export const crmSequenceLogs = pgTable("crm_sequence_logs", {
   index("crm_sequence_logs_lead_id_idx").on(t.leadId),
   index("crm_sequence_logs_step_id_idx").on(t.stepId),
   index("crm_sequence_logs_sent_at_idx").on(t.sentAt),
+]);
+
+export const crmCallLogs = pgTable("crm_call_logs", {
+  id: serial("id").primaryKey(),
+  callSid: text("call_sid").unique(),
+  campaignId: integer("campaign_id").references(() => crmCampaigns.id),
+  leadId: integer("lead_id").references(() => crmLeads.id, { onDelete: "set null" }),
+  userId: integer("user_id").references(() => crmUsers.id),
+  direction: text("direction").notNull().default("outbound"),
+  status: text("status").notNull().default("initiated"),
+  duration: integer("duration"),                             // seconds
+  fromNumber: text("from_number"),
+  toNumber: text("to_number"),
+  recordingSid: text("recording_sid"),
+  recordingUrl: text("recording_url"),
+  transcript: text("transcript"),
+  mosScore: numeric("mos_score", { precision: 4, scale: 2 }),
+  jitterMs: numeric("jitter_ms", { precision: 8, scale: 2 }),
+  packetLossPct: numeric("packet_loss_pct", { precision: 5, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_call_logs_campaign_id_idx").on(t.campaignId),
+  index("crm_call_logs_lead_id_idx").on(t.leadId),
+  index("crm_call_logs_user_id_idx").on(t.userId),
+  index("crm_call_logs_created_at_idx").on(t.createdAt),
 ]);
 
 export const crmSmsOptOuts = pgTable("crm_sms_opt_outs", {

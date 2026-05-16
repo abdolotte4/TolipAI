@@ -8,6 +8,7 @@ function getJwtSecret(): string {
 }
 
 export interface CrmTokenPayload {
+  id: number;
   userId: number;
   email: string;
   role: string;

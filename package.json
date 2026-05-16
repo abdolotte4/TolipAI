@@ -23,6 +23,16 @@
     "typescript": "~5.9.2"
   },
   "dependencies": {
-    "sharp": "^0.34.5"
+    "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
+    "express-rate-limit": "^8.3.1",
+    "handlebars": "^4.7.9",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^8.0.3",
+    "papaparse": "^5.5.3",
+    "sharp": "^0.34.5",
+    "stripe": "^22.0.0",
+    "twilio": "^5.13.1"
   }
 }

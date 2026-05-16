@@ -1,84 +1,140 @@
 // src/routes/twilio-voice.ts
+//
+// Campaign-based Twilio Voice endpoints.
+// Each campaign stores its own API Key SID / Secret / TwiML App SID in the DB.
+// Super-admins fall back to global env vars when campaign creds are missing.
+//
+// Env-var fallback (global / super-admin):
+//   TWILIO_ACCOUNT_SID       = ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+//   TWILIO_API_KEY_SID       = SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+//   TWILIO_API_KEY_SECRET    = <secret>
+//   TWILIO_VOICE_APP_SID     = APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+//   TWILIO_VOICE_CALLER_ID   = +1XXXXXXXXXX
+
 import { Router, type IRouter } from "express";
 import { crmAuth } from "./crm/middleware";
-import { jwt } from "twilio";
+import { jwt as twilioJwt } from "twilio";
+import { db } from "@workspace/db";
+import {
+  crmCampaigns,
+  crmCallLogs,
+  crmLeads,
+} from "@workspace/db/schema";
+import { eq, desc, and } from "drizzle-orm";
+import { decryptPassword } from "./crm/crypto-util";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
-const { AccessToken } = jwt;
+const { AccessToken } = twilioJwt;
 const { VoiceGrant } = AccessToken;
 
-// NOTE: For now, this uses a SINGLE global Twilio Voice account.
-// Env vars (set in Railway / later AWS):
-//   TWILIO_ACCOUNT_SID       = ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-//   TWILIO_API_KEY_SID       = SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-//   TWILIO_API_KEY_SECRET    = your_api_key_secret
-//   TWILIO_VOICE_APP_SID     = APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-//   TWILIO_VOICE_CALLER_ID   = +1XXXXXXXXXX   (verified / purchased number)
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getVoiceConfig() {
+interface VoiceConfig {
+  accountSid: string;
+  apiKeySid: string;
+  apiKeySecret: string;
+  appSid: string;
+  callerId: string;
+}
+
+function getGlobalVoiceConfig(): VoiceConfig | null {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const apiKeySid = process.env.TWILIO_API_KEY_SID;
   const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
   const appSid = process.env.TWILIO_VOICE_APP_SID;
   const callerId = process.env.TWILIO_VOICE_CALLER_ID;
-
-  if (!accountSid || !apiKeySid || !apiKeySecret || !appSid || !callerId) {
-    throw Object.assign(
-      new Error("Twilio Voice is not fully configured. Missing env vars."),
-      { status: 500 }
-    );
-  }
+  if (!accountSid || !apiKeySid || !apiKeySecret || !appSid || !callerId) return null;
   return { accountSid, apiKeySid, apiKeySecret, appSid, callerId };
 }
 
-// ── POST /api/twilio/voice/token ─────────────────────────────────────────────
+async function getCampaignVoiceConfig(campaignId: number): Promise<VoiceConfig | null> {
+  const [campaign] = await db
+    .select()
+    .from(crmCampaigns)
+    .where(eq(crmCampaigns.id, campaignId))
+    .limit(1);
+
+  if (!campaign) return null;
+
+  const accountSid = campaign.twilioAccountSid;
+  const apiKeySid = campaign.twilioApiKeySid;
+  const encApiSecret = campaign.twilioApiKeySecret;
+  const appSid = campaign.twilioVoiceAppSid;
+  const callerId = campaign.twilioPhoneNumber;
+
+  if (!accountSid || !apiKeySid || !encApiSecret || !appSid || !callerId) return null;
+
+  let apiKeySecret: string;
+  try {
+    apiKeySecret = encApiSecret.includes(":") ? decryptPassword(encApiSecret) : encApiSecret;
+  } catch {
+    apiKeySecret = encApiSecret;
+  }
+
+  return { accountSid, apiKeySid, apiKeySecret, appSid, callerId };
+}
+
+async function resolveVoiceConfig(
+  campaignId: number | null,
+  isSuperAdmin: boolean
+): Promise<VoiceConfig> {
+  if (campaignId) {
+    const cfg = await getCampaignVoiceConfig(campaignId);
+    if (cfg) return cfg;
+  }
+  if (isSuperAdmin) {
+    const global = getGlobalVoiceConfig();
+    if (global) return global;
+  }
+  throw Object.assign(
+    new Error(
+      campaignId
+        ? "Twilio Voice is not fully configured for this campaign. Set API Key SID, API Key Secret, Voice App SID, and Phone Number in Campaign → Twilio settings."
+        : "Twilio Voice is not configured. Ask your admin to set up Twilio credentials."
+    ),
+    { status: 422 }
+  );
+}
+
+// ── POST /api/twilio/voice/token ──────────────────────────────────────────────
 // Returns a short-lived Access Token for Twilio Voice SDK (browser calling)
 router.post("/twilio/voice/token", crmAuth, async (req, res) => {
   try {
     const crmUser = req.crmUser!;
-    const { accountSid, apiKeySid, apiKeySecret, appSid } = getVoiceConfig();
+    const isSuperAdmin = crmUser.role === "super_admin";
+    const cfg = await resolveVoiceConfig(crmUser.campaignId, isSuperAdmin);
 
-    // Identity: how this browser client is identified in Twilio
-    const identity = `user_${crmUser.id}`;
+    const identity = `user_${crmUser.id ?? crmUser.userId}`;
 
-    const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
+    const token = new AccessToken(cfg.accountSid, cfg.apiKeySid, cfg.apiKeySecret, {
       identity,
-      ttl: 60 * 60, // 1 hour
+      ttl: 60 * 60,
     });
 
     const voiceGrant = new VoiceGrant({
-      outgoingApplicationSid: appSid,
+      outgoingApplicationSid: cfg.appSid,
       incomingAllow: true,
     });
-
     token.addGrant(voiceGrant);
 
-    res.json({
-      token: token.toJwt(),
-      identity,
-    });
+    res.json({ token: token.toJwt(), identity, callerId: cfg.callerId });
   } catch (err: any) {
     logger.error(err, "[twilio/voice/token] error");
     res.status(err.status || 500).json({ error: err.message || "Failed to create voice token" });
   }
 });
 
-// ── POST /api/twilio/voice/answer ────────────────────────────────────────────
-// TwiML App Voice URL — Twilio hits this when the browser starts a call.
-// It should read the "To" (destination) and optional "From" (callerId) params.
+// ── POST /api/twilio/voice/answer ─────────────────────────────────────────────
+// TwiML App Voice URL — Twilio hits this when the browser initiates a call.
 router.post("/twilio/voice/answer", async (req, res) => {
+  res.set("Content-Type", "text/xml");
   try {
-    const { callerId: envCallerId } = getVoiceConfig();
-
     const to = (req.body?.To as string | undefined) || "";
-    const fromParam = (req.body?.From as string | undefined) || "";
-    const callerId = fromParam || envCallerId;
-
-    res.set("Content-Type", "text/xml");
+    const callerId = (req.body?.From as string | undefined) || (req.body?.CallerId as string | undefined) || "";
+    const record = (req.body?.Record as string | undefined) === "true";
 
     if (!to) {
-      // No destination → simple message
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>No destination number provided.</Say>
@@ -86,19 +142,200 @@ router.post("/twilio/voice/answer", async (req, res) => {
       return;
     }
 
-    // Dial a PSTN number from browser
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+    const apiBase = process.env.API_BASE_URL ||
+      `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
+    const statusCallbackUrl = `${apiBase}/twilio/voice/call-status`;
+
+    if (record) {
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${callerId}">
+  <Dial callerId="${callerId}" record="record-from-answer"
+        recordingStatusCallback="${apiBase}/twilio/voice/recording"
+        recordingStatusCallbackMethod="POST"
+        action="${statusCallbackUrl}" method="POST">
     <Number>${to}</Number>
   </Dial>
 </Response>`);
+    } else {
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${callerId}" action="${statusCallbackUrl}" method="POST">
+    <Number>${to}</Number>
+  </Dial>
+</Response>`);
+    }
   } catch (err) {
     logger.error(err, "[twilio/voice/answer] error");
-    res.set("Content-Type", "text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>There was an error connecting your call.</Say>
 </Response>`);
+  }
+});
+
+// ── POST /api/twilio/voice/call-status ────────────────────────────────────────
+// Twilio status callback — updates call log with final status & duration.
+router.post("/twilio/voice/call-status", async (req, res) => {
+  res.sendStatus(204);
+  try {
+    const callSid = req.body?.CallSid as string | undefined;
+    const status = req.body?.CallStatus as string | undefined;
+    const duration = req.body?.CallDuration ? parseInt(req.body.CallDuration) : undefined;
+
+    if (!callSid) return;
+
+    await db
+      .update(crmCallLogs)
+      .set({
+        status: status || "completed",
+        duration: duration ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(crmCallLogs.callSid, callSid));
+
+    logger.info({ callSid, status, duration }, "[twilio/voice/call-status] updated");
+  } catch (err) {
+    logger.error(err, "[twilio/voice/call-status] error");
+  }
+});
+
+// ── POST /api/twilio/voice/recording ─────────────────────────────────────────
+// Twilio recording status callback — stores recording SID & URL, triggers AI transcription.
+router.post("/twilio/voice/recording", async (req, res) => {
+  res.sendStatus(204);
+  try {
+    const callSid = req.body?.CallSid as string | undefined;
+    const recordingSid = req.body?.RecordingSid as string | undefined;
+    const recordingUrl = req.body?.RecordingUrl as string | undefined;
+    const recordingStatus = req.body?.RecordingStatus as string | undefined;
+
+    if (!callSid || recordingStatus !== "completed") return;
+
+    await db
+      .update(crmCallLogs)
+      .set({
+        recordingSid: recordingSid ?? null,
+        recordingUrl: recordingUrl ? `${recordingUrl}.mp3` : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(crmCallLogs.callSid, callSid));
+
+    logger.info({ callSid, recordingSid }, "[twilio/voice/recording] stored");
+
+    // Fire-and-forget AI transcription if OpenAI key available
+    if (recordingUrl && process.env.OPENAI_API_KEY) {
+      setImmediate(async () => {
+        try {
+          const audioResp = await fetch(`${recordingUrl}.mp3`);
+          if (!audioResp.ok) return;
+          const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+
+          const formData = new FormData();
+          formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "recording.mp3");
+          formData.append("model", "whisper-1");
+
+          const transcriptResp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+            body: formData,
+          });
+
+          if (!transcriptResp.ok) return;
+          const { text } = await transcriptResp.json() as { text: string };
+
+          await db
+            .update(crmCallLogs)
+            .set({ transcript: text, updatedAt: new Date() })
+            .where(eq(crmCallLogs.callSid, callSid!));
+
+          logger.info({ callSid }, "[twilio/voice/recording] transcript saved");
+        } catch (err) {
+          logger.error(err, "[twilio/voice/recording] transcription error");
+        }
+      });
+    }
+  } catch (err) {
+    logger.error(err, "[twilio/voice/recording] error");
+  }
+});
+
+// ── POST /api/twilio/voice/log ────────────────────────────────────────────────
+// Frontend calls this when a browser call is initiated to create a call log entry.
+router.post("/twilio/voice/log", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  try {
+    const { callSid, leadId, toNumber, fromNumber, direction, analytics } = req.body;
+
+    const [log] = await db.insert(crmCallLogs).values({
+      callSid: callSid || null,
+      campaignId: crmUser.campaignId,
+      leadId: leadId ? Number(leadId) : null,
+      userId: crmUser.userId ?? crmUser.id,
+      direction: direction || "outbound",
+      status: "initiated",
+      fromNumber: fromNumber || null,
+      toNumber: toNumber || null,
+      mosScore: analytics?.mos ? String(analytics.mos) : null,
+      jitterMs: analytics?.jitter ? String(analytics.jitter) : null,
+      packetLossPct: analytics?.packetLoss ? String(analytics.packetLoss) : null,
+    }).onConflictDoNothing().returning();
+
+    res.json({ success: true, id: log?.id ?? null });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/log] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PATCH /api/twilio/voice/log/:callSid ─────────────────────────────────────
+// Update a call log with final analytics (MOS, jitter, packet loss) from the SDK.
+router.patch("/twilio/voice/log/:callSid", crmAuth, async (req, res) => {
+  const { callSid } = req.params;
+  try {
+    const { mos, jitter, packetLoss, status, duration } = req.body;
+    await db
+      .update(crmCallLogs)
+      .set({
+        mosScore: mos != null ? String(mos) : undefined,
+        jitterMs: jitter != null ? String(jitter) : undefined,
+        packetLossPct: packetLoss != null ? String(packetLoss) : undefined,
+        status: status || undefined,
+        duration: duration != null ? Number(duration) : undefined,
+        updatedAt: new Date(),
+      })
+      .where(eq(crmCallLogs.callSid, callSid));
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/log PATCH] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/twilio/voice/calls ───────────────────────────────────────────────
+// List call logs for a campaign (optionally filtered by leadId).
+router.get("/twilio/voice/calls", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  if (!crmUser.campaignId && crmUser.role !== "super_admin") {
+    res.json({ calls: [] });
+    return;
+  }
+  try {
+    const { leadId } = req.query as Record<string, string>;
+    const conditions = [];
+    if (crmUser.campaignId) conditions.push(eq(crmCallLogs.campaignId, crmUser.campaignId));
+    if (leadId) conditions.push(eq(crmCallLogs.leadId, Number(leadId)));
+
+    const calls = await db
+      .select()
+      .from(crmCallLogs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(crmCallLogs.createdAt))
+      .limit(100);
+
+    res.json({ calls });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/calls] error");
+    res.status(500).json({ error: err.message });
   }
 });
 
