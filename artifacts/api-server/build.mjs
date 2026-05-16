@@ -62,7 +62,8 @@ async function buildAll() {
       "@swc/*",
       "@aws-sdk/*",
       "@azure/*",
-      "@opentelemetry/*",
+      // "@opentelemetry/*" removed — @sentry/node v10 imports these internally and
+      // they must be bundled rather than left as bare runtime imports that won't be installed.
       "@google-cloud/*",
       "@google/*",
       "googleapis",
