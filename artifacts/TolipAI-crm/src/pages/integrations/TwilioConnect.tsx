@@ -316,8 +316,8 @@ export default function TwilioConnect() {
                     <p className="text-[11px] text-muted-foreground">
                       Starts with "AP". Set its Voice Request URL to:{" "}
                       <span className="font-mono text-primary">
-                        {window.location.origin}/api/twilio/voice/answer
-                      </span>
+  {typeof window !== 'undefined' ? window.location.origin : ''}/api/twilio/voice/answer
+</span>
                     </p>
                   </div>
                 </div>

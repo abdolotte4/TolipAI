@@ -131,13 +131,20 @@ router.post("/twilio/voice/answer", async (req, res) => {
   res.set("Content-Type", "text/xml");
   try {
     const to = (req.body?.To as string | undefined) || "";
-    const callerId = (req.body?.From as string | undefined) || (req.body?.CallerId as string | undefined) || "";
+    const callerId = (req.body?.CallerId as string | undefined) || "";
     const record = (req.body?.Record as string | undefined) === "true";
 
     if (!to) {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>No destination number provided.</Say>
+</Response>`);
+      return;
+    }
+    if (!callerId) {
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Missing caller ID.</Say>
 </Response>`);
       return;
     }

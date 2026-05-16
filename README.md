@@ -1,6 +1,6 @@
 # TolipAI CRM & Tools Platform
 
-![CI](https://github.com/Agawish24/tolipai/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Agawish24/TolipAI/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Node 20](https://img.shields.io/badge/node-20-brightgreen)
 ![pnpm 10](https://img.shields.io/badge/pnpm-10-orange)
@@ -48,7 +48,7 @@ A full-stack real estate wholesaling platform built to solve real acquisition, c
 
 ```bash
 # 1. Clone and install all workspace dependencies
-git clone https://github.com/abdolotte7/tolipai.git
+git clone https://github.com/Agawish24/TolipAI.git
 cd tolipai
 pnpm install
 

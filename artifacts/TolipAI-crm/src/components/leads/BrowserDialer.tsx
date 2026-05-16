@@ -152,9 +152,10 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
 
     try {
       const params: Record<string, string> = {
-        To: leadPhone,
-        ...(record ? { Record: "true" } : {}),
-      };
+  To: leadPhone,
+  CallerId: callerIdUsed || "",  // ← ADD THIS
+  ...(record ? { Record: "true" } : {}),
+};
 
       const call = await deviceRef.current.connect({ params });
       callRef.current = call;

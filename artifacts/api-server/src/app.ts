@@ -82,7 +82,10 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "https:"],
         // IMPORTANT: Added OpenAI and Groq URLs so the Deal Scorer can communicate
-        connectSrc: ["'self'", "https://openai.com", "https://groq.com"],
+        connectSrc: ["'self'", "https://openai.com", "https://groq.com" , "https://eventgw.twilio.com",
+                      "https://insights.twilio.com",
+                      "wss://*.twilio.com",
+                      "https://*.twilio.com",],
         // Added fonts.gstatic.com for the actual font files
         fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
         objectSrc: ["'none'"],

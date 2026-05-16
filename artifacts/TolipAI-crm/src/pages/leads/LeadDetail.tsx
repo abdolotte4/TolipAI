@@ -2443,17 +2443,35 @@ function opFetch(path: string, options?: RequestInit) {
                     <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
                   </div>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs gap-1 border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
-                  disabled={!lead?.phone || !opSelectedId}
-                  onClick={() => { setCallModalOpen(true); setCallErr(""); setCallSuccess(""); }}
-                  title="Call this contact via Twillo"
-                >
-                  <PhoneCall className="w-3 h-3" />
-                  Call
-                </Button>
+                // BEFORE (broken - always opens bridge modal):
+<Button
+  onClick={() => { setCallModalOpen(true); setCallErr(""); setCallSuccess(""); }}
+>
+  <PhoneCall className="w-3 h-3" /> Call
+</Button>
+
+// AFTER (smart - browser first, bridge fallback):
+<Button
+  size="sm"
+  variant="outline"
+  className="h-7 text-xs gap-1 border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
+  disabled={!lead?.phone || !opSelectedId}
+  onClick={() => {
+    if (campaignData?.twilioVoiceAppSid || isSuperAdmin) {
+      // Browser dialer available - switch to browser tab
+      setOpTab("browser");
+    } else {
+      // No voice config - use bridge call modal
+      setCallModalOpen(true);
+      setCallErr("");
+      setCallSuccess("");
+    }
+  }}
+  title={campaignData?.twilioVoiceAppSid ? "Call via browser" : "Bridge call via Twilio"}
+>
+  <PhoneCall className="w-3 h-3" />
+  {campaignData?.twilioVoiceAppSid ? "Browser Call" : "Call"}
+</Button>
                 <Button
                   size="sm"
                   variant="outline"
