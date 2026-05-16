@@ -2322,17 +2322,6 @@ function opFetch(path: string, options?: RequestInit) {
           </Card>
 
           {/* ── Twilio Communication Panel ────────────────────────────────── */}
-          {/* ── Click-to-Call Modal ── */}
-          {callModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setCallModalOpen(false)}>
-              <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-2">
-                    <PhoneCall className="w-5 h-5 text-blue-400" />
-                    <h3 className="font-semibold text-base">Call Lead</h3>
-                  </div>
-                  <button onClick={() => setCallModalOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
-                </div>
 
                 {/* Big phone number + copy */}
                 <div className="flex items-center gap-2 mb-5 p-3 rounded-xl bg-muted/40 border border-border">
@@ -2443,39 +2432,22 @@ function opFetch(path: string, options?: RequestInit) {
                     <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
                   </div>
                 )}
-                // BEFORE (broken - always opens bridge modal):
-<Button
-  onClick={() => { setCallModalOpen(true); setCallErr(""); setCallSuccess(""); }}
->
-  <PhoneCall className="w-3 h-3" /> Call
-</Button>
-
-// AFTER (smart - browser first, bridge fallback):
-<Button
+             <<Button
   size="sm"
   variant="outline"
   className="h-7 text-xs gap-1 border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
   disabled={!lead?.phone || !opSelectedId}
-  onClick={() => {
-    if (campaignData?.twilioVoiceAppSid || isSuperAdmin) {
-      // Browser dialer available - switch to browser tab
-      setOpTab("browser");
-    } else {
-      // No voice config - use bridge call modal
-      setCallModalOpen(true);
-      setCallErr("");
-      setCallSuccess("");
-    }
-  }}
-  title={campaignData?.twilioVoiceAppSid ? "Call via browser" : "Bridge call via Twilio"}
+  onClick={() => setOpTab("browser")}
+  title="Call via browser"
 >
   <PhoneCall className="w-3 h-3" />
-  {campaignData?.twilioVoiceAppSid ? "Browser Call" : "Call"}
+  Browser Call
 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className={`h-7 text-xs gap-1 transition-colors ${copiedPhone ? "border-green-500/50 text-green-400" : "border-border text-muted-foreground hover:text-foreground"}`}
+              
                   disabled={!lead?.phone}
                   onClick={() => {
                     if (!lead?.phone) return;
@@ -2513,10 +2485,10 @@ function opFetch(path: string, options?: RequestInit) {
                 {/* Tabs */}
                 <div className="flex border-b border-border">
                   {([
-                    { key: "messages", label: "Messages", count: opMessages.length },
-                    { key: "calls", label: "Calls", count: opCalls.length },
-                    ...(campaignData?.twilioVoiceAppSid || isSuperAdmin ? [{ key: "browser" as const, label: "Browser Dialer", count: 0 }] : []),
-                  ] as const).map(t => (
+  { key: "messages", label: "Messages", count: opMessages.length },
+  { key: "calls", label: "Calls", count: opCalls.length },
+  { key: "browser", label: "Browser Dialer", count: 0 },
+] as const).map(t => (
                     <button
                       key={t.key}
                       onClick={() => setOpTab(t.key)}
