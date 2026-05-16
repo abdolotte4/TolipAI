@@ -425,6 +425,7 @@ const AiDealScorer     = lazy(() => import("@/components/leads/AiDealScorer"));
 const AiSellerScript   = lazy(() => import("@/components/leads/AiSellerScript"));
 const AiOfferLetter    = lazy(() => import("@/components/leads/AiOfferLetter"));
 const CashBuyerMatchPanel = lazy(() => import("@/components/leads/CashBuyerMatchPanel"));
+const SmsConversations  = lazy(() => import("@/components/leads/SmsConversations"));
 
 function useDebouncedValue<T>(value: T, delay: number = 200): T {
   const [debounced, setDebounced] = useState<T>(value);
@@ -1720,10 +1721,16 @@ export default function LeadDetail() {
             </form>
           </Card>
 
-          {/* ✅ Only render SMS conversations if Twilio is configured */}
-{(campaignData?.twilioConfigured || campaignData?.twilioEnabled) && (
-  <SmsConversations leadId={leadId} />
-)}
+          {/* SMS Conversations — only when Twilio is configured */}
+          {(campaignData?.twilioConfigured || campaignData?.twilioEnabled) && (
+            <Suspense fallback={<div className="h-32 animate-pulse bg-secondary/30 rounded-2xl" />}>
+              <SmsConversations
+                leadId={leadId}
+                leadPhone={lead?.phone ?? undefined}
+                campaignId={lead?.campaignId ?? null}
+              />
+            </Suspense>
+          )}
         </div>
       </div>
 
