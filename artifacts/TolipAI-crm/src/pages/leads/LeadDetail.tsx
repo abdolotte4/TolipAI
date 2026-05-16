@@ -1721,7 +1721,6 @@ export default function LeadDetail() {
             </form>
           </Card>
 
-          <EmailHistory leadId={leadId} />
           {/* ✅ Only render SMS conversations if Twilio is configured */}
 {(campaignData?.twilioConfigured || campaignData?.twilioEnabled) && (
   <SmsConversations leadId={leadId} />
