@@ -2448,7 +2448,7 @@ function opFetch(path: string, options?: RequestInit) {
                   className="h-7 text-xs gap-1 border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
                   disabled={!lead?.phone || !opSelectedId}
                   onClick={() => { setCallModalOpen(true); setCallErr(""); setCallSuccess(""); }}
-                  title="Call this contact via SignalWire"
+                  title="Call this contact via Twillo"
                 >
                   <PhoneCall className="w-3 h-3" />
                   Call

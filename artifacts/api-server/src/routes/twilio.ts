@@ -32,6 +32,8 @@ import { generateAiSmsReply, isOptOutMessage, isHumanHandoffRequest, AI_SMS_COST
 import { sendSms } from "../services/smsService";
 
 const router: IRouter = Router();
+import twilioVoiceRouter from "./twilio-voice";
+
 
 // In-memory cooldown map: leadId → last AI reply timestamp (ms)
 // Acceptable for single-process deployment per spec
