@@ -151,8 +151,13 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
     res.status(400).json({ error: "No campaign assigned" }); return;
   }
 
-  // Super admin with no campaign → return global env var config
-  if (!crmUser.campaignId && isSuperAdmin) {
+  // Super admin may pass ?campaignId=X to load a specific campaign's config
+  const queryCampaignId = isSuperAdmin && req.query.campaignId
+    ? parseInt(req.query.campaignId as string, 10)
+    : null;
+
+  // Super admin with no campaign and no ?campaignId → return global env var config
+  if (!crmUser.campaignId && isSuperAdmin && !queryCampaignId) {
     const global = getGlobalSmsCreds();
     return res.json({
       configured: !!global,
@@ -167,9 +172,12 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
     });
   }
 
+  // Resolve which campaign ID to read: super admin explicit query > user's own campaign
+  const effectiveCampaignId = queryCampaignId || crmUser.campaignId!;
+
   try {
     const [campaign] = await db.select().from(crmCampaigns)
-      .where(eq(crmCampaigns.id, crmUser.campaignId!)).limit(1);
+      .where(eq(crmCampaigns.id, effectiveCampaignId)).limit(1);
     const sid = campaign?.twilioAccountSid ?? null;
     const token = campaign?.twilioAuthToken ?? null;
     const phone = campaign?.twilioPhoneNumber ?? null;
@@ -200,16 +208,20 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
 
-  const { accountSid, authToken, phoneNumber, twilioEnabled, apiKeySid, apiKeySecret, voiceAppSid } = req.body;
+  const { accountSid, authToken, phoneNumber, twilioEnabled, apiKeySid, apiKeySecret, voiceAppSid, campaignId: bodyCampaignId } = req.body;
   if (!accountSid || !authToken) {
     res.status(400).json({ error: "accountSid and authToken are required" }); return;
   }
 
-  // Super admin without a campaign → write credentials into process.env so the existing
-  // global fallback paths (getGlobalSmsCreds + getGlobalVoiceConfig) pick them up
-  // immediately. For persistence across Railway deploys, set the same vars in Railway
-  // environment settings.
-  if (isSuperAdmin && !crmUser.campaignId) {
+  // Super admin may pass an explicit campaignId in the body to configure that campaign
+  const targetCampaignId: number | null = isSuperAdmin && bodyCampaignId
+    ? Number(bodyCampaignId)
+    : (crmUser.campaignId ?? null);
+
+  // Super admin without a target campaign → write credentials into process.env so the
+  // existing global fallback paths (getGlobalSmsCreds + getGlobalVoiceConfig) pick them up
+  // immediately. For persistence across Railway deploys, set the same vars in Railway.
+  if (isSuperAdmin && !targetCampaignId) {
     process.env.TWILIO_ACCOUNT_SID = accountSid;
     process.env.TWILIO_AUTH_TOKEN = authToken;
     if (phoneNumber) process.env.TWILIO_VOICE_CALLER_ID = phoneNumber;
@@ -220,7 +232,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     return;
   }
 
-  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  if (!targetCampaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
 
   try {
     const encToken = encryptPassword(authToken);
@@ -241,7 +253,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
 
     await db.update(crmCampaigns)
       .set(updateFields)
-      .where(eq(crmCampaigns.id, crmUser.campaignId));
+      .where(eq(crmCampaigns.id, targetCampaignId!));
 
     res.json({ success: true, configured: true });
   } catch (err: any) {

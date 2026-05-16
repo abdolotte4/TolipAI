@@ -5,6 +5,7 @@ import {
   Phone, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2,
   ExternalLink, RefreshCw, Zap, ShieldCheck, MessageSquare,
   PhoneCall, ChevronRight, ArrowLeft, Info, Copy, Check, Mic,
+  Building2,
 } from "lucide-react";
 import { apiRawFetch as apiFetch } from "@/lib/api";
 import { Link } from "wouter";
@@ -34,6 +35,7 @@ export default function TwilioConnect() {
   const qc = useQueryClient();
   const { data: me } = useCrmGetMe();
   const isAdmin = me?.role === "admin" || me?.role === "super_admin";
+  const isSuperAdmin = me?.role === "super_admin";
 
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
@@ -45,9 +47,29 @@ export default function TwilioConnect() {
   const [showApiSecret, setShowApiSecret] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
 
+  // Super admin campaign selector — null means "global / session" mode
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
+
+  // Fetch campaign list for super admin
+  const { data: campaigns } = useQuery<any[]>({
+    queryKey: ["campaigns-list"],
+    queryFn: () => apiFetch("/crm/campaigns"),
+    enabled: !!isSuperAdmin,
+    retry: false,
+  });
+
+  // Build config query key — changes when super admin switches campaign
+  const configQueryKey = isSuperAdmin && selectedCampaignId
+    ? ["twilio-config", selectedCampaignId]
+    : ["twilio-config"];
+
+  const configUrl = isSuperAdmin && selectedCampaignId
+    ? `/twilio/config?campaignId=${selectedCampaignId}`
+    : "/twilio/config";
+
   const { data: config, isLoading } = useQuery<any>({
-    queryKey: ["twilio-config"],
-    queryFn: () => apiFetch("/twilio/config"),
+    queryKey: configQueryKey,
+    queryFn: () => apiFetch(configUrl),
     retry: false,
   });
 
@@ -60,19 +82,20 @@ export default function TwilioConnect() {
   const saveMutation = useMutation({
     mutationFn: (body: {
       accountSid: string; authToken: string; phoneNumber: string; twilioEnabled: boolean;
-      apiKeySid: string; apiKeySecret: string; voiceAppSid: string;
+      apiKeySid: string; apiKeySecret: string; voiceAppSid: string; campaignId?: number;
     }) => apiFetch("/twilio/config", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
-      const isSuperNocamp = (me as any)?.role === "super_admin" && !(me as any)?.campaignId;
+      const noTarget = isSuperAdmin && !selectedCampaignId;
+      const campaignName = campaigns?.find((c: any) => c.id === selectedCampaignId)?.name;
       toast({
         title: "Twilio credentials saved",
-        description: isSuperNocamp
+        description: noTarget
           ? "Credentials active for this session. To persist across deploys, set TWILIO_* environment variables in Railway."
-          : "Your campaign is now connected to Twilio.",
+          : `Campaign "${campaignName}" is now connected to Twilio.`,
       });
       setAccountSid(""); setAuthToken(""); setPhoneNumber("");
       setApiKeySid(""); setApiKeySecret(""); setVoiceAppSid("");
-      qc.invalidateQueries({ queryKey: ["twilio-config"] });
+      qc.invalidateQueries({ queryKey: configQueryKey });
     },
     onError: (err: Error) =>
       toast({ title: "Save failed", description: err.message, variant: "destructive" }),
@@ -86,7 +109,7 @@ export default function TwilioConnect() {
         title: `Webhooks configured on ${result.configured} number(s)`,
         description: "Inbound SMS will now appear automatically in the CRM.",
       });
-      qc.invalidateQueries({ queryKey: ["twilio-config"] });
+      qc.invalidateQueries({ queryKey: configQueryKey });
     } catch (err: any) {
       toast({ title: "Webhook setup failed", description: err.message, variant: "destructive" });
     } finally {
@@ -97,7 +120,9 @@ export default function TwilioConnect() {
   const isConfigured = config?.configured;
   const isEnabled = config?.twilioEnabled;
   const isVoiceConfigured = config?.voiceConfigured;
-  const isSuperAdminNoCampaign = me?.role === "super_admin" && !me?.campaignId;
+  const isSuperAdminNoTarget = isSuperAdmin && !selectedCampaignId;
+
+  const selectedCampaignName = campaigns?.find((c: any) => c.id === selectedCampaignId)?.name;
 
   return (
     <div className="space-y-6 pb-20 max-w-3xl">
@@ -129,25 +154,66 @@ export default function TwilioConnect() {
         </div>
       </motion.div>
 
-      {/* Super admin without campaign — session-credential notice */}
-      {isSuperAdminNoCampaign && (
+      {/* ── Super Admin Campaign Selector ── */}
+      {isSuperAdmin && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+            <div className="p-5 border-b border-border bg-secondary/20">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-primary" />
+                Configure Campaign
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Select which campaign you want to configure Twilio credentials for.
+              </p>
+            </div>
+            <div className="p-5">
+              <Label className="mb-2 block">Target Campaign</Label>
+              <select
+                className="w-full bg-background/50 border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors"
+                value={selectedCampaignId ?? ""}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSelectedCampaignId(val === "" ? null : Number(val));
+                  // Clear form fields when switching campaigns
+                  setAccountSid(""); setAuthToken(""); setPhoneNumber("");
+                  setApiKeySid(""); setApiKeySecret(""); setVoiceAppSid("");
+                }}
+              >
+                <option value="">— Global / Session (no campaign) —</option>
+                {(campaigns || []).map((c: any) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.slug ? `(${c.slug})` : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedCampaignId && selectedCampaignName && (
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Credentials saved below will be stored in the database for campaign{" "}
+                  <span className="font-semibold text-foreground">{selectedCampaignName}</span> and persist across Railway deploys.
+                </p>
+              )}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Super admin global/session notice — only shown when no campaign selected */}
+      {isSuperAdminNoTarget && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/8 border border-amber-500/25 text-amber-300">
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
             <div className="text-xs space-y-1">
-              <p className="font-semibold text-amber-400">Super Admin — No Campaign Assigned</p>
+              <p className="font-semibold text-amber-400">Global / Session Mode</p>
               <p className="text-amber-300/80">
-                Credentials saved here become active immediately for <span className="font-medium">this server session</span>.
+                Credentials saved here become active immediately for <span className="font-medium">this server session only</span>.
                 They will be cleared on the next Railway deploy or restart.
               </p>
               <p className="text-amber-300/80">
-                For permanent storage, add the same values as Railway environment variables:{" "}
+                For permanent storage, either <span className="font-medium">select a specific campaign above</span> or add Railway environment variables:{" "}
                 <span className="font-mono text-amber-400">TWILIO_ACCOUNT_SID</span>,{" "}
                 <span className="font-mono text-amber-400">TWILIO_AUTH_TOKEN</span>,{" "}
-                <span className="font-mono text-amber-400">TWILIO_VOICE_CALLER_ID</span>,{" "}
-                <span className="font-mono text-amber-400">TWILIO_API_KEY_SID</span>,{" "}
-                <span className="font-mono text-amber-400">TWILIO_API_KEY_SECRET</span>,{" "}
-                <span className="font-mono text-amber-400">TWILIO_VOICE_APP_SID</span>.
+                <span className="font-mono text-amber-400">TWILIO_VOICE_CALLER_ID</span>.
               </p>
             </div>
           </div>
@@ -164,7 +230,9 @@ export default function TwilioConnect() {
                   {isEnabled ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertCircle className="w-5 h-5 text-amber-400" />}
                 </div>
                 <div>
-                  <p className="font-semibold text-sm">Campaign Connected</p>
+                  <p className="font-semibold text-sm">
+                    {selectedCampaignName ? `${selectedCampaignName} Connected` : "Campaign Connected"}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Account SID: <span className="font-mono">{config?.accountSid?.slice(0, 8)}...{config?.accountSid?.slice(-4)}</span>
                     {config?.phoneNumber && <span> · {config.phoneNumber}</span>}
@@ -215,6 +283,9 @@ export default function TwilioConnect() {
               <h2 className="font-semibold flex items-center gap-2">
                 <Phone className="w-4 h-4 text-primary" />
                 {isConfigured ? "Update Credentials" : "Connect Twilio"}
+                {selectedCampaignName && (
+                  <span className="text-xs text-muted-foreground font-normal">for {selectedCampaignName}</span>
+                )}
               </h2>
               <p className="text-xs text-muted-foreground mt-1">
                 Find your credentials at{" "}
@@ -361,10 +432,12 @@ export default function TwilioConnect() {
                 onClick={() => saveMutation.mutate({
                   accountSid, authToken, phoneNumber, twilioEnabled: true,
                   apiKeySid, apiKeySecret, voiceAppSid,
+                  ...(selectedCampaignId ? { campaignId: selectedCampaignId } : {}),
                 })}
               >
                 {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                 {isConfigured ? "Update Credentials" : "Connect Twilio"}
+                {selectedCampaignName ? ` for ${selectedCampaignName}` : ""}
               </Button>
             </div>
           </Card>
@@ -432,10 +505,12 @@ export default function TwilioConnect() {
               className="text-xs gap-1.5 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
               disabled={saveMutation.isPending}
               onClick={() => {
-                if (confirm("This will clear your Twilio credentials and disable the dialer for this campaign. Continue?")) {
+                const target = selectedCampaignName || "this campaign";
+                if (confirm(`This will clear Twilio credentials and disable the dialer for ${target}. Continue?`)) {
                   saveMutation.mutate({
                     accountSid: "", authToken: "", phoneNumber: "", twilioEnabled: false,
                     apiKeySid: "", apiKeySecret: "", voiceAppSid: "",
+                    ...(selectedCampaignId ? { campaignId: selectedCampaignId } : {}),
                   });
                 }
               }}

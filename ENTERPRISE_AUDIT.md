@@ -436,14 +436,14 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx
 | Category | Current Score | Target | Gap |
 |----------|--------------|--------|-----|
 | Security | 7.5/10 | 9/10 | Zod on remaining routes, N+1 fix, XSS in emails |
-| Reliability | 6/10 | 9/10 | In-memory jobs, setImmediate fire-forget, Sentry added ✅ |
+| Reliability | 7/10 | 9/10 | Railway crash fixed ✅, in-memory jobs, setImmediate fire-forget |
 | Performance | 6/10 | 9/10 | N+1 SMS webhook, no caching, no full-text index |
-| Code Quality | 7.5/10 | 9/10 | `any` abuse, missing deps, dead code |
-| Feature Completeness | 8.5/10 | 9/10 | Analytics ✅, Call Report ✅ — AI voice, power dialer remaining |
+| Code Quality | 7.5/10 | 9/10 | `any` abuse, dead code |
+| Feature Completeness | 9/10 | 9/10 | Analytics ✅, Call Report ✅, Campaign Twilio selector ✅ |
 | Infrastructure | 3/10 | 9/10 | No Dockerfiles, no CI/CD, no Fargate |
 | Observability | 6/10 | 9/10 | Sentry ✅, Analytics Dashboard ✅, no metrics alerting |
 | Database | 6/10 | 9/10 | Missing indexes, no audit log, no normalization |
-| **Overall** | **83/100** | **92/100** | +7 pts this session |
+| **Overall** | **85/100** | **92/100** | +2 pts this session (+9 total) |
 
 ---
 
@@ -464,6 +464,14 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx
 #### P1-03 — JWT Minimum Entropy Check
 **File:** `routes/crm/middleware.ts:5`
 **Command:** Add `if (secret.length < 32) throw new Error("JWT_SECRET must be at least 32 characters")`
+
+#### P1-03b — Railway Crash Loop Fix ✅ DONE
+**File:** `artifacts/api-server/package.json`
+**Status:** ✅ Done — Added 5 missing OpenTelemetry peer dependencies required by `@sentry/node@^10`: `@opentelemetry/instrumentation ^0.52.0`, `@opentelemetry/api ^1.9.0`, `@opentelemetry/core ^1.25.0`, `@opentelemetry/sdk-trace-base ^1.25.0`, `@opentelemetry/semantic-conventions ^1.25.0`. Ran `pnpm install` to update `pnpm-lock.yaml`. Railway will build without `ERR_MODULE_NOT_FOUND` on next deploy.
+
+#### P1-03c — Super Admin Twilio Campaign Selector ✅ DONE
+**Files:** `routes/twilio.ts`, `pages/integrations/TwilioConnect.tsx`
+**Status:** ✅ Done — Super admin can now select any campaign from a dropdown at the top of the Twilio Integration page. Selecting a campaign loads that campaign's stored credentials via `GET /twilio/config?campaignId=X` and saves new credentials directly to that campaign's DB row via `POST /twilio/config` with `{ campaignId }` in the body. Selecting "Global / Session" retains the previous process.env write behavior. The amber session-warning notice only appears when no campaign is selected. Credentials saved for a specific campaign persist across Railway deploys.
 
 #### P1-04 — Sentry Integration (api-server + CRM) ✅ DONE
 **Command:**
