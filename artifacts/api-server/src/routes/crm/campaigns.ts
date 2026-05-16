@@ -9,6 +9,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, inArray, sql } from "drizzle-orm";
 import { crmAuth, crmSuperAdminOnly, crmAdminOnly } from "./middleware";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -77,7 +78,7 @@ router.get("/", crmAuth, async (req, res) => {
       res.json([]);
     }
   } catch (err) {
-    console.error("CRM campaigns list error:", err);
+    logger.error(err, "CRM campaigns list error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -131,7 +132,7 @@ router.post("/", crmAuth, crmSuperAdminOnly, async (req, res) => {
       }
       return;
     }
-    console.error("Create campaign error:", err);
+    logger.error(err, "Create campaign error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -292,7 +293,7 @@ router.delete("/:id", crmAuth, crmSuperAdminOnly, async (req, res) => {
 
     res.json({ success: true, message: `Campaign "${existing.name}" and all its data have been deleted.` });
   } catch (err) {
-    console.error("Delete campaign error:", err);
+    logger.error(err, "Delete campaign error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

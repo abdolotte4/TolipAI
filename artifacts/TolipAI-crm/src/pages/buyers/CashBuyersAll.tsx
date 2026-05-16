@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
   Database, Search, Download, Filter, X, Sparkles,
-  Building2, MapPin, ExternalLink, Phone, Mail, Loader2,
+  Building2, MapPin, ExternalLink, Phone, Mail, Loader2, PhoneCall,
 } from "lucide-react";
+
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useCrmGetMe } from "@workspace/api-client-react";
+
+const BrowserDialer = lazy(() => import("@/components/leads/BrowserDialer"));
+
+type DialEntry = { phone: string; leadId: number; name: string };
 
 type Buyer = {
   id: number;
@@ -104,6 +109,7 @@ export default function CashBuyersAll() {
   const limit = 50;
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [dialEntry, setDialEntry] = useState<DialEntry | null>(null);
 
   // Build a stable query string for both list + export
   const queryParams = useMemo(() => {
@@ -493,11 +499,20 @@ export default function CashBuyersAll() {
 
                     {/* Contacts */}
                     {(b.phones?.length || b.emails?.length) ? (
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1">
                         {b.phones?.slice(0, 2).map((p) => (
-                          <a key={p} href={`tel:${p}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">
-                            <Phone className="w-3 h-3" /> {p}
-                          </a>
+                          <span key={p} className="flex items-center gap-1.5">
+                            <a href={`tel:${p}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">
+                              <Phone className="w-3 h-3" /> {p}
+                            </a>
+                            <button
+                              onClick={() => setDialEntry({ phone: p, leadId: b.leadId, name: b.buyerName || b.llcName || "Cash Buyer" })}
+                              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                              title="Call via Browser Dialer"
+                            >
+                              <PhoneCall className="w-2.5 h-2.5" /> Call
+                            </button>
+                          </span>
                         ))}
                         {b.emails?.slice(0, 2).map((e) => (
                           <a key={e} href={`mailto:${e}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">
@@ -556,6 +571,27 @@ export default function CashBuyersAll() {
             >
               Next
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Browser Dialer modal — triggered by "Call" button on buyer phone numbers */}
+      {dialEntry && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setDialEntry(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm">
+            <Suspense fallback={<div className="h-40 animate-pulse bg-card rounded-2xl border border-white/10" />}>
+              <BrowserDialer
+                leadPhone={dialEntry.phone}
+                leadId={dialEntry.leadId}
+                leadName={dialEntry.name}
+              />
+            </Suspense>
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              Click outside to close — call will log against Lead #{dialEntry.leadId}
+            </p>
           </div>
         </div>
       )}

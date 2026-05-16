@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { crmComps, crmLeads } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { crmAuth } from "./middleware";
+import { logger } from "../../lib/logger";
 import { calculateAdjustedComp, calculateArvFromComps, calculateMao, estimateMarketPricePerSqft } from "../../services/propertyApi";
 
 const router = Router();
@@ -37,7 +38,7 @@ router.get("/:leadId/comps", crmAuth, async (req, res) => {
       .orderBy(desc(crmComps.createdAt));
     res.json(comps.map(formatComp));
   } catch (err) {
-    console.error("Get comps error:", err);
+    logger.error(err, "Get comps error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -93,7 +94,7 @@ router.post("/:leadId/comps", crmAuth, async (req, res) => {
 
     res.status(201).json(formatComp(comp));
   } catch (err) {
-    console.error("Create comp error:", err);
+    logger.error(err, "Create comp error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -161,7 +162,7 @@ router.post("/:leadId/comps/recalculate", crmAuth, async (req, res) => {
     const updatedComps = await db.select().from(crmComps).where(eq(crmComps.leadId, leadId)).orderBy(desc(crmComps.createdAt));
     res.json(updatedComps.map(formatComp));
   } catch (err) {
-    console.error("Recalculate error:", err);
+    logger.error(err, "Recalculate comps error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

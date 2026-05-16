@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, memo, useMemo, lazy, Suspense } from "react";
 import BrowserDialer from "@/components/leads/BrowserDialer";
-import { apiFetch, apiRawFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { format, differenceInDays } from "date-fns";
@@ -22,7 +22,6 @@ import {
   useCrmGetComps,
   useCrmCreateComp,
   useCrmDeleteComp,
-  useCrmRecalculateComps,
 } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

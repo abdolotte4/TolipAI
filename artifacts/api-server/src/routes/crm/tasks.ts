@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { crmTasks, crmLeads, crmUsers } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { crmAuth } from "./middleware";
+import { logger } from "../../lib/logger";
 import { onTaskCreated } from "../../services/automation";
 
 const router = Router();
@@ -76,7 +77,7 @@ router.post("/", crmAuth, async (req, res) => {
     }).from(crmTasks).leftJoin(crmUsers, eq(crmTasks.assignedTo, crmUsers.id)).leftJoin(crmLeads, eq(crmTasks.leadId, crmLeads.id)).where(eq(crmTasks.id, task.id));
 
     onTaskCreated(task.id, resolvedAssignedTo, task.leadId, task.title, crmUser.userId)
-      .catch(e => console.error("onTaskCreated error:", e));
+      .catch(e => logger.error(e, "onTaskCreated error"));
 
     res.status(201).json(formatTask(full));
   } catch (err) {
