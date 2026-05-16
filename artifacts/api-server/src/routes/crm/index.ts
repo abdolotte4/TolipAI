@@ -13,6 +13,7 @@ import sequencesRouter from "./sequences";
 import compsRouter from "./comps";
 import notificationsRouter from "./notifications";
 import buyersRouter from "./buyers";
+import analyticsRouter from "./analytics";
 
 const router = Router();
 
@@ -135,5 +136,8 @@ router.use("/crm/notifications", notificationsRouter);
 
 // Buyers list
 router.use("/crm/buyers", buyersRouter);
+
+// Analytics dashboard + call report
+router.use("/crm/analytics", analyticsRouter);
 
 export default router;

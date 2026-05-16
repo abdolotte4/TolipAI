@@ -21,6 +21,7 @@
  */
 
 import { Router, type IRouter } from "express";
+import twilio from "twilio";
 import { crmAuth, crmAdminOnly } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations } from "@workspace/db/schema";
@@ -30,6 +31,8 @@ import { encryptPassword, decryptPassword } from "./crm/crypto-util";
 import { logger } from "../lib/logger";
 import { generateAiSmsReply, isOptOutMessage, isHumanHandoffRequest, AI_SMS_COST_USD } from "../services/aiSmsService";
 import { sendSms } from "../services/smsService";
+import { validateBody } from "../lib/validate";
+import { z } from "zod";
 
 const router: IRouter = Router();
 
@@ -314,12 +317,17 @@ router.get("/twilio/lead-messages/:leadId", crmAuth, async (req, res) => {
 
 // ── POST /api/twilio/messages ─────────────────────────────────────────────────
 
-router.post("/twilio/messages", crmAuth, async (req, res) => {
+const smsMessageSchema = z.object({
+  phoneNumberId: z.string().min(1, "phoneNumberId is required"),
+  to: z.string().min(7, "to phone number is required").max(30),
+  content: z.string().min(1, "message content is required").max(1600),
+  leadId: z.number().int().positive().optional().nullable(),
+  campaignId: z.number().int().positive().optional().nullable(),
+});
+
+router.post("/twilio/messages", crmAuth, validateBody(smsMessageSchema), async (req, res) => {
   const crmUser = req.crmUser!;
   const { phoneNumberId, to, content, leadId, campaignId } = req.body;
-  if (!phoneNumberId || !to || !content) {
-    res.status(400).json({ error: "phoneNumberId, to, and content are required" }); return;
-  }
   const campId = campaignId ? Number(campaignId) : crmUser.campaignId;
   const isSuperAdminMsg = crmUser.role === "super_admin";
   try {
@@ -497,6 +505,11 @@ async function validateTwilioSignature(req: any): Promise<boolean> {
     }
   }
 
+  // Fallback to global env var for super_admin path
+  if (!authToken) {
+    authToken = process.env.TWILIO_AUTH_TOKEN || null;
+  }
+
   if (!authToken) return false;
 
   // Reconstruct the full URL Twilio signed
@@ -504,21 +517,10 @@ async function validateTwilioSignature(req: any): Promise<boolean> {
   const host = (req.headers["x-forwarded-host"] as string) || req.headers.host || "localhost";
   const url = `${proto}://${host}${req.originalUrl}`;
 
-  // Build the validation string: URL + sorted POST params
   const params = req.body as Record<string, string>;
-  const sortedKeys = Object.keys(params).sort();
-  const signingStr = url + sortedKeys.map(k => `${k}${params[k]}`).join("");
 
-  const { createHmac } = await import("crypto");
-  const expected = createHmac("sha1", authToken).update(signingStr).digest("base64");
-
-  // Constant-time comparison
-  if (expected.length !== twilioSig.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) {
-    diff |= expected.charCodeAt(i) ^ twilioSig.charCodeAt(i);
-  }
-  return diff === 0;
+  // Use the official Twilio SDK for signature validation — handles all edge cases
+  return twilio.validateRequest(authToken, twilioSig, url, params);
 }
 
 router.post("/twilio/webhook", async (req, res) => {

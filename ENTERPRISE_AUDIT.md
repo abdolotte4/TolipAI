@@ -435,15 +435,15 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx
 
 | Category | Current Score | Target | Gap |
 |----------|--------------|--------|-----|
-| Security | 6/10 | 9/10 | JWT entropy, Zod validation, XSS in emails, N+1 |
+| Security | 7.5/10 | 9/10 | Zod on remaining routes, N+1 fix, XSS in emails |
 | Reliability | 6/10 | 9/10 | In-memory jobs, setImmediate fire-forget, Sentry added ✅ |
 | Performance | 6/10 | 9/10 | N+1 SMS webhook, no caching, no full-text index |
-| Code Quality | 7/10 | 9/10 | `any` abuse, missing deps, dead code |
-| Feature Completeness | 7/10 | 9/10 | vs competitors (see matrix) |
+| Code Quality | 7.5/10 | 9/10 | `any` abuse, missing deps, dead code |
+| Feature Completeness | 8.5/10 | 9/10 | Analytics ✅, Call Report ✅ — AI voice, power dialer remaining |
 | Infrastructure | 3/10 | 9/10 | No Dockerfiles, no CI/CD, no Fargate |
-| Observability | 4/10 | 9/10 | Sentry integrated ✅, no metrics dashboard |
+| Observability | 6/10 | 9/10 | Sentry ✅, Analytics Dashboard ✅, no metrics alerting |
 | Database | 6/10 | 9/10 | Missing indexes, no audit log, no normalization |
-| **Overall** | **76/100** | **92/100** | +3 pts this session |
+| **Overall** | **83/100** | **92/100** | +7 pts this session |
 
 ---
 
@@ -487,9 +487,9 @@ Add `<ErrorBoundary>` wrapping `<Switch>` in `App.tsx`.
 **Files:** `CashBuyerMatchPanel.tsx:129,157`, `CompsSection.tsx:140,262`
 **Command:** Add `leadId` and `useCallback` wrappers per the table above.
 
-#### P1-08 — Twilio Official Webhook Validation
-**File:** `twilio.ts:439`
-**Command:** Replace manual sha1 with `twilio.webhooks.validateRequest()` from the official SDK.
+#### P1-08 — Twilio Official Webhook Validation ✅ DONE
+**File:** `twilio.ts`
+**Status:** ✅ Done — Replaced manual HMAC-SHA1 with `twilio.validateRequest()` from the official Twilio SDK v5. Also added global env-var fallback for super_admin webhook path so inbound SMS still validates when credentials are set at the process level.
 
 #### P1-09 — Voicemail Drop ✅ DONE
 **File:** `routes/twilio-voice.ts`
@@ -503,16 +503,15 @@ Add `<ErrorBoundary>` wrapping `<Switch>` in `App.tsx`.
 
 ### 🟡 PHASE 2 — Medium Features (1–2 weeks each)
 
-#### P2-01 — Analytics Dashboard
+#### P2-01 — Analytics Dashboard ✅ DONE
 **New route:** `GET /api/crm/analytics/dashboard`
 **New page:** `pages/analytics/Dashboard.tsx`
-**Metrics:** Lead velocity (new leads/week), conversion funnel (new → contacted → under contract → closed), avg days-to-close, campaign ROI, agent leaderboard (calls made, deals closed), call disposition breakdown.
-**Stack:** Recharts + TanStack Query + Drizzle aggregation queries.
+**Status:** ✅ Done — Full analytics dashboard with lead velocity AreaChart (8 weeks), horizontal conversion funnel BarChart, weekly multi-status trend (12 weeks), top lead sources progress bars, and 4 KPI stat cards (Total Leads, Close Rate, Avg Days to Close, Total Calls). Accessible via `/analytics` with nav link in sidebar.
 
-#### P2-02 — Agent Call Performance Report
+#### P2-02 — Agent Call Performance Report ✅ DONE
 **New route:** `GET /api/crm/analytics/calls`
 **New page:** `pages/analytics/CallReport.tsx`
-**Metrics:** Calls per agent per day, avg call duration, MOS quality score trend, disposition breakdown, AI coaching average score per agent.
+**Status:** ✅ Done — Full call report with inbound/outbound volume AreaChart, avg duration BarChart, disposition PieChart, and per-agent performance table (total calls, outbound, answered, avg duration, total talk time). Accessible via `/analytics/calls`.
 
 #### P2-03 — DB-Backed Background Job Store
 **New schema table:** `crm_background_jobs`
@@ -529,9 +528,9 @@ Add `<ErrorBoundary>` wrapping `<Switch>` in `App.tsx`.
 **Command:** Migrate `skip_traced_phones`, `skip_traced_emails`, `phone`, `email` into normalized table.
 **Impact:** Query all phones for a lead, track which was skip-traced vs manually entered.
 
-#### P2-06 — Zod Validation Middleware
-**File:** `routes/crm/leads.ts`, `tasks.ts`, `sequences.ts`, `twilio.ts`
-**Command:** Create `lib/schemas/` with Zod schemas for all POST/PATCH body types. Add `validate(schema)` middleware function.
+#### P2-06 — Zod Validation Middleware ✅ PARTIAL
+**File:** `lib/validate.ts` created, applied to `twilio.ts`
+**Status:** ✅ Partial — `validateBody()` and `validateQuery()` middleware functions created in `api-server/src/lib/validate.ts` with schemas for Twilio config, lead creation, task creation, and SMS send. Applied to `POST /twilio/messages` (SMS send). Remaining: apply to `POST /crm/leads`, `POST /crm/tasks`, `PATCH` endpoints.
 
 #### P2-07 — Nationwide Absentee Owner / Tax Lien Integration
 **Service:** BatchLeads API or ATTOM `/propertyapi/v1.0.0/attomavm/detail` + foreclosure endpoint
