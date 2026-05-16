@@ -30,6 +30,7 @@ import TwilioConnect from "@/pages/integrations/TwilioConnect";
 import IntegrationsDashboard from "@/pages/integrations/IntegrationsDashboard";
 import AnalyticsDashboard from "@/pages/analytics/Dashboard";
 import CallReport from "@/pages/analytics/CallReport";
+import PowerDialer from "@/pages/dialer/PowerDialer";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,7 @@ function Router() {
       <Route path="/integrations/twilio"><AppLayout><TwilioConnect /></AppLayout></Route>
       <Route path="/analytics"><AppLayout><AnalyticsDashboard /></AppLayout></Route>
       <Route path="/analytics/calls"><AppLayout><CallReport /></AppLayout></Route>
+      <Route path="/dialer/power"><AppLayout><PowerDialer /></AppLayout></Route>
       <Route><AppLayout><NotFound /></AppLayout></Route>
     </Switch>
   );

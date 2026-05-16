@@ -520,6 +520,52 @@ export const toolsDistressedJobs = pgTable("tools_distressed_jobs", {
   createdAt:           timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── Audit Log (P2-04) ───────────────────────────────────────────────────────
+// Immutable, append-only record of every significant mutation in the CRM.
+// "Who changed this lead's status?" is now fully answerable.
+
+export const crmAuditLog = pgTable("crm_audit_log", {
+  id:         serial("id").primaryKey(),
+  tableName:  text("table_name").notNull(),          // crm_leads | crm_campaigns | crm_users
+  rowId:      integer("row_id").notNull(),
+  actorId:    integer("actor_id"),                   // null = system / automation
+  actorName:  text("actor_name"),
+  action:     text("action").notNull(),              // create | update | delete | status_change
+  field:      text("field"),                         // null = whole-row action
+  oldValue:   text("old_value"),
+  newValue:   text("new_value"),
+  metadata:   jsonb("metadata"),                     // { ip, leadAddress, campaignId, ... }
+  changedAt:  timestamp("changed_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_audit_log_row_idx").on(t.tableName, t.rowId),
+  index("crm_audit_log_actor_idx").on(t.actorId),
+  index("crm_audit_log_changed_at_idx").on(t.changedAt),
+]);
+
+// ─── Background Jobs (P2-03) ─────────────────────────────────────────────────
+// DB-backed job store — survives Railway deploys unlike in-memory Maps.
+// Used by: Power Dialer sessions, future Redis-less async tasks.
+
+export const crmBackgroundJobs = pgTable("crm_background_jobs", {
+  id:          text("id").primaryKey(),
+  type:        text("type").notNull(),               // power_dial | comps_export | enrichment | ...
+  status:      text("status").notNull().default("queued"), // queued | running | done | failed | cancelled
+  campaignId:  integer("campaign_id"),
+  actorId:     integer("actor_id"),
+  payload:     jsonb("payload"),                     // job-specific input + mutable state
+  result:      jsonb("result"),                      // output when done
+  progress:    integer("progress").notNull().default(0), // 0–100
+  error:       text("error"),
+  expiresAt:   timestamp("expires_at"),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+  updatedAt:   timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_background_jobs_status_idx").on(t.status),
+  index("crm_background_jobs_campaign_idx").on(t.campaignId),
+  index("crm_background_jobs_type_idx").on(t.type),
+  index("crm_background_jobs_expires_at_idx").on(t.expiresAt),
+]);
+
 // Skip-trace results for a lead or a buyer name.
 export const skipTraceResults = pgTable("skip_trace_results", {
   id: serial("id").primaryKey(),

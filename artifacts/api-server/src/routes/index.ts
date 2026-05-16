@@ -11,6 +11,7 @@ import scraperEngineRouter from "./scraperEngine";
 import twilioRouter from "./twilio";
 import twilioVoiceRouter from "./twilio-voice";
 import { agentRouter } from "./twilio-voice-agent";
+import powerDialerRouter from "./twilio-power-dialer";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(scraperEngineRouter);
 router.use(twilioRouter);
 router.use(twilioVoiceRouter);
 router.use(agentRouter);
+router.use(powerDialerRouter);
 
 export default router;

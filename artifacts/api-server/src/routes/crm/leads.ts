@@ -9,6 +9,7 @@ import { fetchPropertyData, checkCooldown, recordFetch, runSkipTrace, checkSkipT
 import { parseMoney } from "../../services/coreCalculations";
 import { getRentcastValuation } from "../../services/rentcastApi";
 import { geocodeViaAttom, fetchCompsViaAttom, hasAttomKey, fetchAttomAvm, fetchPropertyDataViaAttom } from "../../services/attomApi";
+import { writeAuditLog } from "../../lib/auditLog";
 
 // ─── In-memory comps job store ────────────────────────────────────────────────
 interface CompsJob {
@@ -558,6 +559,45 @@ router.patch("/:id", crmAuth, async (req, res) => {
     if (data.status !== undefined && data.status !== existing.status) {
       onLeadStatusChanged(id, existing.status, data.status)
         .catch(e => logger.error(e, "automation.onLeadStatusChanged error"));
+
+      // Write dedicated audit log row for status change (P2-04)
+      writeAuditLog({
+        tableName: "crm_leads",
+        rowId: id,
+        actorId: crmUser.userId,
+        actorName: actorName,
+        action: "status_change",
+        field: "status",
+        oldValue: existing.status,
+        newValue: data.status,
+        metadata: { leadAddress: lead.address, campaignId: lead.campaignId },
+      }).catch(() => {});
+    }
+
+    // Also write audit log rows for any other tracked field changes (P2-04)
+    if (auditEntries.length > 0) {
+      const auditRows = auditFields
+        .filter(f => data[f] !== undefined)
+        .filter(f => {
+          const oldStr = formatFieldValue(f, (existing as Record<string, unknown>)[f]);
+          const newStr = formatFieldValue(f, (lead as Record<string, unknown>)[f]);
+          return oldStr !== newStr;
+        })
+        .filter(f => f !== "status")
+        .map(f => ({
+          tableName: "crm_leads" as const,
+          rowId: id,
+          actorId: crmUser.userId,
+          actorName: actorName,
+          action: "update" as const,
+          field: f,
+          oldValue: formatFieldValue(f, (existing as Record<string, unknown>)[f]),
+          newValue: formatFieldValue(f, (lead as Record<string, unknown>)[f]),
+          metadata: { leadAddress: lead.address, campaignId: lead.campaignId } as Record<string, unknown>,
+        }));
+      if (auditRows.length > 0) {
+        writeAuditLog(auditRows).catch(() => {});
+      }
     }
 
     res.json(formatLead(lead));
