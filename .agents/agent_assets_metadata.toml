@@ -1,5 +1,10 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "NPAYWD4tWs3BZ_FATiJAC"
+uri = "file://artifacts/digor-crm/public/images/auth-bg.png"
+type = "image"
+title = "tolipai auth background"
 
 [[outputs]]
 id = "HUNYFUncrXV0gFOWE0tu7"

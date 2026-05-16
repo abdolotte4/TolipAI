@@ -1,4 +1,4 @@
-# Architecture Reference — Digor CRM & Tools Platform
+# Architecture Reference — TolipAI CRM & Tools Platform
 
 This document covers the internal design decisions, data contracts, and formulas
 that are intentionally omitted from the top-level README to keep it readable.
@@ -26,9 +26,9 @@ that are intentionally omitted from the top-level README to keep it readable.
 │   │   └── src/
 │   │       ├── routes/     Route handlers (thin — delegates to services)
 │   │       └── services/   attomApi.ts · propertyApi.ts · emailService.ts
-│   ├── digor-crm/          React + Vite CRM portal  (base path: /crm/)
-│   ├── digor-tools/        React + Vite internal tools portal (base path: /tools/)
-│   └── digor-website/      React + Vite public site (base path: /)
+│   ├── tolipai-crm/          React + Vite CRM portal  (base path: /crm/)
+│   ├── tolipai-tools/        React + Vite internal tools portal (base path: /tools/)
+│   └── tolipai-website/      React + Vite public site (base path: /)
 ├── lib/
 │   ├── api-spec/           OpenAPI 3.1 spec + Orval codegen config
 │   ├── api-client-react/   Generated TanStack Query hooks (do not edit manually)
@@ -51,9 +51,9 @@ Browser (React app)
   ▼
 Railway ingress (path-based routing)
   │
-  ├─ /          →  digor-website static assets
-  ├─ /crm/      →  digor-crm static assets
-  ├─ /tools/    →  digor-tools static assets
+  ├─ /          →  tolipai-website static assets
+  ├─ /crm/      →  tolipai-crm static assets
+  ├─ /tools/    →  tolipai-tools static assets
   └─ /api/      →  api-server (Express 5, port $PORT)
                       │
                       ├─ JWT middleware (requireAuth)

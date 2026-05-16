@@ -38,7 +38,7 @@ class CircuitBreaker {
 export const aiSmsBreaker = new CircuitBreaker();
 
 export const AI_SMS_COST_USD = 0.005;
-export const AI_SMS_FALLBACK = "Thanks for reaching out! Can we schedule a quick call? — Digor Team";
+export const AI_SMS_FALLBACK = "Thanks for reaching out! Can we schedule a quick call? — TolipAI Team";
 
 const PERSONALITIES: Record<string, string> = {
   professional_investor: `You are a professional real estate investor following up with a property owner.

@@ -1,12 +1,12 @@
-# Digor CRM & Tools Platform
+# TolipAI CRM & Tools Platform
 
-![CI](https://github.com/Agawish24/digor/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Agawish24/tolipai/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Node 20](https://img.shields.io/badge/node-20-brightgreen)
 ![pnpm 10](https://img.shields.io/badge/pnpm-10-orange)
 ![Deploy: Railway](https://img.shields.io/badge/deploy-Railway-blueviolet)
 
-**[▶ Live Demo](https://heroic-curiosity-production-dc5a.up.railway.app/crm/)** — Login: `demo@digorva.com` / `Demo2026!`
+**[▶ Live Demo](https://heroic-curiosity-production-dc5a.up.railway.app/crm/)** — Login: `demo@tolipai.com` / `Demo2026!`
 
 > Demo is read-only friendly — seeded with 15 realistic fake leads across Cleveland, Detroit, Atlanta, Memphis, Houston, Pittsburgh, St. Louis, and Louisville.
 
@@ -23,9 +23,9 @@ A full-stack real estate wholesaling platform built to solve real acquisition, c
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Applications](#applications)
-  - [Digor CRM](#digor-crm)
-  - [Digor Tools](#digor-tools)
-  - [Digor Website](#digor-website)
+  - [TolipAI CRM](#digor-crm)
+  - [TolipAI Tools](#digor-tools)
+  - [TolipAI Website](#digor-website)
   - [API Server](#api-server)
 - [AI Integrations](#ai-integrations)
 - [Third-Party APIs & Integrations](#third-party-apis--integrations)
@@ -48,8 +48,8 @@ A full-stack real estate wholesaling platform built to solve real acquisition, c
 
 ```bash
 # 1. Clone and install all workspace dependencies
-git clone https://github.com/abdolotte7/digor.git
-cd digor
+git clone https://github.com/abdolotte7/tolipai.git
+cd tolipai
 pnpm install
 
 # 2. Copy the environment template and fill in your values
@@ -105,12 +105,12 @@ pnpm --filter @workspace/api-server seed:demo
 ```
 
 This creates:
-- **Campaign:** Digor Demo
-- **Login:** `demo@digorva.com` / `Demo2026!`
+- **Campaign:** TolipAI Demo
+- **Login:** `demo@tolipai.com` / `Demo2026!`
 - **15 fake leads** across Cleveland, Detroit, Atlanta, Memphis, Houston, Pittsburgh, St. Louis, and Louisville — with realistic ARV/MAO math, deal statuses (new → closed), activity notes, tasks, and comps
 - No real PII — all names, phones, and emails are fictional
 
-After seeding, update the demo URL in `artifacts/digor-website/src/components/sections/Hero.tsx` and `README.md` (search for `YOUR_RAILWAY_APP`).
+After seeding, update the demo URL in `artifacts/tolipai-website/src/components/sections/Hero.tsx` and `README.md` (search for `YOUR_RAILWAY_APP`).
 
 ---
 
@@ -129,7 +129,7 @@ pnpm --filter @workspace/digor-website run dev # Site on $PORT
 ```
 
 Set `DATABASE_URL` in your `.env` to point at a local PostgreSQL instance
-(e.g. `postgresql://postgres:password@localhost:5432/digor`).
+(e.g. `postgresql://postgres:password@localhost:5432/tolipai`).
 
 ### Railway (production)
 
@@ -146,9 +146,9 @@ Railway serves all four applications behind a single domain using path-based rou
 
 | Path | Application |
 |---|---|
-| `/` | Digor Website (public marketing) |
-| `/crm/` | Digor CRM |
-| `/tools/` | Digor Tools |
+| `/` | TolipAI Website (public marketing) |
+| `/crm/` | TolipAI CRM |
+| `/tools/` | TolipAI Tools |
 | `/api/` | API Server |
 
 ### Other platforms (Render / Cloud Run)
@@ -163,31 +163,31 @@ Any platform that supports a Node.js build command works. The key requirements a
 
 ## Screenshots
 
-### Digor CRM — Comparable Sales & ARV
+### TolipAI CRM — Comparable Sales & ARV
 
 Six comps fetched from ATTOM, filtered by property type and sqft ratio, adjusted per comp, with median ARV auto-calculated. Below-threshold ARV/asking ratio flagged in red.
 
 ![CRM Comps & ARV](./docs/screenshots/crm-comps-detail.png)
 
-### Digor CRM — AI Deal Scorer
+### TolipAI CRM — AI Deal Scorer
 
 Llama 3.1 70B scores the deal 1–10 with profit potential, seller motivation, deal risk, and urgency subscores — plus a concrete opening price recommendation.
 
 ![AI Deal Scorer](./docs/screenshots/crm-ai-deal-scorer.png)
 
-### Digor CRM — Lead Detail
+### TolipAI CRM — Lead Detail
 
 Full lead profile: property data fetched from ATTOM, integrated Dialer & SMS panel, deal scoring, AI Seller Script, and AI Offer Letter — all in one view.
 
 ![Lead Detail](./docs/screenshots/crm-lead-detail.png)
 
-### Digor CRM — Lead List
+### TolipAI CRM — Lead List
 
 Pipeline view with live deal scores, phone + email columns, and one-click access to the dialer. PII redacted in this screenshot.
 
 ![Lead List](./docs/screenshots/crm-lead-list.png)
 
-### Digor CRM — AI Offer Letter
+### TolipAI CRM — AI Offer Letter
 
 One-click AI-generated cash offer letter personalized to the seller's situation, property, and your calculated MAO.
 
@@ -195,7 +195,7 @@ One-click AI-generated cash offer letter personalized to the seller's situation,
 
 ---
 
-### Digor Tools — ARV Calculator
+### TolipAI Tools — ARV Calculator
 
 Enter any address, choose radius and max comps, and get a full comp table with individual adjustments, median ARV, MAO (70% rule), and conservative offer (65% rule).
 
@@ -203,25 +203,25 @@ Enter any address, choose radius and max comps, and get a full comp table with i
 
 ![ARV Calculator v2](./docs/screenshots/tools-arv-v2.png)
 
-### Digor Tools — Repair Cost Estimator
+### TolipAI Tools — Repair Cost Estimator
 
 Describe repairs in plain language and get an itemized AI-generated scope of work with line-item costs you can apply directly as the ERC.
 
 ![Repair Estimator](./docs/screenshots/tools-repair-estimator.png)
 
-### Digor Tools — Property Lookup
+### TolipAI Tools — Property Lookup
 
 Full property profile — AVM, equity, owner, mortgage, and contact info pulled from ATTOM. Owner name and contact info redacted in this screenshot.
 
 ![Property Lookup](./docs/screenshots/tools-property-lookup.png)
 
-### Digor Tools — Opportunity Finder
+### TolipAI Tools — Opportunity Finder
 
 Pull motivated-seller property lists by ZIP or county with ATTOM mortgage-based filters (Absentee Owner, Free & Clear, Pre-Foreclosure, Tax Delinquent, Vacant/Abandoned, High Equity).
 
 ![Opportunity Finder](./docs/screenshots/tools-opportunity-finder.png)
 
-### Digor Tools — Lead Scraper
+### TolipAI Tools — Lead Scraper
 
 Bulk keyword × location automation across Google Maps, Google Search, NAR Directory, and Zillow. Select keywords and cities, run all combos sequentially, export results as CSV.
 
@@ -246,7 +246,7 @@ This fragmentation causes deals to fall through the cracks, data to go stale, an
 
 ### The Solution
 
-Digor is a unified platform that consolidates every step of the wholesaling workflow:
+TolipAI is a unified platform that consolidates every step of the wholesaling workflow:
 
 1. **Lead intake** — Public submission links let motivated sellers submit directly; CRM agents capture inbound leads in a structured 6-section form
 2. **Property intelligence** — One click pulls property data (beds/baths/sqft/year/value), skip traces the owner for phone and email, and fetches recently-sold comps automatically
@@ -321,7 +321,7 @@ and 30-day closing. Printed and emailed to seller in one click.
 
 **Total elapsed time: ~2 minutes 45 seconds.**
 
-Without Digor, this same workflow required pulling up Zillow/MLS for comps (15–20 min),
+Without TolipAI, this same workflow required pulling up Zillow/MLS for comps (15–20 min),
 running a separate skip trace ($0.35/record), manually calculating MAO on a spreadsheet,
 and drafting an offer letter in Word. Typical elapsed time: 60–90 minutes.
 
@@ -333,9 +333,9 @@ and drafting an offer letter in Word. Typical elapsed time: 60–90 minutes.
 monorepo/
 ├── artifacts/
 │   ├── api-server/        Express 5 API — all business logic and integrations
-│   ├── digor-crm/         React + Vite CRM portal  (/crm/)
-│   ├── digor-tools/       React + Vite internal tools (/tools/)
-│   └── digor-website/     React + Vite public marketing site (/)
+│   ├── tolipai-crm/         React + Vite CRM portal  (/crm/)
+│   ├── tolipai-tools/       React + Vite internal tools (/tools/)
+│   └── tolipai-website/     React + Vite public marketing site (/)
 ├── lib/
 │   ├── api-spec/          OpenAPI 3.1 spec + Orval codegen config
 │   ├── api-client-react/  Generated React Query hooks
@@ -413,7 +413,7 @@ All four applications share a single PostgreSQL database and are served behind a
 
 ## Applications
 
-### Digor CRM
+### TolipAI CRM
 
 Multi-tenant CRM built for real estate wholesaling teams. Each client organization is isolated in its own Campaign workspace.
 
@@ -421,7 +421,7 @@ Multi-tenant CRM built for real estate wholesaling teams. Each client organizati
 
 | Role | Access |
 |---|---|
-| `super_admin` | Digor staff; cross-campaign visibility; can create campaigns and campaign admins |
+| `super_admin` | TolipAI staff; cross-campaign visibility; can create campaigns and campaign admins |
 | `admin` | Campaign admin; manages their campaign's users, leads, tasks, links |
 | `sales` | Full lead read/write within their campaign |
 | `va` | View/edit leads assigned to them only |
@@ -488,7 +488,7 @@ Tokenized submission links allow motivated sellers to fill out a form directly. 
 
 ---
 
-### Digor Tools
+### TolipAI Tools
 
 PIN-gated internal tools portal for acquisition and research work. Separate from the CRM — accessible to staff without a CRM login.
 
@@ -534,9 +534,9 @@ PIN-gated internal tools portal for acquisition and research work. Separate from
 
 ---
 
-### Digor Website
+### TolipAI Website
 
-Public-facing B2B marketing site for Digor LLC.
+Public-facing B2B marketing site for TolipAI LLC.
 
 - Dark professional design with gold accent palette
 - Sections: Hero, Services, Methodology, Case Studies, Team, About, Contact
@@ -663,7 +663,7 @@ Alternative telephony provider. Same pattern as SignalWire: webhook ingestion + 
 
 ### Stripe
 
-Subscription checkout for Digor's service tiers. Checkout session creation and webhook handling for subscription lifecycle events.
+Subscription checkout for TolipAI's service tiers. Checkout session creation and webhook handling for subscription lifecycle events.
 
 ### US Census Bureau API
 
@@ -957,8 +957,8 @@ export AWS_REGION=us-east-1
 
 # 2. Store secrets in Secrets Manager (one-time)
 aws secretsmanager create-secret \
-  --name digor/scraper/database-url \
-  --secret-string "postgresql://user:pass@rds-host:5432/digor"
+  --name tolipai/scraper/database-url \
+  --secret-string "postgresql://user:pass@rds-host:5432/tolipai"
 
 # 3. Create the ECS cluster (one-time)
 aws ecs create-cluster --cluster-name digor-scraper-cluster \

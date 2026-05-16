@@ -1,4 +1,4 @@
-# Digor Codebase — Full Audit Report
+# TolipAI Codebase — Full Audit Report
 **Generated:** May 12, 2026
 **Last Updated:** May 12, 2026 (Session 8 — honest re-audit, remaining bug fixes)
 **Scope:** `replit_agent_prompt_v2.md` — all parts verified against actual files in codebase
@@ -39,12 +39,12 @@ The Session 7 audit report marked many items ✅ that were genuinely done, but a
 
 | # | Bug | Fix | File(s) |
 |---|-----|-----|---------|
-| S8-01 | `digor-crm` TypeScript error: `me?.isOwner` — generated `CrmUser` type doesn't have `isOwner` field | Cast to `(me as any)?.isOwner` | `pages/admin/UserList.tsx` |
-| S8-02 | `digor-crm` TypeScript error: `openPhoneNumberId` not in `createCampaign()` type | Added optional fields to function signature | `pages/campaigns/CampaignList.tsx` |
-| S8-03 | `digor-crm` TypeScript error: `compsWithAdj` not destructured from `useMemo` | Added `compsWithAdj` to both the return and the destructure | `pages/leads/LeadDetail.tsx` |
-| S8-04 | `digor-crm` TypeScript error: `CashBuyerMatchPanel` has no default export (`React.lazy` requires it) | Added `export default CashBuyerMatchPanel` | `components/leads/CashBuyerMatchPanel.tsx` |
-| S8-05 | `digor-crm` TypeScript error: `leadId` prop is `number` but `CashBuyerMatchPanel` expects `string` | Changed to `String(leadId)` at call site | `pages/leads/LeadDetail.tsx` |
-| S8-06 | `digor-crm` TypeScript error: `campaignName` not on generated `CrmSubmissionFormInfo` type | Added `campaignName?: string \| null` to both src and dist generated type files | `lib/api-client-react/src/generated/api.schemas.ts`, `lib/api-client-react/dist/generated/api.schemas.d.ts` |
+| S8-01 | `tolipai-crm` TypeScript error: `me?.isOwner` — generated `CrmUser` type doesn't have `isOwner` field | Cast to `(me as any)?.isOwner` | `pages/admin/UserList.tsx` |
+| S8-02 | `tolipai-crm` TypeScript error: `openPhoneNumberId` not in `createCampaign()` type | Added optional fields to function signature | `pages/campaigns/CampaignList.tsx` |
+| S8-03 | `tolipai-crm` TypeScript error: `compsWithAdj` not destructured from `useMemo` | Added `compsWithAdj` to both the return and the destructure | `pages/leads/LeadDetail.tsx` |
+| S8-04 | `tolipai-crm` TypeScript error: `CashBuyerMatchPanel` has no default export (`React.lazy` requires it) | Added `export default CashBuyerMatchPanel` | `components/leads/CashBuyerMatchPanel.tsx` |
+| S8-05 | `tolipai-crm` TypeScript error: `leadId` prop is `number` but `CashBuyerMatchPanel` expects `string` | Changed to `String(leadId)` at call site | `pages/leads/LeadDetail.tsx` |
+| S8-06 | `tolipai-crm` TypeScript error: `campaignName` not on generated `CrmSubmissionFormInfo` type | Added `campaignName?: string \| null` to both src and dist generated type files | `lib/api-client-react/src/generated/api.schemas.ts`, `lib/api-client-react/dist/generated/api.schemas.d.ts` |
 | S8-07 | `contact.ts`: `tls: { rejectUnauthorized: false }` — disables TLS cert verification in production | Removed the `tls` option (nodemailer default is verify=true) | `routes/contact.ts` |
 | S8-08 | `subscribe.ts`: same `tls: { rejectUnauthorized: false }` | Removed the `tls` option | `routes/subscribe.ts` |
 | S8-09 | `SmsConversations` component in `LeadDetail.tsx` called `apiFetch('/twilio/...')` which resolves to `/api/crm/twilio/...` — wrong base path | Changed to `apiRawFetch` which resolves to `/api/twilio/...` | `pages/leads/LeadDetail.tsx` |
@@ -219,7 +219,7 @@ Per `replit_agent_prompt_v2.md` PART 2 decision: **single Fargate task = in-memo
 | SMS delivery status tracked in `crm_sequence_logs` | ✅ | `type: "sms"` column added; status logged |
 | `crm_sequence_steps.type` column | ✅ | Migration applied; default `'email'` |
 | `crm_sequence_logs.type` column | ✅ | Migration applied; default `'email'` |
-| Frontend sequence builder SMS step UI | ⚠️ | **CRM only** — `SequenceList.tsx` in `digor-crm` has SMS step type. `digor-tools` has no sequences page (no sequences feature there). |
+| Frontend sequence builder SMS step UI | ⚠️ | **CRM only** — `SequenceList.tsx` in `tolipai-crm` has SMS step type. `tolipai-tools` has no sequences page (no sequences feature there). |
 | 160-char SMS limit warning | ✅ | Present in `digor-crm/src/pages/campaigns/SequenceList.tsx` |
 
 ### 5.2 Direct Mail via Brevo
@@ -374,7 +374,7 @@ Per `replit_agent_prompt_v2.md` PART 2 decision: **single Fargate task = in-memo
 | Item | What's Done | What Remains | Why Stopped |
 |------|-------------|--------------|-------------|
 | 12.1 `formData` useRef | `formDataRef` synced every render. Auto-save reads ref. `[isDirty]` in effect deps. | Converting all inputs to truly uncontrolled | React controlled inputs require state. The performance win is achieved. |
-| `digor-tools` sequences UI | No sequences page in digor-tools (the tool has no sequence builder feature at all) | Full sequence builder in digor-tools | The spec referenced `digor-tools/src/pages/sequences/` but no such page exists — sequences are a CRM feature. The CRM sequence builder was fully updated. |
+| `tolipai-tools` sequences UI | No sequences page in digor-tools (the tool has no sequence builder feature at all) | Full sequence builder in digor-tools | The spec referenced `digor-tools/src/pages/sequences/` but no such page exists — sequences are a CRM feature. The CRM sequence builder was fully updated. |
 | `vite-plugin-pwa` not used | Manual `sw.js` achieves same goal | Auto-generated Workbox SW via vite-plugin-pwa | Manual approach is functionally equivalent. No functional gap. |
 
 ### Security Debt — Documented, Not Yet Fixed

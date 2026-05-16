@@ -28,7 +28,7 @@ export function Scene5() {
       >
         <p className="text-[1.5vw] text-white/50 mb-4 tracking-widest uppercase">Built by investors. For investors.</p>
         <h1 className="text-[8vw] font-display font-black text-white leading-none tracking-tighter">
-          DIGOR
+          TOLIPAI
         </h1>
         <div className="w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent mt-4" />
       </motion.div>
@@ -39,7 +39,7 @@ export function Scene5() {
         animate={phase >= 2 ? { opacity: 1 } : { opacity: 0 }}
         transition={{ duration: 1 }}
       >
-        digor.com
+        tolipai.com
       </motion.p>
     </motion.div>
   );

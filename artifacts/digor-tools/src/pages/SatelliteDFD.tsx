@@ -271,7 +271,7 @@ export default function SatelliteDFD() {
           // Reverse geocode using a public API
           const resp = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            { headers: { "User-Agent": "DigorTools/1.0" } }
+            { headers: { "User-Agent": "TolipAITools/1.0" } }
           );
           if (resp.ok) {
             const data = await resp.json();

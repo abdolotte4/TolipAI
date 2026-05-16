@@ -98,7 +98,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="h-16 flex items-center justify-between px-6 border-b border-border shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg text-primary tracking-tight">
             <div className="w-4 h-4 bg-primary rounded-sm" />
-            DIGOR TOOLS
+            TOLIPAI TOOLS
           </div>
           <Button
             size="icon"
@@ -129,7 +129,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </Button>
           <div className="flex items-center gap-2 font-bold text-base text-primary tracking-tight ml-3">
             <div className="w-3 h-3 bg-primary rounded-sm" />
-            DIGOR TOOLS
+            TOLIPAI TOOLS
           </div>
         </div>
 

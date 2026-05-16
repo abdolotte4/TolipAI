@@ -1,5 +1,5 @@
 /**
- * HTTP client for the Python digor-scraper-engine FastAPI service.
+ * HTTP client for the Python tolipai-scraper-engine FastAPI service.
  *
  * The engine URL is configured via SCRAPER_ENGINE_URL.  All calls fail soft —
  * if the engine is unreachable, callers get a 503 with a clear message instead of a 500.

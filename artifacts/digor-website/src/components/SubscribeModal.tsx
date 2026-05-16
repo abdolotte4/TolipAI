@@ -125,7 +125,7 @@ export function SubscribeModal({ isOpen, onClose }: SubscribeModalProps) {
             {/* Header */}
             <div className="bg-[#0a0e1a] px-6 py-4 flex items-center justify-between border-b border-[#1f2937]">
               <div>
-                <h2 className="text-lg font-bold text-white">DIGOR<span className="text-[#d4af37]">.</span> Managed Services</h2>
+                <h2 className="text-lg font-bold text-white">TOLIPAI<span className="text-[#d4af37]">.</span> Managed Services</h2>
                 <p className="text-xs text-gray-400">Verified Property Data Contacts</p>
               </div>
               <button onClick={handleClose} className="text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-[#1f2937]">

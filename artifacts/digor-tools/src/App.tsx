@@ -83,7 +83,7 @@ function InstallPrompt() {
     <div className="fixed bottom-4 right-4 z-50 bg-card border border-border rounded-lg shadow-lg p-4 max-w-xs">
       <p className="text-sm font-semibold text-foreground mb-1">Add to Home Screen</p>
       <p className="text-xs text-muted-foreground mb-3">
-        Install Digor Tools for quick access from your home screen.
+        Install TolipAI Tools for quick access from your home screen.
       </p>
       <div className="flex gap-2">
         <button

@@ -1,5 +1,5 @@
 /**
- * Express bridge to the Python `digor-scraper-engine` FastAPI service.
+ * Express bridge to the Python `tolipai-scraper-engine` FastAPI service.
  *
  * Mounted at `/api/scraper-engine`.  CRM-authenticated endpoints proxy
  * cash-buyer flows; PIN-authenticated endpoints (matching tools.ts) proxy

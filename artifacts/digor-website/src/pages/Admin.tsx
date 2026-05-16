@@ -65,7 +65,7 @@ function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white">DIGOR<span className="text-[#d4af37]">.</span></h1>
+          <h1 className="text-3xl font-bold text-white">TOLIPAI<span className="text-[#d4af37]">.</span></h1>
           <p className="text-gray-400 mt-2">Admin Panel</p>
         </div>
         <form onSubmit={handleSubmit} className="bg-[#111827] border border-[#1f2937] rounded-2xl p-8 shadow-2xl">
@@ -178,7 +178,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
       {/* Header */}
       <header className="bg-[#111827] border-b border-[#1f2937] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold">DIGOR<span className="text-[#d4af37]">.</span> <span className="text-gray-400 font-normal text-sm">Admin</span></h1>
+          <h1 className="text-xl font-bold">TOLIPAI<span className="text-[#d4af37]">.</span> <span className="text-gray-400 font-normal text-sm">Admin</span></h1>
           <nav className="hidden md:flex gap-1">
             {(["overview", "contacts", "subscribers"] as const).map(t => (
               <button key={t} onClick={() => setTab(t)}
@@ -408,15 +408,15 @@ export default function Admin() {
     return () => { document.head.removeChild(meta); };
   }, []);
 
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("digor_admin_token"));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("tolipai_admin_token"));
 
   const handleLogin = (t: string) => {
-    localStorage.setItem("digor_admin_token", t);
+    localStorage.setItem("tolipai_admin_token", t);
     setToken(t);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("digor_admin_token");
+    localStorage.removeItem("tolipai_admin_token");
     setToken(null);
   };
 

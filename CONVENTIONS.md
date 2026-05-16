@@ -1,4 +1,4 @@
-# Digor LLC — Project Conventions & Architecture
+# TolipAI LLC — Project Conventions & Architecture
 
 ## Monorepo Structure
 
@@ -10,10 +10,10 @@
 │   │       ├── routes/      # Route handlers (admin, leads, scraperEngine, tools, etc.)
 │   │       ├── db/          # Drizzle ORM schema + migrations
 │   │       └── index.ts     # App entry point
-│   ├── digor-website/       # Public marketing site (PORT=3000)
-│   ├── digor-crm/           # Internal CRM portal (PORT=3001)
-│   ├── digor-tools/         # Tools portal (PORT=3002)
-│   └── digor-scraper-engine/  # Python FastAPI scraper engine (PORT=8001)
+│   ├── tolipai-website/       # Public marketing site (PORT=3000)
+│   ├── tolipai-crm/           # Internal CRM portal (PORT=3001)
+│   ├── tolipai-tools/         # Tools portal (PORT=3002)
+│   └── tolipai-scraper-engine/  # Python FastAPI scraper engine (PORT=8001)
 │       ├── workers/
 │       │   ├── main.py      # FastAPI app entry (2000+ lines)
 │       │   ├── db.py        # asyncpg DB helpers
@@ -50,11 +50,11 @@
 
 ## Language & Runtime
 
-- **TypeScript/Node** — api-server, digor-website, digor-crm, digor-tools
+- **TypeScript/Node** — api-server, tolipai-website, tolipai-crm, tolipai-tools
   - Package manager: `pnpm` (workspace monorepo)
   - ORM: Drizzle (PostgreSQL)
   - Framework: Express
-- **Python 3.11** — digor-scraper-engine
+- **Python 3.11** — tolipai-scraper-engine
   - Framework: FastAPI + uvicorn
   - HTTP: httpx + tenacity
   - Browser automation: Playwright
@@ -87,7 +87,7 @@ BRIGHTDATA_PROXY_URL  # Residential proxy for scrapers
 ATTOM_API_KEY         # ATTOM property data API
 GOOGLE_MAPS_API_KEY   # Google Maps / Places API
 GOOGLE_CLOUD_API_KEY  # Cloud Vision (satellite_rekognition)
-SIGNALWIRE_*          # Telephony
+TWILIO_*          # Telephony
 OPENPHONE_*           # OpenPhone integration
 ```
 
@@ -123,16 +123,16 @@ pnpm run dev
 
 # Or individually:
 PORT=8080 pnpm --filter @workspace/api-server run dev
-PORT=3000 pnpm --filter @workspace/digor-website run dev
-PORT=3001 pnpm --filter @workspace/digor-crm run dev
-PORT=3002 pnpm --filter @workspace/digor-tools run dev
+PORT=3000 pnpm --filter @workspace/tolipai-website run dev
+PORT=3001 pnpm --filter @workspace/tolipai-crm run dev
+PORT=3002 pnpm --filter @workspace/tolipai-tools run dev
 
 # Python scraper engine
-cd artifacts/digor-scraper-engine
+cd artifacts/tolipai-scraper-engine
 uvicorn workers.main:app --reload --port 8001
 
 # Lint + format Python
-cd artifacts/digor-scraper-engine
+cd artifacts/tolipai-scraper-engine
 python -m black workers/ test_logins.py
 python -m flake8 workers/ test_logins.py --max-line-length=120 --extend-ignore=E203,W503,E501
 ```
@@ -143,4 +143,4 @@ python -m flake8 workers/ test_logins.py --max-line-length=120 --extend-ignore=E
 - **Aider**: Run `./launch-aider.sh` from the project root in a terminal shell.
   - Aider edits files directly; commit manually with `git add -A && git commit -m "..."`
   - Both tools can be used on the same codebase — just avoid editing the same file simultaneously.
-  - Aider reads `CONVENTIONS.md` automatically for project context.
+  - Aider reads `CONVENTIONS.md` automatically for project context. The internal directory names still use the `digor-` prefix for backwards-compatibility with Railway deployments.

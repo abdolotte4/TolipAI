@@ -45,7 +45,7 @@ router.post("/contact", async (req, res) => {
   const emailHtml = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9;">
       <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
-        <h1 style="color:#d4af37;margin:0;font-size:24px;">DIGOR LLC</h1>
+        <h1 style="color:#d4af37;margin:0;font-size:24px;">TOLIPAI LLC</h1>
         <p style="color:#aaa;margin:8px 0 0;font-size:13px;">New Contact Form Inquiry</p>
       </div>
       <div style="background:#fff;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;">

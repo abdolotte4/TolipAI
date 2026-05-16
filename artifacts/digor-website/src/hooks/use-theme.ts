@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const STORAGE_KEY = "digor-website-theme";
+const STORAGE_KEY = "tolipai-website-theme";
 
 export function useTheme() {
   const [theme, setThemeState] = useState<"dark" | "light">(() => {
@@ -10,10 +10,10 @@ export function useTheme() {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "light") {
-      root.classList.add("light");
+    if (theme === "dark") {
+      root.classList.add("dark");
     } else {
-      root.classList.remove("light");
+      root.classList.remove("dark");
     }
     localStorage.setItem(STORAGE_KEY, theme);
   }, [theme]);

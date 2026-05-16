@@ -99,7 +99,7 @@ export default function ArvCalculator() {
             <CardHeader className="pb-4">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="auto">Auto (DIGOR)</TabsTrigger>
+                  <TabsTrigger value="auto">Auto (TolipAI)</TabsTrigger>
                   <TabsTrigger value="manual">Manual Entry</TabsTrigger>
                 </TabsList>
               </Tabs>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
 export function useAuth() {
-  const [pin, setPin] = useState<string | null>(() => localStorage.getItem("digor_tools_pin"));
+  const [pin, setPin] = useState<string | null>(() => localStorage.getItem("tolipai_tools_pin"));
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!pin);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -22,17 +22,16 @@ export function useAuth() {
           },
           body: JSON.stringify({ pin })
         });
-        
+
         if (res.ok) {
           setIsAuthenticated(true);
-          localStorage.setItem("digor_tools_pin", pin);
+          localStorage.setItem("tolipai_tools_pin", pin);
         } else {
           setIsAuthenticated(false);
-          localStorage.removeItem("digor_tools_pin");
+          localStorage.removeItem("tolipai_tools_pin");
           setPin(null);
         }
-      } catch (err) {
-        // Network error, assume logged out to be safe or keep current state?
+      } catch {
         setIsAuthenticated(false);
       } finally {
         setIsLoading(false);
@@ -51,10 +50,10 @@ export function useAuth() {
       },
       body: JSON.stringify({ pin: newPin })
     });
-    
+
     if (res.ok) {
       setPin(newPin);
-      localStorage.setItem("digor_tools_pin", newPin);
+      localStorage.setItem("tolipai_tools_pin", newPin);
       setIsAuthenticated(true);
       return true;
     }
@@ -63,7 +62,7 @@ export function useAuth() {
 
   const logout = () => {
     setPin(null);
-    localStorage.removeItem("digor_tools_pin");
+    localStorage.removeItem("tolipai_tools_pin");
     setIsAuthenticated(false);
   };
 
