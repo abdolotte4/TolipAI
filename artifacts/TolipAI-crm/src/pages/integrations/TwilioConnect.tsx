@@ -5,7 +5,7 @@ import {
   Phone, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2,
   ExternalLink, RefreshCw, Zap, ShieldCheck, MessageSquare,
   PhoneCall, ChevronRight, ArrowLeft, Info, Copy, Check, Mic,
-  Building2,
+  Building2, Activity,
 } from "lucide-react";
 import { apiRawFetch as apiFetch } from "@/lib/api";
 import { Link } from "wouter";
@@ -77,6 +77,20 @@ export default function TwilioConnect() {
     queryKey: ["twilio-setup-guide"],
     queryFn: () => apiFetch("/twilio/setup-guide"),
     retry: false,
+  });
+
+  // Super admin — bulk campaign health check
+  const {
+    data: healthData,
+    isLoading: healthLoading,
+    refetch: refetchHealth,
+    dataUpdatedAt: healthUpdatedAt,
+  } = useQuery<any>({
+    queryKey: ["twilio-campaign-health"],
+    queryFn: () => apiFetch("/twilio/campaign-health"),
+    enabled: !!isSuperAdmin,
+    retry: false,
+    staleTime: 60_000,
   });
 
   const saveMutation = useMutation({
@@ -440,6 +454,113 @@ export default function TwilioConnect() {
                 {selectedCampaignName ? ` for ${selectedCampaignName}` : ""}
               </Button>
             </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* ── Campaign Health Table (super admin only) ── */}
+      {isSuperAdmin && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+          <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+            <div className="p-5 border-b border-border bg-secondary/20 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="font-semibold flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-primary" />
+                  Campaign Twilio Health
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {healthLoading ? "Scanning campaigns…" : healthData
+                    ? `${healthData.campaigns?.length ?? 0} campaigns · checked ${new Date(healthUpdatedAt).toLocaleTimeString()}`
+                    : "Shows SMS + Voice credential status for every campaign."}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1.5"
+                disabled={healthLoading}
+                onClick={() => refetchHealth()}
+              >
+                {healthLoading
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <RefreshCw className="w-3.5 h-3.5" />}
+                Refresh
+              </Button>
+            </div>
+
+            {healthLoading && (
+              <div className="p-8 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {!healthLoading && healthData?.campaigns && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-secondary/10 text-left text-[11px] text-muted-foreground uppercase tracking-wide">
+                      <th className="px-4 py-2.5 font-medium">Campaign</th>
+                      <th className="px-4 py-2.5 font-medium">Phone</th>
+                      <th className="px-4 py-2.5 font-medium">Account SID</th>
+                      <th className="px-4 py-2.5 font-medium">SMS</th>
+                      <th className="px-4 py-2.5 font-medium">Voice</th>
+                      <th className="px-4 py-2.5 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {(healthData.campaigns as any[]).map((c) => (
+                      <tr key={c.id} className="hover:bg-secondary/10 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-sm leading-tight">{c.name}</p>
+                          {c.slug && <p className="text-[10px] text-muted-foreground font-mono">{c.slug}</p>}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                          {c.phoneNumber || <span className="text-red-400/70">—</span>}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                          {c.accountSidHint || <span className="text-red-400/70">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          {c.hasSms
+                            ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            : <AlertCircle className="w-4 h-4 text-red-400/70" />}
+                        </td>
+                        <td className="px-4 py-3">
+                          {c.hasVoice
+                            ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            : <AlertCircle className="w-4 h-4 text-amber-400/80" />}
+                        </td>
+                        <td className="px-4 py-3">
+                          {c.status === "full" && (
+                            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 border text-[10px]">
+                              SMS + Voice
+                            </Badge>
+                          )}
+                          {c.status === "sms_only" && (
+                            <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 border text-[10px]">
+                              SMS Only
+                            </Badge>
+                          )}
+                          {c.status === "partial" && (
+                            <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 border text-[10px]">
+                              Partial
+                            </Badge>
+                          )}
+                          {c.status === "none" && (
+                            <Badge className="bg-secondary text-muted-foreground border-white/10 border text-[10px]">
+                              Not Set Up
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {healthData.campaigns.length === 0 && (
+                  <p className="text-center text-xs text-muted-foreground py-8">No campaigns found.</p>
+                )}
+              </div>
+            )}
           </Card>
         </motion.div>
       )}

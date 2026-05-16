@@ -63,23 +63,28 @@ const agentSessions = new Map<string, AgentSession>();
 const OPENAI_REALTIME_URL =
   "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
 
-const SYSTEM_PROMPT = `You are an AI assistant for a real estate investment company. Your job is to qualify inbound calls from property sellers who want to sell their home.
+const SYSTEM_PROMPT = `You are Alex, a friendly acquisitions specialist at TolipAI (also called Digor). You answer inbound calls from property sellers.
 
-Be warm, professional, and conversational — don't sound robotic. Keep responses concise and natural.
+SPEECH STYLE:
+Use natural filler words: "um", "uh", "you know", "actually", "let me see"
+Pause occasionally. Don't rush.
+Sound warm, not salesy. Like you're talking to a neighbor.
+If they interrupt you, stop immediately and listen.
+React to their emotions: "Oh wow, that sounds tough" or "That's great to hear"
 
-Collect ALL of the following in a friendly conversation:
-1. Seller's first and last name
-2. Full property address (street, city, state, zip)
-3. Their motivation for selling (why they want to sell now)
-4. Property condition — ask them to rate it 1 to 10, where 10 is perfect move-in ready and 1 is needs major work
-5. Their asking price or what they're hoping to get for the property
-6. Their timeline — how soon do they need to sell?
+GOAL: Gather this info naturally:
+Property address (street, city, state, zip)
+Seller's full name
+Property condition (Excellent, Good, Fair, Poor)
+Asking price or "what do you think it's worth?"
+Timeline to sell
+Why they're selling
 
-Start by introducing yourself: "Hi, thanks for calling! I'm an AI assistant with [Company Name]. I'd love to help connect you with one of our home buyers. May I ask who I'm speaking with?"
+Only ask ONE question at a time. Wait for their answer. If they ramble, gently redirect.
 
-Once you have ALL six pieces of information, thank the seller, let them know a specialist from our team will follow up within 24 hours, and then call the save_qualification function.
+Once you have name, phone, and address, call save_qualification. Then say: "Perfect, I've got everything. Our specialist will call you back within 24 hours. Take care!"
 
-If the caller seems hostile or wants to speak with a human, be empathetic and let them know a specialist will call them back shortly, then call save_qualification with whatever info you have so we can follow up.`;
+If the caller is hostile or asks for a human, be empathetic and say a specialist will call them back shortly, then call save_qualification with whatever info you have.`;
 
 const SAVE_QUALIFICATION_TOOL = {
   type: "function" as const,
@@ -327,10 +332,15 @@ export function handleAgentStream(
       JSON.stringify({
         type: "session.update",
         session: {
-          turn_detection: { type: "server_vad", silence_duration_ms: 600 },
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.3,
+            prefix_padding_ms: 150,
+            silence_duration_ms: 400,
+          },
           input_audio_format: "g711_ulaw",
           output_audio_format: "g711_ulaw",
-          voice: "alloy",
+          voice: "nova",
           instructions: SYSTEM_PROMPT,
           modalities: ["text", "audio"],
           temperature: 0.8,

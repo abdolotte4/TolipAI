@@ -793,4 +793,68 @@ router.get("/twilio/setup-guide", crmAuth, (_req, res) => {
   });
 });
 
+// ── GET /api/twilio/campaign-health ──────────────────────────────────────────
+// Super admin only — scans every campaign and reports Twilio credential status.
+
+router.get("/twilio/campaign-health", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  if (crmUser.role !== "super_admin") {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  try {
+    const campaigns = await db
+      .select({
+        id: crmCampaigns.id,
+        name: crmCampaigns.name,
+        slug: crmCampaigns.slug,
+        twilioAccountSid: crmCampaigns.twilioAccountSid,
+        twilioAuthToken: crmCampaigns.twilioAuthToken,
+        twilioPhoneNumber: crmCampaigns.twilioPhoneNumber,
+        twilioEnabled: crmCampaigns.twilioEnabled,
+        twilioApiKeySid: crmCampaigns.twilioApiKeySid,
+        twilioApiKeySecret: crmCampaigns.twilioApiKeySecret,
+        twilioVoiceAppSid: crmCampaigns.twilioVoiceAppSid,
+      })
+      .from(crmCampaigns)
+      .orderBy(crmCampaigns.name);
+
+    const results = campaigns.map((c) => {
+      const hasSms = !!(c.twilioAccountSid && c.twilioAuthToken && c.twilioPhoneNumber);
+      const hasVoice = !!(
+        c.twilioAccountSid &&
+        c.twilioApiKeySid &&
+        c.twilioApiKeySecret &&
+        c.twilioVoiceAppSid &&
+        c.twilioPhoneNumber
+      );
+      const hasAny = !!(c.twilioAccountSid && c.twilioAuthToken);
+
+      let status: "full" | "sms_only" | "partial" | "none";
+      if (hasSms && hasVoice) status = "full";
+      else if (hasSms) status = "sms_only";
+      else if (hasAny) status = "partial";
+      else status = "none";
+
+      return {
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        phoneNumber: c.twilioPhoneNumber || null,
+        enabled: c.twilioEnabled ?? false,
+        status,
+        hasSms,
+        hasVoice,
+        accountSidHint: c.twilioAccountSid
+          ? `${c.twilioAccountSid.slice(0, 6)}…${c.twilioAccountSid.slice(-4)}`
+          : null,
+      };
+    });
+
+    res.json({ campaigns: results, checkedAt: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
