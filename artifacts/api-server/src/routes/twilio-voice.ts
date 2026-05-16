@@ -20,7 +20,7 @@ import {
   crmCallLogs,
   crmLeads,
 } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { decryptPassword } from "./crm/crypto-util";
 import { logger } from "../lib/logger";
 
@@ -127,6 +127,8 @@ router.post("/twilio/voice/token", crmAuth, async (req, res) => {
 
 // ── POST /api/twilio/voice/answer ─────────────────────────────────────────────
 // TwiML App Voice URL — Twilio hits this when the browser initiates a call.
+// Includes a Call Whisper: before dialing the seller, the agent hears a brief
+// <Say> with the lead's name, status, and asking price (P1-10).
 router.post("/twilio/voice/answer", async (req, res) => {
   res.set("Content-Type", "text/xml");
   try {
@@ -153,9 +155,40 @@ router.post("/twilio/voice/answer", async (req, res) => {
       `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
     const statusCallbackUrl = `${apiBase}/twilio/voice/call-status`;
 
+    // ── Call Whisper (P1-10) ──────────────────────────────────────────────────
+    // Look up lead by destination number so the agent hears their info before
+    // the call connects. Failure is silent — the call still goes through.
+    let whisperXml = "";
+    try {
+      const digits10 = to.replace(/\D/g, "").slice(-10);
+      const [lead] = await db
+        .select({
+          sellerName:      crmLeads.sellerName,
+          status:          crmLeads.status,
+          askingPrice:     crmLeads.askingPrice,
+          askingPriceText: crmLeads.askingPriceText,
+          howSoon:         crmLeads.howSoon,
+        })
+        .from(crmLeads)
+        .where(sql`regexp_replace(${crmLeads.phone}, '[^0-9]', '', 'g') LIKE ${"%" + digits10}`)
+        .orderBy(desc(crmLeads.createdAt))
+        .limit(1);
+
+      if (lead) {
+        const name    = lead.sellerName || "Unknown seller";
+        const status  = lead.status     || "new";
+        const price   = lead.askingPriceText
+          || (lead.askingPrice ? `$${Number(lead.askingPrice).toLocaleString()}` : "not stated");
+        const timeline = lead.howSoon   || "unknown";
+        whisperXml = `\n  <Say voice="Polly.Joanna">Lead: ${name}. Status: ${status}. Asking: ${price}. Timeline: ${timeline}.</Say>`;
+      }
+    } catch {
+      // Non-fatal — whisper is optional
+    }
+
     if (record) {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
+<Response>${whisperXml}
   <Dial callerId="${callerId}" record="record-from-answer"
         recordingStatusCallback="${apiBase}/twilio/voice/recording"
         recordingStatusCallbackMethod="POST"
@@ -165,7 +198,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
 </Response>`);
     } else {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
+<Response>${whisperXml}
   <Dial callerId="${callerId}" action="${statusCallbackUrl}" method="POST">
     <Number>${to}</Number>
   </Dial>

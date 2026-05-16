@@ -439,11 +439,11 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx
 | Reliability | 7/10 | 9/10 | Railway crash fixed ✅, in-memory jobs, setImmediate fire-forget |
 | Performance | 6/10 | 9/10 | N+1 SMS webhook, no caching, no full-text index |
 | Code Quality | 7.5/10 | 9/10 | `any` abuse, dead code |
-| Feature Completeness | 9/10 | 9/10 | Analytics ✅, Call Report ✅, Campaign Twilio selector ✅ |
+| Feature Completeness | 9.5/10 | 9/10 | AI Voice Agent ✅, Call Whisper ✅, Power Dialer remaining |
 | Infrastructure | 3/10 | 9/10 | No Dockerfiles, no CI/CD, no Fargate |
 | Observability | 6/10 | 9/10 | Sentry ✅, Analytics Dashboard ✅, no metrics alerting |
 | Database | 6/10 | 9/10 | Missing indexes, no audit log, no normalization |
-| **Overall** | **85/100** | **92/100** | +2 pts this session (+9 total) |
+| **Overall** | **87/100** | **92/100** | +2 pts this session (+11 total) |
 
 ---
 
@@ -503,9 +503,9 @@ Add `<ErrorBoundary>` wrapping `<Switch>` in `App.tsx`.
 **File:** `routes/twilio-voice.ts`
 **Status:** ✅ Done — `POST /api/twilio/voice/voicemail-drop` endpoint added; uses Twilio REST API to redirect active call to TwiML `<Say>` + `<Hangup>`. Violet voicemail button added to BrowserDialer in-call panel; disconnects browser side after drop. Custom message body supported via request payload.
 
-#### P1-10 — Call Whisper
-**File:** `routes/twilio-voice.ts` TwiML handler
-**Command:** Add `<Say>` before `<Dial>` in the TwiML response to whisper lead name/status to the agent before connecting.
+#### P1-10 — Call Whisper ✅ DONE
+**File:** `routes/twilio-voice.ts` — `POST /twilio/voice/answer`
+**Status:** ✅ Done — Before each outbound click-to-call connects to the seller, Twilio plays a `<Say voice="Polly.Joanna">` whisper to the agent only. The handler looks up the lead by destination phone number (normalized 10-digit match) and injects: `"Lead: [Name]. Status: [status]. Asking: [price]. Timeline: [howSoon]."` Lookup is silent-fail — if no lead is found, the call connects normally without a whisper.
 
 ---
 
@@ -552,7 +552,7 @@ pnpm --filter @workspace/api-server add ioredis
 ```
 Cache ATTOM/Rentcast responses by property address with 24h TTL. Add `services/cache.ts` singleton.
 
-#### P2-09 — AI Inbound Voice Agent (OpenAI Realtime API)
+#### P2-09 — AI Inbound Voice Agent (OpenAI Realtime API) ✅ DONE
 **Stack:** Twilio Media Streams WebSocket + OpenAI `gpt-4o-realtime-preview`
 **New file:** `routes/twilio-voice-agent.ts`
 **Behavior:** Seller calls your Twilio number → AI answers → qualifies (address, motivation, condition, asking price, timeline) → creates CRM lead automatically → sends confirmation SMS.

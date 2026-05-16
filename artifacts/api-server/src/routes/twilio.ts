@@ -159,7 +159,7 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
   // Super admin with no campaign and no ?campaignId → return global env var config
   if (!crmUser.campaignId && isSuperAdmin && !queryCampaignId) {
     const global = getGlobalSmsCreds();
-    return res.json({
+    res.json({
       configured: !!global,
       voiceConfigured: !!(global && process.env.TWILIO_API_KEY_SID && process.env.TWILIO_VOICE_APP_SID),
       twilioEnabled: !!global,
@@ -170,6 +170,7 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
       apiKeySecretMasked: process.env.TWILIO_API_KEY_SECRET ? "Using global environment credentials" : null,
       voiceAppSid: process.env.TWILIO_VOICE_APP_SID || null,
     });
+    return;
   }
 
   // Resolve which campaign ID to read: super admin explicit query > user's own campaign
