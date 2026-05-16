@@ -63,7 +63,13 @@ export default function TwilioConnect() {
       apiKeySid: string; apiKeySecret: string; voiceAppSid: string;
     }) => apiFetch("/twilio/config", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
-      toast({ title: "Twilio credentials saved", description: "Your campaign is now connected to Twilio." });
+      const isSuperNocamp = (me as any)?.role === "super_admin" && !(me as any)?.campaignId;
+      toast({
+        title: "Twilio credentials saved",
+        description: isSuperNocamp
+          ? "Credentials active for this session. To persist across deploys, set TWILIO_* environment variables in Railway."
+          : "Your campaign is now connected to Twilio.",
+      });
       setAccountSid(""); setAuthToken(""); setPhoneNumber("");
       setApiKeySid(""); setApiKeySecret(""); setVoiceAppSid("");
       qc.invalidateQueries({ queryKey: ["twilio-config"] });
@@ -91,6 +97,7 @@ export default function TwilioConnect() {
   const isConfigured = config?.configured;
   const isEnabled = config?.twilioEnabled;
   const isVoiceConfigured = config?.voiceConfigured;
+  const isSuperAdminNoCampaign = me?.role === "super_admin" && !me?.campaignId;
 
   return (
     <div className="space-y-6 pb-20 max-w-3xl">
@@ -121,6 +128,31 @@ export default function TwilioConnect() {
           </p>
         </div>
       </motion.div>
+
+      {/* Super admin without campaign — session-credential notice */}
+      {isSuperAdminNoCampaign && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/8 border border-amber-500/25 text-amber-300">
+            <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+            <div className="text-xs space-y-1">
+              <p className="font-semibold text-amber-400">Super Admin — No Campaign Assigned</p>
+              <p className="text-amber-300/80">
+                Credentials saved here become active immediately for <span className="font-medium">this server session</span>.
+                They will be cleared on the next Railway deploy or restart.
+              </p>
+              <p className="text-amber-300/80">
+                For permanent storage, add the same values as Railway environment variables:{" "}
+                <span className="font-mono text-amber-400">TWILIO_ACCOUNT_SID</span>,{" "}
+                <span className="font-mono text-amber-400">TWILIO_AUTH_TOKEN</span>,{" "}
+                <span className="font-mono text-amber-400">TWILIO_VOICE_CALLER_ID</span>,{" "}
+                <span className="font-mono text-amber-400">TWILIO_API_KEY_SID</span>,{" "}
+                <span className="font-mono text-amber-400">TWILIO_API_KEY_SECRET</span>,{" "}
+                <span className="font-mono text-amber-400">TWILIO_VOICE_APP_SID</span>.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Status Card */}
       {isConfigured && (

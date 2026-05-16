@@ -195,12 +195,29 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
 
 router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
   const crmUser = req.crmUser!;
-  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  const isSuperAdmin = crmUser.role === "super_admin";
 
   const { accountSid, authToken, phoneNumber, twilioEnabled, apiKeySid, apiKeySecret, voiceAppSid } = req.body;
   if (!accountSid || !authToken) {
     res.status(400).json({ error: "accountSid and authToken are required" }); return;
   }
+
+  // Super admin without a campaign → write credentials into process.env so the existing
+  // global fallback paths (getGlobalSmsCreds + getGlobalVoiceConfig) pick them up
+  // immediately. For persistence across Railway deploys, set the same vars in Railway
+  // environment settings.
+  if (isSuperAdmin && !crmUser.campaignId) {
+    process.env.TWILIO_ACCOUNT_SID = accountSid;
+    process.env.TWILIO_AUTH_TOKEN = authToken;
+    if (phoneNumber) process.env.TWILIO_VOICE_CALLER_ID = phoneNumber;
+    if (apiKeySid) process.env.TWILIO_API_KEY_SID = apiKeySid;
+    if (apiKeySecret) process.env.TWILIO_API_KEY_SECRET = apiKeySecret;
+    if (voiceAppSid) process.env.TWILIO_VOICE_APP_SID = voiceAppSid;
+    res.json({ success: true, configured: true });
+    return;
+  }
+
+  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
 
   try {
     const encToken = encryptPassword(authToken);
