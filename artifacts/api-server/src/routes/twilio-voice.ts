@@ -299,7 +299,7 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
 router.patch("/twilio/voice/log/:callSid", crmAuth, async (req, res) => {
   const { callSid } = req.params;
   try {
-    const { mos, jitter, packetLoss, status, duration } = req.body;
+    const { mos, jitter, packetLoss, status, duration, disposition, aiCoachingSummary } = req.body;
     await db
       .update(crmCallLogs)
       .set({
@@ -308,12 +308,110 @@ router.patch("/twilio/voice/log/:callSid", crmAuth, async (req, res) => {
         packetLossPct: packetLoss != null ? String(packetLoss) : undefined,
         status: status || undefined,
         duration: duration != null ? Number(duration) : undefined,
+        disposition: disposition || undefined,
+        aiCoachingSummary: aiCoachingSummary || undefined,
         updatedAt: new Date(),
       })
       .where(eq(crmCallLogs.callSid, callSid as string));
     res.json({ success: true });
   } catch (err: any) {
     logger.error(err, "[twilio/voice/log PATCH] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/voice/coach ─────────────────────────────────────────────
+// AI call coaching: fetches transcript from call log and returns GPT-4o-mini
+// coaching feedback (score, strengths, improvements, follow-up task, suggested offer).
+router.post("/twilio/voice/coach", crmAuth, async (req, res) => {
+  const { callSid, transcript: directTranscript } = req.body;
+
+  let transcript: string | null = directTranscript ?? null;
+
+  // Look up transcript from DB if callSid provided
+  if (callSid && !transcript) {
+    try {
+      const [log] = await db
+        .select({ transcript: crmCallLogs.transcript })
+        .from(crmCallLogs)
+        .where(eq(crmCallLogs.callSid, callSid as string))
+        .limit(1);
+      transcript = log?.transcript ?? null;
+    } catch { /* fall through */ }
+  }
+
+  if (!transcript) {
+    res.status(400).json({
+      error: "No transcript available. The call must be recorded and transcribed first (usually takes 1–2 minutes after the call ends).",
+    });
+    return;
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    res.status(503).json({ error: "AI coaching requires OPENAI_API_KEY to be configured." });
+    return;
+  }
+
+  try {
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      signal: AbortSignal.timeout(20_000),
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 500,
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert real estate wholesaling call coach. Analyze the call transcript and return ONLY valid JSON with these exact keys:
+{
+  "score": <integer 1-10>,
+  "strengths": "<one short sentence highlighting what went well>",
+  "improvements": "<one short sentence on the single most important thing to improve>",
+  "followUpTask": "<specific actionable next step, e.g. 'Send offer letter for $145,000 by Friday'>",
+  "suggestedOffer": <number or null>,
+  "offerRationale": "<one sentence explaining the suggested offer price, or null if no offer context>"
+}`,
+          },
+          {
+            role: "user",
+            content: `Analyze this real estate wholesaling call transcript:\n\n${transcript.slice(0, 3000)}`,
+          },
+        ],
+      }),
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({})) as any;
+      throw new Error(errBody?.error?.message || `OpenAI API error ${resp.status}`);
+    }
+
+    const aiData = await resp.json() as any;
+    const raw = aiData.choices?.[0]?.message?.content || "{}";
+
+    let coaching: any;
+    try {
+      coaching = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim());
+    } catch {
+      coaching = { score: null, improvements: raw, followUpTask: null, suggestedOffer: null };
+    }
+
+    // Persist coaching summary to call log (non-critical)
+    if (callSid) {
+      try {
+        await db
+          .update(crmCallLogs)
+          .set({ aiCoachingSummary: JSON.stringify(coaching), updatedAt: new Date() })
+          .where(eq(crmCallLogs.callSid, callSid as string));
+      } catch { /* non-critical */ }
+    }
+
+    res.json({ coaching });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/coach] error");
     res.status(500).json({ error: err.message });
   }
 });

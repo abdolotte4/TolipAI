@@ -252,6 +252,60 @@ guarantee execution independent of API server uptime and restarts.
 
 ---
 
+## Browser Dialer & Voice Call Flow
+
+### Call Lifecycle
+
+```
+Agent clicks "Call" in BrowserDialer
+  │
+  ├─ POST /api/twilio/voice/token  →  Twilio Access Token (TTL 3600s)
+  │     resolveVoiceConfig(campaignId, isSuperAdmin)
+  │     Falls back to TWILIO_* env vars for super admins with no campaign
+  │
+  ├─ Twilio Device.connect({ To, CallerId, Record? })
+  │     TwiML App → /api/twilio/voice/twiml endpoint
+  │     Twilio bridges browser ↔ lead's phone
+  │
+  ├─ call.accept  →  POST /api/twilio/voice/log  (creates crm_call_logs row)
+  │
+  ├─ call.sample  →  live MOS/jitter/packet-loss metrics in UI
+  │
+  ├─ call.disconnect
+  │     ├─ PATCH /api/twilio/voice/log/:callSid  (status, MOS, jitter)
+  │     ├─ BrowserDialer shows disposition picker (6 options)
+  │     │     Agent selects → PATCH /api/twilio/voice/log/:callSid { disposition }
+  │     └─ If call was recorded → "Get AI Coaching" button appears
+  │
+  └─ [Async, after recording processes in Twilio cloud — ~30–120s]
+        POST /api/twilio/voice/recording (webhook)
+          ├─ Saves recording URL + SID to crm_call_logs
+          └─ Transcribes MP3 via Whisper API → saves transcript
+               └─ Agent can then click "Get AI Coaching"
+                     POST /api/twilio/voice/coach
+                       ├─ Fetches transcript from DB
+                       ├─ GPT-4o-mini: score, strengths, improvements,
+                       │   followUpTask, suggestedOffer, offerRationale
+                       └─ Saves aiCoachingSummary to crm_call_logs
+```
+
+### Super Admin Twilio Resolution
+
+Super admins (role = `super_admin`) have no `campaignId`. Both the voice and SMS
+endpoints use a two-tier credential resolution:
+
+1. If `campaignId` is set → use campaign's encrypted Twilio credentials
+2. If `isSuperAdmin && !campaignId` → fall back to global env vars:
+   - `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` (SMS/calls)
+   - `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` + `TWILIO_VOICE_APP_SID` (voice)
+   - `TWILIO_VOICE_CALLER_ID` (phone number)
+
+This pattern is implemented via:
+- `resolveVoiceConfig()` in `routes/twilio-voice.ts`
+- `resolveTwilioCreds()` in `routes/twilio.ts`
+
+---
+
 ## Data Flow Diagrams
 
 ### Lead Underwriting Flow

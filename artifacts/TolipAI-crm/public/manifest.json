@@ -1,0 +1,19 @@
+{
+  "name": "Digor CRM",
+  "short_name": "CRM",
+  "description": "Digor real estate CRM — manage leads, calls, and deals on the go.",
+  "start_url": "/crm/",
+  "scope": "/crm/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0a0a",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/crm/favicon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # TolipAI Codebase — Full Audit Report
 **Generated:** May 12, 2026
-**Last Updated:** May 12, 2026 (Session 8 — honest re-audit, remaining bug fixes)
+**Last Updated:** May 16, 2026 (Session 9 — call disposition, AI coaching, super admin Twilio fix, PWA CRM)
 **Scope:** `replit_agent_prompt_v2.md` — all parts verified against actual files in codebase
 **Auditor:** Replit Agent
 
@@ -26,6 +26,32 @@
 | ⚠️ | Partial — incomplete or has a remaining issue |
 | ❌ | Not done |
 | N/A | Not applicable |
+
+---
+
+## SESSION 9 — FIXES APPLIED THIS SESSION (May 16, 2026)
+
+### Features & Fixes Added
+
+| # | Item | Fix | File(s) |
+|---|------|-----|---------|
+| S9-01 | Super admin gets "No Campaign assigned" error on all Twilio SMS/calls endpoints | Added `getGlobalSmsCreds()` + `resolveTwilioCreds(campaignId, isSuperAdmin)` — falls back to env vars `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_VOICE_CALLER_ID` when super admin has no campaign | `routes/twilio.ts` |
+| S9-02 | `GET /twilio/config` returned 400 for super admin | Returns global env-var config for super admins without a campaign | `routes/twilio.ts` |
+| S9-03 | Call disposition not logged anywhere | Added `disposition` text column to `crm_call_logs` schema + PATCH endpoint support + BrowserDialer post-call picker (Answered / No Answer / Left Voicemail / Not Interested / Wrong Number / Callback Requested) | `lib/db/src/schema/crm.ts`, `routes/twilio-voice.ts`, `BrowserDialer.tsx` |
+| S9-04 | No AI call coaching feature | Added `POST /api/twilio/voice/coach` endpoint — fetches transcript from DB, calls GPT-4o-mini, returns `{score, strengths, improvements, followUpTask, suggestedOffer, offerRationale}`, persists to `ai_coaching_summary` column | `routes/twilio-voice.ts` |
+| S9-05 | No AI coaching UI in BrowserDialer | Added post-call AI coaching panel — shows only when call was recorded (`wasRecordedRef`), displays score badge, strengths, improvements, and suggested offer price | `BrowserDialer.tsx` |
+| S9-06 | No PWA manifest or service worker for TolipAI-CRM | Created `manifest.json` (name "Digor CRM", start_url "/crm/", standalone display), `sw.js` (cache-first assets, network-first navigation, API bypass), linked manifest in `index.html`, registered SW in `main.tsx` (prod-only) | `public/manifest.json`, `public/sw.js`, `index.html`, `src/main.tsx` |
+| S9-07 | DB migration for new columns | Added `ensureColumns()` function to `seed.ts` — runs idempotent `ALTER TABLE IF NOT EXISTS` for `disposition` + `ai_coaching_summary` on every API server startup | `src/seed.ts`, `migrations/add_call_disposition_and_coaching.sql` |
+| S9-08 | LeadDetail.tsx dead code — 5 large placeholder components (1,154 lines) | Removed `_CompsSectionPlaceholder`, `_AiRepairEstimatorPlaceholder`, `_AiDealScorerPlaceholder`, `_AiSellerScriptPlaceholder`, `_AiOfferLetterPlaceholder` | `pages/leads/LeadDetail.tsx` |
+| S9-09 | LeadDetail.tsx TypeScript errors — unused state vars, wrong function ref | Removed `callModalOpen`, `agentPhone`, `callDialing` states + `initiateClickToCall` function; fixed `React.FormEvent` type (×3) | `pages/leads/LeadDetail.tsx` |
+| S9-10 | Stale `c: Call` parameter in disconnect handler shadowed analytics | Renamed to `_c: Call` to suppress unused-param warning | `BrowserDialer.tsx` |
+
+### DB Schema Changes
+
+| Table | Column | Type | Purpose |
+|-------|--------|------|---------|
+| `crm_call_logs` | `disposition` | `text` | Call outcome (Answered, No Answer, Left Voicemail, etc.) |
+| `crm_call_logs` | `ai_coaching_summary` | `text` | JSON blob from AI coaching endpoint |
 
 ---
 
@@ -333,7 +359,7 @@ Per `replit_agent_prompt_v2.md` PART 2 decision: **single Fargate task = in-memo
 
 ## SUMMARY SCORECARD
 
-### Overall Status (All Sessions through S8)
+### Overall Status (All Sessions through S9)
 
 | Area | Done | Partial | Not Done | Total |
 |------|------|---------|----------|-------|
@@ -353,11 +379,11 @@ Per `replit_agent_prompt_v2.md` PART 2 decision: **single Fargate task = in-memo
 | Backend perf (10.x) | 6 | 0 | 1 (Redis) | 7 |
 | Frontend list (11.x) | 4 | 0 | 0 | 4 |
 | Frontend detail (12.x) | 9 | 1 (12.1 partial) | 0 | 10 |
-| New Features (5.x) | 4 | 2 (tools seq UI) | 0 | 6 |
+| New Features (5.x) | 7 (+3 S9) | 2 (tools seq UI) | 0 | 9 |
 | TypeScript compile (all 3) | 3 | 0 | 0 | 3 |
-| **Total** | **108** | **3** | **1** | **112** |
+| **Total** | **111** | **3** | **1** | **115** |
 
-> **Score: ~108.5/112 ≈ 96.8%** fully addressed.
+> **Score: ~111.5/115 ≈ 96.9%** fully addressed. (S9 added 3 new items: disposition, AI coaching, CRM PWA)
 
 ---
 

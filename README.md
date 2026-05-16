@@ -470,7 +470,9 @@ The lead detail page is the core of the CRM. Every feature below is accessible f
 **Communications**
 - **SignalWire**: In-lead call and SMS log with message history; polling-based refresh
 - **OpenPhone**: Alternative telephony panel with per-lead message threading
-- Call notes and disposition logging within the lead record
+- **Browser Dialer** (Twilio Voice SDK): In-browser WebRTC calling with live quality metrics (MOS, jitter, packet loss), call recording, automatic Whisper transcription, and post-call disposition picker
+- **AI Call Coaching**: Post-call GPT-4o-mini analysis of the call transcript — returns score (1–10), strengths, improvements, a suggested follow-up task, and an offer price recommendation
+- Call disposition logging (Answered / No Answer / Left Voicemail / Not Interested / Wrong Number / Callback Requested)
 
 **Workflow**
 - Status pipeline: `new_lead → contacted → negotiating → under_contract → closed_won → closed_lost → on_hold`
@@ -616,6 +618,24 @@ Generates a professional purchase offer letter in plain English with:
 - Terms and conditions
 
 Rendered as a printable HTML document the agent can hand to the seller or send by email.
+
+### AI Call Coach (`POST /api/twilio/voice/coach`)
+
+After a recorded call is transcribed (via Whisper, automatically triggered by the Twilio recording webhook), agents can request AI coaching feedback on the call.
+
+**Input:** `callSid` — the endpoint fetches the transcript from `crm_call_logs` automatically.
+
+**Output:**
+- `score` (integer 1–10)
+- `strengths` — one sentence on what went well
+- `improvements` — the single most important thing to improve
+- `followUpTask` — specific next step (e.g. "Send offer letter for $145,000 by Friday")
+- `suggestedOffer` — suggested offer price in dollars (or `null` if no pricing context)
+- `offerRationale` — one sentence explaining the suggested price
+
+Results are persisted to `crm_call_logs.ai_coaching_summary` (JSON) and displayed in the BrowserDialer post-call panel.
+
+**Requirement:** `OPENAI_API_KEY` must be set. Returns HTTP 503 if missing.
 
 ### Market Price-Per-Sqft Estimation (ARV Calculator fallback)
 
@@ -1008,6 +1028,10 @@ aws logs tail /ecs/TolipAI-scraper --follow --region $AWS_REGION
 | `PROPELIO_PASSWORD` | No | Propelio account password |
 | `PROPWIRE_EMAIL` | No | Propwire account email |
 | `PROPWIRE_PASSWORD` | No | Propwire account password |
-| `TWILIO_ACCOUNT_SID` | No | Twilio SID (for call webhook features) |
-| `TWILIO_AUTH_TOKEN` | No | Twilio auth token |
+| `TWILIO_ACCOUNT_SID` | No | Global Twilio account SID — used by super admins with no campaign assigned, and as fallback for all Twilio SMS/call endpoints |
+| `TWILIO_AUTH_TOKEN` | No | Global Twilio auth token (paired with `TWILIO_ACCOUNT_SID`) |
+| `TWILIO_VOICE_CALLER_ID` | No | Global Twilio phone number (E.164, e.g. `+15551234567`) — used as caller ID for super admin browser dialer calls |
+| `TWILIO_API_KEY_SID` | No | Global Twilio API Key SID — required for super admin browser dialer (Voice SDK token generation) |
+| `TWILIO_API_KEY_SECRET` | No | Global Twilio API Key Secret (paired with `TWILIO_API_KEY_SID`) |
+| `TWILIO_VOICE_APP_SID` | No | Global Twilio TwiML App SID — routes outbound browser calls for super admins |
 

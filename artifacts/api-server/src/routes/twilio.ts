@@ -70,6 +70,35 @@ async function getCampaignTwilioCreds(campaignId: number): Promise<TwilioCreds> 
   return { accountSid: sid, authToken, phoneNumber };
 }
 
+function getGlobalSmsCreds(): TwilioCreds | null {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const phoneNumber = process.env.TWILIO_VOICE_CALLER_ID || null;
+  if (!accountSid || !authToken) return null;
+  return { accountSid, authToken, phoneNumber };
+}
+
+async function resolveTwilioCreds(
+  campaignId: number | null,
+  isSuperAdmin: boolean
+): Promise<TwilioCreds> {
+  if (campaignId) {
+    return getCampaignTwilioCreds(campaignId);
+  }
+  if (isSuperAdmin) {
+    const global = getGlobalSmsCreds();
+    if (global) return global;
+    throw Object.assign(
+      new Error("No global Twilio credentials configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables."),
+      { status: 422 }
+    );
+  }
+  throw Object.assign(
+    new Error("No campaign assigned. Ask your admin to assign you to a campaign with Twilio configured."),
+    { status: 422 }
+  );
+}
+
 function twilioBaseUrl(accountSid: string) {
   return `https://api.twilio.com/2010-04-01/Accounts/${accountSid}`;
 }
@@ -105,10 +134,31 @@ async function twilioFetch(
 
 router.get("/twilio/config", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
-  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  const isSuperAdmin = crmUser.role === "super_admin";
+
+  if (!crmUser.campaignId && !isSuperAdmin) {
+    res.status(400).json({ error: "No campaign assigned" }); return;
+  }
+
+  // Super admin with no campaign → return global env var config
+  if (!crmUser.campaignId && isSuperAdmin) {
+    const global = getGlobalSmsCreds();
+    return res.json({
+      configured: !!global,
+      voiceConfigured: !!(global && process.env.TWILIO_API_KEY_SID && process.env.TWILIO_VOICE_APP_SID),
+      twilioEnabled: !!global,
+      accountSid: global?.accountSid || null,
+      authTokenMasked: global ? "Using global environment credentials" : null,
+      phoneNumber: global?.phoneNumber || null,
+      apiKeySid: process.env.TWILIO_API_KEY_SID || null,
+      apiKeySecretMasked: process.env.TWILIO_API_KEY_SECRET ? "Using global environment credentials" : null,
+      voiceAppSid: process.env.TWILIO_VOICE_APP_SID || null,
+    });
+  }
+
   try {
     const [campaign] = await db.select().from(crmCampaigns)
-      .where(eq(crmCampaigns.id, crmUser.campaignId)).limit(1);
+      .where(eq(crmCampaigns.id, crmUser.campaignId!)).limit(1);
     const sid = campaign?.twilioAccountSid ?? null;
     const token = campaign?.twilioAuthToken ?? null;
     const phone = campaign?.twilioPhoneNumber ?? null;
@@ -170,12 +220,9 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
 
 router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
-  if (!crmUser.campaignId) { 
-    res.json({ phoneNumbers: [] });  // ✅ Return empty, don't crash
-    return; 
-  }
+  const isSuperAdmin = crmUser.role === "super_admin";
   try {
-    const creds = await getCampaignTwilioCreds(crmUser.campaignId);
+    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdmin);
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers = (data.incoming_phone_numbers || []).map((n: any) => ({
       id: n.phone_number,
@@ -185,8 +232,6 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
     }));
     res.json({ phoneNumbers: numbers });
   } catch (err: any) {
-    // ✅ Return empty array on ANY error — don't crash the frontend
-    console.error("[twilio/phone-numbers] error:", err.message);
     res.json({ phoneNumbers: [] });
   }
 });
@@ -199,9 +244,9 @@ router.get("/twilio/messages", crmAuth, async (req, res) => {
   if (!phoneNumberId || !contactPhone) {
     res.status(400).json({ error: "phoneNumberId and contactPhone are required" }); return;
   }
-  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  const isSuperAdmin = crmUser.role === "super_admin";
   try {
-    const creds = await getCampaignTwilioCreds(crmUser.campaignId);
+    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdmin);
     const e164 = toE164(contactPhone);
     if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const params = new URLSearchParams({ PageSize: "50" });
@@ -246,9 +291,9 @@ router.post("/twilio/messages", crmAuth, async (req, res) => {
     res.status(400).json({ error: "phoneNumberId, to, and content are required" }); return;
   }
   const campId = campaignId ? Number(campaignId) : crmUser.campaignId;
-  if (!campId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  const isSuperAdminMsg = crmUser.role === "super_admin";
   try {
-    const creds = await getCampaignTwilioCreds(campId);
+    const creds = await resolveTwilioCreds(campId, isSuperAdminMsg);
     const toE164Result = toE164(to);
     if (!toE164Result) { res.status(400).json({ error: "Invalid destination phone number" }); return; }
     const body = new URLSearchParams({
@@ -284,9 +329,9 @@ router.get("/twilio/calls", crmAuth, async (req, res) => {
   if (!phoneNumberId || !contactPhone) {
     res.status(400).json({ error: "phoneNumberId and contactPhone are required" }); return;
   }
-  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
+  const isSuperAdminCalls = crmUser.role === "super_admin";
   try {
-    const creds = await getCampaignTwilioCreds(crmUser.campaignId);
+    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdminCalls);
     const e164 = toE164(contactPhone);
     if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const [outCalls, inCalls] = await Promise.all([
@@ -330,7 +375,6 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
   if (!fromNumber || !agentPhone || !leadPhone) {
     res.status(400).json({ error: "fromNumber, agentPhone, and leadPhone are required" }); return;
   }
-  if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
 
   const leadE164 = toE164(leadPhone);
   const agentE164 = toE164(agentPhone);
@@ -340,7 +384,8 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
   const twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(leadE164)}&callerId=${encodeURIComponent(fromNumber)}`;
 
   try {
-    const creds = await getCampaignTwilioCreds(crmUser.campaignId);
+    const isSuperAdminCtC = crmUser.role === "super_admin";
+    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdminCtC);
     const body = new URLSearchParams({
       From: fromNumber,
       To: agentE164,

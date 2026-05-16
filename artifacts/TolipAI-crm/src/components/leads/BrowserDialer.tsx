@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Device, Call } from "@twilio/voice-sdk";
 import {
-  Phone, PhoneOff, PhoneCall, Mic, MicOff, Loader2,
-  Signal, AlertCircle, CheckCircle2, Activity, Wifi,
+  PhoneOff, PhoneCall, Mic, MicOff, Loader2,
+  Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +81,8 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentCallSidRef = useRef<string | null>(null);
 
+  const wasRecordedRef = useRef(false);
+
   const [status, setStatus] = useState<DialerStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [muted, setMuted] = useState(false);
@@ -89,6 +91,14 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const [lastAnalytics, setLastAnalytics] = useState<CallAnalytics>({ mos: null, jitter: null, packetLoss: null });
   const [callerIdUsed, setCallerIdUsed] = useState<string | null>(null);
   const [record, setRecord] = useState(false);
+
+  const [lastCallSid, setLastCallSid] = useState<string | null>(null);
+  const [lastCallRecorded, setLastCallRecorded] = useState(false);
+  const [disposition, setDisposition] = useState<string | null>(null);
+  const [dispositionSaved, setDispositionSaved] = useState(false);
+  const [coaching, setCoaching] = useState<any | null>(null);
+  const [coachingLoading, setCoachingLoading] = useState(false);
+  const [showCoaching, setShowCoaching] = useState(false);
 
   // ── Teardown helper ────────────────────────────────────────────────────────
   const destroyDevice = useCallback(() => {
@@ -149,6 +159,12 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     setDuration(0);
     setAnalytics({ mos: null, jitter: null, packetLoss: null });
     setMuted(false);
+    setLastCallSid(null);
+    setDisposition(null);
+    setDispositionSaved(false);
+    setCoaching(null);
+    setShowCoaching(false);
+    wasRecordedRef.current = record;
 
     try {
       const params: Record<string, string> = {
@@ -197,7 +213,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
         setAnalytics(live);
       });
 
-      call.on("disconnect", async (c: Call) => {
+      call.on("disconnect", async (_c: Call) => {
         setStatus("idle");
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
@@ -207,7 +223,12 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
         const finalJitter = analytics.jitter;
         const finalPacketLoss = analytics.packetLoss;
         setLastAnalytics({ mos: finalMos, jitter: finalJitter, packetLoss: finalPacketLoss });
-        setDuration(d => { /* capture for PATCH */ return d; });
+
+        // Show post-call panels
+        if (sid) {
+          setLastCallSid(sid);
+          setLastCallRecorded(wasRecordedRef.current);
+        }
 
         // Update call log with final analytics
         if (sid) {
@@ -250,6 +271,39 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       setStatus(deviceRef.current ? "ready" : "error");
     }
   }, [leadPhone, leadId, record, callerIdUsed, analytics, initDevice, onCallLogged]);
+
+  // ── Save disposition ───────────────────────────────────────────────────────
+  const saveDisposition = useCallback(async (d: string) => {
+    setDisposition(d);
+    if (lastCallSid) {
+      try {
+        await authFetch(`/twilio/voice/log/${lastCallSid}`, {
+          method: "PATCH",
+          body: JSON.stringify({ disposition: d }),
+        });
+        setDispositionSaved(true);
+      } catch { /* non-critical */ }
+    }
+  }, [lastCallSid]);
+
+  // ── AI call coaching ───────────────────────────────────────────────────────
+  const getCoaching = useCallback(async () => {
+    if (!lastCallSid) return;
+    setCoachingLoading(true);
+    setCoaching(null);
+    try {
+      const data = await authFetch("/twilio/voice/coach", {
+        method: "POST",
+        body: JSON.stringify({ callSid: lastCallSid }),
+      });
+      setCoaching(data.coaching);
+      setShowCoaching(true);
+    } catch (err: any) {
+      toast({ title: "AI Coaching unavailable", description: err.message, variant: "destructive" });
+    } finally {
+      setCoachingLoading(false);
+    }
+  }, [lastCallSid, toast]);
 
   // ── Hang up ────────────────────────────────────────────────────────────────
   const hangUp = useCallback(() => {
@@ -394,6 +448,93 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
               <p className={`text-xs mt-2 text-center font-medium ${qualityColor(lastAnalytics.mos)}`}>
                 {qualityLabel(lastAnalytics.mos)} call quality
               </p>
+            )}
+          </div>
+        )}
+
+        {/* Disposition picker — shown after call ends */}
+        {status === "idle" && lastCallSid && !dispositionSaved && (
+          <div className="rounded-xl bg-secondary/20 border border-border p-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">How did the call go?</p>
+            <div className="flex flex-wrap gap-1.5">
+              {["Answered", "No Answer", "Left Voicemail", "Not Interested", "Wrong Number", "Callback Requested"].map(opt => (
+                <button
+                  key={opt}
+                  onClick={() => saveDisposition(opt)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    disposition === opt
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background/40 border-border text-muted-foreground hover:text-foreground hover:border-white/20"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Disposition saved confirmation */}
+        {status === "idle" && dispositionSaved && (
+          <div className="flex items-center gap-2 text-xs text-emerald-400 px-1">
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            Disposition logged: <span className="font-medium">{disposition}</span>
+          </div>
+        )}
+
+        {/* AI Call Coaching — only if call was recorded (transcription prerequisite) */}
+        {status === "idle" && lastCallSid && lastCallRecorded && (
+          <div className="space-y-2">
+            {!showCoaching && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 text-xs border-indigo-500/30 text-indigo-400 hover:text-indigo-300 hover:border-indigo-400/50 hover:bg-indigo-500/5"
+                onClick={getCoaching}
+                disabled={coachingLoading}
+              >
+                {coachingLoading
+                  ? <><Loader2 className="w-3 h-3 animate-spin" /> Analyzing call…</>
+                  : <><Sparkles className="w-3 h-3" /> Get AI Coaching</>
+                }
+              </Button>
+            )}
+            {showCoaching && coaching && (
+              <div className="rounded-xl bg-indigo-500/5 border border-indigo-500/20 p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-indigo-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3" /> AI Call Coaching
+                  </p>
+                  {coaching.score != null && (
+                    <Badge className="text-[10px] bg-indigo-500/10 text-indigo-400 border-indigo-500/20 border">
+                      {coaching.score}/10
+                    </Badge>
+                  )}
+                </div>
+                {coaching.strengths && (
+                  <p className="text-xs text-emerald-400">✓ {coaching.strengths}</p>
+                )}
+                {coaching.improvements && (
+                  <p className="text-xs text-amber-400">→ {coaching.improvements}</p>
+                )}
+                {coaching.followUpTask && (
+                  <div className="p-2 rounded-lg bg-background/40 border border-white/5">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Suggested next step</p>
+                    <p className="text-xs font-medium">{coaching.followUpTask}</p>
+                  </div>
+                )}
+                {coaching.suggestedOffer != null && (
+                  <div className="p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Suggested offer</p>
+                    <p className="text-xs font-semibold text-emerald-400">
+                      ${Number(coaching.suggestedOffer).toLocaleString()}
+                    </p>
+                    {coaching.offerRationale && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{coaching.offerRationale}</p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

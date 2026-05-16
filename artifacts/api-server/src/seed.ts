@@ -55,6 +55,21 @@ async function seedAdmin(email: string, password: string, name: string) {
   }
 }
 
+async function ensureColumns() {
+  const columns: [string, string][] = [
+    ["crm_call_logs.disposition",          "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS disposition text"],
+    ["crm_call_logs.ai_coaching_summary",  "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS ai_coaching_summary text"],
+  ];
+  for (const [name, ddl] of columns) {
+    try {
+      await db.execute(sql.raw(ddl));
+    } catch (err: any) {
+      logger.warn({ name, err: err?.message }, "Column migration skipped.");
+    }
+  }
+  logger.info("DB column migrations verified.");
+}
+
 export async function seedDatabase() {
   const adminEmail = process.env.CRM_ADMIN_EMAIL;
   const adminPassword = process.env.CRM_ADMIN_PASSWORD;
@@ -71,6 +86,8 @@ export async function seedDatabase() {
 
   // Ensure all performance indexes exist (idempotent — safe to run every startup)
   await ensureIndexes();
+  // Ensure schema columns exist (idempotent ALTER TABLE IF NOT EXISTS)
+  await ensureColumns();
 
   try {
     await seedAdmin(adminEmail, adminPassword, "TolipAI Admin");

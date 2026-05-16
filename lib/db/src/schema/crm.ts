@@ -238,6 +238,8 @@ export const crmCallLogs = pgTable("crm_call_logs", {
   recordingSid: text("recording_sid"),
   recordingUrl: text("recording_url"),
   transcript: text("transcript"),
+  disposition: text("disposition"),
+  aiCoachingSummary: text("ai_coaching_summary"),
   mosScore: numeric("mos_score", { precision: 4, scale: 2 }),
   jitterMs: numeric("jitter_ms", { precision: 8, scale: 2 }),
   packetLossPct: numeric("packet_loss_pct", { precision: 5, scale: 2 }),
