@@ -303,7 +303,7 @@ router.patch("/twilio/voice/log/:callSid", crmAuth, async (req, res) => {
         duration: duration != null ? Number(duration) : undefined,
         updatedAt: new Date(),
       })
-      .where(eq(crmCallLogs.callSid, callSid));
+      .where(eq(crmCallLogs.callSid, callSid as string));
     res.json({ success: true });
   } catch (err: any) {
     logger.error(err, "[twilio/voice/log PATCH] error");
