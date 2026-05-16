@@ -15,6 +15,7 @@
     "seed:demo": "tsx src/seed-demo.ts"
   },
   "dependencies": {
+    "@sentry/node": "^10.53.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/compression": "^1.8.1",
     "@types/papaparse": "^5.5.2",

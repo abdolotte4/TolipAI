@@ -38,7 +38,7 @@ interface Props {
 export default function SmsConversations({ leadId, leadPhone, campaignId }: Props) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
   const [selectedFrom, setSelectedFrom] = useState<string>("");
 
@@ -67,9 +67,10 @@ export default function SmsConversations({ leadId, leadPhone, campaignId }: Prop
     }
   }, [phoneNumbers, selectedFrom]);
 
-  // Scroll to bottom whenever messages change
+  // Scroll to bottom of the message container (NOT the page) when messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   // Send SMS mutation
@@ -140,7 +141,7 @@ export default function SmsConversations({ leadId, leadPhone, campaignId }: Prop
       </div>
 
       {/* Message thread */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[180px] max-h-[380px]">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[180px] max-h-[380px]">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-8 text-center">
             <MessageSquare className="w-8 h-8 text-muted-foreground/30 mb-2" />
@@ -194,7 +195,7 @@ export default function SmsConversations({ leadId, leadPhone, campaignId }: Prop
             );
           })
         )}
-        <div ref={bottomRef} />
+        <div />
       </div>
 
       {/* Compose area */}

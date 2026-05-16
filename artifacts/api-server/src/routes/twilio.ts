@@ -39,6 +39,14 @@ const router: IRouter = Router();
 const aiSmsReplyThrottle = new Map<number, number>();
 const THROTTLE_MS = 5 * 60 * 1000; // 5 minutes per lead
 
+// TTL cleanup: evict entries older than 1 hour to prevent unbounded memory growth
+setInterval(() => {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const [leadId, ts] of aiSmsReplyThrottle) {
+    if (ts < cutoff) aiSmsReplyThrottle.delete(leadId);
+  }
+}, 10 * 60 * 1000).unref();
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 interface TwilioCreds {
@@ -198,16 +206,21 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     const encToken = encryptPassword(authToken);
     const encApiSecret = apiKeySecret ? encryptPassword(apiKeySecret) : undefined;
 
+    // Always update SMS / core credentials; only update voice fields when
+    // explicitly supplied — prevents accidentally clearing the Voice API Key
+    // when the user re-saves only their Account SID / Auth Token.
+    const updateFields: Record<string, unknown> = {
+      twilioAccountSid: accountSid,
+      twilioAuthToken: encToken,
+      twilioPhoneNumber: phoneNumber || null,
+      twilioEnabled: twilioEnabled !== false,
+    };
+    if (apiKeySid) updateFields.twilioApiKeySid = apiKeySid;
+    if (encApiSecret) updateFields.twilioApiKeySecret = encApiSecret;
+    if (voiceAppSid) updateFields.twilioVoiceAppSid = voiceAppSid;
+
     await db.update(crmCampaigns)
-      .set({
-        twilioAccountSid: accountSid,
-        twilioAuthToken: encToken,
-        twilioPhoneNumber: phoneNumber || null,
-        twilioEnabled: twilioEnabled !== false,
-        twilioApiKeySid: apiKeySid || null,
-        twilioApiKeySecret: encApiSecret ?? null,
-        twilioVoiceAppSid: voiceAppSid || null,
-      })
+      .set(updateFields)
       .where(eq(crmCampaigns.id, crmUser.campaignId));
 
     res.json({ success: true, configured: true });

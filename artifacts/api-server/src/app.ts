@@ -7,6 +7,17 @@ import compression from "compression";
 import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import * as Sentry from "@sentry/node";
+
+// Initialise Sentry before any routes are registered so all errors are captured.
+// Gated on SENTRY_DSN so the server starts cleanly without it configured.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    tracesSampleRate: 0.1,
+  });
+}
 
 const app: Express = express();
 
@@ -168,6 +179,9 @@ app.use("/api", router);
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const msg = err instanceof Error ? err.message : String(err);
   logger.error({ err: msg }, "Unhandled Express error");
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err);
+  }
   if (!res.headersSent) {
     // Never expose internal error details (DB column names, stack traces) to clients
     res.status(500).json({ error: "Internal server error" });

@@ -444,4 +444,63 @@ router.get("/twilio/voice/calls", crmAuth, async (req, res) => {
   }
 });
 
+// ── POST /api/twilio/voice/voicemail-drop ─────────────────────────────────────
+// Redirects an active outbound call to a pre-recorded voicemail message then
+// hangs up, freeing the agent to move to the next lead.
+// Body: { callSid: string, message?: string }
+router.post("/twilio/voice/voicemail-drop", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  const { callSid, message } = req.body as { callSid?: string; message?: string };
+
+  if (!callSid) {
+    res.status(400).json({ error: "callSid is required" });
+    return;
+  }
+
+  try {
+    const isSuperAdmin = crmUser.role === "super_admin";
+    const cfg = await resolveVoiceConfig(crmUser.campaignId, isSuperAdmin);
+
+    const vmText = (message || "").trim() ||
+      "Hi, this is a message regarding your property. We are a local real estate investor and would love to make you a fair cash offer. Please call us back at your earliest convenience. Thank you and have a great day.";
+
+    // Escape XML special chars in the voicemail text
+    const safe = vmText
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Polly.Joanna">${safe}</Say><Hangup/></Response>`;
+
+    // Use API Key SID + secret as Basic auth — Twilio accepts both AccountSID:AuthToken
+    // and APIKeySID:APIKeySecret for REST API calls.
+    const creds = Buffer.from(`${cfg.apiKeySid}:${cfg.apiKeySecret}`).toString("base64");
+    const twilioResp = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls/${encodeURIComponent(callSid)}.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${creds}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ Twiml: twiml }).toString(),
+      }
+    );
+
+    if (!twilioResp.ok) {
+      const body = await twilioResp.json().catch(() => ({})) as any;
+      throw Object.assign(
+        new Error(body?.message || `Twilio API error ${twilioResp.status}`),
+        { status: twilioResp.status }
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/voicemail-drop] error");
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 export default router;

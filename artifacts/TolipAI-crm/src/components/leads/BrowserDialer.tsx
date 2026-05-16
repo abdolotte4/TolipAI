@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Device, Call } from "@twilio/voice-sdk";
 import {
   PhoneOff, PhoneCall, Mic, MicOff, Loader2,
-  Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles,
+  Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles, Voicemail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +99,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const [coaching, setCoaching] = useState<any | null>(null);
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [showCoaching, setShowCoaching] = useState(false);
+  const [droppingVoicemail, setDroppingVoicemail] = useState(false);
 
   // ── Teardown helper ────────────────────────────────────────────────────────
   const destroyDevice = useCallback(() => {
@@ -304,6 +305,29 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       setCoachingLoading(false);
     }
   }, [lastCallSid, toast]);
+
+  // ── Voicemail drop ─────────────────────────────────────────────────────────
+  const dropVoicemail = useCallback(async () => {
+    const callSid = currentCallSidRef.current;
+    if (!callSid) {
+      toast({ title: "No active call SID", variant: "destructive" });
+      return;
+    }
+    setDroppingVoicemail(true);
+    try {
+      await authFetch("/twilio/voice/voicemail-drop", {
+        method: "POST",
+        body: JSON.stringify({ callSid }),
+      });
+      toast({ title: "Voicemail dropped", description: "Message is playing. You can move to the next lead." });
+      // Disconnect the browser-side call after dropping voicemail
+      if (callRef.current) callRef.current.disconnect();
+    } catch (err: any) {
+      toast({ title: "Voicemail drop failed", description: err.message, variant: "destructive" });
+    } finally {
+      setDroppingVoicemail(false);
+    }
+  }, [toast]);
 
   // ── Hang up ────────────────────────────────────────────────────────────────
   const hangUp = useCallback(() => {
@@ -544,7 +568,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
           {!isActive ? (
             <Button
               className="flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-              disabled={!canCall || status === "initializing"}
+              disabled={status === "initializing" || !canCall}
               onClick={startCall}
             >
               {status === "initializing" ? (
@@ -566,6 +590,19 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
                 title={muted ? "Unmute" : "Mute"}
               >
                 {muted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 rounded-xl border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:border-violet-500/60 transition-colors"
+                disabled={status !== "in-progress" || droppingVoicemail}
+                onClick={dropVoicemail}
+                title="Drop voicemail — plays a pre-recorded message and hangs up"
+              >
+                {droppingVoicemail
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Voicemail className="w-4 h-4" />
+                }
               </Button>
               <Button
                 className="flex-1 gap-2 bg-red-600 hover:bg-red-700 text-white"
