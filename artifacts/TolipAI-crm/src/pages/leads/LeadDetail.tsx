@@ -1819,17 +1819,11 @@ export default function LeadDetail() {
   const [opCalls, setOpCalls] = useState<any[]>([]);
   const [opSmsContent, setOpSmsContent] = useState("");
   const [opSending, setOpSending] = useState(false);
-  const [opCalling, setOpCalling] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [opLoadingMsgs, setOpLoadingMsgs] = useState(false);
   const [opError, setOpError] = useState("");
   const [opTab, setOpTab] = useState<"messages" | "calls" | "browser">("messages");
-  const [callModalOpen, setCallModalOpen] = useState(false);
-  const [agentPhone, setAgentPhone] = useState(() => localStorage.getItem("crm_agent_phone") || "");
-  const [callDialing, setCallDialing] = useState(false);
-  const [callSuccess, setCallSuccess] = useState("");
-  const [callErr, setCallErr] = useState("");
-function opFetch(path: string, options?: RequestInit) {
+  function opFetch(path: string, options?: RequestInit) {
     const token = localStorage.getItem("crm_token");
     return fetch(`/api${path}`, {
       ...options,
@@ -1940,33 +1934,6 @@ function opFetch(path: string, options?: RequestInit) {
       setOpError(e.message);
     } finally {
       setOpSending(false);
-    }
-  };
-
-  const initiateClickToCall = async () => {
-    if (!lead?.phone || !opSelectedId) return;
-    setCallErr("");
-    setCallSuccess("");
-    setCallDialing(true);
-    try {
-      const token = localStorage.getItem("crm_token");
-      // Normalize agent phone to E.164 before sending
-      const digits = agentPhone.replace(/\D/g, "");
-      const agentPhoneE164 = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : agentPhone;
-      const resp = await fetch("/api/twilio/click-to-call", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ fromNumber: opSelectedId, agentPhone: agentPhoneE164, leadPhone: lead.phone }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "Call failed");
-      setCallSuccess(`Calling your phone now. Pick up — you'll be connected to ${lead.phone}`);
-      addNoteMutation.mutate({ id: leadId, data: { content: `📞 Click-to-call initiated to ${lead.phone}` } });
-      setTimeout(() => { setCallModalOpen(false); setCallSuccess(""); }, 7000);
-    } catch (e: any) {
-      setCallErr(e.message);
-    } finally {
-      setCallDialing(false);
     }
   };
 
@@ -2321,90 +2288,6 @@ function opFetch(path: string, options?: RequestInit) {
             )}
           </Card>
 
-          {/* ── Twilio Communication Panel ────────────────────────────────── */}
-
-                {/* Big phone number + copy */}
-                <div className="flex items-center gap-2 mb-5 p-3 rounded-xl bg-muted/40 border border-border">
-                  <Phone className="w-5 h-5 text-green-400 shrink-0" />
-                  <span className="flex-1 font-mono font-semibold text-lg">{lead?.phone}</span>
-                  <button
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-xs font-medium transition-colors"
-                    onClick={() => {
-                      navigator.clipboard.writeText(lead?.phone || "");
-                      addNoteMutation.mutate({ id: leadId, data: { content: `📞 Call initiated to ${lead?.phone}` } });
-                    }}
-                  >
-                    <Copy className="w-3.5 h-3.5" /> Copy
-                  </button>
-                </div>
-
-                <p className="text-xs text-muted-foreground mb-4 text-center">
-                  Copy the number and dial it from your phone — or use the bridge below to call with your business caller ID.
-                </p>
-
-                {/* Log call outcomes */}
-                <div className="mb-5">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Log Call Result</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {["Answered", "No Answer", "Left Voicemail", "Wrong Number"].map(outcome => (
-                      <button
-                        key={outcome}
-                        className="px-3 py-2 rounded-lg border border-border text-xs hover:bg-muted/60 transition-colors text-left"
-                        onClick={() => {
-                          addNoteMutation.mutate({ id: leadId, data: { content: `📞 Call to ${lead?.phone} — ${outcome}` } });
-                          setCallModalOpen(false);
-                        }}
-                      >
-                        {outcome}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground">bridge via business number</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-
-                <div className="mb-3">
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Your Personal Cell (Twilio calls you first)</label>
-                  <input
-                    type="tel"
-                    placeholder="Your cell, e.g. (703) 555-9876"
-                    value={agentPhone}
-                    onChange={e => {
-                      setAgentPhone(e.target.value);
-                      const digits = e.target.value.replace(/\D/g, "");
-                      const normalized = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : e.target.value;
-                      localStorage.setItem("crm_agent_phone", normalized);
-                    }}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-background/50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                  />
-                </div>
-                {callSuccess && <div className="mb-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm">{callSuccess}</div>}
-                {callErr && (
-                  <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                    {callErr}
-                    {callErr.toLowerCase().includes("trial") && (
-                      <p className="mt-2 text-yellow-400/90">
-                        Fix: In your <strong>Twilio Console</strong>, go to <strong>Phone Numbers → Verified Caller IDs</strong> and verify your personal cell. Or upgrade your Twilio account from trial.
-                      </p>
-                    )}
-                  </div>
-                )}
-                <Button
-                  className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                  disabled={callDialing || !agentPhone.trim()}
-                  onClick={initiateClickToCall}
-                >
-                  {callDialing ? <><Loader2 className="w-4 h-4 animate-spin" /> Ringing your cell...</> : <><PhoneCall className="w-4 h-4" /> Bridge Call (shows business caller ID)</>}
-                </Button>
-              </div>
-            </div>
-          )}
-
           {(isSuperAdmin || campaignData?.dialerEnabled) && <Card className="rounded-2xl border-white/5 bg-card shadow-lg overflow-hidden">
             <div className="bg-secondary/30 p-4 border-b border-border flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
@@ -2432,17 +2315,17 @@ function opFetch(path: string, options?: RequestInit) {
                     <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
                   </div>
                 )}
-             <<Button
-  size="sm"
-  variant="outline"
-  className="h-7 text-xs gap-1 border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
-  disabled={!lead?.phone || !opSelectedId}
-  onClick={() => setOpTab("browser")}
-  title="Call via browser"
->
-  <PhoneCall className="w-3 h-3" />
-  Browser Call
-</Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1 border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
+                  disabled={!lead?.phone || !opSelectedId}
+                  onClick={() => setOpTab("browser")}
+                  title="Call via browser"
+                >
+                  <PhoneCall className="w-3 h-3" />
+                  Browser Call
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
