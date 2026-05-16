@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setupFetchInterceptor } from "./lib/api-setup";
 import { AppLayout } from "./components/layout/AppLayout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 setupFetchInterceptor();
 
@@ -71,7 +72,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "") }>
-          <Router />
+          <ErrorBoundary>
+            <Router />
+          </ErrorBoundary>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

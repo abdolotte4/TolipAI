@@ -200,8 +200,9 @@ export default function Pipeline() {
 
     if (newStatus === lead.status) return;
 
-    queryClient.setQueryData(["crm", "leads", {}], (old: any[]) =>
-      (old || []).map((l: any) => l.id === leadId ? { ...l, status: newStatus } : l)
+    // Invalidate all "crm leads" queries so every list view (pipeline, lead list, etc.) refreshes
+    queryClient.setQueriesData({ queryKey: ["/api/crm/leads"] }, (old: any) =>
+      Array.isArray(old) ? old.map((l: any) => l.id === leadId ? { ...l, status: newStatus } : l) : old
     );
 
     try {

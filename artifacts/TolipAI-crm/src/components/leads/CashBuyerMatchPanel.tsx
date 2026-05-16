@@ -126,7 +126,14 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
       setLoadingList(false);
     }
   };
-  useEffect(() => { setLoadingList(false); /* eslint-disable-next-line */ }, [leadId]);
+  useEffect(() => {
+    // Reset loading state whenever the active lead changes
+    setLoadingList(false);
+    setBuyers([]);
+    setJob(null);
+    setJobId(null);
+    setError(null);
+  }, [leadId]);
 
   // ── Poll job ──
   useEffect(() => {

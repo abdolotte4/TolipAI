@@ -108,6 +108,8 @@ export const crmLeads = pgTable("crm_leads", {
   index("crm_leads_archived_idx").on(t.archived),
   index("crm_leads_assigned_to_idx").on(t.assignedTo),
   index("crm_leads_created_at_idx").on(t.createdAt),
+  // Phone index — critical for SMS webhook lookup (was doing full-table scan + JS find before)
+  index("crm_leads_phone_idx").on(t.phone),
   // Composite: most common query is "active leads for a campaign ordered by date"
   index("crm_leads_campaign_archived_created_idx").on(t.campaignId, t.archived, t.createdAt),
 ]);
@@ -121,6 +123,8 @@ export const crmNotes = pgTable("crm_notes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("crm_notes_lead_id_idx").on(t.leadId),
+  // Composite for ordered notes per lead (most common query pattern)
+  index("crm_notes_lead_date_idx").on(t.leadId, t.createdAt),
 ]);
 
 export const crmLeadFollowers = pgTable("crm_lead_followers", {
@@ -146,6 +150,8 @@ export const crmNotifications = pgTable("crm_notifications", {
   index("crm_notifications_user_id_idx").on(t.userId),
   index("crm_notifications_read_idx").on(t.read),
   index("crm_notifications_created_at_idx").on(t.createdAt),
+  // Composite for the primary notification query: unread items per user ordered by date
+  index("crm_notifications_user_unread_date_idx").on(t.userId, t.read, t.createdAt),
 ]);
 
 export const crmOpenPhoneMessages = pgTable("crm_openphone_messages", {

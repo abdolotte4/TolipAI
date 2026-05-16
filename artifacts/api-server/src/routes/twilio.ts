@@ -516,10 +516,13 @@ router.post("/twilio/webhook", async (req, res) => {
 
     const normalize = (p: string) => p.replace(/\D/g, "");
     const normFrom = normalize(fromNumber);
+    // Query DB directly using normalized phone — avoids full-table scan + JS find
     const allLeads = await db
       .select({ id: crmLeads.id, phone: crmLeads.phone, campaignId: crmLeads.campaignId })
-      .from(crmLeads).limit(2000);
-    const lead = allLeads.find(l => l.phone && normalize(l.phone) === normFrom);
+      .from(crmLeads)
+      .where(sql`regexp_replace(${crmLeads.phone}, '[^0-9]', '', 'g') = ${normFrom}`)
+      .limit(1);
+    const lead = allLeads[0] ?? null;
 
     await db.insert(crmOpenPhoneMessages).values({
       leadId: lead?.id ?? null,

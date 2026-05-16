@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -68,6 +68,17 @@ function StepEditor({
     subject: step.subject,
     body: step.body,
   });
+
+  // Re-sync form when the step prop changes (e.g. after a parent refresh or autosave)
+  useEffect(() => {
+    setForm({
+      dayOffset: step.dayOffset,
+      type: step.type || "email",
+      subject: step.subject,
+      body: step.body,
+    });
+    setEditing(false);
+  }, [step.id]);
   const { toast } = useToast();
   const qc = useQueryClient();
   const stepType = (form.type || "email") as StepType;

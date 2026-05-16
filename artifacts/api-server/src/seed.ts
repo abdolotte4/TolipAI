@@ -16,6 +16,17 @@ async function ensureIndexes() {
     ["idx_crm_tasks_campaign_id",       "CREATE INDEX IF NOT EXISTS idx_crm_tasks_campaign_id ON crm_tasks(campaign_id)"],
     ["idx_crm_leads_status",            "CREATE INDEX IF NOT EXISTS idx_crm_leads_status ON crm_leads(status)"],
     ["idx_crm_leads_assigned_to",       "CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned_to ON crm_leads(assigned_to)"],
+    // ── Session 10 additions ──────────────────────────────────────────────────
+    // CRITICAL: phone lookup — eliminates full-table scan in SMS webhook (was .limit(2000) + JS find)
+    ["idx_crm_leads_phone",             "CREATE INDEX IF NOT EXISTS idx_crm_leads_phone ON crm_leads(phone)"],
+    // Composite: ordered notes per lead (most common notes query pattern)
+    ["idx_crm_notes_lead_date",         "CREATE INDEX IF NOT EXISTS idx_crm_notes_lead_date ON crm_notes(lead_id, created_at DESC)"],
+    // Composite: unread notifications per user ordered by date (replaces 3 separate indexes being combined at query time)
+    ["idx_crm_notifs_user_unread_date", "CREATE INDEX IF NOT EXISTS idx_crm_notifs_user_unread_date ON crm_notifications(user_id, read, created_at DESC)"],
+    // Composite: sequence dedup check — fires on every email/SMS send step
+    ["idx_crm_seq_logs_dedup",          "CREATE INDEX IF NOT EXISTS idx_crm_seq_logs_dedup ON crm_sequence_logs(lead_id, sequence_id, step_id) WHERE step_id IS NOT NULL"],
+    // Full-text search: lead address + city + seller name (enables fast GIN search vs slow ILIKE)
+    ["idx_crm_leads_fts",               "CREATE INDEX IF NOT EXISTS idx_crm_leads_fts ON crm_leads USING gin(to_tsvector('english', coalesce(address,'') || ' ' || coalesce(city,'') || ' ' || coalesce(seller_name,'')))"],
   ];
   for (const [name, ddl] of indexes) {
     try {
