@@ -18,7 +18,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 PROJECT_ROOT="/home/runner/workspace"
-WATCH_DIR="$PROJECT_ROOT/artifacts/digor-scraper-engine/workers"
+WATCH_DIR="$PROJECT_ROOT/artifacts/TolipAI-scraper-engine/workers"
 LOG_FILE="$PROJECT_ROOT/docs/aider-session-log.md"
 POLL_INTERVAL=5   # seconds between file-state checks
 
@@ -113,7 +113,7 @@ ${FLAKE8_OUT:-"(all clean)"}
 
 $(if [ -n "$FLAKE8_OUT" ]; then
   echo "- [ ] Fix flake8 lint errors listed above"
-  echo "- [ ] Run: cd artifacts/digor-scraper-engine && python -m flake8 workers/ --max-line-length=120 --extend-ignore=E203,W503,E501"
+  echo "- [ ] Run: cd artifacts/TolipAI-scraper-engine && python -m flake8 workers/ --max-line-length=120 --extend-ignore=E203,W503,E501"
 fi)
 $(if echo "$BLACK_OUT" | grep -q "would reformat" 2>/dev/null; then
   echo "- [ ] Black found formatting issues (watcher auto-fixed — review diff)"

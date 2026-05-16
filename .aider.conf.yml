@@ -1,4 +1,4 @@
-## Aider configuration for Digor LLC monorepo
+## Aider configuration for TolipAI LLC monorepo
 ## Run: ./launch-aider.sh
 ##
 ## Primary model: Kimi K2.6 (Moonshot) — 1M token context
@@ -33,18 +33,18 @@ read:
 # These are the files most frequently changed. For large files like main.py,
 # use /add workers/main.py in the chat rather than loading them by default.
 file:
-  - artifacts/digor-scraper-engine/workers/config.py
-  - artifacts/digor-scraper-engine/workers/llm.py
-  - artifacts/digor-scraper-engine/workers/db.py
-  - artifacts/digor-scraper-engine/workers/distressed.py
-  - artifacts/digor-scraper-engine/workers/http_client.py
+  - artifacts/TolipAI-scraper-engine/workers/config.py
+  - artifacts/TolipAI-scraper-engine/workers/llm.py
+  - artifacts/TolipAI-scraper-engine/workers/db.py
+  - artifacts/TolipAI-scraper-engine/workers/distressed.py
+  - artifacts/TolipAI-scraper-engine/workers/http_client.py
 
 # ── Auto-lint after every edit ────────────────────────────────────────────────
 # Runs flake8 on changed Python files automatically after Aider applies a patch
 lint-cmd: python -m flake8 --max-line-length=120 --extend-ignore=E203,W503,E501 {file}
 
 # ── Auto-test after every edit (uncomment when you have a test suite) ─────────
-# test-cmd: pytest -q artifacts/digor-scraper-engine/
+# test-cmd: pytest -q artifacts/TolipAI-scraper-engine/
 
 # ── Git attribution ───────────────────────────────────────────────────────────
 attribute-author: false

@@ -1,4 +1,4 @@
-# ── Digor Scraper Engine — Fargate Spot requirements ──────────────────────────
+# ── TolipAI Scraper Engine — Fargate Spot requirements ──────────────────────────
 # Optimised for ARM64 (Graviton3) Fargate tasks.
 # Install: pip install -r requirements.txt
 

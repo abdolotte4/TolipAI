@@ -49,7 +49,7 @@ log = logging.getLogger("cache")
 _DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL", "3600"))          # 1 hour
 _S3_BUCKET = os.getenv("S3_CACHE_BUCKET")                           # optional
 _S3_PREFIX = os.getenv("S3_CACHE_PREFIX", "scraper-cache/")
-_REDIS_KEY_PREFIX = "digor:cache:"
+_REDIS_KEY_PREFIX = "TolipAI:cache:"
 _REDIS_TTL = int(os.getenv("CACHE_REDIS_TTL", "86400"))             # 24h max in Redis
 
 # ── Fallback in-memory store ──────────────────────────────────────────────────

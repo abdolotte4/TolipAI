@@ -22,15 +22,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Digor Scraper Engine"
+args = "TolipAI Scraper Engine"
 
 [[workflows.workflow]]
-name = "Digor Scraper Engine"
+name = "TolipAI Scraper Engine"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/digor-scraper-engine && PORT=8000 bash start.sh"
+args = "cd artifacts/TolipAI-scraper-engine && PORT=8000 bash start.sh"
 waitForPort = 8000
 
 [workflows.workflow.metadata]

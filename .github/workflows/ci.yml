@@ -42,9 +42,9 @@ jobs:
       - name: Build applications
         run: |
           pnpm --filter @workspace/api-server run build
-          pnpm --filter @workspace/digor-crm run build
-          pnpm --filter @workspace/digor-tools run build
-          pnpm --filter @workspace/digor-website run build
+          pnpm --filter @workspace/TolipAI-crm run build
+          pnpm --filter @workspace/TolipAI-tools run build
+          pnpm --filter @workspace/TolipAI-website run build
         env:
           NODE_ENV: production
           PORT: "8080"

@@ -1,7 +1,7 @@
 [project]
-name = "digor-scraper-engine"
+name = "TolipAI-scraper-engine"
 version = "0.2.0"
-description = "Digor advanced scraping + skip-trace + investor classification engine — AWS Fargate Spot"
+description = "TolipAI advanced scraping + skip-trace + investor classification engine — AWS Fargate Spot"
 requires-python = ">=3.11,<3.13"
 
 [project.optional-dependencies]
@@ -24,7 +24,7 @@ select = ["E", "W", "F", "I"]
 ignore  = ["E501"]
 
 [project.urls]
-Repository = "https://github.com/Agawish24/Digor"
+Repository = "https://github.com/Agawish24/TolipAI"
 
 # ── New modules (Week 1–4 upgrade) ───────────────────────────────────────────
 # workers/spot_handler.py    — Fargate Spot SIGTERM → 90s graceful drain

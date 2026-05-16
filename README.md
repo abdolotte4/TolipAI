@@ -23,9 +23,9 @@ A full-stack real estate wholesaling platform built to solve real acquisition, c
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Applications](#applications)
-  - [TolipAI CRM](#digor-crm)
-  - [TolipAI Tools](#digor-tools)
-  - [TolipAI Website](#digor-website)
+  - [TolipAI CRM](#TolipAI-crm)
+  - [TolipAI Tools](#TolipAI-tools)
+  - [TolipAI Website](#TolipAI-website)
   - [API Server](#api-server)
 - [AI Integrations](#ai-integrations)
 - [Third-Party APIs & Integrations](#third-party-apis--integrations)
@@ -72,13 +72,13 @@ Each application has its own dev server. Open separate terminals:
 pnpm --filter @workspace/api-server run dev
 
 # CRM portal  →  http://localhost:<PORT>/crm/
-pnpm --filter @workspace/digor-crm run dev
+pnpm --filter @workspace/TolipAI-crm run dev
 
 # Tools portal  →  http://localhost:<PORT>/tools/
-pnpm --filter @workspace/digor-tools run dev
+pnpm --filter @workspace/TolipAI-tools run dev
 
 # Public website  →  http://localhost:<PORT>/
-pnpm --filter @workspace/digor-website run dev
+pnpm --filter @workspace/TolipAI-website run dev
 ```
 
 > **Replit users:** workflows for each service are pre-configured. Use the
@@ -123,9 +123,9 @@ The full stack runs without Docker. You just need Node 20, pnpm 10, and a Postgr
 ```bash
 # Start all four services (each in its own terminal)
 pnpm --filter @workspace/api-server run dev   # API on $PORT
-pnpm --filter @workspace/digor-crm run dev    # CRM  on $PORT
-pnpm --filter @workspace/digor-tools run dev  # Tools on $PORT
-pnpm --filter @workspace/digor-website run dev # Site on $PORT
+pnpm --filter @workspace/TolipAI-crm run dev    # CRM  on $PORT
+pnpm --filter @workspace/TolipAI-tools run dev  # Tools on $PORT
+pnpm --filter @workspace/TolipAI-website run dev # Site on $PORT
 ```
 
 Set `DATABASE_URL` in your `.env` to point at a local PostgreSQL instance
@@ -821,7 +821,7 @@ artifacts/api-server/src/
 
 ## Scraper Engine — AWS Fargate Spot Architecture
 
-The Digor Scraper Engine (`artifacts/digor-scraper-engine/`) runs as a standalone
+The TolipAI Scraper Engine (`artifacts/TolipAI-scraper-engine/`) runs as a standalone
 Python service (FastAPI + Playwright) deployed on **AWS Fargate Spot** — giving
 ~70% cost reduction versus on-demand Fargate while maintaining reliability through
 graceful spot interruption handling, Redis job persistence, and automatic retry.
@@ -961,7 +961,7 @@ aws secretsmanager create-secret \
   --secret-string "postgresql://user:pass@rds-host:5432/tolipai"
 
 # 3. Create the ECS cluster (one-time)
-aws ecs create-cluster --cluster-name digor-scraper-cluster \
+aws ecs create-cluster --cluster-name TolipAI-scraper-cluster \
   --capacity-providers FARGATE_SPOT FARGATE \
   --default-capacity-provider-strategy \
     capacityProvider=FARGATE_SPOT,weight=4 \
@@ -971,7 +971,7 @@ aws ecs create-cluster --cluster-name digor-scraper-cluster \
 ./infrastructure/deploy.sh
 
 # 5. Tail logs
-aws logs tail /ecs/digor-scraper --follow --region $AWS_REGION
+aws logs tail /ecs/TolipAI-scraper --follow --region $AWS_REGION
 ```
 
 ### New Admin Endpoints

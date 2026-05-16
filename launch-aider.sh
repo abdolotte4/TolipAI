@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# launch-aider.sh — Aider AI for the Digor LLC project
+# launch-aider.sh — Aider AI for the TolipAI LLC project
 #
 # Model priority (tries each in order until one has a valid API key):
 #   1. Kimi K2.6 — Moonshot direct API  (MOONSHOT_KIMI_API_KEY)
@@ -143,7 +143,7 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Digor LLC — Aider AI"
+echo "  TolipAI LLC — Aider AI"
 echo "  Model:    $MODEL"
 echo "  Context:  full repo map (${MAP_TOKENS} tokens) + CONVENTIONS.md"
 echo "  Files:    config.py, llm.py, db.py, distressed.py, http_client.py"

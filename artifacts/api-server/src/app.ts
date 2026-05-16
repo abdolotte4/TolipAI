@@ -175,9 +175,9 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 if (process.env.NODE_ENV === "production") {
   const cwd = process.cwd();
 
-  const crmDir = path.join(cwd, "artifacts/digor-crm/dist/public");
-  const toolsDir = path.join(cwd, "artifacts/digor-tools/dist/public");
-  const websiteDir = path.join(cwd, "artifacts/digor-website/dist/public");
+  const crmDir = path.join(cwd, "artifacts/TolipAI-crm/dist/public");
+  const toolsDir = path.join(cwd, "artifacts/TolipAI-tools/dist/public");
+  const websiteDir = path.join(cwd, "artifacts/TolipAI-website/dist/public");
 
   app.use("/crm", express.static(crmDir));
   app.get("/crm/*path", (_req: Request, res: Response) => {

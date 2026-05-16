@@ -34,9 +34,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID must be set}"
-ECS_CLUSTER="${ECS_CLUSTER:-digor-scraper-cluster}"
-ECS_SERVICE="${ECS_SERVICE:-digor-scraper-engine}"
-TASK_DEFINITION="${TASK_DEFINITION:-digor-scraper-engine}"
+ECS_CLUSTER="${ECS_CLUSTER:-TolipAI-scraper-cluster}"
+ECS_SERVICE="${ECS_SERVICE:-TolipAI-scraper-engine}"
+TASK_DEFINITION="${TASK_DEFINITION:-TolipAI-scraper-engine}"
 
 # Scaling bounds
 MIN_CAPACITY="${MIN_CAPACITY:-1}"
@@ -82,7 +82,7 @@ if [ "$REMOVE" = true ]; then
   done
 
   run "aws application-autoscaling delete-scaling-policy \
-    --policy-name digor-cpu-step-scaling \
+    --policy-name TolipAI-cpu-step-scaling \
     --service-namespace ecs \
     --resource-id '${RESOURCE_ID}' \
     --scalable-dimension ecs:service:DesiredCount \
@@ -188,7 +188,7 @@ POLICY_CONFIG='{
 }'
 
 run "aws application-autoscaling put-scaling-policy \
-  --policy-name digor-cpu-step-scaling \
+  --policy-name TolipAI-cpu-step-scaling \
   --service-namespace ecs \
   --resource-id '${RESOURCE_ID}' \
   --scalable-dimension ecs:service:DesiredCount \
@@ -200,7 +200,7 @@ run "aws application-autoscaling put-scaling-policy \
 # (CPU > 60% for 3 minutes triggers scale-out)
 POLICY_ARN=$( [ "$APPLY" = true ] && \
   aws application-autoscaling describe-scaling-policies \
-    --policy-names digor-cpu-step-scaling \
+    --policy-names TolipAI-cpu-step-scaling \
     --service-namespace ecs \
     --resource-id "${RESOURCE_ID}" \
     --scalable-dimension ecs:service:DesiredCount \
@@ -210,7 +210,7 @@ POLICY_ARN=$( [ "$APPLY" = true ] && \
   echo "arn:aws:autoscaling:${AWS_REGION}:${AWS_ACCOUNT_ID}:scalingPolicy:PLACEHOLDER")
 
 run "aws cloudwatch put-metric-alarm \
-  --alarm-name digor-scraper-cpu-high \
+  --alarm-name TolipAI-scraper-cpu-high \
   --metric-name CPUUtilization \
   --namespace AWS/ECS \
   --statistic Average \

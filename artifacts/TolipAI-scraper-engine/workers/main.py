@@ -1,4 +1,4 @@
-"""Digor Scraper Engine — FastAPI entrypoint.
+"""TolipAI Scraper Engine — FastAPI entrypoint.
 
 Endpoints all return immediately with a job_id; long work runs as an asyncio
 background task that persists progress + results to Postgres.
@@ -253,7 +253,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Digor Scraper Engine",
+    title="TolipAI Scraper Engine",
     version="0.2.0",
     description="Advanced scraping + skip-trace + investor classification",
     lifespan=lifespan,

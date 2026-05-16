@@ -1,8 +1,8 @@
 {
-  "_comment": "IAM policies for Digor Scraper Engine on Fargate. Create these via AWS Console or CLI.",
+  "_comment": "IAM policies for TolipAI Scraper Engine on Fargate. Create these via AWS Console or CLI.",
 
   "task_execution_role": {
-    "name": "digor-scraper-execution-role",
+    "name": "TolipAI-scraper-execution-role",
     "description": "Allows ECS to pull images from ECR and fetch secrets from Secrets Manager",
     "trust_policy": {
       "Version": "2012-10-17",
@@ -27,7 +27,7 @@
               "secretsmanager:GetSecretValue"
             ],
             "Resource": [
-              "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/*"
+              "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/*"
             ]
           },
           {
@@ -37,7 +37,7 @@
               "ssm:GetParametersByPath"
             ],
             "Resource": [
-              "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/digor/scraper/*"
+              "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/TolipAI/scraper/*"
             ]
           },
           {
@@ -56,7 +56,7 @@
   },
 
   "task_role": {
-    "name": "digor-scraper-task-role",
+    "name": "TolipAI-scraper-task-role",
     "description": "Permissions for the scraper container itself (S3, CloudWatch, ECS Exec)",
     "trust_policy": {
       "Version": "2012-10-17",
@@ -81,10 +81,10 @@
               "s3:ListBucket"
             ],
             "Resource": [
-              "arn:aws:s3:::digor-scraper-cache",
-              "arn:aws:s3:::digor-scraper-cache/*",
-              "arn:aws:s3:::digor-exports",
-              "arn:aws:s3:::digor-exports/*"
+              "arn:aws:s3:::TolipAI-scraper-cache",
+              "arn:aws:s3:::TolipAI-scraper-cache/*",
+              "arn:aws:s3:::TolipAI-exports",
+              "arn:aws:s3:::TolipAI-exports/*"
             ]
           }
         ]
@@ -99,7 +99,7 @@
               "logs:PutLogEvents",
               "logs:CreateLogGroup"
             ],
-            "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/ecs/digor-scraper:*"
+            "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/ecs/TolipAI-scraper:*"
           }
         ]
       },

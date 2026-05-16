@@ -1,4 +1,4 @@
-# Digor Agent Chat Context
+# TolipAI Agent Chat Context
 > Auto-generated summary of Replit Agent session decisions.
 > Aider reads this file automatically for continuity.
 
@@ -6,8 +6,8 @@
 
 ### What Was Built
 - **pnpm monorepo**: Express API (`api-server`) + 3 React portals (website, CRM, tools)
-- **Python scraper engine** (`digor-scraper-engine`): FastAPI app with 30+ scrapers
-- **Phone Finder**: CSV upload → Google Maps Places API → phone number extraction (in digor-tools)
+- **Python scraper engine** (`TolipAI-scraper-engine`): FastAPI app with 30+ scrapers
+- **Phone Finder**: CSV upload → Google Maps Places API → phone number extraction (in TolipAI-tools)
 - **ATTOM fallback**: `fetchDistressedViaAttom()` in `attomApi.ts`
 - **Playwright-first Google Maps endpoint** (`/google-maps`) in `main.py`
 - **Bedrock integration** in `llm.py` (USE_BEDROCK=1 env var)
@@ -38,7 +38,7 @@
 ### Flake8 / Black Config
 - Line length: 120
 - Flake8 ignore: E203, W503, E501
-- Python workers path: `artifacts/digor-scraper-engine/workers/`
+- Python workers path: `artifacts/TolipAI-scraper-engine/workers/`
 
 ### AWS Readiness Status
 - `Dockerfile.lambda` — complete, targets `public.ecr.aws/lambda/python:3.11`

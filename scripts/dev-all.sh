@@ -44,9 +44,9 @@ echo "[dev-all] starting api-server on :$API_PORT"
 ( PORT="$API_PORT" NODE_ENV=development node --enable-source-maps artifacts/api-server/dist/index.mjs ) &
 
 # 4. Start the three vite frontends.
-start_vite "digor-website" "artifacts/digor-website" "$WEB_PORT"
-start_vite "digor-crm"     "artifacts/digor-crm"     "$CRM_PORT"
-start_vite "digor-tools"   "artifacts/digor-tools"   "$TOOLS_PORT"
+start_vite "TolipAI-website" "artifacts/TolipAI-website" "$WEB_PORT"
+start_vite "TolipAI-crm"     "artifacts/TolipAI-crm"     "$CRM_PORT"
+start_vite "TolipAI-tools"   "artifacts/TolipAI-tools"   "$TOOLS_PORT"
 
 trap 'echo "[dev-all] shutting down…"; kill 0' INT TERM
 wait

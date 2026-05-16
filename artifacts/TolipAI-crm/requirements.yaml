@@ -6,10 +6,10 @@ packages:
   "tailwind-merge": "Utility for merging tailwind classes safely"
 
 images:
-  - path: "artifacts/digor-crm/public/images/auth-bg.png"
+  - path: "artifacts/TolipAI-crm/public/images/auth-bg.png"
     description: "Abstract dark professional background with subtle glowing indigo and deep blue mesh gradients, sleek enterprise software feel"
     aspect_ratio: "16:9"
-  - path: "artifacts/digor-crm/public/images/logo.png"
+  - path: "artifacts/TolipAI-crm/public/images/logo.png"
     description: "Minimal geometric logo mark for a real estate data company in bright indigo on a completely transparent background"
     aspect_ratio: "1:1"
 

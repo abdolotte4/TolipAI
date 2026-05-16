@@ -148,7 +148,7 @@ async def _redis_save_state(service: str, state_path: Path) -> None:
         if _r is None:
             return
         data = state_path.read_text()
-        await _r.setex(f"digor:session:{service}", _REDIS_SESSION_TTL, data)
+        await _r.setex(f"TolipAI:session:{service}", _REDIS_SESSION_TTL, data)
         log.debug("[%s] session state saved to Redis", service)
     except Exception as exc:
         log.warning("[%s] Redis session save failed: %s", service, str(exc)[:120])
@@ -161,7 +161,7 @@ async def _redis_load_state(service: str) -> Optional[str]:
 
         if _r is None:
             return None
-        raw = await _r.get(f"digor:session:{service}")
+        raw = await _r.get(f"TolipAI:session:{service}")
         if raw:
             log.debug("[%s] session state restored from Redis", service)
             return raw.decode() if isinstance(raw, bytes) else raw
@@ -177,7 +177,7 @@ async def _redis_delete_state(service: str) -> None:
 
         if _r is None:
             return
-        await _r.delete(f"digor:session:{service}")
+        await _r.delete(f"TolipAI:session:{service}")
         log.debug("[%s] Redis session key deleted", service)
     except Exception as exc:
         log.warning("[%s] Redis session delete failed: %s", service, str(exc)[:80])

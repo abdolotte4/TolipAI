@@ -1,1 +1,1 @@
-artifacts/digor-website/public/digor-llc-website.tar.gz filter=lfs diff=lfs merge=lfs -text
+artifacts/TolipAI-website/public/TolipAI-llc-website.tar.gz filter=lfs diff=lfs merge=lfs -text

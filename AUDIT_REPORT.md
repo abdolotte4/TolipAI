@@ -11,8 +11,8 @@
 | Check | Result | Notes |
 |-------|--------|-------|
 | `tsc --noEmit` (api-server) | ✅ Pass | Clean — 0 errors |
-| `tsc --noEmit` (digor-tools) | ✅ Pass | Clean — 0 errors |
-| `tsc --noEmit` (digor-crm) | ✅ Pass | Clean — 0 errors (5 pre-existing errors fixed this session) |
+| `tsc --noEmit` (TolipAI-tools) | ✅ Pass | Clean — 0 errors |
+| `tsc --noEmit` (TolipAI-crm) | ✅ Pass | Clean — 0 errors (5 pre-existing errors fixed this session) |
 | DB migration (Session 7) | ✅ Applied | `crm_sequence_steps.type`, `crm_sequence_logs.type`, `crm_sms_opt_outs` table |
 | DB migration (AI SMS) | ✅ Applied | `crm_campaigns.ai_sms_enabled/personality/max_replies_per_day`, `crm_sms_conversations` table |
 
@@ -220,7 +220,7 @@ Per `replit_agent_prompt_v2.md` PART 2 decision: **single Fargate task = in-memo
 | `crm_sequence_steps.type` column | ✅ | Migration applied; default `'email'` |
 | `crm_sequence_logs.type` column | ✅ | Migration applied; default `'email'` |
 | Frontend sequence builder SMS step UI | ⚠️ | **CRM only** — `SequenceList.tsx` in `tolipai-crm` has SMS step type. `tolipai-tools` has no sequences page (no sequences feature there). |
-| 160-char SMS limit warning | ✅ | Present in `digor-crm/src/pages/campaigns/SequenceList.tsx` |
+| 160-char SMS limit warning | ✅ | Present in `TolipAI-crm/src/pages/campaigns/SequenceList.tsx` |
 
 ### 5.2 Direct Mail via Brevo
 
@@ -231,7 +231,7 @@ Per `replit_agent_prompt_v2.md` PART 2 decision: **single Fargate task = in-memo
 | Address validation before sending | ✅ | `extractAddressForDirectMail()` helper validates fields |
 | Frontend direct mail step UI | ⚠️ | CRM `SequenceList.tsx` only — same caveat as SMS above |
 
-### 5.3 PWA for digor-tools
+### 5.3 PWA for TolipAI-tools
 
 | Sub-item | Status | Evidence |
 |----------|--------|----------|
@@ -374,7 +374,7 @@ Per `replit_agent_prompt_v2.md` PART 2 decision: **single Fargate task = in-memo
 | Item | What's Done | What Remains | Why Stopped |
 |------|-------------|--------------|-------------|
 | 12.1 `formData` useRef | `formDataRef` synced every render. Auto-save reads ref. `[isDirty]` in effect deps. | Converting all inputs to truly uncontrolled | React controlled inputs require state. The performance win is achieved. |
-| `tolipai-tools` sequences UI | No sequences page in digor-tools (the tool has no sequence builder feature at all) | Full sequence builder in digor-tools | The spec referenced `digor-tools/src/pages/sequences/` but no such page exists — sequences are a CRM feature. The CRM sequence builder was fully updated. |
+| `tolipai-tools` sequences UI | No sequences page in TolipAI-tools (the tool has no sequence builder feature at all) | Full sequence builder in TolipAI-tools | The spec referenced `TolipAI-tools/src/pages/sequences/` but no such page exists — sequences are a CRM feature. The CRM sequence builder was fully updated. |
 | `vite-plugin-pwa` not used | Manual `sw.js` achieves same goal | Auto-generated Workbox SW via vite-plugin-pwa | Manual approach is functionally equivalent. No functional gap. |
 
 ### Security Debt — Documented, Not Yet Fixed

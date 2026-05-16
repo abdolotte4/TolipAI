@@ -31,14 +31,14 @@ in <100ms with a `jobId` you can poll.
 ```bash
 # from repo root
 PORT=8765 uvicorn workers.main:app --host 0.0.0.0 --port 8765 --reload \
-  --app-dir artifacts/digor-scraper-engine
+  --app-dir artifacts/TolipAI-scraper-engine
 ```
 
 ## Railway deployment
 
 Deploy this directory as its own service with `Procfile`. Set the
 `SCRAPER_ENGINE_URL` env var on the api-server service to its internal URL
-(e.g. `http://digor-scraper-engine.railway.internal:8765`).
+(e.g. `http://TolipAI-scraper-engine.railway.internal:8765`).
 
 ## Required env vars
 

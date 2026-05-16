@@ -1,7 +1,7 @@
 [project]
-name = "digor-workspace"
+name = "TolipAI-workspace"
 version = "0.1.0"
-description = "Digor scraper engine workspace"
+description = "TolipAI scraper engine workspace"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "asyncpg>=0.31.0",

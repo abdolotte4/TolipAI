@@ -4,7 +4,7 @@
 >
 > **Scale Assumption:** < 50 concurrent users, < 10,000 leads. Single Fargate task for API server is sufficient. Module-level in-memory state is acceptable.
 >
-> **Repos:** `Agawish24/Python-Worker` + `Agawish24/Digor`
+> **Repos:** `Agawish24/Python-Worker` + `Agawish24/TolipAI`
 >
 > **Previous Audit:** Session 6 completed ~90/99 items. This prompt covers remaining items + new features.
 
@@ -163,7 +163,7 @@ The following items are **intentionally left as module-level Maps** because they
    - Add `GET /api/crm/sms-opt-out/:campaignId` to check opt-out list
    - Store opt-outs in `crm_sms_opt_outs` table (not Redis)
 
-5. **Frontend** (`artifacts/digor-tools/src/pages/sequences/`):
+5. **Frontend** (`artifacts/TolipAI-tools/src/pages/sequences/`):
    - Add SMS step type to sequence builder UI
    - SMS template editor with 160-char limit warning
    - Show SMS delivery status in sequence logs
@@ -173,7 +173,7 @@ The following items are **intentionally left as module-level Maps** because they
 - `artifacts/api-server/src/services/smsService.ts` (new)
 - `artifacts/api-server/src/routes/crm/sequences.ts`
 - `artifacts/api-server/src/routes/crm/campaigns.ts` (add opt-out endpoints)
-- `artifacts/digor-tools/src/pages/sequences/` (add SMS step UI)
+- `artifacts/TolipAI-tools/src/pages/sequences/` (add SMS step UI)
 
 ---
 
@@ -203,7 +203,7 @@ The following items are **intentionally left as module-level Maps** because they
    - Add `POST /api/crm/direct-mail/webhook` for Brevo status updates
    - Update `crm_sequence_logs` status on webhook receipt
 
-5. **Frontend** (`artifacts/digor-tools/src/pages/sequences/`):
+5. **Frontend** (`artifacts/TolipAI-tools/src/pages/sequences/`):
    - Add direct mail step type to sequence builder
    - Template editor for postcards/letters with merge fields
    - Show direct mail status in sequence logs
@@ -212,23 +212,23 @@ The following items are **intentionally left as module-level Maps** because they
 - `artifacts/api-server/src/db/schema.ts`
 - `artifacts/api-server/src/services/directMailService.ts` (new)
 - `artifacts/api-server/src/routes/crm/sequences.ts`
-- `artifacts/digor-tools/src/pages/sequences/` (add direct mail step UI)
+- `artifacts/TolipAI-tools/src/pages/sequences/` (add direct mail step UI)
 
 ---
 
-### 3.3 PWA (Progressive Web App) for digor-tools
+### 3.3 PWA (Progressive Web App) for TolipAI-tools
 
-**Context:** `digor-tools` is a React/Vite app. PWA adds installability, offline cache, and push notifications.
+**Context:** `TolipAI-tools` is a React/Vite app. PWA adds installability, offline cache, and push notifications.
 
 **Implementation:**
 
-1. **Vite PWA Plugin** (`artifacts/digor-tools/vite.config.ts`):
+1. **Vite PWA Plugin** (`artifacts/TolipAI-tools/vite.config.ts`):
    - Install `vite-plugin-pwa`
    - Configure with `registerType: 'autoUpdate'`
    - Include all tool routes in manifest
 
-2. **Web App Manifest** (`artifacts/digor-tools/public/manifest.json`):
-   - App name: "Digor Tools"
+2. **Web App Manifest** (`artifacts/TolipAI-tools/public/manifest.json`):
+   - App name: "TolipAI Tools"
    - Icons: 192x192, 512x512 (use existing logo or placeholder)
    - Theme color: match existing UI
    - Display mode: `standalone`
@@ -240,12 +240,12 @@ The following items are **intentionally left as module-level Maps** because they
    - Cache API responses for offline viewing (lead lists, property lookups)
    - Use Workbox strategies: stale-while-revalidate for assets, network-first for API
 
-4. **Offline Indicator** (`artifacts/digor-tools/src/App.tsx`):
+4. **Offline Indicator** (`artifacts/TolipAI-tools/src/App.tsx`):
    - Add `navigator.onLine` listener
    - Show "Offline mode" banner when disconnected
    - Disable sync-dependent buttons when offline
 
-5. **Install Prompt** (`artifacts/digor-tools/src/App.tsx`):
+5. **Install Prompt** (`artifacts/TolipAI-tools/src/App.tsx`):
    - Listen for `beforeinstallprompt` event
    - Show "Add to Home Screen" button on mobile
    - Store user preference in localStorage
@@ -257,7 +257,7 @@ The following items are **intentionally left as module-level Maps** because they
    - Font sizes readable on mobile (no < 14px)
    - Horizontal scroll eliminated
 
-7. **GPS Location** (`artifacts/digor-tools/src/pages/SatelliteDFD.tsx`):
+7. **GPS Location** (`artifacts/TolipAI-tools/src/pages/SatelliteDFD.tsx`):
    - Add "Use my location" button
    - Use `navigator.geolocation.getCurrentPosition()` to center map
    - Handle permission denied gracefully
@@ -268,11 +268,11 @@ The following items are **intentionally left as module-level Maps** because they
    - Trigger push when skip trace / scrape job completes
 
 **Files to modify:**
-- `artifacts/digor-tools/vite.config.ts`
-- `artifacts/digor-tools/public/manifest.json` (new)
-- `artifacts/digor-tools/src/App.tsx`
-- `artifacts/digor-tools/src/pages/SatelliteDFD.tsx`
-- `artifacts/digor-tools/src/components/layout/AppLayout.tsx` (mobile nav)
+- `artifacts/TolipAI-tools/vite.config.ts`
+- `artifacts/TolipAI-tools/public/manifest.json` (new)
+- `artifacts/TolipAI-tools/src/App.tsx`
+- `artifacts/TolipAI-tools/src/pages/SatelliteDFD.tsx`
+- `artifacts/TolipAI-tools/src/components/layout/AppLayout.tsx` (mobile nav)
 - All tool pages (mobile responsiveness pass)
 
 ---
@@ -337,8 +337,8 @@ The following items are **intentionally left as module-level Maps** because they
 - [ ] `python3 -m py_compile workers/main.py` passes
 - [ ] `python3 -m py_compile workers/http_client.py` passes
 - [ ] `npx tsc --noEmit` passes (api-server)
-- [ ] `npx tsc --noEmit` passes (digor-tools)
-- [ ] `npx tsc --noEmit` passes (digor-crm)
+- [ ] `npx tsc --noEmit` passes (TolipAI-tools)
+- [ ] `npx tsc --noEmit` passes (TolipAI-crm)
 - [ ] All 5 AI endpoints have circuit breaker + timeout
 - [ ] Email sequence job uses Postgres advisory lock
 - [ ] Campaign deletion uses chunkArray(500)

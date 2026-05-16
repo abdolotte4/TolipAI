@@ -1,6 +1,6 @@
 {
-  "name": "Digor Tools",
-  "short_name": "Digor",
+  "name": "TolipAI Tools",
+  "short_name": "TolipAI",
   "description": "Real estate investment tools — skip trace, ARV, distressed properties, and more.",
   "start_url": "/tools/",
   "scope": "/tools/",

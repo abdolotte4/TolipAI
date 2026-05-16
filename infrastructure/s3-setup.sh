@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # infrastructure/s3-setup.sh
 #
-# S3 storage cost optimization for Digor Scraper Engine.
+# S3 storage cost optimization for TolipAI Scraper Engine.
 #
 # What this does:
 #   1. Creates the S3 bucket (if needed) with versioning + encryption
@@ -15,7 +15,7 @@
 #   5. Prints the bucket policy required for presigned URL access
 #
 # Usage:
-#   S3_BUCKET=digor-scraper-storage ./infrastructure/s3-setup.sh [--apply]
+#   S3_BUCKET=TolipAI-scraper-storage ./infrastructure/s3-setup.sh [--apply]
 #
 # Without --apply: prints commands only (dry-run).
 
@@ -25,7 +25,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$DIR/.env.aws" ] && source "$DIR/.env.aws"
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
-S3_BUCKET="${S3_BUCKET:?ERROR: S3_BUCKET must be set (e.g. digor-scraper-storage)}"
+S3_BUCKET="${S3_BUCKET:?ERROR: S3_BUCKET must be set (e.g. TolipAI-scraper-storage)}"
 
 APPLY=false
 while [[ $# -gt 0 ]]; do

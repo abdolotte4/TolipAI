@@ -16,7 +16,7 @@
 PROJECT_ROOT="/home/runner/workspace"
 LOG_FILE="$PROJECT_ROOT/docs/aider-session-log.md"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-PYTHON_WORKERS="artifacts/digor-scraper-engine/workers"
+PYTHON_WORKERS="artifacts/TolipAI-scraper-engine/workers"
 
 cd "$PROJECT_ROOT"
 

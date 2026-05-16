@@ -1,5 +1,5 @@
 {
-  "_comment": "S3 lifecycle policy for Digor Scraper Engine storage cost optimization. Apply with s3-setup.sh.",
+  "_comment": "S3 lifecycle policy for TolipAI Scraper Engine storage cost optimization. Apply with s3-setup.sh.",
   "Rules": [
     {
       "ID": "expire-exports-30d",

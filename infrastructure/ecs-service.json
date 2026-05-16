@@ -1,7 +1,7 @@
 {
-  "cluster": "digor-scraper-cluster",
-  "serviceName": "digor-scraper-engine",
-  "taskDefinition": "digor-scraper-engine",
+  "cluster": "TolipAI-scraper-cluster",
+  "serviceName": "TolipAI-scraper-engine",
+  "taskDefinition": "TolipAI-scraper-engine",
   "launchType": "FARGATE",
   "capacityProviderStrategy": [
     {
@@ -30,7 +30,7 @@
   },
   "loadBalancers": [
     {
-      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:ACCOUNT_ID:targetgroup/digor-scraper-tg/XXXX",
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:ACCOUNT_ID:targetgroup/TolipAI-scraper-tg/XXXX",
       "containerName": "scraper",
       "containerPort": 8765
     }
@@ -49,7 +49,7 @@
   "healthCheckGracePeriodSeconds": 120,
   "enableExecuteCommand": true,
   "tags": [
-    { "key": "Project",     "value": "digor" },
+    { "key": "Project",     "value": "TolipAI" },
     { "key": "Service",     "value": "scraper-engine" },
     { "key": "Environment", "value": "production" },
     { "key": "ManagedBy",   "value": "deploy.sh" }

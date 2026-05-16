@@ -59,7 +59,7 @@ async def close() -> None:
 
 
 def _key(job_id: str) -> str:
-    return f"digor:job:{job_id}"
+    return f"TolipAI:job:{job_id}"
 
 
 async def set_job(job_id: str, data: Dict[str, Any]) -> None:
@@ -99,7 +99,7 @@ async def all_jobs() -> Dict[str, Dict[str, Any]]:
     if _redis is not None:
         try:
             keys: List[str] = []
-            async for k in _redis.scan_iter("digor:job:*", count=100):
+            async for k in _redis.scan_iter("TolipAI:job:*", count=100):
                 keys.append(k)
             if keys:
                 pipe = _redis.pipeline()

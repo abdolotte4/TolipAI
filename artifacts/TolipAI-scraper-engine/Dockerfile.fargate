@@ -1,4 +1,4 @@
-# ── Digor Scraper Engine — AWS Fargate Spot Dockerfile ─────────────────────
+# ── TolipAI Scraper Engine — AWS Fargate Spot Dockerfile ─────────────────────
 #
 # Optimised for:
 #  • ARM64 (Graviton3) — 20% cheaper than x86 on Fargate Spot
@@ -7,7 +7,7 @@
 #  • ECS health checks via /health endpoint
 #
 # Build:
-#   docker build -f Dockerfile.fargate --platform linux/arm64 -t digor-scraper:latest .
+#   docker build -f Dockerfile.fargate --platform linux/arm64 -t TolipAI-scraper:latest .
 #
 # Push to ECR (see infrastructure/ecr-push.sh):
 #   ./infrastructure/ecr-push.sh
@@ -45,9 +45,9 @@ RUN playwright install chromium --with-deps 2>/dev/null || \
 # ── Final image ───────────────────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm
 
-LABEL org.opencontainers.image.title="digor-scraper-engine"
-LABEL org.opencontainers.image.description="Digor scraper engine — AWS Fargate Spot"
-LABEL org.opencontainers.image.source="https://github.com/Agawish24/Digor"
+LABEL org.opencontainers.image.title="TolipAI-scraper-engine"
+LABEL org.opencontainers.image.description="TolipAI scraper engine — AWS Fargate Spot"
+LABEL org.opencontainers.image.source="https://github.com/Agawish24/TolipAI"
 
 WORKDIR /app
 

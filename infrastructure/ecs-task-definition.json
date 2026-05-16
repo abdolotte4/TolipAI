@@ -1,7 +1,7 @@
 {
-  "family": "digor-scraper-engine",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/digor-scraper-task-role",
-  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/digor-scraper-execution-role",
+  "family": "TolipAI-scraper-engine",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/TolipAI-scraper-task-role",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/TolipAI-scraper-execution-role",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "2048",
@@ -13,7 +13,7 @@
   "containerDefinitions": [
     {
       "name": "scraper",
-      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/digor-scraper:latest",
+      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/TolipAI-scraper:latest",
       "essential": true,
       "portMappings": [
         {
@@ -35,69 +35,69 @@
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/database-url"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/database-url"
         },
         {
           "name": "REDIS_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/redis-url"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/redis-url"
         },
         {
           "name": "SCRAPER_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/api-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/api-key"
         },
         {
           "name": "OPENROUTER_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/openrouter-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/openrouter-key"
         },
         {
           "name": "GROQ_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/groq-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/groq-key"
         },
         {
           "name": "ATTOM_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/attom-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/attom-key"
         },
         {
           "name": "BRIGHTDATA_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/brightdata-username"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/brightdata-username"
         },
         {
           "name": "BRIGHTDATA_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/brightdata-password"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/brightdata-password"
         },
         {
           "name": "PROPELIO_EMAIL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/propelio-email"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propelio-email"
         },
         {
           "name": "PROPELIO_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/propelio-password"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propelio-password"
         },
         {
           "name": "PROPWIRE_EMAIL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/propwire-email"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propwire-email"
         },
         {
           "name": "PROPWIRE_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/propwire-password"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propwire-password"
         },
         {
           "name": "S3_CACHE_BUCKET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/s3-cache-bucket"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/s3-cache-bucket"
         },
         {
           "name": "TWILIO_ACCOUNT_SID",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/twilio-account-sid"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/twilio-account-sid"
         },
         {
           "name": "TWILIO_AUTH_TOKEN",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:digor/scraper/twilio-auth-token"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/twilio-auth-token"
         }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/digor-scraper",
+          "awslogs-group": "/ecs/TolipAI-scraper",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "scraper",
           "awslogs-create-group": "true"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # infrastructure/deploy.sh
 #
-# Deploy the Digor Scraper Engine to AWS Fargate Spot.
+# Deploy the TolipAI Scraper Engine to AWS Fargate Spot.
 # Builds the ARM64 Docker image, pushes to ECR, and updates the ECS service.
 #
 # Prerequisites:
@@ -15,26 +15,26 @@
 # Environment variables (can also be set in .env.aws):
 #   AWS_REGION         — default: us-east-1
 #   AWS_ACCOUNT_ID     — your 12-digit AWS account ID
-#   ECR_REPO_NAME      — default: digor-scraper
-#   ECS_CLUSTER        — default: digor-scraper-cluster
-#   ECS_SERVICE        — default: digor-scraper-engine
-#   TASK_DEFINITION    — default: digor-scraper-engine
+#   ECR_REPO_NAME      — default: TolipAI-scraper
+#   ECS_CLUSTER        — default: TolipAI-scraper-cluster
+#   ECS_SERVICE        — default: TolipAI-scraper-engine
+#   TASK_DEFINITION    — default: TolipAI-scraper-engine
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"
-SCRAPER_DIR="$ROOT/artifacts/digor-scraper-engine"
+SCRAPER_DIR="$ROOT/artifacts/TolipAI-scraper-engine"
 
 [ -f "$DIR/.env.aws" ] && source "$DIR/.env.aws"
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID must be set}"
-ECR_REPO_NAME="${ECR_REPO_NAME:-digor-scraper}"
-ECS_CLUSTER="${ECS_CLUSTER:-digor-scraper-cluster}"
-ECS_SERVICE="${ECS_SERVICE:-digor-scraper-engine}"
-TASK_DEFINITION="${TASK_DEFINITION:-digor-scraper-engine}"
+ECR_REPO_NAME="${ECR_REPO_NAME:-TolipAI-scraper}"
+ECS_CLUSTER="${ECS_CLUSTER:-TolipAI-scraper-cluster}"
+ECS_SERVICE="${ECS_SERVICE:-TolipAI-scraper-engine}"
+TASK_DEFINITION="${TASK_DEFINITION:-TolipAI-scraper-engine}"
 IMAGE_TAG="${IMAGE_TAG:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo latest)}"
 
 DO_BUILD=true
@@ -85,8 +85,8 @@ if [ "$DO_BUILD" = true ]; then
   echo "==> [3/5] Building ARM64 image (this may take 5-10 min first time)..."
 
   # Ensure buildx builder with ARM64 support
-  docker buildx use digor-builder 2>/dev/null || \
-    docker buildx create --name digor-builder --use --bootstrap
+  docker buildx use TolipAI-builder 2>/dev/null || \
+    docker buildx create --name TolipAI-builder --use --bootstrap
 
   docker buildx build \
     --platform linux/arm64 \
@@ -147,4 +147,4 @@ echo "    Task:    $NEW_TASK_DEF"
 echo "    Service: $ECS_CLUSTER/$ECS_SERVICE"
 echo ""
 echo "    Monitor: aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_REGION"
-echo "    Logs:    aws logs tail /ecs/digor-scraper --follow --region $AWS_REGION"
+echo "    Logs:    aws logs tail /ecs/TolipAI-scraper --follow --region $AWS_REGION"

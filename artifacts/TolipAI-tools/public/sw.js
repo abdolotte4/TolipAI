@@ -1,4 +1,4 @@
-const CACHE_NAME = "digor-tools-v1";
+const CACHE_NAME = "TolipAI-tools-v1";
 
 // Assets to pre-cache on install
 const PRE_CACHE = [

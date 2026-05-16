@@ -12,13 +12,13 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"
-SCRAPER_DIR="$ROOT/artifacts/digor-scraper-engine"
+SCRAPER_DIR="$ROOT/artifacts/TolipAI-scraper-engine"
 
 [ -f "$DIR/.env.aws" ] && source "$DIR/.env.aws"
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID must be set}"
-ECR_REPO_NAME="${ECR_REPO_NAME:-digor-scraper}"
+ECR_REPO_NAME="${ECR_REPO_NAME:-TolipAI-scraper}"
 IMAGE_TAG="${IMAGE_TAG:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo latest)}"
 
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
@@ -30,8 +30,8 @@ echo "Building + pushing: $ECR_IMAGE"
 aws ecr get-login-password --region "$AWS_REGION" | \
   docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-docker buildx use digor-builder 2>/dev/null || \
-  docker buildx create --name digor-builder --use --bootstrap
+docker buildx use TolipAI-builder 2>/dev/null || \
+  docker buildx create --name TolipAI-builder --use --bootstrap
 
 docker buildx build \
   --platform linux/arm64 \

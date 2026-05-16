@@ -13,8 +13,8 @@ Architecture
 
 Streams layout
 ──────────────
-  Stream key:    digor:retry-stream
-  Consumer group: digor-scrapers
+  Stream key:    TolipAI:retry-stream
+  Consumer group: TolipAI-scrapers
   Consumer name:  <hostname>-<pid> (unique per ECS task)
 
   Message fields per entry:
@@ -61,8 +61,8 @@ BACKOFF = [60, 300, 900] # seconds per attempt index (0-based)
 MAX_QUEUE_SIZE = 500     # reject new retries beyond this depth
 
 # Redis Streams constants
-_STREAM_KEY = os.getenv("RETRY_STREAM_KEY", "digor:retry-stream")
-_GROUP_NAME  = os.getenv("RETRY_GROUP_NAME",  "digor-scrapers")
+_STREAM_KEY = os.getenv("RETRY_STREAM_KEY", "TolipAI:retry-stream")
+_GROUP_NAME  = os.getenv("RETRY_GROUP_NAME",  "TolipAI-scrapers")
 _CONSUMER    = f"{socket.gethostname()}-{os.getpid()}"
 _BATCH_SIZE  = 10       # messages read per XREADGROUP call
 

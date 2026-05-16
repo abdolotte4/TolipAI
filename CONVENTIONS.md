@@ -143,4 +143,4 @@ python -m flake8 workers/ test_logins.py --max-line-length=120 --extend-ignore=E
 - **Aider**: Run `./launch-aider.sh` from the project root in a terminal shell.
   - Aider edits files directly; commit manually with `git add -A && git commit -m "..."`
   - Both tools can be used on the same codebase — just avoid editing the same file simultaneously.
-  - Aider reads `CONVENTIONS.md` automatically for project context. The internal directory names still use the `digor-` prefix for backwards-compatibility with Railway deployments.
+  - Aider reads `CONVENTIONS.md` automatically for project context. The internal directory names still use the `TolipAI-` prefix for backwards-compatibility with Railway deployments.

@@ -8,12 +8,12 @@ main.py
 __pycache__/
 
 # Don't ship the standalone scraper-engine code with the Node API
-artifacts/digor-scraper-engine/
+artifacts/TolipAI-scraper-engine/
 
 # Other artifacts the API doesn't need at runtime
-artifacts/digor-website/
-artifacts/digor-crm/
-artifacts/digor-tools/
+artifacts/TolipAI-website/
+artifacts/TolipAI-crm/
+artifacts/TolipAI-tools/
 artifacts/mockup-sandbox/
 
 # Local-only

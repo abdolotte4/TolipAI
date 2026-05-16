@@ -1,7 +1,7 @@
 {
-  "_comment": "CloudWatch Logs Insights saved queries and alarm definitions for Digor Scraper Engine",
+  "_comment": "CloudWatch Logs Insights saved queries and alarm definitions for TolipAI Scraper Engine",
 
-  "log_group": "/ecs/digor-scraper",
+  "log_group": "/ecs/TolipAI-scraper",
   "retention_days": 7,
 
   "metric_filters": [
@@ -11,7 +11,7 @@
       "metricTransformations": [
         {
           "metricName": "ScraperErrors",
-          "metricNamespace": "Digor/Scraper",
+          "metricNamespace": "TolipAI/Scraper",
           "metricValue": "1",
           "unit": "Count"
         }
@@ -23,7 +23,7 @@
       "metricTransformations": [
         {
           "metricName": "SpotInterruptions",
-          "metricNamespace": "Digor/Scraper",
+          "metricNamespace": "TolipAI/Scraper",
           "metricValue": "1",
           "unit": "Count"
         }
@@ -35,7 +35,7 @@
       "metricTransformations": [
         {
           "metricName": "CircuitBreakerOpenEvents",
-          "metricNamespace": "Digor/Scraper",
+          "metricNamespace": "TolipAI/Scraper",
           "metricValue": "1",
           "unit": "Count"
         }
@@ -47,7 +47,7 @@
       "metricTransformations": [
         {
           "metricName": "JobsCompleted",
-          "metricNamespace": "Digor/Scraper",
+          "metricNamespace": "TolipAI/Scraper",
           "metricValue": "1",
           "unit": "Count"
         }
@@ -59,7 +59,7 @@
       "metricTransformations": [
         {
           "metricName": "JobsFailed",
-          "metricNamespace": "Digor/Scraper",
+          "metricNamespace": "TolipAI/Scraper",
           "metricValue": "1",
           "unit": "Count"
         }
@@ -71,7 +71,7 @@
       "metricTransformations": [
         {
           "metricName": "RetryQueueDepth",
-          "metricNamespace": "Digor/Scraper",
+          "metricNamespace": "TolipAI/Scraper",
           "metricValue": "$.queue_depth",
           "unit": "Count"
         }
@@ -81,9 +81,9 @@
 
   "alarms": [
     {
-      "alarmName": "DigorScraper-HighErrorRate",
+      "alarmName": "TolipAIScraper-HighErrorRate",
       "alarmDescription": "Error rate > 5% over 5-minute window",
-      "namespace": "Digor/Scraper",
+      "namespace": "TolipAI/Scraper",
       "metricName": "ScraperErrors",
       "statistic": "Sum",
       "period": 300,
@@ -93,13 +93,13 @@
       "treatMissingData": "notBreaching",
       "actionsEnabled": true,
       "alarmActions": [
-        "arn:aws:sns:us-east-1:ACCOUNT_ID:digor-alerts"
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
       ]
     },
     {
-      "alarmName": "DigorScraper-RetryQueueDepth",
+      "alarmName": "TolipAIScraper-RetryQueueDepth",
       "alarmDescription": "Retry queue depth > 50 — scrapers are struggling",
-      "namespace": "Digor/Scraper",
+      "namespace": "TolipAI/Scraper",
       "metricName": "RetryQueueDepth",
       "statistic": "Maximum",
       "period": 300,
@@ -109,17 +109,17 @@
       "treatMissingData": "notBreaching",
       "actionsEnabled": true,
       "alarmActions": [
-        "arn:aws:sns:us-east-1:ACCOUNT_ID:digor-alerts"
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
       ]
     },
     {
-      "alarmName": "DigorScraper-HighMemoryUtilization",
+      "alarmName": "TolipAIScraper-HighMemoryUtilization",
       "alarmDescription": "Fargate task memory > 80%",
       "namespace": "AWS/ECS",
       "metricName": "MemoryUtilization",
       "dimensions": [
-        { "Name": "ClusterName", "Value": "digor-scraper-cluster" },
-        { "Name": "ServiceName", "Value": "digor-scraper-engine" }
+        { "Name": "ClusterName", "Value": "TolipAI-scraper-cluster" },
+        { "Name": "ServiceName", "Value": "TolipAI-scraper-engine" }
       ],
       "statistic": "Average",
       "period": 60,
@@ -129,17 +129,17 @@
       "treatMissingData": "notBreaching",
       "actionsEnabled": true,
       "alarmActions": [
-        "arn:aws:sns:us-east-1:ACCOUNT_ID:digor-alerts"
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
       ]
     },
     {
-      "alarmName": "DigorScraper-NoHealthyTasks",
+      "alarmName": "TolipAIScraper-NoHealthyTasks",
       "alarmDescription": "ECS service has zero healthy tasks",
       "namespace": "AWS/ApplicationELB",
       "metricName": "HealthyHostCount",
       "dimensions": [
-        { "Name": "TargetGroup", "Value": "targetgroup/digor-scraper-tg/XXXX" },
-        { "Name": "LoadBalancer", "Value": "app/digor-internal-alb/XXXX" }
+        { "Name": "TargetGroup", "Value": "targetgroup/TolipAI-scraper-tg/XXXX" },
+        { "Name": "LoadBalancer", "Value": "app/TolipAI-internal-alb/XXXX" }
       ],
       "statistic": "Minimum",
       "period": 60,
@@ -149,7 +149,7 @@
       "treatMissingData": "breaching",
       "actionsEnabled": true,
       "alarmActions": [
-        "arn:aws:sns:us-east-1:ACCOUNT_ID:digor-alerts"
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
       ]
     }
   ],
