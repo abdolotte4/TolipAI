@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Device, Call } from "@twilio/voice-sdk";
 import {
   PhoneOff, PhoneCall, Mic, MicOff, Loader2,
-  Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles, Voicemail,
+  Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles, Voicemail, PauseCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +100,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [showCoaching, setShowCoaching] = useState(false);
   const [droppingVoicemail, setDroppingVoicemail] = useState(false);
+  const [held, setHeld] = useState(false);
 
   // ── Teardown helper ────────────────────────────────────────────────────────
   const destroyDevice = useCallback(() => {
@@ -255,6 +256,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
 
       call.on("disconnect", async (_c: Call) => {
         setStatus("idle");
+        setHeld(false);
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
         // Capture final metrics
@@ -291,6 +293,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
 
       call.on("cancel", () => {
         setStatus("idle");
+        setHeld(false);
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
         callRef.current = null;
         currentCallSidRef.current = null;
@@ -300,6 +303,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
         const msg = err?.message || "Call error";
         setErrorMsg(msg);
         setStatus("error");
+        setHeld(false);
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
         callRef.current = null;
         currentCallSidRef.current = null;
@@ -344,6 +348,23 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       setCoachingLoading(false);
     }
   }, [lastCallSid, toast]);
+
+  // ── Hold / Resume ──────────────────────────────────────────────────────────
+  const toggleHold = useCallback(async () => {
+    if (!callRef.current || status !== "in-progress") return;
+    const newHeld = !held;
+    // Mute local mic immediately — no latency, no backend required
+    callRef.current.mute(newHeld);
+    setHeld(newHeld);
+    // Best-effort: play hold music to the remote party via Twilio REST API
+    const sid = currentCallSidRef.current;
+    if (sid) {
+      authFetch("/twilio/voice/hold", {
+        method: "POST",
+        body: JSON.stringify({ callSid: sid, hold: newHeld }),
+      }).catch(() => { /* non-critical — local mute already active */ });
+    }
+  }, [held, status]);
 
   // ── Voicemail drop ─────────────────────────────────────────────────────────
   const dropVoicemail = useCallback(async () => {
@@ -469,10 +490,15 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
             {/* Duration */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-mono font-semibold">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className={`w-2 h-2 rounded-full ${held ? "bg-amber-400 animate-pulse" : "bg-emerald-400 animate-pulse"}`} />
                 {fmtDuration(duration)}
+                {held && (
+                  <Badge className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 animate-pulse ml-1">
+                    On Hold
+                  </Badge>
+                )}
               </div>
-              {status === "in-progress" && (
+              {status === "in-progress" && !held && (
                 <div className={`text-xs font-medium ${qualityColor(analytics.mos)}`}>
                   {qualityLabel(analytics.mos)}
                   {analytics.mos !== null && (
@@ -642,11 +668,27 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
               >
                 {muted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </Button>
+              {/* Hold / Resume */}
+              <Button
+                variant="outline"
+                size="icon"
+                className={`h-9 w-9 rounded-xl transition-colors ${
+                  held
+                    ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-white/20"
+                }`}
+                disabled={status !== "in-progress"}
+                onClick={toggleHold}
+                title={held ? "Resume — unmute and reconnect audio" : "Hold — mute mic and play hold music to caller"}
+              >
+                <PauseCircle className="w-4 h-4" />
+              </Button>
+
               <Button
                 variant="outline"
                 size="icon"
                 className="h-9 w-9 rounded-xl border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:border-violet-500/60 transition-colors"
-                disabled={status !== "in-progress" || droppingVoicemail}
+                disabled={status !== "in-progress" || droppingVoicemail || held}
                 onClick={dropVoicemail}
                 title="Drop voicemail — plays a pre-recorded message and hangs up"
               >
