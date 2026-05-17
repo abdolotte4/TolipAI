@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { crmAuth, crmAdminOnly } from "./middleware";
+import { crmAuth, crmSuperAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
 
 const router = Router();
@@ -39,7 +39,7 @@ function buildWhere(
 
 // ── GET / ─────────────────────────────────────────────────────────────────────
 // List waitlist entries. Supports: ?status=&search=&from=&to=&page=&limit=
-router.get("/", crmAuth, crmAdminOnly, async (req, res) => {
+router.get("/", crmAuth, crmSuperAdminOnly, async (req, res) => {
   const { status, search, from, to, page = "1", limit = "50" } =
     req.query as Record<string, string>;
 
@@ -90,7 +90,7 @@ router.get("/", crmAuth, crmAdminOnly, async (req, res) => {
 
 // ── GET /chart ────────────────────────────────────────────────────────────────
 // Daily signup counts for the last 30 days — used for the trend chart.
-router.get("/chart", crmAuth, crmAdminOnly, async (_req, res) => {
+router.get("/chart", crmAuth, crmSuperAdminOnly, async (_req, res) => {
   try {
     const result = await pool.query<{ date: string; count: number }>(`
       SELECT
@@ -110,7 +110,7 @@ router.get("/chart", crmAuth, crmAdminOnly, async (_req, res) => {
 
 // ── GET /export ───────────────────────────────────────────────────────────────
 // CSV download of all matching entries (respects same filters as GET /).
-router.get("/export", crmAuth, crmAdminOnly, async (req, res) => {
+router.get("/export", crmAuth, crmSuperAdminOnly, async (req, res) => {
   const { status, search, from, to } = req.query as Record<string, string>;
 
   try {
@@ -152,7 +152,7 @@ router.get("/export", crmAuth, crmAdminOnly, async (req, res) => {
 
 // ── PATCH /:id ────────────────────────────────────────────────────────────────
 // Update status and/or notes on a waitlist entry.
-router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
+router.patch("/:id", crmAuth, crmSuperAdminOnly, async (req, res) => {
   const { id } = req.params;
   const { status, notes } = req.body as { status?: string; notes?: string };
 
@@ -200,7 +200,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
 
 // ── DELETE /:id ───────────────────────────────────────────────────────────────
 // Remove a waitlist entry (spam / duplicate cleanup).
-router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
+router.delete("/:id", crmAuth, crmSuperAdminOnly, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
