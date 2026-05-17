@@ -92,16 +92,34 @@ app.use(
         // Added fonts.googleapis.com and corrected the URL
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "https:"],
-        // IMPORTANT: Added OpenAI and Groq URLs so the Deal Scorer can communicate
-        connectSrc: ["'self'", "https://openai.com", "https://groq.com" , "https://eventgw.twilio.com",
-                      "https://insights.twilio.com",
-                      "wss://*.twilio.com",
-                      "https://*.twilio.com",],
-        // Added fonts.gstatic.com for the actual font files
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        // Twilio Voice SDK + OpenAI Realtime API + Groq
+        connectSrc: [
+          "'self'",
+          // OpenAI: REST API and Realtime WebSocket
+          "https://api.openai.com",
+          "wss://api.openai.com",
+          // Groq
+          "https://groq.com",
+          "https://api.groq.com",
+          // Twilio: signalling, insights, CDN assets (fonts.static.com loaded via XHR by the SDK)
+          "https://*.twilio.com",
+          "wss://*.twilio.com",
+          "https://eventgw.twilio.com",
+          "https://insights.twilio.com",
+          "https://fonts.static.com",
+          // Google Fonts loaded via fetch in some environments
+          "https://fonts.googleapis.com",
+          "https://fonts.gstatic.com",
+        ],
+        // fonts.static.com: Twilio Insights SDK loads fonts from here
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.static.com", "data:"],
+        // blob: required for Twilio audio worklets; mediastream: for WebRTC getUserMedia streams
+        workerSrc: ["'self'", "blob:"],
+        childSrc: ["'self'", "blob:", "mediastream:"],
+        mediaSrc: ["'self'", "blob:", "mediastream:"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
-        frameSrc: ["https://maps.google.com", "https://www.google.com"],
+        frameSrc: ["https://maps.google.com", "https://www.google.com", "https://calendly.com"],
         frameAncestors: ["'none'"],
         upgradeInsecureRequests: [],
       },
