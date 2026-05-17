@@ -1,4 +1,8 @@
-modules = ["python-3.11"]
+modules = ["python-3.11", "nodejs-22"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 8000
@@ -7,10 +11,6 @@ externalPort = 8000
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 80
 
 [workflows]
 runButton = "Project"
@@ -22,7 +22,24 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+args = "TolipAI API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
 args = "TolipAI Scraper Engine"
+
+[[workflows.workflow]]
+name = "TolipAI API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash node-start.sh"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+outputPort = 5000
 
 [[workflows.workflow]]
 name = "TolipAI Scraper Engine"

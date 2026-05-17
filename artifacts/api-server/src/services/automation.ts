@@ -1,8 +1,85 @@
 import { db } from "@workspace/db";
 import { crmTasks, crmUsers, crmCampaigns, crmNotifications, crmLeadFollowers, crmLeads, toolsSkipTraceJobs, toolsDistressedJobs } from "@workspace/db/schema";
 import { eq, and, lte, lt, gt, ne, sql } from "drizzle-orm";
-import { sendEmail, buildNewLeadEmail, buildTaskReminderEmail } from "./emailService";
+import {
+  sendEmail,
+  buildNewLeadEmail,
+  buildTaskReminderEmail,
+  buildOnboardingDay1Email,
+  buildOnboardingDay3Email,
+  buildOnboardingDay7Email,
+  buildOnboardingDay14Email,
+} from "./emailService";
 import { logger } from "../lib/logger";
+
+// ── In-memory onboarding sequence store ──────────────────────────────────────
+// Stores pending onboarding email sends: { email, name, loginUrl, sendAt, step }
+// Persists in-process only; survives normal operation (Railway restarts reset it,
+// which is acceptable — welcome email is always sent immediately via stripe.ts).
+
+interface OnboardingEntry {
+  email: string;
+  name: string;
+  loginUrl: string;
+  sendAt: number; // unix ms
+  step: 1 | 3 | 7 | 14;
+}
+
+const onboardingQueue: OnboardingEntry[] = [];
+
+export function scheduleOnboardingSequence(opts: { email: string; name: string; loginUrl: string }) {
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  const steps: Array<{ step: 1 | 3 | 7 | 14; delay: number }> = [
+    { step: 1, delay: DAY },
+    { step: 3, delay: 3 * DAY },
+    { step: 7, delay: 7 * DAY },
+    { step: 14, delay: 14 * DAY },
+  ];
+  for (const { step, delay } of steps) {
+    onboardingQueue.push({ ...opts, step, sendAt: now + delay });
+  }
+  logger.info({ email: opts.email, steps: steps.length }, "[automation] Onboarding sequence scheduled");
+}
+
+export async function runOnboardingEmailCron() {
+  const now = Date.now();
+  const due = onboardingQueue.filter(e => e.sendAt <= now);
+  if (!due.length) return;
+
+  for (const entry of due) {
+    const idx = onboardingQueue.indexOf(entry);
+    if (idx !== -1) onboardingQueue.splice(idx, 1);
+
+    try {
+      let html = "";
+      let subject = "";
+      const loginUrl = entry.loginUrl;
+      const name = entry.name;
+
+      if (entry.step === 1) {
+        subject = "Day 1: Your TolipAI Quick-Start Checklist";
+        html = buildOnboardingDay1Email({ customerName: name, loginUrl, campaignName: "" });
+      } else if (entry.step === 3) {
+        subject = "Day 3: Activate Your AI Dialer + SMS Sequences";
+        html = buildOnboardingDay3Email({ customerName: name, loginUrl });
+      } else if (entry.step === 7) {
+        subject = "Week 1 Check-In — How's Your Pipeline?";
+        html = buildOnboardingDay7Email({ customerName: name, loginUrl });
+      } else if (entry.step === 14) {
+        subject = "2 Weeks In — 3 Features to Unlock More Deals";
+        html = buildOnboardingDay14Email({ customerName: name, loginUrl });
+      }
+
+      if (html) {
+        const ok = await sendEmail({ to: entry.email, subject, html });
+        logger.info({ email: entry.email, step: entry.step, ok }, "[automation] Onboarding email sent");
+      }
+    } catch (err) {
+      logger.error({ err, email: entry.email, step: entry.step }, "[automation] Onboarding email failed");
+    }
+  }
+}
 
 async function getCampaignAdmin(campaignId: number) {
   const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);

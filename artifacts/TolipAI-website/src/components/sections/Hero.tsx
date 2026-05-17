@@ -1,10 +1,15 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Play } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ChevronDown, Play, Mail, ArrowRight, CheckCircle } from "lucide-react";
 
 const DEMO_URL = "https://heroic-curiosity-production-dc5a.up.railway.app/crm/";
 
 export function Hero() {
+  const [email, setEmail] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+
   const scrollTo = (href: string) => {
     const element = document.querySelector(href);
     if (element) {
@@ -12,18 +17,41 @@ export function Hero() {
     }
   };
 
+  const handleEmailCapture = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || emailStatus === "loading") return;
+    setEmailStatus("loading");
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "", email, company: "", plan: "basic" }),
+      });
+      if (res.ok) {
+        setEmailStatus("success");
+        setEmail("");
+      } else {
+        setEmailStatus("error");
+        setTimeout(() => setEmailStatus("idle"), 3000);
+      }
+    } catch {
+      setEmailStatus("error");
+      setTimeout(() => setEmailStatus("idle"), 3000);
+    }
+  };
+
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
       {/* Background Image & Overlay */}
       <div className="absolute inset-0 z-0 bg-background">
-        <img 
-          src={`${import.meta.env.BASE_URL}images/office-team.jpg`} 
-          alt="Professional office team" 
+        <img
+          src={`${import.meta.env.BASE_URL}images/office-team.jpg`}
+          alt="Professional office team"
           className="absolute inset-0 w-full h-full object-cover opacity-55"
         />
-        <img 
-          src={`${import.meta.env.BASE_URL}images/hero-bg.jpg`} 
-          alt="Abstract geometric background" 
+        <img
+          src={`${import.meta.env.BASE_URL}images/hero-bg.jpg`}
+          alt="Abstract geometric background"
           className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/80 to-background" />
@@ -48,9 +76,9 @@ export function Hero() {
           <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
             TolipAI LLC is a Managed Marketing and Data Infrastructure Agency delivering precision outreach operations, data engineering, and technical CRM infrastructure to real estate investors.
           </p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
-            <Button 
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap mb-10">
+            <Button
               size="lg"
               asChild
               className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 h-14 px-8 rounded-full font-semibold text-base shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:shadow-[0_0_30px_rgba(212,175,55,0.5)] transition-all"
@@ -60,7 +88,7 @@ export function Hero() {
                 Live Demo
               </a>
             </Button>
-            <Button 
+            <Button
               size="lg"
               variant="outline"
               onClick={() => scrollTo("#services")}
@@ -68,7 +96,7 @@ export function Hero() {
             >
               Explore Our Services
             </Button>
-            <Button 
+            <Button
               size="lg"
               variant="outline"
               onClick={() => scrollTo("#contact")}
@@ -77,10 +105,52 @@ export function Hero() {
               Schedule a Consultation
             </Button>
           </div>
+
+          {/* Email Capture */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.6 }}
+            className="max-w-md mx-auto"
+          >
+            {emailStatus === "success" ? (
+              <div className="flex items-center justify-center gap-2 text-primary font-semibold py-3">
+                <CheckCircle className="w-5 h-5" />
+                You're on the list — we'll be in touch!
+              </div>
+            ) : (
+              <form onSubmit={handleEmailCapture} className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    placeholder="Enter your email to get early access"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="pl-10 h-12 rounded-full bg-background/60 backdrop-blur border-border focus:border-primary"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={emailStatus === "loading"}
+                  className="h-12 px-6 rounded-full bg-primary text-primary-foreground font-semibold whitespace-nowrap"
+                >
+                  {emailStatus === "loading" ? "..." : (
+                    <>Get Access <ArrowRight className="ml-1 w-4 h-4" /></>
+                  )}
+                </Button>
+              </form>
+            )}
+            {emailStatus === "error" && (
+              <p className="text-red-400 text-sm mt-2 text-center">Something went wrong — please try again.</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-2 text-center">No spam. Just platform updates and exclusive insights.</p>
+          </motion.div>
         </motion.div>
       </div>
 
-      <motion.div 
+      <motion.div
         className="absolute bottom-10 left-1/2 -translate-x-1/2 cursor-pointer z-10"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

@@ -317,6 +317,38 @@ const [lead] = await db.select().from(crmLeads)
 - **Frontend nav**: "Waitlist" moved from `adminNavItems` (shown to all admins) into `superAdminNavItems` (rendered only when `isSuperAdmin === true`)
 - **Frontend route**: `/admin/waitlist` wrapped in `<SuperAdminRoute>` component — non-super-admins are redirected to `/` regardless of URL
 
+### Session S19: Bug Fixes, Demo Call, Onboarding Sequence + Preview Fix ✅ (May 17, 2026)
+
+**Bug Fixes:**
+- **CRIT-001 Follow-up (openphone.ts)**: Replaced `.limit(500)` + JS `.find(l => digitsOnly(l.phone) === normFrom)` full-table scan in the OpenPhone webhook handler with a DB-side `regexp_replace` WHERE clause — eliminates N+1 and OOM risk for large campaigns
+- **`scraper.ts` phone patterns**: Confirmed `digitsOnly` import + usage already in place — all phone extraction uses `digitsOnly(m).length >= 10` consistently
+
+**Demo Call Infrastructure:**
+- **`POST /api/demo/call`** — new endpoint in `routes/demo.ts`; accepts `{ phone, name }`; rate-limited to 2 calls/IP/hour; initiates outbound Twilio call using `TWILIO_DEMO_*` env vars; gracefully returns 503 if unconfigured
+- **`GET /api/demo/twiml`** — TwiML callback endpoint; serves a branded 60-second AI demo script via Polly.Joanna voice
+- **`TryDemo.tsx`** — new website section between SuccessStory and Services; phone input with real-time E.164 formatting, call status feedback, feature highlight grid
+- **`Home.tsx`** updated to include `<TryDemo />` after `<SuccessStory />`
+- **Demo router** registered in `routes/index.ts`
+
+**Hero Email Capture:**
+- **`Hero.tsx`** updated with inline email capture form between CTAs and scroll indicator; submits to `POST /api/subscribe`; shows success/error feedback states; "No spam" copy below form
+
+**Onboarding Email Sequence:**
+- **5 email templates** added to `emailService.ts`: `buildWelcomeOnboardingEmail` (day 0 — branded gold), `buildOnboardingDay1Email`, `buildOnboardingDay3Email`, `buildOnboardingDay7Email`, `buildOnboardingDay14Email`
+- **`scheduleOnboardingSequence()`** added to `automation.ts` — adds day 1/3/7/14 entries to in-memory queue
+- **`runOnboardingEmailCron()`** added to `automation.ts` — runs every 30 minutes, fires any due onboarding emails from the queue
+- **`stripe.ts` welcome email** upgraded: now uses `buildWelcomeOnboardingEmail` (branded gold template) instead of bare HTML; calls `scheduleOnboardingSequence()` to queue follow-up sequence
+- **`index.ts`** cron: `runOnboardingEmailCron` wired with 30-minute interval alongside existing task cron
+
+**Demo Credentials:**
+- **CRM Demo**: `demo@tolipai.com` / `Demo2026!` — run `pnpm --filter @workspace/api-server seed:demo`
+- **CRM Super Admin**: set via `CRM_ADMIN_EMAIL` + `CRM_ADMIN_PASSWORD` env vars
+- **Tools PIN**: set via `TOOLS_PIN` env var
+- **New demo call env vars**: `TWILIO_DEMO_ACCOUNT_SID`, `TWILIO_DEMO_AUTH_TOKEN`, `TWILIO_DEMO_FROM_NUMBER`
+
+**Preview/Workflow Fix:**
+- **`replit` config updated**: Added `TolipAI API Server` workflow running `bash node-start.sh` on port 5000; port 5000 exposed as external port 80; `Project` workflow now runs API server + scraper engine in parallel; `outputPort = 5000` set on API server workflow
+
 ---
 
 ## Planned Features (Not Yet Implemented)

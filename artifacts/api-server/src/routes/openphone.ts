@@ -195,13 +195,12 @@ router.post("/openphone/webhook", async (req, res) => {
     // Normalize phone for lookup (strip non-digits for comparison)
     const normFrom = digitsOnly(fromNumber);
 
-    // Find matching lead by phone number
-    const allLeads = await db
-      .select({ id: crmLeads.id, phone: crmLeads.phone, campaignId: crmLeads.campaignId, assignedTo: crmLeads.assignedTo })
+    // Query DB directly using normalized phone — avoids full-table scan + JS find
+    const [lead] = await db
+      .select({ id: crmLeads.id, campaignId: crmLeads.campaignId, assignedTo: crmLeads.assignedTo })
       .from(crmLeads)
-      .limit(500);
-
-    const lead = allLeads.find(l => l.phone && digitsOnly(l.phone) === normFrom);
+      .where(drizzleSql`regexp_replace(${crmLeads.phone}, '[^0-9]', '', 'g') = ${normFrom}`)
+      .limit(1);
     if (!lead) {
       // No lead found — store without leadId for reference
       await db.insert(crmOpenPhoneMessages).values({

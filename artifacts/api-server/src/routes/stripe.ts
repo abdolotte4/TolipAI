@@ -8,7 +8,8 @@ import { db } from "@workspace/db";
 import { crmCampaigns, crmUsers } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { sendEmail } from "../services/emailService";
+import { sendEmail, buildWelcomeOnboardingEmail } from "../services/emailService";
+import { scheduleOnboardingSequence } from "../services/automation";
 
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers.authorization;
@@ -287,19 +288,17 @@ router.post(
           await sendEmail({
             to: customerEmail,
             subject: "Welcome to TolipAI CRM — Your Account Is Ready",
-            html: `
-              <h2>Welcome to TolipAI, ${customerName}!</h2>
-              <p>Your CRM workspace <strong>${campaign.name}</strong> has been created. Here are your login credentials:</p>
-              <ul>
-                <li><strong>Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></li>
-                <li><strong>Email:</strong> ${customerEmail}</li>
-                <li><strong>Temporary Password:</strong> <code>${tempPassword}</code></li>
-              </ul>
-              <p>Please log in and change your password immediately from the account settings page.</p>
-              <p>— The TolipAI Team</p>
-            `,
+            html: buildWelcomeOnboardingEmail({
+              customerName,
+              campaignName: campaign.name,
+              loginUrl,
+              email: customerEmail,
+              tempPassword,
+            }),
             text: `Welcome to TolipAI, ${customerName}!\n\nYour workspace "${campaign.name}" is ready.\n\nLogin: ${loginUrl}\nEmail: ${customerEmail}\nTemp password: ${tempPassword}\n\nPlease change your password after first login.`,
           });
+
+          scheduleOnboardingSequence({ email: customerEmail, name: customerName, loginUrl });
           break;
         }
         case "customer.subscription.created":

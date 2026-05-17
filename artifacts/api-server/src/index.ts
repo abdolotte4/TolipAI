@@ -2,7 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./seed";
 import { runEmailSequenceJob } from "./routes/crm/sequences";
-import { runTaskAutomationCron } from "./services/automation";
+import { runTaskAutomationCron, runOnboardingEmailCron } from "./services/automation";
 import { pool } from "@workspace/db";
 import { WebSocketServer } from "ws";
 import { handleAgentStream } from "./routes/twilio-voice-agent";
@@ -58,6 +58,9 @@ seedDatabase().then(() => {
 
     runTaskAutomationCron();
     setInterval(runTaskAutomationCron, 60 * 60 * 1000);
+
+    runOnboardingEmailCron();
+    setInterval(runOnboardingEmailCron, 30 * 60 * 1000);
 
     // ── AI Voice Agent WebSocket server ───────────────────────────────────────
     // Twilio Media Streams connects here to stream audio for the AI agent.
