@@ -2,12 +2,11 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { useCrmLogin } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
-import { Building2, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import AuroraBackground from "./login/AuroraBackground";
+import LoginCard from "./login/LoginCard";
+import LiveStatsTicker from "./login/LiveStatsTicker";
+import ComparisonMatrix from "./login/ComparisonMatrix";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -24,7 +23,6 @@ export default function Login() {
       {
         onSuccess: (data) => {
           localStorage.setItem("crm_token", data.token);
-          // Super admins land on campaigns page; everyone else goes to dashboard
           if (data.user?.role === "super_admin") {
             setLocation("/campaigns");
           } else {
@@ -32,9 +30,7 @@ export default function Login() {
           }
         },
         onError: (error: unknown) => {
-          console.error("[CRM Login Error]", error);
-          const message =
-            error instanceof Error ? error.message : "Unknown error";
+          const message = error instanceof Error ? error.message : "Unknown error";
           toast({
             title: "Login Failed",
             description: message || "Please check your credentials and try again.",
@@ -46,85 +42,101 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src={`${import.meta.env.BASE_URL}images/auth-bg.png`}
-          alt="Abstract background"
-          className="w-full h-full object-cover opacity-60 mix-blend-screen"
-        />
-        <div className="absolute inset-0 bg-background/80 backdrop-blur-[2px]" />
+    <div className="relative min-h-screen overflow-x-hidden">
+      <AuroraBackground />
+
+      <div className="relative z-10 min-h-screen flex flex-col">
+        {/* Above the fold — hero + login card */}
+        <div className="flex-1 flex items-center justify-center px-4 py-16 md:py-24">
+          <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+
+            {/* LEFT — Value proposition */}
+            <div className="space-y-8 text-center lg:text-left">
+              <div>
+                <motion.span
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="inline-flex items-center rounded-full bg-violet-500/10 border border-violet-500/20 px-3 py-1 text-xs font-medium text-violet-300 mb-5"
+                >
+                  ⚡ Now with AI Voice Agents
+                </motion.span>
+
+                <motion.h1
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1, duration: 0.55 }}
+                  className="text-5xl md:text-6xl xl:text-7xl font-bold tracking-tight text-white leading-[1.08]"
+                >
+                  The First CRM That
+                  <br />
+                  <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-rose-400 bg-clip-text text-transparent">
+                    Closes Deals
+                  </span>
+                  <br />
+                  While You Sleep
+                </motion.h1>
+
+                <motion.p
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.22, duration: 0.5 }}
+                  className="mt-6 text-lg text-slate-400 max-w-lg mx-auto lg:mx-0 leading-relaxed"
+                >
+                  AI voice agents answer your seller calls 24/7. Power dialers burn through lead lists in minutes. Satellite AI evaluates property condition before you drive. Everything else is just a spreadsheet with extra steps.
+                </motion.p>
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.34, duration: 0.45 }}
+                className="flex gap-3 justify-center lg:justify-start flex-wrap"
+              >
+                <a
+                  href="#features"
+                  className="rounded-lg bg-white px-6 py-3 font-semibold text-slate-900 hover:bg-slate-100 transition text-sm shadow-lg"
+                >
+                  Watch Demo
+                </a>
+                <a
+                  href="#features"
+                  className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 font-semibold text-white hover:bg-white/10 transition text-sm"
+                >
+                  See Features ↓
+                </a>
+              </motion.div>
+
+              {/* Live counters */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.5 }}
+              >
+                <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-6" />
+                <LiveStatsTicker />
+              </motion.div>
+            </div>
+
+            {/* RIGHT — Login card */}
+            <div className="flex justify-center lg:justify-end">
+              <LoginCard
+                email={email}
+                password={password}
+                isPending={loginMutation.isPending}
+                onEmailChange={setEmail}
+                onPasswordChange={setPassword}
+                onSubmit={handleSubmit}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Below the fold — comparison matrix */}
+        <div id="features" className="pb-24 px-4">
+          <ComparisonMatrix />
+        </div>
       </div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="w-full max-w-md z-10 px-4"
-      >
-        <Card className="glass-panel p-8 rounded-3xl">
-          <div className="flex flex-col items-center mb-8 text-center">
-            <div className="w-16 h-16 bg-primary/20 rounded-2xl flex items-center justify-center mb-4 border border-primary/30 shadow-[0_0_30px_rgba(99,102,241,0.3)]">
-              <Building2 className="w-8 h-8 text-primary" />
-            </div>
-            <h1 className="text-3xl font-display font-bold text-foreground tracking-tight">TolipAI Portal</h1>
-            <p className="text-muted-foreground mt-2">Sign in to your workspace</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-muted-foreground">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="name@company.com"
-                required
-                className="bg-background/50 border-white/10 h-12 text-base px-4 rounded-xl focus:border-primary focus:ring-primary/20 focus:bg-background transition-all"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-muted-foreground">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                className="bg-background/50 border-white/10 h-12 text-base px-4 rounded-xl focus:border-primary focus:ring-primary/20 focus:bg-background transition-all"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white shadow-lg shadow-primary/25 mt-4 text-base font-semibold"
-              disabled={loginMutation.isPending}
-            >
-              {loginMutation.isPending ? "Signing in..." : (
-                <>Sign In <ArrowRight className="w-4 h-4 ml-2" /></>
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-6 pt-5 border-t border-white/8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <span className="text-foreground/80">Contact TolipAI LLC to get started.</span>
-            </p>
-            <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted-foreground/70">
-              <a href="mailto:info@tolipai.com" className="hover:text-primary transition-colors">
-                info@tolipai.com
-              </a>
-              <span className="opacity-30">|</span>
-              <a href="tel:5552014892" className="hover:text-primary transition-colors">
-                (555) 201-4892
-              </a>
-            </div>
-          </div>
-        </Card>
-      </motion.div>
     </div>
   );
 }
