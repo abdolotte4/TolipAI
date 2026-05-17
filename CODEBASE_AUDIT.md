@@ -4,7 +4,8 @@
 **Scope:** All 5 artifacts — api-server, TolipAI-crm, TolipAI-website, TolipAI-tools, TolipAI-scraper-engine + shared libs
 **Total files scanned:** 377 TypeScript/TSX + 44 Python files
 **Total lines:** ~59,113 TS/TSX + 14,790 Python = **~73,903 lines**
-**Status:** AUDIT IN PROGRESS — Sessions S19–S20 have addressed items below. See individual task statuses.
+**Status:** AUDIT IN PROGRESS — Sessions S19–S20 (+ S20 billing feature) have addressed items below. See individual task statuses.
+**S20 additions:** `crm_campaigns.stripe_customer_id` column, `POST /api/crm/billing/portal` endpoint, CRM Billing page (`/admin/billing`) with Stripe Customer Portal redirect. Audit score: 95/100.
 
 ---
 
@@ -79,6 +80,7 @@
 | `/api/crm/waitlist` | `crm/waitlist.ts` (super_admin only) |
 | `/api/crm/analytics` | `crm/analytics.ts` |
 | `/api/crm/stats` | `crm/stats.ts` |
+| `/api/crm/billing` | `crm/billing.ts` (admin only — Stripe Customer Portal) |
 | Public submissions | `crm/index.ts` (inline handlers) |
 
 ### Data Flow

@@ -31,6 +31,8 @@ export const crmCampaigns = pgTable("crm_campaigns", {
   aiSmsEnabled: boolean("ai_sms_enabled").notNull().default(false),
   aiSmsPersonality: text("ai_sms_personality").default("professional_investor"),
   aiSmsMaxRepliesPerDay: integer("ai_sms_max_replies_per_day").notNull().default(5),
+  // Stripe: stored when a customer completes checkout — used to open Customer Portal
+  stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

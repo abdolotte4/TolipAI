@@ -36,6 +36,7 @@ import PowerDialer from "@/pages/dialer/PowerDialer";
 import SignContract from "@/pages/public/SignContract";
 import ToS from "@/pages/public/ToS";
 import WaitlistAdmin from "@/pages/admin/WaitlistAdmin";
+import Billing from "@/pages/admin/Billing";
 
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useCrmGetMe();
@@ -76,6 +77,7 @@ function Router() {
       <Route path="/lead-gen"><AppLayout><DistressedLeadGen /></AppLayout></Route>
       <Route path="/admin/sequences"><AppLayout><SequenceList /></AppLayout></Route>
       <Route path="/admin/waitlist"><AppLayout><SuperAdminRoute><WaitlistAdmin /></SuperAdminRoute></AppLayout></Route>
+      <Route path="/admin/billing"><AppLayout><Billing /></AppLayout></Route>
       <Route path="/integrations"><AppLayout><IntegrationsDashboard /></AppLayout></Route>
       <Route path="/integrations/propelio"><AppLayout><ProperioConnect /></AppLayout></Route>
       <Route path="/integrations/propwire"><AppLayout><PropwireConnect /></AppLayout></Route>

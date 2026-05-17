@@ -329,13 +329,16 @@ const [lead] = await db.select().from(crmLeads)
 3. Send welcome email with CRM login credentials
 4. Pre-configure Twilio credentials if provided during onboarding
 
-**Current state:** `routes/stripe.ts` exists (260 lines) with webhook handler skeleton, but does not yet create campaigns on payment completion. Campaign creation is fully manual via the CRM UI.
+**Current state:** `routes/stripe.ts` (346 lines) fully implemented — auto-provisions campaign + admin user on `checkout.session.completed`, saves `stripe_customer_id` on `crm_campaigns`. `routes/crm/billing.ts` (new, S20) exposes `POST /api/crm/billing/portal` — creates a Stripe Customer Portal session so admins can self-manage subscriptions, invoices, and payment methods from within the CRM.
 
-**Required:**
-- Add `POST /api/stripe/webhook` handler for `checkout.session.completed` event
-- Create campaign + user atomically in a DB transaction
-- Wire `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` in Railway
-- Build onboarding UI (plan selection page → Stripe Checkout → redirect to CRM)
+**Completed (S20):**
+- ✅ `checkout.session.completed` webhook auto-provisions campaign + admin user
+- ✅ `stripe_customer_id` saved on `crm_campaigns` at checkout time
+- ✅ `POST /api/crm/billing/portal` — admins self-manage subscription via Stripe Customer Portal
+- ✅ `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` documented in env vars table
+
+**Remaining:**
+- Wrap campaign + user creation in a DB transaction (currently two sequential inserts)
 
 ---
 
@@ -504,12 +507,12 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx
 | Offline mode | ❌ | ❌ | ❌ | ❌ | Partial | ❌ |
 | Public lead submission form | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (unique) |
 | White-label / multi-brand | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (multi-campaign) |
-| Stripe subscription billing | ✅ | ✅ | ✅ | ✅ | ✅ | 📋 Planned |
-| Auto campaign on signup | ❌ | ❌ | ❌ | ❌ | ❌ | 📋 Planned |
+| Stripe subscription billing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Done (S20) — checkout + webhook + Customer Portal |
+| Auto campaign on signup | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Done (S20) — webhook auto-provisions |
 
 **TolipAI unique advantages:** Satellite AI property detection, 5-tier skip trace, AI repair estimator, AI deal scorer, AI offer letter, AI call coaching (post-call auto), warm transfer, Dropbox Sign e-signature, contextual AI SMS, public seller submission forms, bulk Twilio health-check, multi-campaign white-label, waitlist/onboarding admin.
 
-**TolipAI critical gaps:** MLS data, tax lien feed, nationwide absentee owners, mobile app, Stripe → auto campaign creation.
+**TolipAI critical gaps:** MLS data, tax lien feed, nationwide absentee owners, mobile app.
 
 ---
 

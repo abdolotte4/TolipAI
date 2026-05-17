@@ -17,6 +17,7 @@ import buyersRouter from "./buyers";
 import analyticsRouter from "./analytics";
 import contractsRouter from "./contracts";
 import waitlistRouter from "./waitlist";
+import billingRouter from "./billing";
 
 const router = Router();
 
@@ -148,6 +149,9 @@ router.use("/crm/contracts", contractsRouter);
 
 // Waitlist admin — list + CSV export of landing-page signups
 router.use("/crm/admin/waitlist", waitlistRouter);
+
+// Stripe Customer Portal — admins manage their subscription & billing
+router.use("/crm/billing", billingRouter);
 
 // ── Public waitlist signup ────────────────────────────────────────────────────
 // POST /crm/public/waitlist  (legacy, kept for backward compat — redirects to new table)

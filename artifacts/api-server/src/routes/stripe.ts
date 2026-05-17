@@ -254,9 +254,11 @@ router.post(
           const tempPassword = randomBytes(8).toString("hex");
           const passwordHash = await bcrypt.hash(tempPassword, 12);
 
+          const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
+
           const [campaign] = await db
             .insert(crmCampaigns)
-            .values({ name: company, slug })
+            .values({ name: company, slug, ...(stripeCustomerId ? { stripeCustomerId } : {}) })
             .returning({ id: crmCampaigns.id, name: crmCampaigns.name });
 
           const [newUser] = await db

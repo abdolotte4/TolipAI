@@ -441,6 +441,7 @@ Multi-tenant CRM built for real estate wholesaling teams. Each client organizati
 | Campaign Management | Super admin: create/manage client campaigns |
 | Team Users | Admin: invite and manage team members |
 | Submission Links | Tokenized public links for seller self-submission |
+| Billing | Admin: open Stripe Customer Portal to manage subscription, invoices, and payment method |
 
 #### Lead Detail — Full Feature Breakdown
 
@@ -570,7 +571,8 @@ Express 5 API server. All business logic lives here; the React apps are thin cli
 | `/api/tools/` | Skip trace, distressed finder, ARV, property lookup |
 | `/api/signalwire/` | Call and SMS webhook + retrieval |
 | `/api/openphone/` | OpenPhone webhook + message retrieval |
-| `/api/stripe/` | Checkout session creation + webhook |
+| `/api/stripe/` | Checkout session creation, webhook, subscriptions list |
+| `/api/crm/billing/` | Stripe Customer Portal session (admin self-service) |
 | `/api/contact/` | Public contact form (SMTP delivery) |
 | `/api/subscribe/` | Email subscription management |
 | `/api/health/` | Health check |
@@ -683,7 +685,11 @@ Alternative telephony provider. Same pattern as SignalWire: webhook ingestion + 
 
 ### Stripe
 
-Subscription checkout for TolipAI's service tiers. Checkout session creation and webhook handling for subscription lifecycle events.
+Subscription checkout for TolipAI's service tiers. Full lifecycle:
+
+- **Checkout** — Three-tier pricing (`Full Package $1,500/mo`, `Growth Infrastructure $1,000/mo`, `Half Package $750/mo`). TOS consent collection baked in.
+- **Webhook** — `checkout.session.completed` auto-provisions a new CRM campaign, hashes a temporary password, saves the Stripe `customer.id` on the campaign, and sends a welcome email with credentials.
+- **Customer Portal** — `POST /api/crm/billing/portal` (admin-only JWT) creates a Stripe Billing Portal session. Campaign admins click "Open Billing Portal" inside the CRM to manage their subscription, update payment method, view invoices, and cancel — all without contacting support. The `stripe_customer_id` is stored on `crm_campaigns` and linked at checkout time.
 
 ### US Census Bureau API
 
@@ -701,7 +707,7 @@ PostgreSQL via Drizzle ORM. All CRM tables are campaign-scoped.
 
 | Table | Description |
 |---|---|
-| `crm_campaigns` | Client organizations — id, name, slug, active |
+| `crm_campaigns` | Client organizations — id, name, slug, active, `stripe_customer_id` |
 | `crm_users` | Team members — role, email, bcrypt password, campaign FK |
 | `crm_leads` | Core deal record — all property, seller, financial, and status fields |
 | `crm_notes` | Lead notes with @mention support |
