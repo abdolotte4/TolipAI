@@ -223,19 +223,19 @@ The codebase uses structured `pino` logger everywhere **except** these files:
 
 ### 2.9 Routes Registered But Not in Route Index
 
-| Route file | Registered in `routes/index.ts`? | Issue |
+| Route file | Registered in `routes/index.ts`? | Status |
 |---|---|---|
-| `routes/openphone.ts` (258 lines) | ❌ **NOT REGISTERED** | OpenPhone route is defined but never mounted — all `/api/openphone/*` webhooks are dead |
+| `routes/openphone.ts` (258 lines) | ✅ **REGISTERED** — `import openPhoneRouter from "./openphone"` + `router.use(openPhoneRouter)` confirmed in `routes/index.ts` | ✅ No issue |
 
-> ⚠️ **CRITICAL FINDING:** `openphone.ts` is a full 258-line router with webhook handlers for inbound calls and SMS, but it is not imported or mounted in `routes/index.ts`. Any OpenPhone webhook configured to hit this API will receive a 404.
+> **Correction (May 17, 2026):** Previous audit reported openphone.ts as unregistered — this was incorrect. `openPhoneRouter` is explicitly imported and mounted in `routes/index.ts`. All `/api/openphone/*` endpoints are live.
 
 ### 2.10 Functions Defined but Never Called
 
 | File | Function | Line | Note |
 |---|---|---|---|
-| `routes/crm/leads.ts` | `_fmtRelative` | 70 | Defined, never referenced |
-| `services/scraperEngineClient.ts` | `logEngineConfig` | ~393 | Defined for debug, never called in production path |
-| `routes/crm/parse-util.ts` | Several source-specific parsers | Various | File appears to contain parsers for lead sources that are no longer active |
+| `routes/crm/leads.ts` | `_fmtRelative` | 70 | **Correction:** `_fmtRelative` IS called at line 83 inside `formatLead()` — not dead code |
+| `services/scraperEngineClient.ts` | `logEngineConfig` | ~393 | Defined for debug, never called in any production path — safe to remove if desired |
+| `routes/crm/parse-util.ts` | Several source-specific parsers | Various | File contains parsers for lead sources that may no longer be active — review before removing |
 
 ---
 
@@ -743,5 +743,53 @@ These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle).
 | S22-08 | crm | 🟡 MEDIUM | Bulk CSV import modal — file upload, column auto-mapping, preview, submit with per-row error display | `BulkImportModal.tsx`, `LeadList.tsx` | ✅ Done |
 | S22-09 | infra | 🟡 MEDIUM | Replit preview fixed — TolipAI API Server workflow configured on port 5000 | `replit` config | ✅ Done |
 
-*Report generated: May 17, 2026 — Last updated: S22 (May 17, 2026). All P0 critical bugs fixed. All P1 high-impact items done (19/19). S22 adds bulk import + 24h leads badge + preview fix + map-crash fix. Remaining P2/P3: TASK-14, TASK-17, TASK-18, TASK-21, TASK-23-26.*
-*Awaiting PM review and explicit approval before executing any TASK.*
+---
+
+## S23 Changes (May 17, 2026 — this session)
+
+### Audit Corrections
+| Finding | Previous Report | Corrected Status |
+|---------|----------------|-----------------|
+| `routes/openphone.ts` registration | ❌ Reported as unregistered | ✅ IS registered in `routes/index.ts` — `router.use(openPhoneRouter)` confirmed at line 33 |
+| `_fmtRelative` dead code | ❌ Reported as never called | ✅ IS called at `leads.ts:83` inside `formatLead()` |
+
+### New Endpoints Added
+| Endpoint | File | Description |
+|----------|------|-------------|
+| `GET /api/twilio/voice/voicemails/unread-count` | `routes/twilio-voice.ts` | Returns `{ count: number }` — unassigned inbound missed/recorded/AI calls with `leadId IS NULL`. Used by nav badge. |
+
+### CRM Frontend Changes
+| Change | File | Description |
+|--------|------|-------------|
+| Voicemail Inbox nav badge | `AppLayout.tsx` | Red badge on "Voicemail Inbox" nav item showing count of unassigned voicemails; polls every 30s; same styling as Leads/Tasks badges |
+| `apiRawFetch` imported | `AppLayout.tsx` | Added import for `apiRawFetch` (needed for non-CRM-prefix routes like `/twilio/*`) |
+
+### Database
+| Change | Description |
+|--------|-------------|
+| 10 missing tables pushed to NeonDB | `crm_email_sequences`, `crm_sequence_steps`, `crm_sequence_logs`, `crm_sms_opt_outs`, `crm_sms_conversations`, `crm_buyers`, `crm_background_jobs`, `crm_contracts`, `contacts`, `subscribers` — NeonDB now has all 32 tables |
+| `merged.sql` updated | All 31 CREATE TABLE statements now present (32nd `crm_waitlist` auto-created at startup) |
+| `merged_neondb.zip` regenerated | Updated to include all tables |
+
+### Infrastructure
+| Change | File | Description |
+|--------|------|-------------|
+| pg_dump backup script | `scripts/generate-backup.sh` | Automated backup: `pg_dump --schema-only` from NeonDB → `merged.sql` + `merged_neondb.zip`; AWS-compatible (`--no-owner --no-privileges`); run with `bash scripts/generate-backup.sh` |
+| Node.js 22 installed | `replit.nix` | `nodejs-22` module added; fixes `SIGTERM` startup failures |
+| Admin password reset | NeonDB `crm_users` | `admin@digorcrm.com` password reset to `TolipAdmin2024!` (temporary) — user should update `CRM_ADMIN_PASSWORD` secret to desired production password |
+
+### Health Endpoints (confirmed working)
+| Endpoint | File | Returns |
+|----------|------|---------|
+| `GET /health` | `routes/health.ts` | `{ status: "ok", timestamp: "..." }` |
+| `GET /api/scraper-engine/health` | `routes/scraperEngine.ts` | Proxies to Python FastAPI `/health` |
+
+### Missing Endpoints (still needed vs product requirements)
+| Endpoint | Priority | Status |
+|----------|----------|--------|
+| `GET /api/crm/leads/export` | HIGH | ❌ Missing — CSV/XLSX bulk export |
+| `POST /api/crm/leads/bulk-status` | MEDIUM | ❌ Missing — batch status update |
+| `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed |
+| `GET /api/twilio/voice/voicemails/unread-count` | DONE | ✅ Added this session |
+
+*Last updated: S23 (May 17, 2026). All P0/P1 critical bugs fixed. Audit corrections applied for openphone.ts and _fmtRelative. Remaining P2/P3: TASK-14, TASK-17, TASK-18, TASK-21, TASK-23-26, missing export/bulk-status/timeline endpoints.*

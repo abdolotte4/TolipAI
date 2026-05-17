@@ -948,4 +948,48 @@ router.get("/twilio/voice/voicemails", crmAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/twilio/voice/voicemails/unread-count ────────────────────────────
+// Returns the count of inbound missed/recorded/AI-handled calls that have NOT
+// yet been linked to a lead (leadId IS NULL). Used by the nav badge.
+router.get("/twilio/voice/voicemails/unread-count", crmAuth, async (req, res) => {
+  try {
+    const crmUser = req.crmUser!;
+    const isSuperAdmin = crmUser.role === "super_admin";
+
+    const [row] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(crmCallLogs)
+      .where(
+        isSuperAdmin
+          ? and(
+              eq(crmCallLogs.direction, "inbound"),
+              sql`${crmCallLogs.leadId} IS NULL`,
+              sql`(
+                ${crmCallLogs.status} IN ('no-answer', 'missed', 'busy', 'failed')
+                OR ${crmCallLogs.recordingUrl} IS NOT NULL
+                OR ${crmCallLogs.disposition} IN ('ai_pending', 'ai_qualified', 'ai_unqualified', 'inbound_lead')
+              )`
+            )
+          : and(
+              eq(crmCallLogs.direction, "inbound"),
+              sql`${crmCallLogs.leadId} IS NULL`,
+              crmUser.campaignId
+                ? eq(crmCallLogs.campaignId, crmUser.campaignId)
+                : sql`TRUE`,
+              sql`(
+                ${crmCallLogs.status} IN ('no-answer', 'missed', 'busy', 'failed')
+                OR ${crmCallLogs.recordingUrl} IS NOT NULL
+                OR ${crmCallLogs.disposition} IN ('ai_pending', 'ai_qualified', 'ai_unqualified', 'inbound_lead')
+              )`
+            )
+      );
+
+    res.json({ count: row?.count ?? 0 });
+  } catch (err) {
+    logger.error(err, "[twilio/voice/voicemails/unread-count] error");
+    res.status(500).json({ count: 0 });
+  }
+});
+
 export default router;
+
