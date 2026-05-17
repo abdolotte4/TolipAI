@@ -85,6 +85,11 @@ function AudioPlayer({ url, callSid }: { url: string; callSid: string }) {
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  // Route through server-side proxy so Twilio auth is handled correctly
+  const proxyUrl = url.startsWith("https://api.twilio.com/")
+    ? `/api/twilio/voice/recording-proxy?url=${encodeURIComponent(url)}`
+    : url;
+
   const toggle = async () => {
     const el = audioRef.current;
     if (!el) return;
@@ -127,7 +132,7 @@ function AudioPlayer({ url, callSid }: { url: string; callSid: string }) {
     <div className="flex items-center gap-3 bg-secondary/40 rounded-xl px-4 py-3 mt-3">
       <audio
         ref={audioRef}
-        src={url}
+        src={proxyUrl}
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onDurationChange={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => { setPlaying(false); setProgress(0); }}
@@ -452,8 +457,8 @@ export default function VoicemailInbox() {
   const { data, isLoading, error } = useQuery<{ voicemails: VoicemailEntry[]; total: number }>({
     queryKey: ["voicemail-inbox", refresh],
     queryFn: () => apiRawFetch("/twilio/voice/voicemails"),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   const voicemails = data?.voicemails ?? [];

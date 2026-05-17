@@ -950,5 +950,38 @@ router.get("/twilio/voice/voicemails/unread-count", crmAuth, async (req, res) =>
   }
 });
 
-export default router;
+// ── GET /api/twilio/voice/recording-proxy ─────────────────────────────────────
+// Proxy a Twilio recording URL to the browser so authentication is handled
+// server-side (Twilio recordings require Basic auth to download).
+// Query params: url (full Twilio .mp3 URL)
+router.get("/twilio/voice/recording-proxy", crmAuth, async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) { res.status(400).json({ error: "url required" }); return; }
+  if (!url.startsWith("https://api.twilio.com/")) {
+    res.status(400).json({ error: "Only Twilio recording URLs are supported" }); return;
+  }
+  try {
+    const crmUser = req.crmUser!;
+    const creds = crmUser.campaignId
+      ? (await getSmsCreds(crmUser.campaignId) ?? getGlobalSmsCreds())
+      : getGlobalSmsCreds();
+    if (!creds?.accountSid || !creds?.authToken) {
+      res.status(503).json({ error: "Twilio credentials not configured" }); return;
+    }
+    const authHeader = `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64")}`;
+    const upstream = await fetch(url, { headers: { Authorization: authHeader } });
+    if (!upstream.ok) {
+      res.status(upstream.status).json({ error: "Failed to fetch recording from Twilio" }); return;
+    }
+    res.set("Content-Type", upstream.headers.get("Content-Type") || "audio/mpeg");
+    res.set("Cache-Control", "public, max-age=3600");
+    res.set("Accept-Ranges", "bytes");
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.send(buf);
+  } catch (err: any) {
+    logger.error(err, "[recording-proxy] error");
+    res.status(500).json({ error: "Failed to proxy recording" });
+  }
+});
 
+export default router;

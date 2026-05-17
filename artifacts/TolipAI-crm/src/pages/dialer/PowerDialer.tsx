@@ -5,7 +5,7 @@ import {
   Phone, PhoneCall, PhoneOff, PhoneMissed, SkipForward,
   Play, Square, ArrowLeft, Loader2, CheckCircle2, AlertCircle,
   VolumeX, Calendar, User, MapPin, DollarSign, Clock, BarChart2,
-  ChevronRight, RefreshCw, Voicemail,
+  ChevronRight, RefreshCw, Voicemail, Layers, Zap,
 } from "lucide-react";
 import { apiRawFetch as apiFetch } from "@/lib/api";
 import { Link } from "wouter";
@@ -48,6 +48,7 @@ export default function PowerDialer() {
 
   const [agentPhone, setAgentPhone] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>(["new", "contacted", "follow_up"]);
+  const [lines, setLines] = useState(1);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [calling, setCalling] = useState(false);
   const [disposingId, setDisposingId] = useState<Disposition | null>(null);
@@ -65,6 +66,7 @@ export default function PowerDialer() {
       body: JSON.stringify({
         agentPhone,
         filters: { status: statusFilter },
+        lines,
       }),
     }),
     onSuccess: (data) => {
@@ -191,6 +193,41 @@ export default function PowerDialer() {
                 </p>
               </div>
 
+              {/* Simultaneous Lines Selector */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5 text-muted-foreground" />
+                  Simultaneous Lines
+                  {lines > 1 && (
+                    <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded px-1.5 py-0.5 font-normal flex items-center gap-1">
+                      <Zap className="w-2.5 h-2.5" /> Power Mode
+                    </span>
+                  )}
+                </Label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setLines(n)}
+                      className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                        lines === n
+                          ? n === 1
+                            ? "bg-primary/10 text-primary border-primary/30"
+                            : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          : "bg-secondary text-muted-foreground border-white/10 hover:bg-secondary/80"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {lines === 1
+                    ? "Single-line mode: dials one lead at a time."
+                    : `Multi-line mode: dials ${lines} leads simultaneously. First to answer connects — the rest hang up automatically.`}
+                </p>
+              </div>
+
               <Button
                 className="w-full gap-2"
                 disabled={!agentPhone || statusFilter.length === 0 || startMutation.isPending}
@@ -198,8 +235,8 @@ export default function PowerDialer() {
               >
                 {startMutation.isPending
                   ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <Play className="w-4 h-4" />}
-                Start Power Session
+                  : lines > 1 ? <Zap className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                {lines > 1 ? `Start ${lines}-Line Power Session` : "Start Power Session"}
               </Button>
             </div>
           </Card>
@@ -262,9 +299,15 @@ export default function PowerDialer() {
           <div>
             <h1 className="text-xl font-display font-bold flex items-center gap-2">
               <Phone className="w-5 h-5 text-primary" /> Power Dialer
+              {session?.lines > 1 && (
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full px-2 py-0.5 font-normal flex items-center gap-1">
+                  <Zap className="w-2.5 h-2.5" /> {session.lines}-Line
+                </span>
+              )}
             </h1>
             <p className="text-xs text-muted-foreground">
               Lead {(session?.currentIndex ?? 0) + 1} of {session?.total ?? "…"}
+              {session?.lines > 1 ? ` · ${session.lines} simultaneous lines` : ""}
             </p>
           </div>
         </div>

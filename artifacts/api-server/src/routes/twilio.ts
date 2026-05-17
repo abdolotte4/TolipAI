@@ -838,4 +838,171 @@ router.get("/twilio/campaign-health", crmAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/twilio/phone-numbers/:number/conversations ───────────────────────
+// Returns unique contacts (other numbers) that have had calls with this owned number,
+// sorted by most recent call. Used by the Phone Numbers inbox page.
+router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, res) => {
+  const { number } = req.params;
+  const crmUser = req.crmUser!;
+  try {
+    const isSuperAdmin = crmUser.role === "super_admin";
+    const { crmCallLogs } = await import("@workspace/db/schema").then(m => m);
+    const campaignFilter: any = isSuperAdmin || !crmUser.campaignId
+      ? sql`TRUE`
+      : eq(crmCallLogs.campaignId, crmUser.campaignId);
+
+    const ownedDigits = number.replace(/\D/g, "").slice(-10);
+
+    const rows = await db
+      .select({
+        id:           crmCallLogs.id,
+        fromNumber:   crmCallLogs.fromNumber,
+        toNumber:     crmCallLogs.toNumber,
+        direction:    crmCallLogs.direction,
+        status:       crmCallLogs.status,
+        duration:     crmCallLogs.duration,
+        recordingUrl: crmCallLogs.recordingUrl,
+        leadId:       crmCallLogs.leadId,
+        createdAt:    crmCallLogs.createdAt,
+      })
+      .from(crmCallLogs)
+      .where(
+        and(
+          campaignFilter,
+          sql`(RIGHT(REGEXP_REPLACE(${crmCallLogs.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits}
+            OR RIGHT(REGEXP_REPLACE(${crmCallLogs.toNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`
+        )
+      )
+      .orderBy(desc(crmCallLogs.createdAt))
+      .limit(500);
+
+    const contactMap = new Map<string, {
+      contact: string;
+      totalCalls: number;
+      lastCall: string;
+      lastDirection: string;
+      lastStatus: string;
+      lastDuration: number | null;
+      leadId: number | null;
+      hasRecording: boolean;
+    }>();
+
+    for (const row of rows) {
+      const fromDigits = (row.fromNumber || "").replace(/\D/g, "").slice(-10);
+      const toDigits = (row.toNumber || "").replace(/\D/g, "").slice(-10);
+      const otherNumber = fromDigits === ownedDigits ? row.toNumber : row.fromNumber;
+      if (!otherNumber) continue;
+      const normalizedOther = otherNumber.replace(/\D/g, "").slice(-10);
+      const entry = contactMap.get(normalizedOther);
+      if (!entry) {
+        contactMap.set(normalizedOther, {
+          contact: otherNumber,
+          totalCalls: 1,
+          lastCall: row.createdAt?.toISOString() ?? new Date().toISOString(),
+          lastDirection: row.direction ?? "outbound",
+          lastStatus: row.status ?? "completed",
+          lastDuration: row.duration ?? null,
+          leadId: row.leadId ?? null,
+          hasRecording: !!row.recordingUrl,
+        });
+      } else {
+        entry.totalCalls += 1;
+        if (!entry.hasRecording && row.recordingUrl) entry.hasRecording = true;
+        if (!entry.leadId && row.leadId) entry.leadId = row.leadId;
+      }
+    }
+
+    res.json({ conversations: Array.from(contactMap.values()), total: contactMap.size });
+  } catch (err: any) {
+    logger.error(err, "[phone-numbers/conversations] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/twilio/phone-numbers/:number/conversations/:contact ──────────────
+// Full call history between an owned number and a specific contact number.
+router.get("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, async (req, res) => {
+  const { number, contact } = req.params;
+  const crmUser = req.crmUser!;
+  try {
+    const isSuperAdmin = crmUser.role === "super_admin";
+    const { crmCallLogs, crmLeads: crmLeadsTable } = await import("@workspace/db/schema").then(m => m);
+    const campaignFilter: any = isSuperAdmin || !crmUser.campaignId
+      ? sql`TRUE`
+      : eq(crmCallLogs.campaignId, crmUser.campaignId);
+
+    const numDigits = number.replace(/\D/g, "").slice(-10);
+    const ctDigits = contact.replace(/\D/g, "").slice(-10);
+
+    const rows = await db
+      .select()
+      .from(crmCallLogs)
+      .where(
+        and(
+          campaignFilter,
+          sql`(
+            (RIGHT(REGEXP_REPLACE(${crmCallLogs.fromNumber}, '[^0-9]', '', 'g'), 10) = ${numDigits}
+              AND RIGHT(REGEXP_REPLACE(${crmCallLogs.toNumber}, '[^0-9]', '', 'g'), 10) = ${ctDigits})
+            OR
+            (RIGHT(REGEXP_REPLACE(${crmCallLogs.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ctDigits}
+              AND RIGHT(REGEXP_REPLACE(${crmCallLogs.toNumber}, '[^0-9]', '', 'g'), 10) = ${numDigits})
+          )`
+        )
+      )
+      .orderBy(desc(crmCallLogs.createdAt))
+      .limit(200);
+
+    let lead = null;
+    const leadId = rows.find(r => r.leadId)?.leadId;
+    if (leadId) {
+      const [l] = await db.select({
+        id: crmLeadsTable.id,
+        sellerName: crmLeadsTable.sellerName,
+        phone: crmLeadsTable.phone,
+        address: crmLeadsTable.address,
+        status: crmLeadsTable.status,
+      }).from(crmLeadsTable).where(eq(crmLeadsTable.id, leadId)).limit(1);
+      lead = l ?? null;
+    }
+
+    res.json({ calls: rows, total: rows.length, lead });
+  } catch (err: any) {
+    logger.error(err, "[phone-numbers/conversations/contact] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/twilio/twiml/multi-call ──────────────────────────────────────────
+// Multi-line power-dialer TwiML: dials up to 5 numbers simultaneously.
+// The first lead to answer connects to the agent; Twilio hangs up the rest.
+// Query params: numbers (comma-separated E164), callerId
+router.get("/twilio/twiml/multi-call", (req, res) => {
+  const numbersParam = (req.query.numbers as string) || "";
+  const callerId = (req.query.callerId as string) || "";
+  if (!numbersParam) {
+    res.set("Content-Type", "text/xml").send(
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Say>No destination numbers provided.</Say></Response>'
+    );
+    return;
+  }
+  const numbers = numbersParam.split(",").filter(Boolean).slice(0, 5);
+  if (numbers.length === 1) {
+    res.set("Content-Type", "text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Connecting now.</Say>
+  <Dial callerId="${callerId}" timeout="30">${numbers[0]}</Dial>
+</Response>`);
+    return;
+  }
+  const numberTags = numbers.map(n => `    <Number>${n.trim()}</Number>`).join("\n");
+  res.set("Content-Type", "text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Connecting. First line to answer will be bridged.</Say>
+  <Dial callerId="${callerId}" timeout="30">
+${numberTags}
+  </Dial>
+</Response>`);
+});
+
 export default router;
+

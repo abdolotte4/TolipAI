@@ -65,9 +65,11 @@ interface PowerDialPayload {
   agentPhone: string;
   callerIdPhone: string;
   campaignId: number;
+  lines: number;
   stats: PowerDialStats;
   dispositions: DispositionRecord[];
   currentCallSid: string | null;
+  currentBatchLeadIds: number[];
 }
 
 
@@ -78,6 +80,7 @@ function formatSessionResponse(job: any, currentLead: any | null) {
     status: job.status,
     currentIndex: p.currentIndex,
     total: p.leadIds.length,
+    lines: p.lines ?? 1,
     stats: p.stats,
     agentPhone: p.agentPhone,
     callerIdPhone: p.callerIdPhone,
@@ -165,12 +168,15 @@ router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
       return;
     }
 
+    const lines = Math.min(Math.max(1, Number(req.body.lines ?? 1)), 5);
+
     const payload: PowerDialPayload = {
       leadIds,
       currentIndex: 0,
       agentPhone,
       callerIdPhone: creds.phoneNumber,
       campaignId,
+      lines,
       stats: {
         total: leadIds.length,
         called: 0,
@@ -182,6 +188,7 @@ router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
       },
       dispositions: [],
       currentCallSid: null,
+      currentBatchLeadIds: [],
     };
 
     const sessionId = await createBackgroundJob({
@@ -251,12 +258,20 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       res.status(400).json({ error: "No more leads in this session" }); return;
     }
 
-    const [currentLead] = await db.select().from(crmLeads)
-      .where(eq(crmLeads.id, p.leadIds[p.currentIndex]!)).limit(1);
+    const lines = p.lines ?? 1;
 
-    if (!currentLead?.phone) {
-      res.status(422).json({ error: "Current lead has no phone number — use Skip to advance" }); return;
+    // Collect up to `lines` consecutive leads starting at currentIndex
+    const batchIds = p.leadIds.slice(p.currentIndex, p.currentIndex + lines);
+    const batchLeads = await db.select().from(crmLeads)
+      .where(inArray(crmLeads.id, batchIds));
+
+    // Filter to only those with a phone number
+    const dialableLeads = batchLeads.filter(l => !!l.phone);
+    if (dialableLeads.length === 0) {
+      res.status(422).json({ error: "No leads in this batch have a phone number — use Skip to advance" }); return;
     }
+
+    const currentLead = batchLeads.find(l => l.id === batchIds[0]) ?? dialableLeads[0]!;
 
     const creds = await getSmsCreds(p.campaignId);
     if (!creds) {
@@ -264,7 +279,14 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
     }
 
     const apiBase = process.env.API_BASE_URL || `https://${req.headers.host || "localhost"}/api`;
-    const twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(currentLead.phone)}&callerId=${encodeURIComponent(p.callerIdPhone)}`;
+    const phones = dialableLeads.map(l => l.phone!).filter(Boolean);
+
+    let twimlUrl: string;
+    if (phones.length === 1) {
+      twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(phones[0]!)}&callerId=${encodeURIComponent(p.callerIdPhone)}`;
+    } else {
+      twimlUrl = `${apiBase}/twilio/twiml/multi-call?numbers=${encodeURIComponent(phones.join(","))}&callerId=${encodeURIComponent(p.callerIdPhone)}`;
+    }
 
     const client = twilio(creds.accountSid, creds.authToken);
     const call = await client.calls.create({
@@ -274,25 +296,28 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       method: "GET",
     });
 
-    // Track the call SID in the session
+    // Track call SID and batch in session
     p.currentCallSid = call.sid;
-    p.stats.called += 1;
+    p.currentBatchLeadIds = dialableLeads.map(l => l.id);
+    p.stats.called += dialableLeads.length;
 
     await updateBackgroundJob(job.id, { payload: p as unknown as Record<string, unknown> });
 
-    // Log to call_logs
-    await db.insert(crmCallLogs).values({
-      callSid: call.sid,
-      campaignId: p.campaignId,
-      leadId: currentLead.id,
-      direction: "outbound",
-      status: "initiated",
-      fromNumber: p.callerIdPhone,
-      toNumber: currentLead.phone,
-      disposition: "power_dial",
-    }).onConflictDoNothing();
+    // Log to call_logs for all leads in the batch
+    for (const lead of dialableLeads) {
+      await db.insert(crmCallLogs).values({
+        callSid: lead.id === currentLead.id ? call.sid : `${call.sid}_batch_${lead.id}`,
+        campaignId: p.campaignId,
+        leadId: lead.id,
+        direction: "outbound",
+        status: "initiated",
+        fromNumber: p.callerIdPhone,
+        toNumber: lead.phone!,
+        disposition: "power_dial",
+      }).onConflictDoNothing();
+    }
 
-    logger.info({ sessionId: job.id, callSid: call.sid, leadId: currentLead.id }, "[powerDial] Call initiated");
+    logger.info({ sessionId: job.id, callSid: call.sid, batchSize: dialableLeads.length }, "[powerDial] Call initiated (multi-line)");
 
     res.json({
       callSid: call.sid,
@@ -300,6 +325,8 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       leadId: currentLead.id,
       leadPhone: currentLead.phone,
       agentPhone: p.agentPhone,
+      batchSize: dialableLeads.length,
+      lines,
     });
   } catch (err: any) {
     logger.error(err, "[powerDial] call initiate error");
@@ -381,9 +408,11 @@ router.post("/twilio/voice/power-dial/session/:id/disposition", crmAuth, async (
       }
     }
 
-    // Advance to next lead
-    p.currentIndex += 1;
+    // Advance by the batch size (or 1 if no batch was tracked)
+    const advance = Math.max(1, p.currentBatchLeadIds?.length ?? 1);
+    p.currentIndex += advance;
     p.currentCallSid = null;
+    p.currentBatchLeadIds = [];
 
     const isDone = p.currentIndex >= p.leadIds.length;
     if (isDone) {
