@@ -58,9 +58,14 @@ artifacts/**/.vite/
 artifacts/**/.next/
 lib/**/dist/
 
-# Database Backups (Don't push your user data to GitHub!)
+# Database dump files — large binary/SQL files not for version control
+merged.sql
+merged_neondb.zip
+schema.sql
 backup.sql
 backup.sql~
+*.dump
+*.sql.gz
 
 # Environment Secrets
 .env
