@@ -418,8 +418,8 @@ const [lead] = await db.select().from(crmLeads)
 **Still Missing (vs product requirements):**
 | Endpoint | Priority |
 |----------|----------|
-| `GET /api/crm/leads/export` | HIGH — CSV/XLSX bulk export not implemented |
-| `POST /api/crm/leads/bulk-status` | MEDIUM — batch status update |
+| `GET /api/crm/leads/export` | ✅ EXISTS — at `leads.ts:212` (was incorrectly listed as missing) |
+| `POST /api/crm/leads/bulk-status` | ✅ **Completed S25** — batch status update with multi-select UI |
 | `GET /api/crm/leads/:id/timeline` | MEDIUM — chronological activity feed |
 
 **Dead Code Remaining (low priority):**
@@ -433,23 +433,33 @@ const [lead] = await db.select().from(crmLeads)
 ## Planned Features (Not Yet Implemented)
 
 ### Stripe Auto Campaign Creation on Signup/Payment
-**Status:** 📋 PLANNED — Not yet integrated
-**Description:** When a new user completes Stripe payment for a subscription, automatically:
-1. Create a new `crm_campaigns` row (campaign name from signup data)
-2. Assign the new user as campaign admin
-3. Send welcome email with CRM login credentials
-4. Pre-configure Twilio credentials if provided during onboarding
+**Status:** ✅ FULLY IMPLEMENTED (since S20, confirmed in S25 audit)
 
-**Current state:** `routes/stripe.ts` (346 lines) fully implemented — auto-provisions campaign + admin user on `checkout.session.completed`, saves `stripe_customer_id` on `crm_campaigns`. `routes/crm/billing.ts` (new, S20) exposes `POST /api/crm/billing/portal` — creates a Stripe Customer Portal session so admins can self-manage subscriptions, invoices, and payment methods from within the CRM.
+When a new user pays with Stripe, a campaign is automatically created end-to-end:
 
-**Completed (S20):**
-- ✅ `checkout.session.completed` webhook auto-provisions campaign + admin user
+1. User selects plan on website → `POST /api/stripe/checkout` → Stripe Checkout session
+2. Stripe fires `checkout.session.completed` webhook → `routes/stripe.ts`
+3. Server checks for existing email in `crm_users` (idempotent)
+4. New user: generates campaign slug + temp password → inserts `crm_campaigns` → inserts `crm_users` (admin role) → sets `ownerUserId` → saves `stripeCustomerId`
+5. Sends branded welcome email (`buildWelcomeOnboardingEmail`) with login URL + credentials
+6. Calls `scheduleOnboardingSequence()` → queues 14-day email drip (day 1/3/7/14)
+
+**Plans defined in `stripe.ts`:**
+| Plan | Price |
+|------|-------|
+| Full Package | $1,500/mo |
+| Half Package | $750/mo |
+| Growth Infrastructure | $1,000/mo |
+
+**Completed:**
+- ✅ `checkout.session.completed` auto-provisions campaign + admin user
 - ✅ `stripe_customer_id` saved on `crm_campaigns` at checkout time
-- ✅ `POST /api/crm/billing/portal` — admins self-manage subscription via Stripe Customer Portal
-- ✅ `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` documented in env vars table
+- ✅ `POST /api/crm/billing/portal` — Stripe Customer Portal for self-service billing
+- ✅ 14-day onboarding email drip scheduled on signup
+- ✅ Branded welcome email with temporary credentials
 
-**Remaining:**
-- Wrap campaign + user creation in a DB transaction (currently two sequential inserts)
+**Remaining (low priority):**
+- Wrap campaign + user creation in a DB transaction (currently two sequential INSERTs — low risk since email is idempotent guard)
 
 ---
 
@@ -865,20 +875,61 @@ TASK: Tax lien / pre-foreclosure
 | **S23** | Voicemail unread-count badge (`GET /api/twilio/voice/voicemails/unread-count`), pg_dump backup script, NeonDB 32-table sync, merged.sql regenerated, admin password reset + CRM_ADMIN_PASSWORD secret synced | **→ 96** |
 | **S24** | Full deep audit: database (32 tables ✅ fully in sync), all 167 endpoints catalogued, health endpoints verified, dead code confirmed, 2 unused imports fixed (`notifications.ts`/`buyers.ts`), `leads/export` false alarm corrected, Node 22 doc updates across all MD files | **→ 97** |
 
-**Current: 97/100** — Enterprise production-ready. Audit fully current. Remaining 3 points: `POST /api/crm/leads/bulk-status`, `GET /api/crm/leads/:id/timeline`, TASK-23 type safety cleanup (mass `any`).
+**Current: 98/100** — Enterprise production-ready. All critical gaps closed. Remaining 2 points: `GET /api/crm/leads/:id/timeline`, TASK-23 type safety cleanup.
 
-### Pending Features / Upgrades (as of S24)
+### S25 Session — May 17, 2026
+
+#### New: `POST /api/crm/leads/bulk-status`
+- **Backend:** `routes/crm/leads.ts` — validates `ids[]` (1–200), validates status enum, enforces campaign-level tenancy (super_admin sees all), updates via `inArray` SQL, writes audit log per changed lead, fires `onLeadStatusChanged` automation hook per lead.
+- **Frontend:** `LeadList.tsx` fully rewritten — per-row checkboxes (hover to show, always visible when checked), select-all toggle in filter bar with count badge, animated floating bulk toolbar (spring animation from bottom), status picker dropdown with all 7 statuses, Apply button calls API, X to clear selection.
+
+#### Stripe → Campaign Auto-Creation — CONFIRMED ✅
+Previously listed as "Planned — Not yet integrated." Investigation confirms it IS fully implemented since S20:
+- `routes/stripe.ts` `checkout.session.completed` webhook auto-provisions campaign + admin user
+- Slug generated, temp password emailed, `stripeCustomerId` saved
+- `scheduleOnboardingSequence()` called — 14-day email drip queued
+
+#### What Determines Limits
+| Limit | DB Column | Default | Override |
+|-------|-----------|---------|---------|
+| Skip trace calls/day | `crm_campaigns.skip_trace_daily_limit` | 1 | PATCH campaign (super_admin) |
+| Fetch comps calls/day | `crm_campaigns.fetch_comps_daily_limit` | 1 | PATCH campaign (super_admin) |
+| User seats | `crm_campaigns.max_users` | (plan-based) | PATCH campaign (super_admin) |
+
+#### Full Endpoint Inventory (167 endpoints across 35 route files)
+All 167 endpoints catalogued in this session. Health endpoints confirmed:
+| Endpoint | Returns |
+|----------|---------|
+| `GET /healthz` | `{ status: "ok" }` — liveness |
+| `GET /health` | `{ status: "ok", timestamp }` — readiness (DB ping) |
+| `GET /api/scraper-engine/health` | Proxy to Python FastAPI `/health` |
+
+#### Confirmed Dead Code (low priority — no user-facing impact)
+| Location | Issue |
+|----------|-------|
+| `services/scraperEngineClient.ts` `logEngineConfig()` | Defined, never called anywhere |
+| `routes/crm/parse-util.ts` | Several source parsers possibly inactive |
+
+#### Summary Scorecard (updated)
+| Session | Score |
+|---------|-------|
+| S24 | 97/100 |
+| **S25** | **98/100** — bulk-status implemented, LeadList multi-select, all audits corrected, MD files updated |
+
+### Pending Features / Upgrades (as of S25)
 
 | Priority | Feature | Status |
 |----------|---------|--------|
 | 🔴 HIGH | Twilio Trial account — cannot call unverified numbers (user's number must be verified in Twilio Console) | External — user action required |
-| 🟠 MEDIUM | `POST /api/crm/leads/bulk-status` — batch status update for multiple leads at once | Pending dev |
+| ✅ DONE | `POST /api/crm/leads/bulk-status` — batch status update + multi-select UI | **Completed S25** |
+| ✅ DONE | Stripe auto-campaign on signup — confirmed implemented since S20 | No action needed |
 | 🟠 MEDIUM | `GET /api/crm/leads/:id/timeline` — chronological activity feed (notes + calls + SMS + status changes) | Pending dev |
-| 🟠 MEDIUM | Stripe auto-campaign revenue flow (auto-assign campaign on paid subscription) | Pending dev |
+| 🟠 MEDIUM | Wrap Stripe campaign+user creation in DB transaction (currently two sequential INSERTs) | Low risk, deferred |
 | 🟡 LOW | FastAPI `response_model=` typing for all scraper engine routes (TASK-21) | Pending |
 | 🟡 LOW | Type safety cleanup: mass `any` in `leads.ts`, `analytics.ts` (TASK-23) | Pending |
 | 🟡 LOW | Remove `logEngineConfig()` dead function from `scraperEngineClient.ts` | Pending |
-| 🟡 LOW | Phone normalization duplication: 4 copies of E.164 normalize — consolidate to `toE164()` from `coreCalculations.ts` (TASK-06) | Pending |
+| 🟡 LOW | Phone normalization duplication: 4 copies of E.164 normalize — consolidate to `toE164()` (TASK-06) | Pending |
+| 🟡 LOW | Add DB FK: `crm_campaigns.owner_user_id` references `crm_users(id)` | Deferred |
 
 ---
 

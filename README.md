@@ -40,7 +40,7 @@ A full-stack real estate wholesaling platform built to solve real acquisition, c
 
 ### Prerequisites
 
-- [Node.js 20](https://nodejs.org/) (see `.nvmrc`)
+- [Node.js 22](https://nodejs.org/) — required (`nodejs-22` Nix module installed)
 - [pnpm 10](https://pnpm.io/installation) — `npm install -g pnpm`
 - PostgreSQL (local or remote — see `DATABASE_URL` below)
 
@@ -181,9 +181,9 @@ Full lead profile: property data fetched from ATTOM, integrated Dialer & SMS pan
 
 ![Lead Detail](./docs/screenshots/crm-lead-detail.png)
 
-### TolipAI CRM — Lead List
+### TolipAI CRM — Lead List with Bulk Actions
 
-Pipeline view with live deal scores, phone + email columns, and one-click access to the dialer. PII redacted in this screenshot.
+Pipeline view with live deal scores, phone + email columns, one-click access to the dialer. **Multi-select checkboxes** let you select up to 200 leads and bulk-update their status in one click via the floating action toolbar. PII redacted in this screenshot.
 
 ![Lead List](./docs/screenshots/crm-lead-list.png)
 

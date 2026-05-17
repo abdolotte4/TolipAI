@@ -26,10 +26,12 @@
 
 - All CRM routes are prefixed `/api/crm/`
 - All Twilio routes are prefixed `/api/twilio/`
-- Auth middleware: `crmAuth` (sets `req.crmUser`), `crmAdminOnly`
+- Auth middleware: `crmAuth` (sets `req.crmUser`), `crmAdminOnly`, `crmSuperAdminOnly`
 - HTTP error pattern: `res.status(4xx).json({ error: "message" })` — never silent 200 with empty data
 - TwiML responses: always `res.set("Content-Type", "text/xml")` first
 - WebSocket closes: use code **1000** (Normal), never 1011 (Internal Error — causes Twilio Error 31921)
+- Bulk endpoints: always validate array length (max 200), use `inArray()` Drizzle helper, enforce campaign tenancy, write audit log per changed row
+- Bulk collection routes (e.g. `/bulk-status`, `/bulk-import`) **must** be declared before `/:id` routes to avoid Express treating them as IDs
 
 ## Database Conventions
 

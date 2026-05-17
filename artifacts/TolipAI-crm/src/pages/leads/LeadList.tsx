@@ -1,7 +1,11 @@
 import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, MapPin, Phone, User, Filter, Clock, AlertTriangle, Trash2, Building2, Calendar, RefreshCw, Download, Upload } from "lucide-react";
+import {
+  Search, Plus, MapPin, Phone, User, Filter, Clock, AlertTriangle,
+  Trash2, Building2, Calendar, RefreshCw, Download, Upload,
+  CheckSquare, Square, Tag, X, Loader2, ChevronDown,
+} from "lucide-react";
 import BulkImportModal from "@/components/leads/BulkImportModal";
 import { useCrmGetLeads, useCrmDeleteLead } from "@workspace/api-client-react";
 import { useCampaignGovernance } from "@/hooks/use-campaign-governance";
@@ -19,8 +23,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { apiRawFetch } from "@/lib/api";
 
 const PAGE_SIZE = 20;
 
@@ -34,6 +39,16 @@ const STATUS_COLORS: Record<string, string> = {
   dead: "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
+const STATUS_OPTIONS = [
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "qualified", label: "Qualified" },
+  { value: "negotiating", label: "Negotiating" },
+  { value: "under_contract", label: "Under Contract" },
+  { value: "closed", label: "Closed" },
+  { value: "dead", label: "Dead" },
+];
+
 export default function LeadList() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -43,6 +58,11 @@ export default function LeadList() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; address: string } | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [, setLocation] = useLocation();
+
+  // Multi-select state
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkTargetStatus, setBulkTargetStatus] = useState<string>("");
+  const [showBulkStatusPicker, setShowBulkStatusPicker] = useState(false);
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -60,11 +80,32 @@ export default function LeadList() {
     limit: PAGE_SIZE,
   });
 
+  const leads = data?.leads ?? [];
   const totalPages = data?.total ? Math.ceil(data.total / PAGE_SIZE) : 1;
   const { canDeleteLeads, isSuperAdmin } = useCampaignGovernance();
   const deleteMutation = useCrmDeleteLead();
   const qc = useQueryClient();
   const { toast } = useToast();
+
+  // Bulk status mutation
+  const bulkStatusMutation = useMutation({
+    mutationFn: ({ ids, status }: { ids: number[]; status: string }) =>
+      apiRawFetch("/crm/leads/bulk-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, status }),
+      }),
+    onSuccess: (data) => {
+      toast({ title: `${data.updated} lead${data.updated === 1 ? "" : "s"} updated to "${data.status.replace("_", " ")}"` });
+      setSelected(new Set());
+      setBulkTargetStatus("");
+      setShowBulkStatusPicker(false);
+      qc.invalidateQueries({ queryKey: ["/api/crm/leads"] });
+    },
+    onError: (e: any) => {
+      toast({ title: "Bulk update failed", description: e.message, variant: "destructive" });
+    },
+  });
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
@@ -75,6 +116,7 @@ export default function LeadList() {
           qc.invalidateQueries({ queryKey: ["/api/crm/leads"] });
           toast({ title: "Lead deleted" });
           setDeleteTarget(null);
+          setSelected(prev => { const next = new Set(prev); next.delete(deleteTarget.id); return next; });
         },
         onError: (e: any) => {
           toast({ title: "Delete failed", description: e.message, variant: "destructive" });
@@ -82,6 +124,36 @@ export default function LeadList() {
         },
       }
     );
+  };
+
+  const allPageIds = leads.map(l => l.id);
+  const allSelected = allPageIds.length > 0 && allPageIds.every(id => selected.has(id));
+  const someSelected = allPageIds.some(id => selected.has(id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
   return (
@@ -128,29 +200,42 @@ export default function LeadList() {
       <Card className="p-4 rounded-2xl border-white/5 bg-card shadow-lg flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search by name, address, or phone..." 
+          <Input
+            placeholder="Search by name, address, or phone..."
             className="pl-9 bg-background/50 border-white/10 rounded-xl"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Filter className="w-4 h-4 text-muted-foreground" />
-          <select 
+          <select
             className="h-9 px-3 rounded-xl bg-background/50 border border-white/10 text-sm focus:outline-none focus:border-primary"
             value={statusFilter}
             onChange={(e) => handleStatusFilter(e.target.value)}
           >
             <option value="">All Statuses</option>
-            <option value="new">New</option>
-            <option value="contacted">Contacted</option>
-            <option value="qualified">Qualified</option>
-            <option value="negotiating">Negotiating</option>
-            <option value="under_contract">Under Contract</option>
-            <option value="closed">Closed</option>
-            <option value="dead">Dead</option>
+            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          {/* Select-all toggle */}
+          {leads.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              className={`flex items-center gap-1.5 px-3 h-9 rounded-xl border text-sm transition-colors ${
+                someSelected
+                  ? "bg-primary/10 text-primary border-primary/30"
+                  : "bg-background/50 text-muted-foreground border-white/10 hover:border-primary/30"
+              }`}
+              title={allSelected ? "Deselect all on page" : "Select all on page"}
+            >
+              {allSelected
+                ? <CheckSquare className="w-4 h-4" />
+                : someSelected
+                  ? <CheckSquare className="w-4 h-4 opacity-50" />
+                  : <Square className="w-4 h-4" />}
+              {someSelected ? `${selected.size} selected` : "Select"}
+            </button>
+          )}
         </div>
       </Card>
 
@@ -165,11 +250,11 @@ export default function LeadList() {
         </div>
       ) : isLoading ? (
         <div className="space-y-4">
-          {[1,2,3,4].map(i => <div key={i} className="h-24 bg-card rounded-2xl animate-pulse"></div>)}
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-card rounded-2xl animate-pulse"></div>)}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {data?.leads.map((lead) => {
+          {leads.map((lead) => {
             const createdLabel = (lead as any).createdAtFormatted
               ?? new Date((lead as any).createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
             const daysSinceUpdate: number = (lead as any).daysSinceUpdate
@@ -177,6 +262,7 @@ export default function LeadList() {
             const updatedLabel = (lead as any).updatedAtRelative
               ?? (daysSinceUpdate < 1 ? "today" : daysSinceUpdate === 1 ? "yesterday" : `${daysSinceUpdate}d ago`);
             const statusClass = STATUS_COLORS[lead.status] ?? "bg-secondary text-muted-foreground border-border";
+            const isChecked = selected.has(lead.id);
 
             return (
               <motion.div
@@ -186,9 +272,26 @@ export default function LeadList() {
                 transition={{ duration: 0.15 }}
                 className="relative group"
               >
+                {/* Checkbox */}
+                <button
+                  onClick={(e) => toggleSelect(lead.id, e)}
+                  className={`absolute left-3 top-1/2 -translate-y-1/2 z-10 p-1 rounded-md transition-all ${
+                    isChecked
+                      ? "text-primary opacity-100"
+                      : "text-muted-foreground opacity-0 group-hover:opacity-100"
+                  }`}
+                  title={isChecked ? "Deselect" : "Select"}
+                >
+                  {isChecked
+                    ? <CheckSquare className="w-4 h-4" />
+                    : <Square className="w-4 h-4" />}
+                </button>
+
                 <Link href={`/leads/${lead.id}`}>
-                  <Card className="p-0 rounded-2xl border-white/5 bg-card hover:bg-secondary/40 transition-colors cursor-pointer group shadow-sm hover:shadow-md">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center p-5 gap-5">
+                  <Card className={`p-0 rounded-2xl border-white/5 transition-colors cursor-pointer group shadow-sm hover:shadow-md ${
+                    isChecked ? "bg-primary/5 border-primary/20" : "bg-card hover:bg-secondary/40"
+                  }`}>
+                    <div className={`flex flex-col sm:flex-row items-start sm:items-center p-5 gap-5 ${isChecked || "pl-5"} pl-9`}>
                       <div className="flex-1 space-y-3 w-full">
                         <div className="flex justify-between items-start">
                           <div className="flex-1 min-w-0">
@@ -196,9 +299,9 @@ export default function LeadList() {
                               {lead.address}
                             </h3>
                             <div className="flex items-center text-sm text-muted-foreground mt-1 gap-4 flex-wrap">
-                              <span className="flex items-center"><User className="w-3.5 h-3.5 mr-1.5"/> {lead.sellerName}</span>
-                              {lead.phone && <span className="flex items-center"><Phone className="w-3.5 h-3.5 mr-1.5"/> {lead.phone}</span>}
-                              {lead.city && <span className="flex items-center"><MapPin className="w-3.5 h-3.5 mr-1.5"/> {lead.city}, {lead.state}</span>}
+                              <span className="flex items-center"><User className="w-3.5 h-3.5 mr-1.5" /> {lead.sellerName}</span>
+                              {lead.phone && <span className="flex items-center"><Phone className="w-3.5 h-3.5 mr-1.5" /> {lead.phone}</span>}
+                              {lead.city && <span className="flex items-center"><MapPin className="w-3.5 h-3.5 mr-1.5" /> {lead.city}, {lead.state}</span>}
                               {isSuperAdmin && (lead as any).campaignName && (
                                 <span className="flex items-center gap-1 text-xs text-primary/80 bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
                                   <Building2 className="w-3 h-3" />{(lead as any).campaignName}
@@ -262,7 +365,7 @@ export default function LeadList() {
               </motion.div>
             );
           })}
-          {data?.leads.length === 0 && (
+          {leads.length === 0 && (
             <div className="text-center py-20 bg-card rounded-2xl border border-white/5">
               <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
                 <Search className="w-8 h-8 text-muted-foreground" />
@@ -302,6 +405,72 @@ export default function LeadList() {
           </div>
         </div>
       )}
+
+      {/* Bulk Action Toolbar */}
+      <AnimatePresence>
+        {selected.size > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-card border border-primary/30 shadow-2xl shadow-primary/20 rounded-2xl px-5 py-3"
+          >
+            <span className="text-sm font-semibold text-primary whitespace-nowrap">
+              {selected.size} selected
+            </span>
+            <div className="w-px h-5 bg-white/10" />
+            <div className="relative">
+              <button
+                onClick={() => setShowBulkStatusPicker(v => !v)}
+                className="flex items-center gap-2 h-9 px-3 rounded-xl bg-secondary border border-white/10 text-sm hover:bg-secondary/80 transition-colors"
+              >
+                <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                {bulkTargetStatus
+                  ? <span className="capitalize">{bulkTargetStatus.replace("_", " ")}</span>
+                  : <span className="text-muted-foreground">Set status…</span>}
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+              {showBulkStatusPicker && (
+                <div className="absolute bottom-full mb-2 left-0 bg-card border border-white/10 rounded-xl shadow-xl overflow-hidden z-50 min-w-[170px]">
+                  {STATUS_OPTIONS.map(s => (
+                    <button
+                      key={s.value}
+                      onClick={() => { setBulkTargetStatus(s.value); setShowBulkStatusPicker(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-secondary/60 transition-colors ${
+                        bulkTargetStatus === s.value ? "text-primary bg-primary/10" : "text-foreground"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button
+              size="sm"
+              className="h-9 gap-2 rounded-xl"
+              disabled={!bulkTargetStatus || bulkStatusMutation.isPending}
+              onClick={() => {
+                if (!bulkTargetStatus) return;
+                bulkStatusMutation.mutate({ ids: Array.from(selected), status: bulkTargetStatus });
+              }}
+            >
+              {bulkStatusMutation.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : null}
+              Apply
+            </Button>
+            <button
+              onClick={() => { setSelected(new Set()); setBulkTargetStatus(""); }}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+              title="Clear selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent className="bg-card border-white/10 rounded-2xl">

@@ -123,6 +123,30 @@ Configured in the TwilioConnect settings page → "Call Forward Phone" field.
 
 ---
 
+## Power Dialer
+
+The Power Dialer (`/dialer/power`) is session-based. Sessions are stored in `crm_background_jobs` (persist across deploys).
+
+### Multi-Line Mode (ReadyMode-style)
+
+When `lines > 1` is passed to `POST /api/twilio/voice/power-dial/session`, the dialer:
+1. Selects `lines` lead IDs as the current batch (`currentBatchLeadIds`)
+2. Calls `GET /api/twilio/twiml/multi-call?numbers=N1,N2,...&callerId=E164` — returns TwiML with up to 5 `<Number>` tags inside one `<Dial>`
+3. Twilio calls all numbers simultaneously; first to answer connects — rest are cancelled
+4. Agent disposes the call → session advances by `lines` positions
+
+### Session Flow
+
+```
+POST /twilio/voice/power-dial/session  →  creates crm_background_jobs row
+GET  /twilio/voice/power-dial/session/:id  →  polls state + current lead
+POST /twilio/voice/power-dial/session/:id/call  →  click-to-call (agent phone rings first)
+POST /twilio/voice/power-dial/session/:id/disposition  →  log + advance queue
+DELETE /twilio/voice/power-dial/session/:id  →  end session
+```
+
+---
+
 ## Authentication & Multi-Tenancy
 
 ### JWT Payload

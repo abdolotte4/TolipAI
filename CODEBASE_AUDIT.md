@@ -874,4 +874,57 @@ All documentation updated from Node 20 → **Node 22** to reflect the current ru
 | `POST /api/crm/leads/bulk-status` | MEDIUM | ❌ Missing — batch status update |
 | `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed |
 
-*Last updated: S23 (May 17, 2026). All P0/P1 critical bugs fixed. Audit corrections applied for openphone.ts and _fmtRelative. Remaining P2/P3: TASK-14, TASK-17, TASK-18, TASK-21, TASK-23-26, missing bulk-status/timeline endpoints.*
+---
+
+## S25 Changes (May 17, 2026 — this session)
+
+### New Endpoints Added
+| Endpoint | File | Description |
+|----------|------|-------------|
+| `POST /api/crm/leads/bulk-status` | `routes/crm/leads.ts` | Batch status update for 1–200 leads. Validates status enum, enforces campaign-level tenancy, writes audit log per changed lead, fires `onLeadStatusChanged` automation hooks, returns `{ updated, status }`. Requires `admin` role. |
+
+### CRM Frontend Changes
+| Change | File | Description |
+|--------|------|-------------|
+| Multi-select checkboxes | `LeadList.tsx` | Per-row checkbox (appears on hover, always visible when checked). Select-all toggle in filter bar. Selected rows get `bg-primary/5 border-primary/20` highlight. |
+| Floating bulk toolbar | `LeadList.tsx` | Springs up from bottom when ≥1 lead selected. Shows count, status dropdown picker, Apply button (calls `POST /api/crm/leads/bulk-status`), and X to clear selection. |
+| Status picker dropdown | `LeadList.tsx` | All 7 statuses listed; active status highlighted in primary color. Disappears on selection. |
+
+### Schema/DB Audit Findings (new)
+| Finding | Severity | Status |
+|---------|----------|--------|
+| `crm_submission_links.submissionsCount` counter | 🟢 LOW | ✅ Already incremented correctly at `crm/index.ts:127` — audit finding was incorrect |
+| `subscribersTable.company` field | 🟢 LOW | ✅ Already saved correctly at `subscribe.ts:35` — audit finding was incorrect |
+| `skipTracedPhones`/`skipTracedEmails` text vs JSONB | 🟡 MEDIUM | ⚠️ Stored as text, parsed as JSON at read time. Functional but not query-able. Migration to JSONB deferred (no active use case for phone-level queries). |
+| `crm_campaigns.owner_user_id` FK missing | 🟡 MEDIUM | ⚠️ Application-enforced ownership — no DB constraint. Low risk for current single-campaign-per-admin model. |
+
+### Health Endpoints (confirmed working)
+| Endpoint | File | Returns |
+|----------|------|---------|
+| `GET /healthz` | `routes/health.ts` | `{ status: "ok" }` — liveness probe |
+| `GET /health` | `routes/health.ts` | `{ status: "ok", timestamp }` — DB ping readiness probe |
+| `GET /api/scraper-engine/health` | `routes/scraperEngine.ts` | Proxies to Python FastAPI `/health` |
+
+### Stripe Signup → Campaign Auto-Creation (clarification)
+**Question answered:** YES — when a user signs up on the landing page and pays with Stripe, a campaign IS automatically created.
+
+Flow (`routes/stripe.ts` webhook handler):
+1. User selects plan → `POST /api/stripe/checkout` → Stripe Checkout session
+2. Stripe fires `checkout.session.completed` webhook → `routes/stripe.ts`
+3. Server checks if email already exists in `crm_users`
+4. If new user: generates slug, temp password, inserts `crm_campaigns` row, inserts `crm_users` admin row, sets `ownerUserId`, saves `stripeCustomerId`
+5. Sends welcome email via `buildWelcomeOnboardingEmail`, schedules 14-day onboarding sequence
+
+**What determines limits:**
+- **Skip trace limit:** `crm_campaigns.skip_trace_daily_limit` (default: 1/day). Enforced in `propertyApi.ts` via in-memory cooldown map per `campaignId`. Super admins bypass.
+- **Fetch comps limit:** `crm_campaigns.fetch_comps_daily_limit` (default: 1/day). Same mechanism.
+- **User seat limit:** `crm_campaigns.max_users`. Enforced in `crm/users.ts` POST handler.
+- All limits are set at campaign creation time and can be updated by super_admin via `PATCH /api/crm/campaigns/:id`.
+
+### Missing Endpoints (updated)
+| Endpoint | Priority | Status |
+|----------|----------|--------|
+| `POST /api/crm/leads/bulk-status` | MEDIUM | ✅ Added this session (S25) |
+| `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed |
+
+*Last updated: S25 (May 17, 2026). `POST /api/crm/leads/bulk-status` implemented with full audit trail. Multi-select UI added to LeadList. All MD files updated. Stripe → campaign auto-creation confirmed working. Remaining: timeline endpoint, mass `any` cleanup.*
