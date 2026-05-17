@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, boolean, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, boolean, timestamp, jsonb, index, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const crmCampaigns = pgTable("crm_campaigns", {
   id: serial("id").primaryKey(),
@@ -628,4 +628,23 @@ export const crmContracts = pgTable("crm_contracts", {
   index("crm_contracts_campaign_id_idx").on(t.campaignId),
   index("crm_contracts_status_idx").on(t.status),
   index("crm_contracts_signing_token_idx").on(t.signingToken),
+]);
+
+// ── crm_waitlist ─────────────────────────────────────────────────────────────
+// Dedicated table for landing-page waitlist signups.
+// Source values: landing_hero | landing_compare | landing_cta | referral | organic
+// Status lifecycle: pending → contacted → converted → nurture → churned
+export const crmWaitlist = pgTable("crm_waitlist", {
+  id:        uuid("id").primaryKey().defaultRandom(),
+  email:     text("email").notNull().unique(),
+  name:      text("name"),
+  phone:     text("phone"),
+  source:    text("source").notNull().default("landing_hero"),
+  status:    text("status").notNull().default("pending"),
+  notes:     text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_waitlist_status_idx").on(t.status),
+  index("crm_waitlist_created_at_idx").on(t.createdAt),
 ]);

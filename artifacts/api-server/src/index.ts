@@ -38,6 +38,21 @@ seedDatabase().then(() => {
       for (let i = 0; i < 6; i++) pool.query("SELECT 1").catch(() => {});
     }, 8000);
 
+    // Idempotent startup migration: ensure crm_waitlist table exists
+    pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_waitlist (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        email       TEXT        NOT NULL UNIQUE,
+        name        TEXT,
+        phone       TEXT,
+        source      TEXT        NOT NULL DEFAULT 'landing_hero',
+        status      TEXT        NOT NULL DEFAULT 'pending',
+        notes       TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `).catch((err: unknown) => logger.error({ err }, "[startup] crm_waitlist migration failed"));
+
     runEmailSequenceJob();
     setInterval(runEmailSequenceJob, 60 * 60 * 1000);
 

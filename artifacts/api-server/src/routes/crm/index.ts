@@ -148,36 +148,41 @@ router.use("/crm/contracts", contractsRouter);
 // Waitlist admin — list + CSV export of landing-page signups
 router.use("/crm/admin/waitlist", waitlistRouter);
 
-// Public waitlist: POST /crm/public/waitlist
-router.post("/crm/public/waitlist", async (req, res) => {
-  const { email, name } = req.body as { email?: string; name?: string };
+// ── Public waitlist signup ────────────────────────────────────────────────────
+// POST /crm/public/waitlist  (legacy, kept for backward compat — redirects to new table)
+// POST /crm/waitlist         (canonical public endpoint)
+async function handlePublicWaitlistSignup(
+  req: import("express").Request,
+  res: import("express").Response
+) {
+  const { email, name, phone, source } =
+    req.body as { email?: string; name?: string; phone?: string; source?: string };
+
   if (!email || !email.includes("@")) {
     res.status(400).json({ error: "Valid email is required" });
     return;
   }
+
+  const cleanEmail  = email.toLowerCase().trim();
+  const cleanSource = source || "landing_hero";
+
   try {
-    // Store as a lead with a waitlist source tag so it shows up in the CRM
-    await db.insert(crmLeads).values({
-      firstName: name ? name.split(" ")[0] : "Waitlist",
-      lastName:  name ? (name.split(" ").slice(1).join(" ") || "Lead") : "Lead",
-      email:     email.toLowerCase().trim(),
-      phone:     "",
-      status:    "new",
-      leadSource: "landing_page_waitlist",
-      notes:     `Joined waitlist from landing page${name ? ` — name: ${name}` : ""}.`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as any);
+    await import("@workspace/db").then(({ pool }) =>
+      pool.query(
+        `INSERT INTO crm_waitlist (email, name, phone, source)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (email) DO NOTHING`,
+        [cleanEmail, name?.trim() || null, phone?.trim() || null, cleanSource]
+      )
+    );
     res.json({ ok: true, message: "You're on the list! We'll reach out within 24 hours." });
   } catch (err: any) {
-    // Duplicate email — treat as success so we don't leak whether they're already in
-    if (err?.code === "23505") {
-      res.json({ ok: true, message: "You're already on the list!" });
-      return;
-    }
     console.error("[waitlist]", err);
     res.status(500).json({ error: "Could not save. Please try again." });
   }
-});
+}
+
+router.post("/crm/public/waitlist", handlePublicWaitlistSignup);
+router.post("/crm/waitlist", handlePublicWaitlistSignup);
 
 export default router;

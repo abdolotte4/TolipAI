@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, ArrowRight, CheckCircle2, Loader2, Calendar } from "lucide-react";
+import { Mail, ArrowRight, CheckCircle2, Loader2, Calendar, Phone } from "lucide-react";
 
-export default function EmailCapture() {
-  const [email, setEmail]     = useState("");
-  const [name,  setName]      = useState("");
-  const [state, setState]     = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [errMsg, setErrMsg]   = useState("");
+// Source is injected by the landing page section embedding this component.
+// Defaults to "landing_hero" so standalone usage still works.
+interface EmailCaptureProps {
+  source?: "landing_hero" | "landing_compare" | "landing_cta" | "referral" | "organic";
+}
+
+export default function EmailCapture({ source = "landing_hero" }: EmailCaptureProps) {
+  const [email,  setEmail]  = useState("");
+  const [name,   setName]   = useState("");
+  const [phone,  setPhone]  = useState("");
+  const [state,  setState]  = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errMsg, setErrMsg] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -14,10 +21,15 @@ export default function EmailCapture() {
     setState("loading");
     setErrMsg("");
     try {
-      const res = await fetch("/api/crm/public/waitlist", {
+      const res = await fetch("/api/crm/waitlist", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email, name: name || undefined }),
+        body:    JSON.stringify({
+          email,
+          name:   name  || undefined,
+          phone:  phone || undefined,
+          source,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -65,47 +77,66 @@ export default function EmailCapture() {
             >
               <CheckCircle2 className="w-10 h-10 text-emerald-400" />
               <p className="text-white font-semibold text-lg">You're on the list!</p>
-              <p className="text-slate-400 text-sm">We'll email you at <span className="text-white font-medium">{email}</span> within 24 hours.</p>
+              <p className="text-slate-400 text-sm">
+                We'll email you at <span className="text-white font-medium">{email}</span> within 24 hours.
+              </p>
             </motion.div>
           ) : (
             <motion.form
               key="form"
               onSubmit={handleSubmit}
-              className="flex flex-col sm:flex-row gap-3"
+              className="flex flex-col gap-3"
             >
-              <input
-                type="text"
-                placeholder="Your name (optional)"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="flex-1 min-w-0 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 backdrop-blur-sm transition"
-              />
-              <input
-                type="email"
-                required
-                placeholder="Work email address"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="flex-[1.4] min-w-0 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 backdrop-blur-sm transition"
-              />
-              <button
-                type="submit"
-                disabled={state === "loading" || !email}
-                className="group relative shrink-0 rounded-xl overflow-hidden px-6 py-3 font-semibold text-sm text-white disabled:opacity-60 disabled:cursor-not-allowed transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <span className="absolute inset-0 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500" />
-                <span className="relative flex items-center gap-2">
-                  {state === "loading" ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Mail className="w-4 h-4" />
-                      Get Access
-                      <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                    </>
-                  )}
-                </span>
-              </button>
+              {/* Row 1: Name + Email */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  placeholder="Your name (optional)"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className="flex-1 min-w-0 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 backdrop-blur-sm transition"
+                />
+                <input
+                  type="email"
+                  required
+                  placeholder="Work email address *"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="flex-[1.4] min-w-0 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 backdrop-blur-sm transition"
+                />
+              </div>
+
+              {/* Row 2: Phone + Submit */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                  <input
+                    type="tel"
+                    placeholder="Phone number (optional)"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 pl-10 pr-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 backdrop-blur-sm transition"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={state === "loading" || !email}
+                  className="group relative shrink-0 rounded-xl overflow-hidden px-6 py-3 font-semibold text-sm text-white disabled:opacity-60 disabled:cursor-not-allowed transition-all hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <span className="absolute inset-0 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500" />
+                  <span className="relative flex items-center gap-2">
+                    {state === "loading" ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4" />
+                        Get Access
+                        <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                      </>
+                    )}
+                  </span>
+                </button>
+              </div>
             </motion.form>
           )}
         </AnimatePresence>
@@ -121,7 +152,7 @@ export default function EmailCapture() {
           </motion.p>
         )}
 
-        {/* Calendly alternative */}
+        {/* Calendly link */}
         <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
@@ -143,7 +174,9 @@ export default function EmailCapture() {
 
         <p className="text-[11px] text-slate-700">
           No spam. Unsubscribe anytime. By submitting you agree to our{" "}
-          <a href="/tos" className="text-slate-500 hover:text-slate-400 underline underline-offset-2">Terms of Service</a>.
+          <a href="/tos" className="text-slate-500 hover:text-slate-400 underline underline-offset-2">
+            Terms of Service
+          </a>.
         </p>
       </div>
     </section>
