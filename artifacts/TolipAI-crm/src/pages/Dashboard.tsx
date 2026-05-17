@@ -1,14 +1,106 @@
-import { useCrmGetStats } from "@workspace/api-client-react";
+import { useCrmGetStats, useCrmGetMe } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, UserPlus, FileSignature, DollarSign, CheckSquare, ArrowUpRight } from "lucide-react";
+import { Users, UserPlus, FileSignature, DollarSign, CheckSquare, ArrowUpRight, CreditCard, Calendar, AlertTriangle, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { apiFetch } from "@/lib/api";
+
+// ── Subscription status types ─────────────────────────────────────────────────
+
+interface SubscriptionStatus {
+  configured: boolean;
+  status?: string;
+  planName?: string;
+  amount?: number | null;
+  currency?: string;
+  currentPeriodEnd?: number;
+  cancelAtPeriodEnd?: boolean;
+}
+
+// ── Subscription Banner ───────────────────────────────────────────────────────
+
+function SubscriptionBanner() {
+  const { data: sub, isLoading } = useQuery<SubscriptionStatus>({
+    queryKey: ["subscription-status"],
+    queryFn: () => apiFetch("/billing/subscription"),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="h-14 rounded-2xl bg-card/50 animate-pulse border border-white/5" />
+    );
+  }
+
+  if (!sub?.configured) return null;
+
+  const statusConfig: Record<string, { label: string; className: string }> = {
+    active:   { label: "Active",    className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+    trialing: { label: "Trial",     className: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+    past_due: { label: "Past due",  className: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+    canceled: { label: "Canceled",  className: "bg-red-500/10 text-red-400 border-red-500/20" },
+    unpaid:   { label: "Unpaid",    className: "bg-red-500/10 text-red-400 border-red-500/20" },
+    paused:   { label: "Paused",    className: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
+  };
+  const sc = statusConfig[sub.status ?? ""] ?? { label: sub.status ?? "Unknown", className: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
+  const isProblem = sub.status === "past_due" || sub.status === "unpaid" || sub.status === "canceled";
+
+  const nextDate = sub.currentPeriodEnd
+    ? new Date(sub.currentPeriodEnd * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : null;
+
+  const amountStr = sub.amount != null
+    ? `$${sub.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} / mo`
+    : null;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+      <Card className={`flex items-center justify-between gap-4 px-5 py-3.5 rounded-2xl border shadow-sm ${isProblem ? "bg-amber-500/5 border-amber-500/20" : "bg-card/50 border-white/5"}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`p-2 rounded-xl flex-shrink-0 ${isProblem ? "bg-amber-500/10 border border-amber-500/20" : "bg-primary/10 border border-primary/20"}`}>
+            {isProblem
+              ? <AlertTriangle className="w-4 h-4 text-amber-400" />
+              : <CreditCard className="w-4 h-4 text-primary" />}
+          </div>
+          <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+            <span className="font-semibold text-sm text-foreground truncate">{sub.planName}</span>
+            <Badge variant="outline" className={`text-xs px-2 py-0 ${sc.className}`}>{sc.label}</Badge>
+            {amountStr && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" />
+                {amountStr}
+              </span>
+            )}
+            {nextDate && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {sub.cancelAtPeriodEnd ? `Cancels ${nextDate}` : `Renews ${nextDate}`}
+              </span>
+            )}
+          </div>
+        </div>
+        <Link href="/admin/billing" className="flex-shrink-0">
+          <Button variant="outline" size="sm" className="text-xs rounded-xl h-7 px-3 gap-1.5">
+            Manage <ArrowUpRight className="w-3 h-3" />
+          </Button>
+        </Link>
+      </Card>
+    </motion.div>
+  );
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { data: stats, isLoading } = useCrmGetStats();
+  const { data: me } = useCrmGetMe();
+
+  const isAdmin = me?.role === "admin";
 
   if (isLoading || !stats) {
     return (
@@ -21,7 +113,6 @@ export default function Dashboard() {
     );
   }
 
-  // Formatting for chart
   const chartData = stats.leadsByStatus.map(s => ({
     name: s.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
     count: s.count
@@ -57,6 +148,8 @@ export default function Dashboard() {
           </button>
         </Link>
       </motion.div>
+
+      {isAdmin && <SubscriptionBanner />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Total Leads" value={stats.totalLeads} icon={Users} color="blue" delay={0.1} />

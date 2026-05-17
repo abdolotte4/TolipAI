@@ -6,6 +6,16 @@ import { eq } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { crmAuth, crmAdminOnly } from "./middleware";
 
+export interface SubscriptionStatus {
+  configured: boolean;
+  status?: string;
+  planName?: string;
+  amount?: number | null;
+  currency?: string;
+  currentPeriodEnd?: number;
+  cancelAtPeriodEnd?: boolean;
+}
+
 const router = Router();
 
 function getStripe(): Stripe {
@@ -58,6 +68,63 @@ router.post("/portal", crmAuth, crmAdminOnly, async (req, res) => {
   } catch (err: any) {
     logger.error({ err: err.message, campaignId }, "[stripe/portal] failed to create portal session");
     res.status(500).json({ error: err.message || "Failed to create billing portal session" });
+  }
+});
+
+// GET /api/crm/billing/subscription
+// Returns live Stripe subscription details (plan name, status, next billing date).
+// Returns { configured: false } gracefully when Stripe is not set up or the
+// campaign has no stripeCustomerId — never throws to the client.
+router.get("/subscription", crmAuth, crmAdminOnly, async (req, res) => {
+  const { campaignId } = req.crmUser!;
+
+  if (!campaignId || !process.env.STRIPE_SECRET_KEY) {
+    res.json({ configured: false } satisfies SubscriptionStatus);
+    return;
+  }
+
+  try {
+    const [campaign] = await db
+      .select({ stripeCustomerId: crmCampaigns.stripeCustomerId })
+      .from(crmCampaigns)
+      .where(eq(crmCampaigns.id, campaignId))
+      .limit(1);
+
+    if (!campaign?.stripeCustomerId) {
+      res.json({ configured: false } satisfies SubscriptionStatus);
+      return;
+    }
+
+    const stripe = getStripe();
+    const subs = await stripe.subscriptions.list({
+      customer: campaign.stripeCustomerId,
+      status: "all",
+      limit: 1,
+      expand: ["data.items.data.price.product"],
+    });
+
+    const sub = subs.data[0];
+    if (!sub) {
+      res.json({ configured: false } satisfies SubscriptionStatus);
+      return;
+    }
+
+    const item = sub.items.data[0];
+    const price = item?.price as Stripe.Price & { product?: Stripe.Product };
+    const product = typeof price?.product === "object" ? price.product : null;
+
+    res.json({
+      configured: true,
+      status: sub.status,
+      planName: product?.name ?? (price as any)?.nickname ?? "TolipAI CRM",
+      amount: price?.unit_amount != null ? price.unit_amount / 100 : null,
+      currency: price?.currency ?? "usd",
+      currentPeriodEnd: sub.current_period_end,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+    } satisfies SubscriptionStatus);
+  } catch (err: any) {
+    logger.error({ err: err.message, campaignId }, "[stripe/subscription] failed to fetch");
+    res.json({ configured: false } satisfies SubscriptionStatus);
   }
 });
 
