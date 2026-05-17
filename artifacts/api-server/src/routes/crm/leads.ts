@@ -1455,6 +1455,31 @@ router.post("/:id/comp-address-lookup", crmAuth, async (req, res) => {
 // Used when all PropertyAPI credits are exhausted. Asks the AI for realistic
 // estimated comparable sales based on the subject property's market knowledge.
 
+/**
+ * Filter comps to match standard wholesaling criteria:
+ * - Same beds (exact, if both known)
+ * - Same baths ±0.5 (if both known)
+ * - ±200 sqft (if both known)
+ * - ±10 years built (if both known)
+ */
+function filterCompsBySubject<T extends {
+  beds?: number | null;
+  baths?: number | null;
+  sqft?: number | null;
+  yearBuilt?: number | null;
+}>(
+  comps: T[],
+  subject: { beds: number | null; baths: number | null; sqft: number | null; yearBuilt: number | null },
+): T[] {
+  return comps.filter(c => {
+    if (subject.beds != null && c.beds != null && c.beds !== subject.beds) return false;
+    if (subject.baths != null && c.baths != null && Math.abs(c.baths - subject.baths) > 0.5) return false;
+    if (subject.sqft != null && c.sqft != null && Math.abs(c.sqft - subject.sqft) > 200) return false;
+    if (subject.yearBuilt != null && c.yearBuilt != null && Math.abs(c.yearBuilt - subject.yearBuilt) > 10) return false;
+    return true;
+  });
+}
+
 async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
   beds: number | null; baths: number | null; sqft: number | null; yearBuilt: number | null;
 }): Promise<{ added: number; comps: any[]; arv: number | null; mao: number | null }> {
@@ -1475,10 +1500,12 @@ async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
     `Beds: ${subjectProp.beds ?? "?"}, Baths: ${subjectProp.baths ?? "?"}, ` +
     `Sqft: ${subjectProp.sqft ?? "?"}, Year Built: ${subjectProp.yearBuilt ?? "?"}\n` +
     `Property Type: ${lead.propertyType ?? "Single Family"}\n\n` +
-    `Requirements:\n` +
+    `Requirements (STRICT — follow exactly):\n` +
     `- Similar homes in the same neighborhood or nearby streets in ${lead.city ?? ""}, ${lead.state ?? ""}\n` +
-    `- Sold within the last 24 months (on or before ${today})\n` +
-    `- Similar size (±500 sqft), age (±15 years), and bed/bath count (±1)\n` +
+    `- Sold within the last 12 months (on or before ${today}). Last 3 months is best.\n` +
+    `- SAME number of bedrooms (${subjectProp.beds ?? "?"} beds) and bathrooms (${subjectProp.baths ?? "?"} baths)\n` +
+    `- Square footage within ±200 sqft of ${subjectProp.sqft ?? "?"} sqft\n` +
+    `- Year built within ±10 years of ${subjectProp.yearBuilt ?? "?"}\n` +
     `- Realistic market-accurate sale prices for this area and time period\n\n` +
     `Reply ONLY with this JSON:\n` +
     `{ "comps": [ { "address": "...", "beds": 3, "baths": 2.0, "sqft": 1450, "yearBuilt": 1985, "salePrice": 185000, "soldDate": "2024-06-15" } ] }`;
@@ -1507,8 +1534,10 @@ async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
 const content = stripJsonMarkdown(raw);
 
 const parsed = JSON.parse(content);
-const rawComps: any[] = parsed?.comps ?? [];
+const allAiComps: any[] = parsed?.comps ?? [];
 
+    // Post-filter AI comps to the same criteria as real comps
+    const rawComps = filterCompsBySubject(allAiComps, subjectProp);
 
     if (!rawComps.length) return { added: 0, comps: [], arv: null, mao: null };
 
@@ -1743,7 +1772,7 @@ router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
     let rawComps: import("../../services/attomApi").AttomComp[] = [];
     let compsSource = "attom";
     try {
-      rawComps = await fetchCompsViaAttom(lat, lng, radiusMiles, 8, subjectProp.sqft, lead.propertyType);
+      rawComps = await fetchCompsViaAttom(lat, lng, radiusMiles, 8, subjectProp.sqft, lead.propertyType, subjectProp.beds, subjectProp.baths, subjectProp.yearBuilt);
     } catch (attomErr: any) {
       logger.error(attomErr?.message, "[ATTOM comps] failed");
       // Fallback chain: Propelio → Propwire → AI
@@ -1763,8 +1792,11 @@ router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
       }
     }
 
+    // Post-filter: same beds/baths, ±200 sqft, ±10 year built
+    rawComps = filterCompsBySubject(rawComps, subjectProp);
+
     if (rawComps.length === 0) {
-      res.json({ status: "done", success: true, added: 0, comps: [], message: `No recently-sold properties (last 24 months) found within ${radiusMiles} mi.` });
+      res.json({ status: "done", success: true, added: 0, comps: [], message: `No properties matching your subject's bed/bath/sqft/year criteria found within ${radiusMiles} mi. Try pulling comps with a larger radius.` });
       return;
     }
 
@@ -1867,7 +1899,10 @@ router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
     if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
 
-    const rawComps = await downloadComps(job.apiKey, poll.downloadUrl!);
+    const allDownloadedComps = await downloadComps(job.apiKey, poll.downloadUrl!);
+
+    // Post-filter: same beds/baths, ±200 sqft, ±10 year built
+    const rawComps = filterCompsBySubject(allDownloadedComps, job.subjectProp);
 
     if (rawComps.length === 0) {
       res.json({
@@ -1875,7 +1910,7 @@ router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
         success: true,
         added: 0,
         comps: [],
-        message: `No recently-sold properties (last 24 months) found within ${job.actualRadius} mi.`,
+        message: `No properties matching your subject's bed/bath/sqft/year criteria found within ${job.actualRadius} mi.`,
         totalInRadius: job.count,
         creditsUsed: job.count,
       });

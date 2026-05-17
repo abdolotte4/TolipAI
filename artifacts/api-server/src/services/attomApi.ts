@@ -126,13 +126,16 @@ export async function fetchCompsViaAttom(
   maxComps = 8,
   subjectSqft?: number | null,
   subjectPropertyType?: string | null,
+  subjectBeds?: number | null,
+  subjectBaths?: number | null,
+  subjectYearBuilt?: number | null,
 ): Promise<AttomComp[]> {
-  // Pull a much larger raw pool so post-filter we still have plenty of usable comps.
+  // Pull a larger pool so strict post-filtering still yields enough comps.
   const data = await attomGet("/propertyapi/v1.0.0/sale/snapshot", {
     latitude: lat,
     longitude: lng,
     radius: radiusMiles,
-    pagesize: 100,
+    pagesize: 200,
   });
 
   const sales: any[] = data?.property || [];
@@ -140,10 +143,12 @@ export async function fetchCompsViaAttom(
   TWO_YEARS_AGO.setMonth(TWO_YEARS_AGO.getMonth() - 24);
 
   const comps: AttomComp[] = [];
-  const excluded: Record<string, number> = { noPrice: 0, oldSale: 0, multiFamily: 0, sqftMismatch: 0 };
+  const excluded: Record<string, number> = {
+    noPrice: 0, oldSale: 0, multiFamily: 0,
+    sqftMismatch: 0, bedsMismatch: 0, bathsMismatch: 0, yearMismatch: 0,
+  };
 
   // Only filter multi-family if the subject is *explicitly* single-family.
-  // (Was: also triggered when subjectPropertyType was missing → over-filtered.)
   const subjStr = (subjectPropertyType || "").toLowerCase();
   const subjectIsSingleFamily = ["single", "sfr", "residential", "sfh"].some(t => subjStr.includes(t));
 
@@ -163,15 +168,31 @@ export async function fetchCompsViaAttom(
       if (INCOMPATIBLE.some(m => rawPropType.includes(m))) { excluded.multiFamily++; continue; }
     }
 
-    // Wider sqft band so we don't drop too many comps.
-    // (Was 1.75 / 0.57 — too tight on small subjects.)
-    const compSqft: number | undefined = sale?.building?.size?.universalsize;
-    if (subjectSqft && compSqft) {
-      const ratio = compSqft / subjectSqft;
-      if (ratio > 2.0 || ratio < 0.5) { excluded.sqftMismatch++; continue; }
+    // ── Beds: exact match (if both known) ───────────────────────────────────
+    const compBeds: number | undefined = sale?.building?.rooms?.bedroomscount;
+    if (subjectBeds != null && compBeds != null && compBeds !== subjectBeds) {
+      excluded.bedsMismatch++; continue;
     }
-    const addr 
-      = sale?.address;
+
+    // ── Baths: ±0.5 tolerance for half-bath differences ─────────────────────
+    const compBaths: number | undefined = sale?.building?.rooms?.bathstotal;
+    if (subjectBaths != null && compBaths != null && Math.abs(compBaths - subjectBaths) > 0.5) {
+      excluded.bathsMismatch++; continue;
+    }
+
+    // ── Sqft: ±200 sq ft (industry standard for comping) ────────────────────
+    const compSqft: number | undefined = sale?.building?.size?.universalsize;
+    if (subjectSqft && compSqft && Math.abs(compSqft - subjectSqft) > 200) {
+      excluded.sqftMismatch++; continue;
+    }
+
+    // ── Year built: ±10 years ────────────────────────────────────────────────
+    const compYearBuilt: number | undefined = sale?.summary?.yearbuilt;
+    if (subjectYearBuilt != null && compYearBuilt != null && Math.abs(compYearBuilt - subjectYearBuilt) > 10) {
+      excluded.yearMismatch++; continue;
+    }
+
+    const addr = sale?.address;
     const fullAddr = [addr?.line1, addr?.locality, addr?.countrySubd]
       .filter(Boolean).join(", ");
 
@@ -181,10 +202,10 @@ export async function fetchCompsViaAttom(
 
     comps.push({
       address: fullAddr,
-      beds: sale?.building?.rooms?.bedroomscount || undefined,
-      baths: sale?.building?.rooms?.bathstotal || undefined,
-      sqft: sale?.building?.size?.universalsize || undefined,
-      yearBuilt: sale?.summary?.yearbuilt || undefined,
+      beds: compBeds || undefined,
+      baths: compBaths || undefined,
+      sqft: compSqft || undefined,
+      yearBuilt: compYearBuilt || undefined,
       salePrice,
       soldDate,
       propertyType: sale?.summary?.proptype || undefined,
@@ -192,6 +213,11 @@ export async function fetchCompsViaAttom(
 
     if (comps.length >= maxComps) break;
   }
+
+  logger.info(
+    { lat, lng, radiusMiles, matched: comps.length, excluded, subjectSqft, subjectBeds, subjectBaths, subjectYearBuilt },
+    "[ATTOM] fetchCompsViaAttom filtering complete",
+  );
 
   return comps;
 }
