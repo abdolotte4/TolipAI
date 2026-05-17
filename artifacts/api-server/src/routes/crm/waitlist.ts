@@ -137,7 +137,7 @@ router.get("/export", crmAuth, crmAdminOnly, async (req, res) => {
 
     const lines = [
       ["ID", "First Name", "Last Name", "Email", "Notes", "Joined At"].join(","),
-      ...rows.map(r => [
+      ...rows.map((r: typeof rows[number]) => [
         r.id,
         esc(r.firstName),
         esc(r.lastName),
