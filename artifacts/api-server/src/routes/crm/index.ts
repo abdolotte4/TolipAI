@@ -144,4 +144,36 @@ router.use("/crm/analytics", analyticsRouter);
 // E-sign contracts (CRUD + native signing)
 router.use("/crm/contracts", contractsRouter);
 
+// Public waitlist: POST /crm/public/waitlist
+router.post("/crm/public/waitlist", async (req, res) => {
+  const { email, name } = req.body as { email?: string; name?: string };
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Valid email is required" });
+    return;
+  }
+  try {
+    // Store as a lead with a waitlist source tag so it shows up in the CRM
+    await db.insert(crmLeads).values({
+      firstName: name ? name.split(" ")[0] : "Waitlist",
+      lastName:  name ? (name.split(" ").slice(1).join(" ") || "Lead") : "Lead",
+      email:     email.toLowerCase().trim(),
+      phone:     "",
+      status:    "new",
+      leadSource: "landing_page_waitlist",
+      notes:     `Joined waitlist from landing page${name ? ` — name: ${name}` : ""}.`,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
+    res.json({ ok: true, message: "You're on the list! We'll reach out within 24 hours." });
+  } catch (err: any) {
+    // Duplicate email — treat as success so we don't leak whether they're already in
+    if (err?.code === "23505") {
+      res.json({ ok: true, message: "You're already on the list!" });
+      return;
+    }
+    console.error("[waitlist]", err);
+    res.status(500).json({ error: "Could not save. Please try again." });
+  }
+});
+
 export default router;

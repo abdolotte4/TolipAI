@@ -10,6 +10,7 @@ import ComparisonMatrix from "./login/ComparisonMatrix";
 import TestimonialMarquee from "./login/TestimonialMarquee";
 import FeaturesShowcase from "./login/FeaturesShowcase";
 import PricingSection from "./login/PricingSection";
+import EmailCapture from "./login/EmailCapture";
 
 // Floating sparkle particles
 function Particles() {
@@ -245,6 +246,9 @@ export default function Login() {
           </div>
         </div>
 
+        {/* ── EMAIL CAPTURE ────────────────────────────────────────────────── */}
+        <EmailCapture />
+
         {/* ── FEATURES SHOWCASE ────────────────────────────────────────────── */}
         <FeaturesShowcase />
 
@@ -300,7 +304,10 @@ export default function Login() {
               </a>
             </div>
             <p className="text-xs text-slate-600 pt-2">
-              TolipAI LLC · info@tolipai.com · Real estate wholesaling CRM platform
+              TolipAI LLC · info@tolipai.com · Real estate wholesaling CRM platform ·{" "}
+              <a href="/tos" className="hover:text-slate-400 underline underline-offset-2 transition-colors">
+                Terms of Service
+              </a>
             </p>
           </div>
         </motion.div>

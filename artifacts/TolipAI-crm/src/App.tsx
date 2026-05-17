@@ -33,6 +33,7 @@ import CallReport from "@/pages/analytics/CallReport";
 import CallQualityDashboard from "@/pages/analytics/CallQualityDashboard";
 import PowerDialer from "@/pages/dialer/PowerDialer";
 import SignContract from "@/pages/public/SignContract";
+import ToS from "@/pages/public/ToS";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +52,7 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/submit/:token" component={SubmitLead} />
       <Route path="/sign/:token" component={SignContract} />
+      <Route path="/tos" component={ToS} />
       <Route path="/campaigns"><AppLayout><CampaignList /></AppLayout></Route>
       <Route path="/"><AppLayout><Dashboard /></AppLayout></Route>
       <Route path="/leads"><AppLayout><LeadList /></AppLayout></Route>

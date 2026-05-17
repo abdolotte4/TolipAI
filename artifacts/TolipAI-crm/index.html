@@ -2,18 +2,75 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>Digor CRM</title>
+    <!-- Removed maximum-scale=1 — blocks user zoom (Lighthouse accessibility) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary SEO -->
+    <title>TolipAI CRM — AI-Powered Real Estate Wholesaling Platform</title>
+    <meta name="description" content="The only CRM built for real estate wholesalers with a 24/7 AI voice agent, power dialer, two-way SMS, skip tracing, satellite property AI, and cash buyer database — all in one platform starting at $49/mo." />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="TolipAI LLC" />
+    <link rel="canonical" href="https://crm.tolipai.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://crm.tolipai.com/" />
+    <meta property="og:title" content="TolipAI CRM — AI-Powered Real Estate Wholesaling Platform" />
+    <meta property="og:description" content="AI voice agents answer seller calls 24/7. Power dialers burn through lead lists in minutes. Satellite AI evaluates property condition before you drive. The only CRM built for serious wholesalers." />
+    <meta property="og:image" content="https://crm.tolipai.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="TolipAI" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@tolipai" />
+    <meta name="twitter:title" content="TolipAI CRM — AI-Powered Real Estate Wholesaling" />
+    <meta name="twitter:description" content="AI voice agents answer seller calls 24/7. Power dialer, skip tracing, satellite AI — all in one platform for real estate wholesalers." />
+    <meta name="twitter:image" content="https://crm.tolipai.com/og-image.png" />
+
+    <!-- PWA / App -->
     <meta name="theme-color" content="#6366f1" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Digor CRM" />
+    <meta name="apple-mobile-web-app-title" content="TolipAI" />
+
+    <!-- Icons -->
     <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="manifest" href="/crm/manifest.json" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Preconnect: reduces font LCP impact -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- JSON-LD structured data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "TolipAI CRM",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web, iOS, Android",
+      "description": "AI-powered real estate wholesaling CRM with 24/7 AI voice agents, power dialer, skip tracing, satellite property analysis, and cash buyer database.",
+      "offers": {
+        "@type": "AggregateOffer",
+        "lowPrice": "49",
+        "highPrice": "599",
+        "priceCurrency": "USD"
+      },
+      "url": "https://crm.tolipai.com",
+      "publisher": {
+        "@type": "Organization",
+        "name": "TolipAI LLC",
+        "email": "info@tolipai.com",
+        "url": "https://tolipai.com"
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
