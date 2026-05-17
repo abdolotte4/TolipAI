@@ -21,7 +21,10 @@ import {
   crmLeads,
 } from "@workspace/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { decryptPassword } from "./crm/crypto-util";
+import {
+  type TwilioVoiceConfig,
+  resolveVoiceConfig,
+} from "../services/twilioCredentials";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -29,75 +32,6 @@ const { AccessToken } = twilioJwt;
 const { VoiceGrant } = AccessToken;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-interface VoiceConfig {
-  accountSid: string;
-  apiKeySid: string;
-  apiKeySecret: string;
-  appSid: string;
-  callerId?: string | null;
-}
-
-function getGlobalVoiceConfig(): VoiceConfig | null {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const apiKeySid = process.env.TWILIO_API_KEY_SID;
-  const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
-  const appSid = process.env.TWILIO_VOICE_APP_SID;
-  if (!accountSid || !apiKeySid || !apiKeySecret || !appSid) return null;
-  const callerId = process.env.TWILIO_VOICE_CALLER_ID || null;
-  return { accountSid, apiKeySid, apiKeySecret, appSid, callerId };
-}
-
-async function getCampaignVoiceConfig(campaignId: number): Promise<VoiceConfig | null> {
-  const [campaign] = await db
-    .select()
-    .from(crmCampaigns)
-    .where(eq(crmCampaigns.id, campaignId))
-    .limit(1);
-
-  if (!campaign) return null;
-
-  const accountSid = campaign.twilioAccountSid;
-  const apiKeySid = campaign.twilioApiKeySid;
-  const encApiSecret = campaign.twilioApiKeySecret;
-  const appSid = campaign.twilioVoiceAppSid;
-
-  // Phone number is optional — needed for outbound callerId but not for token generation
-  const callerId = campaign.twilioPhoneNumber || null;
-
-  if (!accountSid || !apiKeySid || !encApiSecret || !appSid) return null;
-
-  let apiKeySecret: string;
-  try {
-    apiKeySecret = encApiSecret.includes(":") ? decryptPassword(encApiSecret) : encApiSecret;
-  } catch {
-    apiKeySecret = encApiSecret;
-  }
-
-  return { accountSid, apiKeySid, apiKeySecret, appSid, callerId };
-}
-
-async function resolveVoiceConfig(
-  campaignId: number | null,
-  isSuperAdmin: boolean
-): Promise<VoiceConfig> {
-  if (campaignId) {
-    const cfg = await getCampaignVoiceConfig(campaignId);
-    if (cfg) return cfg;
-  }
-  if (isSuperAdmin) {
-    const global = getGlobalVoiceConfig();
-    if (global) return global;
-  }
-  throw Object.assign(
-    new Error(
-      campaignId
-        ? "Twilio Voice is not fully configured for this campaign. Set API Key SID, API Key Secret, and TwiML App SID in Campaign → Twilio settings."
-        : "Twilio Voice is not configured. Ask your admin to set up Twilio credentials."
-    ),
-    { status: 422 }
-  );
-}
 
 // ── POST /api/twilio/voice/token ──────────────────────────────────────────────
 // Returns a short-lived Access Token for Twilio Voice SDK (browser calling)

@@ -28,6 +28,12 @@ import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotification
 import { eq, desc, and, sql } from "drizzle-orm";
 import { toE164 } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
+import {
+  type TwilioSmsCreds,
+  getSmsCreds,
+  resolveSmsCreds,
+  getGlobalSmsCreds,
+} from "../services/twilioCredentials";
 import { logger } from "../lib/logger";
 import { generateAiSmsReply, isOptOutMessage, isHumanHandoffRequest, AI_SMS_COST_USD } from "../services/aiSmsService";
 import { sendSms } from "../services/smsService";
@@ -52,70 +58,12 @@ setInterval(() => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-interface TwilioCreds {
-  accountSid: string;
-  authToken: string;
-  phoneNumber: string | null;
-}
-
-async function getCampaignTwilioCreds(campaignId: number): Promise<TwilioCreds> {
-  const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);
-  const sid = campaign?.twilioAccountSid ?? null;
-  const encToken = campaign?.twilioAuthToken ?? null;
-  const phoneNumber = campaign?.twilioPhoneNumber ?? null;
-
-  if (!sid || !encToken) {
-    throw Object.assign(
-      new Error("Twilio is not configured for this campaign. Go to Campaign Settings → Twilio to add your credentials."),
-      { status: 422 }
-    );
-  }
-
-  let authToken: string;
-  try {
-    authToken = encToken.includes(":") ? decryptPassword(encToken) : encToken;
-  } catch {
-    authToken = encToken;
-  }
-
-  return { accountSid: sid, authToken, phoneNumber };
-}
-
-function getGlobalSmsCreds(): TwilioCreds | null {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const phoneNumber = process.env.TWILIO_VOICE_CALLER_ID || null;
-  if (!accountSid || !authToken) return null;
-  return { accountSid, authToken, phoneNumber };
-}
-
-async function resolveTwilioCreds(
-  campaignId: number | null,
-  isSuperAdmin: boolean
-): Promise<TwilioCreds> {
-  if (campaignId) {
-    return getCampaignTwilioCreds(campaignId);
-  }
-  if (isSuperAdmin) {
-    const global = getGlobalSmsCreds();
-    if (global) return global;
-    throw Object.assign(
-      new Error("No global Twilio credentials configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables."),
-      { status: 422 }
-    );
-  }
-  throw Object.assign(
-    new Error("No campaign assigned. Ask your admin to assign you to a campaign with Twilio configured."),
-    { status: 422 }
-  );
-}
-
 function twilioBaseUrl(accountSid: string) {
   return `https://api.twilio.com/2010-04-01/Accounts/${accountSid}`;
 }
 
 async function twilioFetch(
-  creds: TwilioCreds,
+  creds: TwilioSmsCreds,
   path: string,
   options: RequestInit = {}
 ): Promise<any> {
@@ -268,7 +216,7 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
   try {
-    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdmin);
+    const creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdmin);
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers = (data.incoming_phone_numbers || []).map((n: any) => ({
       id: n.phone_number,
@@ -292,7 +240,7 @@ router.get("/twilio/messages", crmAuth, async (req, res) => {
   }
   const isSuperAdmin = crmUser.role === "super_admin";
   try {
-    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdmin);
+    const creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdmin);
     const e164 = toE164(contactPhone);
     if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const params = new URLSearchParams({ PageSize: "50" });
@@ -344,7 +292,7 @@ router.post("/twilio/messages", crmAuth, validateBody(smsMessageSchema), async (
   const campId = campaignId ? Number(campaignId) : crmUser.campaignId;
   const isSuperAdminMsg = crmUser.role === "super_admin";
   try {
-    const creds = await resolveTwilioCreds(campId, isSuperAdminMsg);
+    const creds = await resolveSmsCreds(campId, isSuperAdminMsg);
     const toE164Result = toE164(to);
     if (!toE164Result) { res.status(400).json({ error: "Invalid destination phone number" }); return; }
     const body = new URLSearchParams({
@@ -382,7 +330,7 @@ router.get("/twilio/calls", crmAuth, async (req, res) => {
   }
   const isSuperAdminCalls = crmUser.role === "super_admin";
   try {
-    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdminCalls);
+    const creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdminCalls);
     const e164 = toE164(contactPhone);
     if (!e164) { res.status(400).json({ error: "Invalid phone number" }); return; }
     const [outCalls, inCalls] = await Promise.all([
@@ -436,7 +384,7 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
 
   try {
     const isSuperAdminCtC = crmUser.role === "super_admin";
-    const creds = await resolveTwilioCreds(crmUser.campaignId, isSuperAdminCtC);
+    const creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdminCtC);
     const body = new URLSearchParams({
       From: fromNumber,
       To: agentE164,
@@ -456,7 +404,7 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
   const crmUser = req.crmUser!;
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
-    const creds = await getCampaignTwilioCreds(crmUser.campaignId);
+    const creds = await resolveSmsCreds(crmUser.campaignId, false);
     const apiBase = process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
     const smsWebhook = `${apiBase}/twilio/webhook`;
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
@@ -499,8 +447,6 @@ async function validateTwilioSignature(req: any): Promise<boolean> {
     .select({ twilioAuthToken: crmCampaigns.twilioAuthToken, twilioPhoneNumber: crmCampaigns.twilioPhoneNumber })
     .from(crmCampaigns)
     .where(eq(crmCampaigns.twilioEnabled, true));
-
-  const { decryptPassword } = await import("./crm/crypto-util");
 
   let authToken: string | null = null;
   for (const c of campaigns) {

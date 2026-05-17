@@ -27,7 +27,7 @@ import {
   crmLeads,
 } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { decryptPassword } from "./crm/crypto-util";
+import { getSmsCreds, getGlobalSmsCreds } from "../services/twilioCredentials";
 import { logger } from "../lib/logger";
 import twilio from "twilio";
 
@@ -162,41 +162,16 @@ async function sendConfirmationSms(
   address: string,
   campaignId: number | null
 ): Promise<void> {
-  let accountSid: string | null = null;
-  let authToken: string | null = null;
+  const creds = campaignId
+    ? (await getSmsCreds(campaignId) ?? getGlobalSmsCreds())
+    : getGlobalSmsCreds();
 
-  if (campaignId) {
-    const [campaign] = await db
-      .select({
-        twilioAccountSid: crmCampaigns.twilioAccountSid,
-        twilioAuthToken: crmCampaigns.twilioAuthToken,
-      })
-      .from(crmCampaigns)
-      .where(eq(crmCampaigns.id, campaignId))
-      .limit(1);
-
-    if (campaign?.twilioAccountSid && campaign?.twilioAuthToken) {
-      accountSid = campaign.twilioAccountSid;
-      try {
-        authToken = campaign.twilioAuthToken.includes(":")
-          ? decryptPassword(campaign.twilioAuthToken)
-          : campaign.twilioAuthToken;
-      } catch {
-        authToken = campaign.twilioAuthToken;
-      }
-    }
-  }
-
-  // Fall back to global env vars
-  if (!accountSid) accountSid = process.env.TWILIO_ACCOUNT_SID || null;
-  if (!authToken)  authToken  = process.env.TWILIO_AUTH_TOKEN  || null;
-
-  if (!accountSid || !authToken) {
+  if (!creds) {
     logger.warn("[agent] Cannot send confirmation SMS — no Twilio credentials");
     return;
   }
 
-  const client = twilio(accountSid, authToken);
+  const client = twilio(creds.accountSid, creds.authToken);
   const addrShort = address.length > 60 ? address.slice(0, 57) + "…" : address;
   const body = `Hi ${sellerName.split(" ")[0]}! Thanks for calling. We received your info about ${addrShort}. A specialist will follow up within 24 hours. - The Buying Team`;
 

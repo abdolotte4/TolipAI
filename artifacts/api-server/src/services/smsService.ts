@@ -10,9 +10,9 @@
  */
 
 import { db } from "@workspace/db";
-import { crmCampaigns, crmSmsOptOuts } from "@workspace/db/schema";
+import { crmSmsOptOuts } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { decryptPassword } from "../routes/crm/crypto-util";
+import { getSmsCreds } from "./twilioCredentials";
 import { logger } from "../lib/logger";
 import { toE164 } from "./coreCalculations";
 
@@ -31,41 +31,6 @@ function segmentCount(body: string): number {
   return Math.ceil(body.length / 153);
 }
 
-async function getCampaignTwilioCreds(campaignId: number): Promise<{
-  accountSid: string;
-  authToken: string;
-  phoneNumber: string;
-} | null> {
-  const [campaign] = await db
-    .select({
-      twilioAccountSid: crmCampaigns.twilioAccountSid,
-      twilioAuthToken: crmCampaigns.twilioAuthToken,
-      twilioPhoneNumber: crmCampaigns.twilioPhoneNumber,
-      twilioEnabled: crmCampaigns.twilioEnabled,
-    })
-    .from(crmCampaigns)
-    .where(eq(crmCampaigns.id, campaignId))
-    .limit(1);
-
-  if (!campaign?.twilioEnabled || !campaign.twilioAccountSid || !campaign.twilioAuthToken || !campaign.twilioPhoneNumber) {
-    return null;
-  }
-
-  let authToken: string;
-  try {
-    authToken = campaign.twilioAuthToken.includes(":")
-      ? decryptPassword(campaign.twilioAuthToken)
-      : campaign.twilioAuthToken;
-  } catch {
-    authToken = campaign.twilioAuthToken;
-  }
-
-  return {
-    accountSid: campaign.twilioAccountSid,
-    authToken,
-    phoneNumber: campaign.twilioPhoneNumber,
-  };
-}
 
 async function isOptedOut(phone: string, campaignId: number): Promise<boolean> {
   const e164 = toE164(phone);
@@ -97,8 +62,8 @@ export async function sendSms({
     return { sid: null, status: "opted_out", errorMessage: "Phone number has opted out", estimatedCostUsd: 0 };
   }
 
-  const creds = await getCampaignTwilioCreds(campaignId);
-  if (!creds) {
+  const creds = await getSmsCreds(campaignId, { requireEnabled: true });
+  if (!creds || !creds.phoneNumber) {
     return { sid: null, status: "failed", errorMessage: "Twilio not configured for this campaign", estimatedCostUsd: 0 };
   }
 

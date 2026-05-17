@@ -598,9 +598,9 @@ These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle).
 **File:** `routes/crm/leads.ts:921,1269-71,1880,2035,2125,2207`
 **Action:** Created `artifacts/api-server/src/lib/textUtils.ts` with `stripJsonMarkdown()`. Replaced 6 inline occurrences in `leads.ts`.
 
-#### TASK-08: Extract campaign Twilio credential fetch to service
-**Files:** `twilio.ts`, `twilio-voice.ts`, `smsService.ts`, `twilio-power-dialer.ts`
-**Action:** Create `services/twilioCredentials.ts` with `getCampaignTwilioCredentials(campaignId)`. Replace 4 duplicated fetch+decrypt patterns.
+#### TASK-08: Extract campaign Twilio credential fetch to service ✅ DONE (S21)
+**Files:** `twilio.ts`, `twilio-voice.ts`, `smsService.ts`, `twilio-power-dialer.ts`, `twilio-voice-agent.ts`
+**Action:** Created `services/twilioCredentials.ts` exporting `TwilioSmsCreds`, `TwilioVoiceConfig`, `getSmsCreds()`, `resolveSmsCreds()`, `getGlobalSmsCreds()`, `getVoiceConfig()`, `resolveVoiceConfig()`, `getGlobalVoiceConfig()`. Removed 5 duplicated fetch+decrypt helpers (≈130 lines of duplication eliminated). Also removed redundant dynamic `import()` of `decryptPassword` inside `validateTwilioSignature` in `twilio.ts`.
 
 #### TASK-09: Extract CSV escaping to shared utility ✅ DONE (S19)
 **Files:** `tools.ts:282,413` | `scraperEngine.ts:349` | `waitlist.ts:125`
@@ -703,7 +703,7 @@ These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle).
 | TASK-05 | api-server | 🟠 HIGH | Logging | 7 production files | various | ✅ S19 |
 | TASK-06 | api-server | 🟠 HIGH | Duplication | 4 route files | various | ⏳ Low risk — twilio.ts normalize used for comparison only |
 | TASK-07 | api-server | 🟠 HIGH | Duplication | `leads.ts` | 921,1269-71,1880,2035,2125,2207 | ✅ S19 |
-| TASK-08 | api-server | 🟠 HIGH | Duplication | 4 Twilio files | various | ⏳ Pending |
+| TASK-08 | api-server | 🟠 HIGH | Duplication | 5 Twilio files | various | ✅ S21 |
 | TASK-09 | api-server | 🟠 HIGH | Duplication | 3 route files | various | ✅ S19 |
 | TASK-10 | crm | 🟠 HIGH | Bug | `CompsSection.tsx`, `CashBuyerMatchPanel.tsx` | 140,262,129,157 | ✅ S19 |
 | TASK-11 | scraper | 🟠 HIGH | Fargate readiness | `main.py` | ~823 | ✅ S20 — already comprehensive |
@@ -727,5 +727,5 @@ These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle).
 
 ---
 
-*Report generated: May 17, 2026 — Last updated: S20 (May 17, 2026). All P0 critical bugs fixed. All P1 high-impact items done (18/18). Remaining P2/P3: TASK-08 (Twilio credentials service), TASK-14 (dead code line numbers shifted), TASK-17 (seed files from build), TASK-18 (demo-video artifact), TASK-19 (in-memory job cache), TASK-21 (FastAPI response_model), TASK-23-26 (type safety + bundle).*
+*Report generated: May 17, 2026 — Last updated: S21 (May 17, 2026). All P0 critical bugs fixed. All P1 high-impact items done (19/19). Remaining P2/P3: TASK-14 (dead code line numbers shifted), TASK-17 (seed files from build), TASK-18 (demo-video artifact), TASK-19 (in-memory job cache), TASK-21 (FastAPI response_model), TASK-23-26 (type safety + bundle).*
 *Awaiting PM review and explicit approval before executing any TASK.*

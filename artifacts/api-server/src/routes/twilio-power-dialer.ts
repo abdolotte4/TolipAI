@@ -20,7 +20,6 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import {
   crmLeads,
-  crmCampaigns,
   crmCallLogs,
 } from "@workspace/db/schema";
 import { eq, and, inArray, asc } from "drizzle-orm";
@@ -33,7 +32,7 @@ import {
   cancelBackgroundJob,
 } from "../lib/backgroundJobStore";
 import { writeAuditLog } from "../lib/auditLog";
-import { decryptPassword } from "./crm/crypto-util";
+import { getSmsCreds } from "../services/twilioCredentials";
 import twilio from "twilio";
 
 const router: IRouter = Router();
@@ -71,30 +70,6 @@ interface PowerDialPayload {
   currentCallSid: string | null;
 }
 
-async function getTwilioCreds(campaignId: number): Promise<{ accountSid: string; authToken: string; phoneNumber: string } | null> {
-  const [campaign] = await db.select({
-    twilioAccountSid: crmCampaigns.twilioAccountSid,
-    twilioAuthToken: crmCampaigns.twilioAuthToken,
-    twilioPhoneNumber: crmCampaigns.twilioPhoneNumber,
-  }).from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);
-
-  if (!campaign?.twilioAccountSid || !campaign?.twilioAuthToken) return null;
-
-  let authToken: string;
-  try {
-    authToken = campaign.twilioAuthToken.includes(":")
-      ? decryptPassword(campaign.twilioAuthToken)
-      : campaign.twilioAuthToken;
-  } catch {
-    authToken = campaign.twilioAuthToken;
-  }
-
-  return {
-    accountSid: campaign.twilioAccountSid,
-    authToken,
-    phoneNumber: campaign.twilioPhoneNumber || "",
-  };
-}
 
 function formatSessionResponse(job: any, currentLead: any | null) {
   const p = job.payload as PowerDialPayload;
@@ -154,7 +129,7 @@ router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
 
   try {
     // Get caller ID from campaign Twilio config
-    const creds = await getTwilioCreds(campaignId);
+    const creds = await getSmsCreds(campaignId);
     if (!creds?.phoneNumber) {
       res.status(422).json({ error: "Twilio phone number not configured for this campaign. Go to Integrations → Twilio." });
       return;
@@ -283,7 +258,7 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       res.status(422).json({ error: "Current lead has no phone number — use Skip to advance" }); return;
     }
 
-    const creds = await getTwilioCreds(p.campaignId);
+    const creds = await getSmsCreds(p.campaignId);
     if (!creds) {
       res.status(422).json({ error: "Twilio credentials not configured for this campaign" }); return;
     }
