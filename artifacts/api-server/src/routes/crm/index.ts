@@ -14,6 +14,7 @@ import compsRouter from "./comps";
 import notificationsRouter from "./notifications";
 import buyersRouter from "./buyers";
 import analyticsRouter from "./analytics";
+import contractsRouter from "./contracts";
 
 const router = Router();
 
@@ -139,5 +140,8 @@ router.use("/crm/buyers", buyersRouter);
 
 // Analytics dashboard + call report
 router.use("/crm/analytics", analyticsRouter);
+
+// E-sign contracts (CRUD + native signing)
+router.use("/crm/contracts", contractsRouter);
 
 export default router;

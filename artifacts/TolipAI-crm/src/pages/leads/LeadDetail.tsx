@@ -424,6 +424,7 @@ const AiRepairEstimator = lazy(() => import("@/components/leads/AiRepairEstimato
 const AiDealScorer     = lazy(() => import("@/components/leads/AiDealScorer"));
 const AiSellerScript   = lazy(() => import("@/components/leads/AiSellerScript"));
 const AiOfferLetter    = lazy(() => import("@/components/leads/AiOfferLetter"));
+const ContractsCard    = lazy(() => import("@/components/leads/ContractsCard"));
 const CashBuyerMatchPanel = lazy(() => import("@/components/leads/CashBuyerMatchPanel"));
 const SmsConversations  = lazy(() => import("@/components/leads/SmsConversations"));
 
@@ -1646,6 +1647,10 @@ export default function LeadDetail() {
 
           <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
             <AiOfferLetter leadId={leadId} />
+          </Suspense>
+
+          <Suspense fallback={<div className="h-24 animate-pulse bg-secondary/30 rounded-2xl" />}>
+            <ContractsCard leadId={leadId} lead={formData} />
           </Suspense>
 
           {/* Notes */}

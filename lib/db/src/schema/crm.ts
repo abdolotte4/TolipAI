@@ -583,3 +583,49 @@ export const skipTraceResults = pgTable("skip_trace_results", {
   index("skip_trace_results_lead_id_idx").on(t.leadId),
   index("skip_trace_results_name_idx").on(t.subjectName),
 ]);
+// ─── E-Sign Contracts ────────────────────────────────────────────────────────
+// Tracks purchase agreements and assignment contracts sent for e-signature.
+// Native signing uses a token-based URL; Dropbox Sign integration is optional.
+
+export const crmContracts = pgTable("crm_contracts", {
+  id:               serial("id").primaryKey(),
+  leadId:           integer("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
+  campaignId:       integer("campaign_id").references(() => crmCampaigns.id),
+  createdById:      integer("created_by_id").references(() => crmUsers.id),
+  // Parties
+  sellerName:       text("seller_name").notNull(),
+  sellerEmail:      text("seller_email"),
+  sellerPhone:      text("seller_phone"),
+  buyerName:        text("buyer_name").notNull(),
+  // Contract details
+  contractType:     text("contract_type").notNull().default("purchase_agreement"),
+  propertyAddress:  text("property_address").notNull(),
+  purchasePrice:    numeric("purchase_price", { precision: 12, scale: 2 }),
+  earnestMoney:     numeric("earnest_money",  { precision: 12, scale: 2 }).default("500"),
+  closingDays:      integer("closing_days").default(30),
+  includeAssignment: boolean("include_assignment").notNull().default(true),
+  additionalTerms:  text("additional_terms"),
+  // Status: draft | sent | viewed | signed | declined | voided
+  status:           text("status").notNull().default("draft"),
+  // Native signing token
+  signingToken:     text("signing_token").unique(),
+  tokenExpiresAt:   timestamp("token_expires_at"),
+  // Dropbox Sign (optional)
+  provider:         text("provider").notNull().default("native"),
+  providerDocId:    text("provider_doc_id"),
+  // Signing outcome
+  signedAt:         timestamp("signed_at"),
+  signerIp:         text("signer_ip"),
+  signerNameTyped:  text("signer_name_typed"),
+  viewedAt:         timestamp("viewed_at"),
+  emailSentAt:      timestamp("email_sent_at"),
+  // Stored HTML of the rendered purchase agreement
+  documentHtml:     text("document_html"),
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_contracts_lead_id_idx").on(t.leadId),
+  index("crm_contracts_campaign_id_idx").on(t.campaignId),
+  index("crm_contracts_status_idx").on(t.status),
+  index("crm_contracts_signing_token_idx").on(t.signingToken),
+]);
