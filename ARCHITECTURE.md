@@ -23,19 +23,33 @@ that are intentionally omitted from the top-level README to keep it readable.
 ```
 /
 ├── artifacts/
-│   ├── api-server/         Express 5 API — all business logic and integrations
+│   ├── api-server/             Express 5 + Node 22 API (port 5000)
 │   │   └── src/
-│   │       ├── routes/     Route handlers (thin — delegates to services)
-│   │       └── services/   attomApi.ts · propertyApi.ts · emailService.ts
-│   ├── tolipai-crm/          React + Vite CRM portal  (base path: /crm/)
-│   ├── tolipai-tools/        React + Vite internal tools portal (base path: /tools/)
-│   └── tolipai-website/      React + Vite public site (base path: /)
+│   │       ├── routes/         Route handlers (thin — delegates to services)
+│   │       │   ├── crm/        CRM sub-router (leads, campaigns, users, tasks…)
+│   │       │   ├── twilio.ts           SMS + webhooks
+│   │       │   ├── twilio-voice.ts     Outbound voice + inbound routing + voicemail
+│   │       │   ├── twilio-voice-agent.ts  AI inbound agent (OpenAI Realtime)
+│   │       │   ├── twilio-power-dialer.ts Power dialer sessions
+│   │       │   ├── openphone.ts        OpenPhone webhooks (messages + calls)
+│   │       │   ├── scraperEngine.ts    Proxy to Python FastAPI scraper
+│   │       │   ├── stripe.ts           Billing / subscriptions
+│   │       │   ├── tools.ts            AI tools (skip trace, comps, ARV, phone finder)
+│   │       │   ├── health.ts           /healthz (liveness) + /health (DB ping)
+│   │       │   └── sse.ts              Server-sent events (real-time push)
+│   │       ├── services/       twilioCredentials · smsService · attomApi · propertyApi · emailService
+│   │       └── lib/            logger · textUtils · validate · rate-limit
+│   ├── TolipAI-crm/            React + Vite CRM portal (base path: /crm/)
+│   ├── TolipAI-tools/          React + Vite internal tools portal (base path: /tools/)
+│   ├── TolipAI-website/        React + Vite public site (base path: /)
+│   └── TolipAI-scraper-engine/ Python FastAPI scraper (port 8000, AWS Fargate)
 ├── lib/
 │   ├── api-spec/           OpenAPI 3.1 spec + Orval codegen config
 │   ├── api-client-react/   Generated TanStack Query hooks (do not edit manually)
 │   ├── api-zod/            Generated Zod schemas  (do not edit manually)
 │   └── db/                 Drizzle ORM schema + PostgreSQL client
-└── scripts/                One-off scripts: seed, migrate, data repair
+├── scripts/                One-off scripts: generate-backup.sh, seed, migrate
+└── node-start.sh           Build + start script (install → build CRM/tools/website → serve)
 ```
 
 **Build outputs** (`artifacts/**/dist/`, `artifacts/**/.vite/`) are excluded from

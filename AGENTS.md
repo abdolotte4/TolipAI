@@ -5,7 +5,7 @@
 ```
 /
 ├── artifacts/
-│   ├── api-server/             Express 5 + Node 20 backend (port 5000)
+│   ├── api-server/             Express 5 + Node 22 backend (port 5000)
 │   │   └── src/
 │   │       ├── routes/         Thin route handlers
 │   │       │   ├── crm/        CRM leads, pipeline, stats, analytics

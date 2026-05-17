@@ -94,4 +94,24 @@
 - **DB**: NeonDB (serverless Postgres 17) — free tier has 100 CU-hour/month limit
 - **Recommended split** (future): Vercel/Cloudflare Pages for frontends, Railway for API, AWS Fargate for scraper engine
 
-## Last Updated: S22 — May 17, 2026
+## Health Endpoints
+
+| Endpoint | Type | Auth | Returns |
+|----------|------|------|---------|
+| `GET /healthz` | Liveness probe (no deps) | None | `{ status: "ok" }` — used by load balancer keep-alive |
+| `GET /health` | Readiness probe (DB ping) | None | `{ status: "ok" }` or `503 { status: "error", detail: "database unavailable" }` |
+
+## Import Hygiene
+
+- Never import schema tables you don't query in the same file
+- Never import Drizzle helpers (`eq`, `and`, `sql`, `desc`) unless they appear in a query or `WHERE` clause in that file
+- Per-campaign Twilio credentials: always use `getSmsCreds()` / `resolveSmsCreds()` from `services/twilioCredentials.ts`
+- Text utilities: `stripJsonMarkdown()`, `csvCell()` — always import from `lib/textUtils.ts`, never re-implement inline
+
+## Backup / DB Scripts
+
+- `bash scripts/generate-backup.sh` — runs `pg_dump --schema-only` from NeonDB, outputs `merged.sql` + `merged_neondb.zip`
+- Schema pushes: `pnpm --filter @workspace/db run push` — runs Drizzle kit push (idempotent)
+- Column migrations at runtime: `ensureColumns()` in `seed.ts` — uses `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+
+## Last Updated: S24 — May 17, 2026

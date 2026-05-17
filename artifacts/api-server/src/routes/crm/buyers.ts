@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { crmBuyers, crmCampaigns } from "@workspace/db/schema";
+import { crmBuyers } from "@workspace/db/schema";
 import { eq, and, desc, ilike, or } from "drizzle-orm";
 import { crmAuth } from "./middleware";
 import { logger } from "../../lib/logger";

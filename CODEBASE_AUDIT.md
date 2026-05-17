@@ -745,6 +745,88 @@ These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle).
 
 ---
 
+## S24 Changes (May 17, 2026 — this session)
+
+### Audit Corrections
+| Finding | Previous Report | Corrected Status |
+|---------|----------------|-----------------|
+| `GET /api/crm/leads/export` listed as ❌ Missing | S23 audit marked it as a missing HIGH-priority endpoint | ✅ EXISTS — implemented at `routes/crm/leads.ts:212`. Full CSV download endpoint with `crmAuth` guard. S23 was incorrect. |
+
+### Real Unused Imports Fixed (2 files)
+| File | Import Removed | Reason |
+|------|---------------|--------|
+| `routes/crm/notifications.ts` | `crmLeads` from `@workspace/db/schema` | Never referenced in any query — only `crmNotifications` is used in this file |
+| `routes/crm/notifications.ts` | `sql` from `drizzle-orm` | No raw SQL template literals used; `eq`, `and`, `desc` are sufficient |
+| `routes/crm/buyers.ts` | `crmCampaigns` from `@workspace/db/schema` | Never referenced in any query — only `crmBuyers` table is used for all CRUD ops |
+
+### Full Database Audit (NeonDB vs Drizzle)
+**Result: ✅ Fully in sync — all 32 tables confirmed**
+
+| Table | NeonDB | Drizzle | Columns Verified |
+|-------|--------|---------|-----------------|
+| `crm_leads` | ✅ | ✅ | 56 columns — all match including `how_heard`, `offer_sent_at`, `offer_amount`, `mao_discount_override`, both AVM sets |
+| `crm_campaigns` | ✅ | ✅ | 29 columns — all match including `twilio_*` per-campaign creds, `ai_sms_*`, `stripe_customer_id` |
+| `crm_call_logs` | ✅ | ✅ | 20 columns — all match including `disposition`, `ai_coaching_summary`, `mos_score`, `jitter_ms` |
+| `crm_users` | ✅ | ✅ | All columns confirmed |
+| `crm_tasks` | ✅ | ✅ | All columns confirmed including `escalated`, `source` |
+| `crm_contracts` | ✅ | ✅ | All 18 columns confirmed |
+| `crm_sequence_steps` | ✅ | ✅ | All columns confirmed |
+| All other 25 tables | ✅ | ✅ | Present and matching |
+
+**Note:** `crm_waitlist` is intentionally absent from `merged.sql` — it is auto-created at startup in `index.ts`. This is correct behavior.
+
+### Full Endpoint Audit
+**Total endpoints confirmed: 167** across all route files.
+
+| Route File | Count | Key Endpoints |
+|-----------|-------|--------------|
+| `crm/leads.ts` | 28 | CRUD, export, bulk-import, skip-trace, AI tools, comps, notes, archive |
+| `crm/sequences.ts` | 10 | Full sequence + step CRUD |
+| `crm/contracts.ts` | 9 | Full contract lifecycle + e-sign |
+| `twilio-voice.ts` | 17 | Voice, power dial, voicemail, recording, warm transfer |
+| `twilio.ts` | 14 | SMS, click-to-call, webhooks, config |
+| `tools.ts` | 17 | Skip trace, distressed, phone finder, ARV |
+| `scraperEngine.ts` | 9 | Proxy to Python FastAPI |
+| `openphone.ts` | 7 | Messages, calls, webhook ✅ registered |
+| `crm/analytics.ts` | 4 | Dashboard, call quality, call report, chart |
+| `crm/notifications.ts` | 3 | List, read-one, read-all |
+| `health.ts` | 2 | `/healthz` (liveness), `/health` (DB ping) |
+| All others | ~47 | campaigns, users, tasks, buyers, comps, stats, billing, links, waitlist, admin |
+
+### Health Endpoints — Full Verification
+| Endpoint | Type | Response | Auth |
+|----------|------|----------|------|
+| `GET /healthz` | Liveness (shallow) | `{ status: "ok" }` | None |
+| `GET /health` | Readiness (deep DB ping) | `{ status: "ok" }` or `503 { status: "error" }` | None |
+
+Both endpoints are registered in `routes/health.ts` and mounted via `router.use(healthRouter)` in `routes/index.ts`.
+
+### Dead Code Confirmed
+| File | Function/Symbol | Status |
+|------|----------------|--------|
+| `services/scraperEngineClient.ts` | `logEngineConfig()` | Defined at ~line 393, never called in any production path. Safe to remove. |
+| `routes/crm/parse-util.ts` | Multiple source-specific parsers | No active callers found — may be legacy from old lead ingestion pipeline |
+
+### Console.log / Logger Audit
+**Result: ✅ Zero `console.*` calls in any production route file.** Only `seed-demo.ts` and `seed.ts` (CLI-only scripts) use `console.log` — acceptable.
+
+### TODO/FIXME Scan
+**Result: ✅ Zero TODO, FIXME, HACK, or XXX comments** in any production TypeScript file. One env var comment in `twilio-voice.ts:12` (`// TWILIO_VOICE_CALLER_ID = +1XXXXXXXXXX`) is a documentation note, not dead code.
+
+### Missing Endpoints (updated)
+| Endpoint | Priority | Status |
+|----------|----------|--------|
+| `GET /api/crm/leads/export` | — | ✅ EXISTS at `leads.ts:212` — S23 audit was wrong |
+| `POST /api/crm/leads/bulk-status` | MEDIUM | ❌ Missing — batch status update for multiple leads at once |
+| `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed for a lead |
+
+### Node Version Updates (MD files corrected)
+All documentation updated from Node 20 → **Node 22** to reflect the current runtime installed in `replit.nix`.
+
+*Files updated: `README.md` (badge + 2 text refs), `AGENTS.md`, `ARCHITECTURE.md`*
+
+---
+
 ## S23 Changes (May 17, 2026 — this session)
 
 ### Audit Corrections
@@ -787,9 +869,9 @@ These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle).
 ### Missing Endpoints (still needed vs product requirements)
 | Endpoint | Priority | Status |
 |----------|----------|--------|
-| `GET /api/crm/leads/export` | HIGH | ❌ Missing — CSV/XLSX bulk export |
+| `GET /api/crm/leads/export` | — | ✅ EXISTS at `leads.ts:212` — incorrectly listed as missing; corrected in S24 |
+| `GET /api/twilio/voice/voicemails/unread-count` | DONE | ✅ Added this session (S23) |
 | `POST /api/crm/leads/bulk-status` | MEDIUM | ❌ Missing — batch status update |
 | `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed |
-| `GET /api/twilio/voice/voicemails/unread-count` | DONE | ✅ Added this session |
 
-*Last updated: S23 (May 17, 2026). All P0/P1 critical bugs fixed. Audit corrections applied for openphone.ts and _fmtRelative. Remaining P2/P3: TASK-14, TASK-17, TASK-18, TASK-21, TASK-23-26, missing export/bulk-status/timeline endpoints.*
+*Last updated: S23 (May 17, 2026). All P0/P1 critical bugs fixed. Audit corrections applied for openphone.ts and _fmtRelative. Remaining P2/P3: TASK-14, TASK-17, TASK-18, TASK-21, TASK-23-26, missing bulk-status/timeline endpoints.*

@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/Agawish24/TolipAI/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Node 20](https://img.shields.io/badge/node-20-brightgreen)
+![Node 22](https://img.shields.io/badge/node-22-brightgreen)
 ![pnpm 10](https://img.shields.io/badge/pnpm-10-orange)
 ![Deploy: Railway](https://img.shields.io/badge/deploy-Railway-blueviolet)
 
@@ -118,7 +118,7 @@ After seeding, update the demo URL in `artifacts/tolipai-website/src/components/
 
 ### Local (Docker-free)
 
-The full stack runs without Docker. You just need Node 20, pnpm 10, and a PostgreSQL instance.
+The full stack runs without Docker. You just need Node 22, pnpm 10, and a PostgreSQL instance.
 
 ```bash
 # Start all four services (each in its own terminal)
@@ -154,7 +154,7 @@ Railway serves all four applications behind a single domain using path-based rou
 ### Other platforms (Render / Cloud Run)
 
 Any platform that supports a Node.js build command works. The key requirements are:
-- Node 20 runtime
+- Node 22 runtime
 - `pnpm install` + `pnpm run build` as the build step
 - `DATABASE_URL` as an environment variable pointing at a PostgreSQL instance
 - All other env vars from `.env.example` added to the platform's secrets manager

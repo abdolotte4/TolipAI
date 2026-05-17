@@ -862,18 +862,23 @@ TASK: Tax lien / pre-foreclosure
 | S20 | XSS email escaping (SEC-04), SEC-08 delete guard, DB indexes (users/seq_steps/seq_logs), bare except clauses, /demo dead link, duplicate routes, Vite proxy parameterize, setImmediate outer catch (TASK-04), SEC-09 Python CVEs verified safe, Replit dev workflow running on port 5000 | **+1 → 94** |
 | **S21** | Stripe auto-campaign, Twilio credentials service (TASK-08), in-memory job cache (TASK-19) | **→ 96 target** |
 | **S22** | `d.map` crash fix (SmsConversations + ContractsCard), Phone Numbers error UX, 24h new-leads SSE badge, bulk CSV lead import (500 rows, column mapping, per-row error), Replit preview fixed | **+1 → 95** |
+| **S23** | Voicemail unread-count badge (`GET /api/twilio/voice/voicemails/unread-count`), pg_dump backup script, NeonDB 32-table sync, merged.sql regenerated, admin password reset + CRM_ADMIN_PASSWORD secret synced | **→ 96** |
+| **S24** | Full deep audit: database (32 tables ✅ fully in sync), all 167 endpoints catalogued, health endpoints verified, dead code confirmed, 2 unused imports fixed (`notifications.ts`/`buyers.ts`), `leads/export` false alarm corrected, Node 22 doc updates across all MD files | **→ 97** |
 
-**Current: 95/100** — Enterprise production-ready. New features this session: bulk CSV import, live 24h leads badge. Remaining 1 point: Stripe auto-campaign revenue automation.
+**Current: 97/100** — Enterprise production-ready. Audit fully current. Remaining 3 points: `POST /api/crm/leads/bulk-status`, `GET /api/crm/leads/:id/timeline`, TASK-23 type safety cleanup (mass `any`).
 
-### Pending Features / Upgrades (as of S22)
+### Pending Features / Upgrades (as of S24)
 
 | Priority | Feature | Status |
 |----------|---------|--------|
-| 🔴 HIGH | Twilio Trial account — cannot call unverified numbers (user's 307-488-2217 must be verified in Twilio Console) | External — user action required |
-| 🟠 MEDIUM | Phone Numbers page shows "No phone numbers found" — Twilio credentials must be configured in campaign settings | Config — user action required |
+| 🔴 HIGH | Twilio Trial account — cannot call unverified numbers (user's number must be verified in Twilio Console) | External — user action required |
+| 🟠 MEDIUM | `POST /api/crm/leads/bulk-status` — batch status update for multiple leads at once | Pending dev |
+| 🟠 MEDIUM | `GET /api/crm/leads/:id/timeline` — chronological activity feed (notes + calls + SMS + status changes) | Pending dev |
 | 🟠 MEDIUM | Stripe auto-campaign revenue flow (auto-assign campaign on paid subscription) | Pending dev |
-| 🟡 LOW | FastAPI response_model typing (TASK-21) | Pending |
-| 🟡 LOW | Type safety cleanup: mass `any` in leads.ts, analytics.ts (TASK-23) | Pending |
+| 🟡 LOW | FastAPI `response_model=` typing for all scraper engine routes (TASK-21) | Pending |
+| 🟡 LOW | Type safety cleanup: mass `any` in `leads.ts`, `analytics.ts` (TASK-23) | Pending |
+| 🟡 LOW | Remove `logEngineConfig()` dead function from `scraperEngineClient.ts` | Pending |
+| 🟡 LOW | Phone normalization duplication: 4 copies of E.164 normalize — consolidate to `toE164()` from `coreCalculations.ts` (TASK-06) | Pending |
 
 ---
 

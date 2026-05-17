@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { crmNotifications, crmLeads } from "@workspace/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { crmNotifications } from "@workspace/db/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { crmAuth } from "./middleware";
 
 const router = Router();
