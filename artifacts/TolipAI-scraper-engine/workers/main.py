@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.responses import JSONResponse, PlainTextResponse  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
@@ -230,6 +230,9 @@ async def lifespan(app: FastAPI):
     # ── Browser pool (warm Playwright instances, idle eviction) ──────────────
     browser_pool.start()
 
+    # ── CloudWatch EMF metrics emitter (every 60 s) ───────────────────────────
+    _emf_task = asyncio.create_task(_emit_cloudwatch_emf(), name="cloudwatch_emf")
+
     log.info(
         "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s, "
         "retry_backend=%s, cache_s3=%s)",
@@ -245,7 +248,8 @@ async def lifespan(app: FastAPI):
     # and clean up resources for normal (non-spot) shutdowns.
     retry_queue.stop()
     _mem_task.cancel()
-    await asyncio.gather(_mem_task, return_exceptions=True)
+    _emf_task.cancel()
+    await asyncio.gather(_mem_task, _emf_task, return_exceptions=True)
     await browser_pool.stop()
     await job_store.close()
     await http_client.close_client()
@@ -746,10 +750,71 @@ async def invalidate_service_session(service: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Failed to invalidate session")
 
 
-@app.get("/metrics")
-async def metrics() -> Dict[str, Any]:
-    """Return structured counters for monitoring."""
-    return METRICS
+_METRIC_HELP: Dict[str, str] = {
+    "cash_buyers_success":    "Total successful cash-buyer scrape jobs",
+    "cash_buyers_failed":     "Total failed cash-buyer scrape jobs",
+    "cash_buyers_timeout":    "Total timed-out cash-buyer scrape jobs",
+    "distressed_success":     "Total successful distressed-property scrape jobs",
+    "distressed_failed":      "Total failed distressed-property scrape jobs",
+    "distressed_timeout":     "Total timed-out distressed-property scrape jobs",
+    "foreclosure_success":    "Total successful foreclosure scrape jobs",
+    "foreclosure_failed":     "Total failed foreclosure scrape jobs",
+    "foreclosure_timeout":    "Total timed-out foreclosure scrape jobs",
+}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> str:
+    """Prometheus text-format metrics endpoint (CloudWatch Container Insights compatible)."""
+    import time as _time
+    lines: list[str] = []
+    for key, value in METRICS.items():
+        metric_name = f"tolipai_scraper_{key}_total"
+        help_text = _METRIC_HELP.get(key, key)
+        lines.append(f"# HELP {metric_name} {help_text}")
+        lines.append(f"# TYPE {metric_name} counter")
+        lines.append(f"{metric_name} {value}")
+    lines.append(f"# HELP tolipai_scraper_active_jobs Currently running scrape jobs")
+    lines.append(f"# TYPE tolipai_scraper_active_jobs gauge")
+    lines.append(f"tolipai_scraper_active_jobs {len([j for j in _jobs.values() if j.get('status') == 'running'])}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+async def _emit_cloudwatch_emf() -> None:
+    """Periodically emit CloudWatch Embedded Metric Format logs so Container Insights
+    can ingest job throughput and error rates without a sidecar or restart."""
+    import json as _json
+    import time as _time
+
+    while True:
+        await asyncio.sleep(60)
+        if _shutting_down:
+            break
+        try:
+            ts = int(_time.time() * 1000)
+            active = len([j for j in _jobs.values() if j.get("status") == "running"])
+            emf = {
+                "_aws": {
+                    "Timestamp": ts,
+                    "CloudWatchMetrics": [
+                        {
+                            "Namespace": "TolipAI/ScraperEngine",
+                            "Dimensions": [["ServiceName"]],
+                            "Metrics": [
+                                {"Name": k, "Unit": "Count"}
+                                for k in METRICS
+                            ] + [{"Name": "ActiveJobs", "Unit": "Count"}],
+                        }
+                    ],
+                },
+                "ServiceName": "scraper-engine",
+                "ActiveJobs": active,
+                **{k: v for k, v in METRICS.items()},
+            }
+            print(_json.dumps(emf), flush=True)
+        except Exception as _emf_err:
+            log.warning("EMF metrics emit failed: %s", _emf_err)
 
 
 # ─── Health check ───────────────────────────────────────────────────────────

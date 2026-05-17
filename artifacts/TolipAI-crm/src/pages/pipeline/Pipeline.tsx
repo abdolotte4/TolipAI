@@ -209,7 +209,7 @@ export default function Pipeline() {
       await updateLead.mutateAsync({ id: leadId, data: { status: newStatus } as any });
       toast({ title: `Lead moved to ${COLUMNS.find(c => c.id === newStatus)?.label}` });
     } catch {
-      queryClient.invalidateQueries({ queryKey: ["crm", "leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/crm/leads"] });
       toast({ title: "Failed to update lead", variant: "destructive" });
     }
   }

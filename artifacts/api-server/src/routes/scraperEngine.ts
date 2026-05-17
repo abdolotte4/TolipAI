@@ -7,6 +7,7 @@
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
+import { csvCell } from "../lib/textUtils";
 import { cashBuyerMatches, crmLeads, crmCampaigns } from "@workspace/db/schema";
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { crmAuth, type CrmTokenPayload } from "./crm/middleware";
@@ -345,8 +346,7 @@ router.get(
         .where(where)
         .orderBy(desc(cashBuyerMatches.matchScore), desc(cashBuyerMatches.createdAt))
         .limit(10000);
-      const esc = (v: string | null | undefined) =>
-        `"${(v ?? "").replace(/"/g, '""')}"`;
+      const esc = (v: string | null | undefined) => csvCell(v);
       const header =
         "id,leadId,buyerName,llcName,buyerType,matchScore,source,city,state,zip,mailingAddress,portfolioSize,portfolioValue,avgPurchasePrice,lastPurchaseDate,phones,emails,createdAt,leadAddress";
       const lines = rows.map((r) =>

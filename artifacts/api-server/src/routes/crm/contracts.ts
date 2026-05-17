@@ -7,6 +7,7 @@ import nodemailer from "nodemailer";
 import { crmAuth } from "./middleware";
 import * as DropboxSign from "@dropbox/sign";
 import type { RequestFile } from "@dropbox/sign";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -65,7 +66,7 @@ async function sendViaDropboxSign(opts: {
     };
   } catch (err: any) {
     // If Dropbox Sign fails, fall through to native
-    console.error("[DropboxSign] API error — falling back to native:", err?.message);
+    logger.error({ err: err?.message }, "[DropboxSign] API error — falling back to native");
     return null;
   }
 }
@@ -601,7 +602,7 @@ router.post("/dropbox-webhook", async (req, res) => {
     // Required acknowledgment response
     res.status(200).send("Hello API Event Received");
   } catch (err: any) {
-    console.error("[DropboxSign webhook]", err?.message);
+    logger.error({ err: err?.message }, "[DropboxSign webhook] error");
     res.status(200).send("Hello API Event Received"); // always ack to prevent retries
   }
 });

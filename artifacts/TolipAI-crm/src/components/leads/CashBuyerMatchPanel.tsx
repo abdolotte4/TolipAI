@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -105,7 +105,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
   const [maxBuyers, setMaxBuyers] = useState<number>(50);
 
   // ── Load existing matches after a completed job ──
-  const refreshList = async (completedJobId?: string) => {
+  const refreshList = useCallback(async (completedJobId?: string) => {
     if (!completedJobId) {
       setLoadingList(false);
       return;
@@ -125,7 +125,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
     } finally {
       setLoadingList(false);
     }
-  };
+  }, []);
   useEffect(() => {
     // Reset loading state whenever the active lead changes
     setLoadingList(false);
@@ -160,8 +160,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
       }
     }, 2500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-    // eslint-disable-next-line
-  }, [jobId, job?.status]);
+  }, [jobId, job?.status, refreshList]);
 
   const handleStart = async () => {
     setStarting(true);

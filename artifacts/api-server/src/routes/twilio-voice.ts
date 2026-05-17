@@ -239,7 +239,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
 // ── POST /api/twilio/voice/call-status ────────────────────────────────────────
 // Twilio status callback — updates call log with final status & duration.
 router.post("/twilio/voice/call-status", async (req, res) => {
-  res.sendStatus(204);
+  res.type("text/xml").send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
   try {
     const callSid = req.body?.CallSid as string | undefined;
     const status = req.body?.CallStatus as string | undefined;
@@ -265,7 +265,7 @@ router.post("/twilio/voice/call-status", async (req, res) => {
 // ── POST /api/twilio/voice/recording ─────────────────────────────────────────
 // Twilio recording status callback — stores recording SID & URL, triggers AI transcription.
 router.post("/twilio/voice/recording", async (req, res) => {
-  res.sendStatus(204);
+  res.type("text/xml").send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
   try {
     const callSid = req.body?.CallSid as string | undefined;
     const recordingSid = req.body?.RecordingSid as string | undefined;

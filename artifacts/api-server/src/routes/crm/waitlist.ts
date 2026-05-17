@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { crmAuth, crmSuperAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
+import { csvCell } from "../../lib/textUtils";
 
 const router = Router();
 
@@ -120,11 +121,7 @@ router.get("/export", crmAuth, crmSuperAdminOnly, async (req, res) => {
       params
     );
 
-    const esc = (v: any) => {
-      if (v == null) return "";
-      const s = String(v).replace(/"/g, '""');
-      return /[,"\n\r]/.test(s) ? `"${s}"` : s;
-    };
+    const esc = (v: any) => csvCell(v);
 
     const lines = [
       ["ID", "Email", "Name", "Phone", "Source", "Status", "Notes", "Joined At"].join(","),

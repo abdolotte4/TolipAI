@@ -2,7 +2,13 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import express from "express";
 import Stripe from "stripe";
 import jwt from "jsonwebtoken";
+import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
+import { db } from "@workspace/db";
+import { crmCampaigns, crmUsers } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { sendEmail } from "../services/emailService";
 
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers.authorization;
@@ -215,6 +221,85 @@ router.post(
     // Process the event asynchronously
     try {
       switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          const meta = session.metadata || {};
+          const customerName = meta.customerName || "Admin";
+          const customerEmail = (meta.customerEmail || "").toLowerCase();
+          const company = (meta.company || customerName).trim() || customerName;
+
+          if (!customerEmail) {
+            logger.warn({ sessionId: session.id }, "[stripe webhook] checkout.session.completed missing email — skipping");
+            break;
+          }
+
+          const [existingUser] = await db
+            .select({ id: crmUsers.id })
+            .from(crmUsers)
+            .where(eq(crmUsers.email, customerEmail))
+            .limit(1);
+
+          if (existingUser) {
+            logger.info({ email: customerEmail, sessionId: session.id }, "[stripe webhook] user already exists — skipping campaign creation");
+            break;
+          }
+
+          const baseSlug = company
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 40) || "campaign";
+          const slug = `${baseSlug}-${randomBytes(3).toString("hex")}`;
+
+          const tempPassword = randomBytes(8).toString("hex");
+          const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+          const [campaign] = await db
+            .insert(crmCampaigns)
+            .values({ name: company, slug })
+            .returning({ id: crmCampaigns.id, name: crmCampaigns.name });
+
+          const [newUser] = await db
+            .insert(crmUsers)
+            .values({
+              name: customerName,
+              email: customerEmail,
+              passwordHash,
+              role: "admin",
+              status: "active",
+              campaignId: campaign.id,
+            })
+            .returning({ id: crmUsers.id });
+
+          await db
+            .update(crmCampaigns)
+            .set({ ownerUserId: newUser.id })
+            .where(eq(crmCampaigns.id, campaign.id));
+
+          logger.info(
+            { campaignId: campaign.id, userId: newUser.id, email: customerEmail, sessionId: session.id },
+            "[stripe webhook] auto-provisioned campaign and admin user"
+          );
+
+          const loginUrl = process.env.CRM_URL || "https://crm.tolipai.com";
+          await sendEmail({
+            to: customerEmail,
+            subject: "Welcome to TolipAI CRM — Your Account Is Ready",
+            html: `
+              <h2>Welcome to TolipAI, ${customerName}!</h2>
+              <p>Your CRM workspace <strong>${campaign.name}</strong> has been created. Here are your login credentials:</p>
+              <ul>
+                <li><strong>Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></li>
+                <li><strong>Email:</strong> ${customerEmail}</li>
+                <li><strong>Temporary Password:</strong> <code>${tempPassword}</code></li>
+              </ul>
+              <p>Please log in and change your password immediately from the account settings page.</p>
+              <p>— The TolipAI Team</p>
+            `,
+            text: `Welcome to TolipAI, ${customerName}!\n\nYour workspace "${campaign.name}" is ready.\n\nLogin: ${loginUrl}\nEmail: ${customerEmail}\nTemp password: ${tempPassword}\n\nPlease change your password after first login.`,
+          });
+          break;
+        }
         case "customer.subscription.created":
         case "customer.subscription.updated": {
           const sub = event.data.object as Stripe.Subscription;

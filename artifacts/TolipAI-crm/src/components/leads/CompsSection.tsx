@@ -259,7 +259,7 @@ export default function CompsSection({ leadId, lead }: { leadId: number; lead: a
       }
     }, 2000);
     return () => clearInterval(interval);
-  }, [compsPolling?.jobToken]);
+  }, [compsPolling?.jobToken, leadId]);
 
   const createMutation = useCrmCreateComp({
     mutation: {

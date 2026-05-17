@@ -12,6 +12,7 @@ import twilioRouter from "./twilio";
 import twilioVoiceRouter from "./twilio-voice";
 import { agentRouter } from "./twilio-voice-agent";
 import powerDialerRouter from "./twilio-power-dialer";
+import openPhoneRouter from "./openphone";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(twilioRouter);
 router.use(twilioVoiceRouter);
 router.use(agentRouter);
 router.use(powerDialerRouter);
+router.use(openPhoneRouter);
 
 export default router;

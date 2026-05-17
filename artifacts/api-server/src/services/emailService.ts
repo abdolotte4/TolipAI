@@ -1,3 +1,5 @@
+import { logger } from "../lib/logger";
+
 interface SendEmailOptions {
   to: string;
   subject: string;
@@ -24,7 +26,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<boolean> {
     });
     return res.ok;
   } catch (err) {
-    console.error("[emailService] Failed to send email:", err);
+    logger.error({ err }, "[emailService] Failed to send email");
     return false;
   }
 }

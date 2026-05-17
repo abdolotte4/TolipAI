@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { crmSubmissionLinks, crmLeads, crmCampaigns } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { logger } from "../../lib/logger";
 import authRouter from "./auth";
 import campaignsRouter from "./campaigns";
 import leadsRouter from "./leads";
@@ -177,7 +178,7 @@ async function handlePublicWaitlistSignup(
     );
     res.json({ ok: true, message: "You're on the list! We'll reach out within 24 hours." });
   } catch (err: any) {
-    console.error("[waitlist]", err);
+    logger.error({ err }, "[waitlist] signup error");
     res.status(500).json({ error: "Could not save. Please try again." });
   }
 }

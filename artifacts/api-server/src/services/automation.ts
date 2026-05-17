@@ -73,7 +73,7 @@ export async function onLeadCreated(opts: {
       }
     }
   } catch (err) {
-    console.error("[automation] onLeadCreated error:", err);
+    logger.error({ err }, "[automation] onLeadCreated error");
   }
 }
 
@@ -101,7 +101,7 @@ export async function onLeadStatusChanged(leadId: number, oldStatus: string, new
         }
       }
     } catch (err) {
-      console.error("[automation] onLeadStatusChanged error:", err);
+      logger.error({ err }, "[automation] onLeadStatusChanged error");
     }
   }
 }
@@ -122,7 +122,7 @@ export async function onTaskCreated(taskId: number, assignedTo: number | null, l
       read: false,
     });
   } catch (err) {
-    console.error("[automation] onTaskCreated error:", err);
+    logger.error({ err }, "[automation] onTaskCreated error");
   }
 }
 
@@ -228,7 +228,7 @@ export async function runTaskAutomationCron() {
 
     logger.info(`[automation] Cron done — ${soonTasks.length} reminders, ${overdueTasks.length} escalations`);
   } catch (err) {
-    console.error("[automation] runTaskAutomationCron error:", err);
+    logger.error({ err }, "[automation] runTaskAutomationCron error");
   }
 
   // Purge job rows older than 30 days (runs every hour but only deletes when rows exist)

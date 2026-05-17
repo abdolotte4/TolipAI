@@ -36,6 +36,7 @@ import {
 } from "../services/coreCalculations";
 import { runSkipTrace, getNextApiKey } from "../services/propertyApi";
 import { logger } from "../lib/logger";
+import { csvCell } from "../lib/textUtils";
 
 const router: Router = Router();
 
@@ -277,11 +278,7 @@ router.get("/tools/distressed/download/:jobId", requirePin, async (req: Request,
       "distress_type", "source", "source_url",
     ];
 
-    const esc = (v: any) => {
-      const s = v == null ? "" : String(v);
-      if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
-      return s;
-    };
+    const esc = (v: any) => csvCell(v);
 
     const header = COLS.join(",");
     const rows = listings.map(r =>
@@ -408,11 +405,7 @@ router.get("/tools/distressed/download-enriched/:enrichJobId", requirePin, (req:
     "phones", "emails", "skip_trace_status",
   ];
 
-  const esc = (v: any) => {
-    const s = Array.isArray(v) ? v.join(" | ") : v == null ? "" : String(v);
-    if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
+  const esc = (v: any) => csvCell(Array.isArray(v) ? v.join(" | ") : v);
 
   const header = COLS.join(",");
   const rows = job.results.map(r =>
@@ -1080,17 +1073,11 @@ router.get("/tools/skip-trace/download/:jobId", requirePin, (req: Request, res: 
   const originalKeys = Object.keys(job.results[0]!.original);
   const headers = [...originalKeys, "phones", "emails", "match_status"];
 
-  const escape = (v: any) => {
-    const s = v == null ? "" : String(v);
-    if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-
   const rows = job.results.map(r => [
-    ...originalKeys.map(k => escape(r.original[k] ?? "")),
-    escape(r.phones.join(" | ")),
-    escape(r.emails.join(" | ")),
-    escape(r.matchStatus ?? ""),
+    ...originalKeys.map(k => csvCell(r.original[k] ?? "")),
+    csvCell(r.phones.join(" | ")),
+    csvCell(r.emails.join(" | ")),
+    csvCell(r.matchStatus ?? ""),
   ].join(","));
 
   const csv = [headers.join(","), ...rows].join("\n");
@@ -1238,19 +1225,13 @@ router.get("/tools/phone-finder/download/:jobId", requirePin, (req: Request, res
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status !== "completed") { res.status(409).json({ error: "Job not yet completed" }); return; }
 
-  const escape = (v: any) => {
-    const s = v == null ? "" : String(v);
-    if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-
   const originalKeys = job.results.length > 0 ? Object.keys(job.results[0]!.original) : [];
   const headers = [...originalKeys, "phones_found", "source"];
 
   const rows = job.results.map(r => [
-    ...originalKeys.map(k => escape(r.original[k] ?? "")),
-    escape(r.phones.join(" | ")),
-    escape(r.source),
+    ...originalKeys.map(k => csvCell(r.original[k] ?? "")),
+    csvCell(r.phones.join(" | ")),
+    csvCell(r.source),
   ].join(","));
 
   const csv = [headers.join(","), ...rows].join("\n");

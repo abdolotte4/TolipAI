@@ -2,8 +2,9 @@ import { Router, type IRouter } from "express";
 import { crmAuth } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmOpenPhoneMessages, crmLeads, crmCampaigns, crmUsers, crmNotifications } from "@workspace/db/schema";
-import { eq, desc, or } from "drizzle-orm";
+import { eq, desc, or, sql as drizzleSql } from "drizzle-orm";
 import { toE164 } from "../services/coreCalculations";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -251,7 +252,7 @@ router.post("/openphone/webhook", async (req, res) => {
       }
     }
   } catch (err) {
-    console.error("[openphone webhook]", err);
+    logger.error(err, "[openphone webhook] handler error");
   }
 });
 

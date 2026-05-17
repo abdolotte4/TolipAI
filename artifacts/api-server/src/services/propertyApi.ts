@@ -477,7 +477,7 @@ export interface FetchCompsResult {
 export async function fetchPropertyData(address: string): Promise<PropertyApiData | null> {
   const apiKey = getNextApiKey();
   if (!apiKey) {
-    console.warn("[propertyApi] No API keys configured — set PROPERTY_API_KEY or PROPERTY_API_KEY_1 … 5");
+    logger.warn("[propertyApi] No API keys configured — set PROPERTY_API_KEY or PROPERTY_API_KEY_1 … 5");
     return null;
   }
   const keyIndex = (_keyIndex === 0 ? loadApiKeys().length : _keyIndex); // 1-based index of key that was just used
@@ -491,7 +491,7 @@ export async function fetchPropertyData(address: string): Promise<PropertyApiDat
     });
     if (!resp.ok) {
       const text = await resp.text().catch(() => resp.statusText);
-      console.error(`[propertyApi] key#${keyIndex} HTTP ${resp.status}: ${text.slice(0, 200)}`);
+      logger.error({ status: resp.status, keyIndex }, `[propertyApi] key#${keyIndex} HTTP ${resp.status}: ${text.slice(0, 200)}`);
       return null;
     }
     const json = await resp.json() as { data?: Record<string, any>; credits_remaining?: number };

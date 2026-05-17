@@ -4,6 +4,7 @@ import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers,
 import { eq, desc, ilike, and, or, sql, ne } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
+import { stripJsonMarkdown } from "../../lib/textUtils";
 import { onLeadCreated, onLeadStatusChanged } from "../../services/automation";
 import { fetchPropertyData, checkCooldown, recordFetch, runSkipTrace, checkSkipTraceCooldown, recordSkipTrace, getLastSkipTraceError, calculateAdjustedComp, calculateArvFromComps, calculateMao, getMaoDiscount, checkFetchCompsCooldown, recordFetchComps, pollCompsExport, downloadComps, getKeyPoolSize } from "../../services/propertyApi";
 import { parseMoney } from "../../services/coreCalculations";
@@ -918,7 +919,7 @@ Do not include markdown, only the raw JSON object.`;
     let parsed: any;
     try {
       // response_format: json_object guarantees JSON, but strip any accidental markdown fences as fallback
-      const cleaned = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
+      const cleaned = stripJsonMarkdown(rawContent);
       parsed = JSON.parse(cleaned);
     } catch (parseErr) {
       logger.error("AI repair estimate parse error. Raw content:", rawContent, "Parse err:", parseErr);
@@ -1265,11 +1266,7 @@ async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
 
     const json = await aiRes.json() as { choices?: Array<{ message?: { content?: string } }> };
     const raw = json?.choices?.[0]?.message?.content ?? "";
-const content = raw
-  .replace(/^```json\s*/i, "")
-  .replace(/^```\s*/i, "")
-  .replace(/```\s*$/, "")
-  .trim();
+const content = stripJsonMarkdown(raw);
 
 const parsed = JSON.parse(content);
 const rawComps: any[] = parsed?.comps ?? [];
@@ -1877,7 +1874,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       return;
     }
 
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
+    const cleaned = stripJsonMarkdown(raw);
 
     let parsed: { condition?: number; rationale?: string; confidence?: string };
     try { parsed = JSON.parse(cleaned); }
@@ -2032,7 +2029,7 @@ Reply ONLY with this JSON:
     const raw = aiJson?.choices?.[0]?.message?.content || "";
 
     // Clean potential markdown or extra characters
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
+    const cleaned = stripJsonMarkdown(raw);
 
     res.json(JSON.parse(cleaned));
   } catch (err) {
@@ -2122,7 +2119,7 @@ Reply ONLY with this JSON structure:
 
     const aiJson = await aiRes.json() as any;
     const raw = aiJson?.choices?.[0]?.message?.content || "{}";
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
+    const cleaned = stripJsonMarkdown(raw);
 
     res.json(JSON.parse(cleaned));
 
@@ -2204,7 +2201,7 @@ Reply ONLY with this JSON structure:
     }
     const aiJson = await aiRes.json() as any;
     const raw = aiJson?.choices?.[0]?.message?.content || "";
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
+    const cleaned = stripJsonMarkdown(raw);
 
     res.json(JSON.parse(cleaned));
   } catch (err) {
