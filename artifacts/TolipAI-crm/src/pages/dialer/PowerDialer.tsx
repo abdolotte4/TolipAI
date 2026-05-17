@@ -7,7 +7,7 @@ import {
   VolumeX, Calendar, User, MapPin, DollarSign, Clock, BarChart2,
   ChevronRight, RefreshCw, Voicemail, Layers, Zap, Upload,
   FileSpreadsheet, Download, ChevronLeft, ChevronDown, PenLine,
-  Hash, CheckCheck, List,
+  Hash, CheckCheck, List, MessageSquare,
 } from "lucide-react";
 import { apiRawFetch as apiFetch } from "@/lib/api";
 import { Link } from "wouter";
@@ -159,6 +159,12 @@ function ListDialer() {
   const [noteInput, setNoteInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [autoSmsEnabled, setAutoSmsEnabled] = useState(false);
+  const [autoSmsFrom, setAutoSmsFrom] = useState("");
+  const [autoSmsTemplate, setAutoSmsTemplate] = useState(
+    "Hi, I just tried to reach you regarding your property. Feel free to call me back at your convenience!"
+  );
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -217,6 +223,17 @@ function ListDialer() {
     }));
 
     setNoteInput("");
+
+    if (autoSmsEnabled && autoSmsFrom && phone && (dispo === "no_answer" || dispo === "voicemail")) {
+      apiFetch("/twilio/auto-missed-call-sms", {
+        method: "POST",
+        body: JSON.stringify({ to: phone, from: autoSmsFrom, message: autoSmsTemplate }),
+      }).then(() => {
+        toast({ title: "Auto-SMS sent", description: `Follow-up sent to ${phone}` });
+      }).catch(() => {
+        toast({ title: "Auto-SMS failed", description: "Could not send follow-up text.", variant: "destructive" });
+      });
+    }
 
     // If there are more phones and this wasn't answered/dnc, move to next phone
     const hasMorePhones = currentPhoneIdx < current.phones.length - 1;
@@ -290,6 +307,47 @@ function ListDialer() {
                 </div>
               );
             })()}
+
+            {/* Missed Call Auto-SMS */}
+            <div className="rounded-xl border border-border bg-secondary/20 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Missed Call Auto-SMS</p>
+                    <p className="text-xs text-muted-foreground">Auto-text on No Answer / Voicemail</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAutoSmsEnabled(e => !e)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${autoSmsEnabled ? "bg-primary" : "bg-secondary border border-border"}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoSmsEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+              </div>
+              {autoSmsEnabled && (
+                <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Your Twilio From Number</Label>
+                    <Input
+                      className="bg-background/50 rounded-xl font-mono text-xs"
+                      placeholder="+15551234567"
+                      value={autoSmsFrom}
+                      onChange={e => setAutoSmsFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Message Template</Label>
+                    <textarea
+                      className="w-full h-20 bg-background/50 border border-border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
+                      value={autoSmsTemplate}
+                      onChange={e => setAutoSmsTemplate(e.target.value)}
+                    />
+                    <p className="text-[10px] text-muted-foreground">Sent automatically after No Answer or Voicemail dispositions.</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <Button
               className="w-full gap-2"
@@ -648,6 +706,13 @@ function CRMDialer() {
   const [calling, setCalling] = useState(false);
   const [disposingId, setDisposingId] = useState<Disposition | null>(null);
 
+  const [autoSmsEnabled, setAutoSmsEnabled] = useState(false);
+  const [autoSmsFrom, setAutoSmsFrom] = useState("");
+  const [autoSmsTemplate, setAutoSmsTemplate] = useState(
+    "Hi, I just tried to reach you regarding your property. Feel free to call me back at your convenience!"
+  );
+  const pendingLeadRef = useRef<any>(null);
+
   const { data: session, isLoading: sessionLoading, refetch: refetchSession } = useQuery<any>({
     queryKey: ["power-dial-session", sessionId],
     queryFn: () => apiFetch(`/twilio/voice/power-dial/session/${sessionId}`),
@@ -686,9 +751,26 @@ function CRMDialer() {
         method: "POST",
         body: JSON.stringify({ disposition }),
       }),
-    onMutate: (d) => setDisposingId(d),
+    onMutate: (d) => {
+      setDisposingId(d);
+      pendingLeadRef.current = session?.currentLead;
+    },
     onSettled: () => setDisposingId(null),
-    onSuccess: (data) => {
+    onSuccess: (data, disposition) => {
+      if (autoSmsEnabled && autoSmsFrom && (disposition === "no_answer" || disposition === "voicemail")) {
+        const phone = pendingLeadRef.current?.phone;
+        const leadId = pendingLeadRef.current?.id;
+        if (phone) {
+          apiFetch("/twilio/auto-missed-call-sms", {
+            method: "POST",
+            body: JSON.stringify({ to: phone, from: autoSmsFrom, message: autoSmsTemplate, leadId }),
+          }).then(() => {
+            toast({ title: "Auto-SMS sent", description: `Follow-up sent to ${phone}` });
+          }).catch(() => {
+            toast({ title: "Auto-SMS failed", description: "Could not send follow-up text.", variant: "destructive" });
+          });
+        }
+      }
       if (data.done) {
         toast({ title: "Session complete!", description: `All ${data.stats?.total} leads have been dialed.` });
       }
@@ -771,6 +853,47 @@ function CRMDialer() {
                 {lines === 1 ? "Single-line mode: dials one lead at a time." : `Multi-line mode: dials ${lines} leads simultaneously.`}
               </p>
             </div>
+            {/* Missed Call Auto-SMS */}
+            <div className="rounded-xl border border-border bg-secondary/20 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Missed Call Auto-SMS</p>
+                    <p className="text-xs text-muted-foreground">Auto-text on No Answer / Voicemail</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAutoSmsEnabled(e => !e)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${autoSmsEnabled ? "bg-primary" : "bg-secondary border border-border"}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoSmsEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+              </div>
+              {autoSmsEnabled && (
+                <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Send From (Twilio Number)</Label>
+                    <Input
+                      className="bg-background/50 rounded-xl font-mono text-xs"
+                      placeholder="+15551234567"
+                      value={autoSmsFrom}
+                      onChange={e => setAutoSmsFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Message Template</Label>
+                    <textarea
+                      className="w-full h-20 bg-background/50 border border-border rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
+                      value={autoSmsTemplate}
+                      onChange={e => setAutoSmsTemplate(e.target.value)}
+                    />
+                    <p className="text-[10px] text-muted-foreground">Sent automatically after No Answer or Voicemail dispositions.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button className="w-full gap-2" disabled={!agentPhone || statusFilter.length === 0 || startMutation.isPending}
               onClick={() => startMutation.mutate()}>
               {startMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : lines > 1 ? <Zap className="w-4 h-4" /> : <Play className="w-4 h-4" />}

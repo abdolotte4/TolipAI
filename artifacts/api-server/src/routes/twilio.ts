@@ -929,26 +929,27 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
 });
 
 // ── GET /api/twilio/phone-numbers/:number/conversations/:contact ──────────────
-// Full call history between an owned number and a specific contact number.
+// Full unified thread (calls + SMS) between an owned number and a contact number.
 router.get("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, async (req, res) => {
   const { number, contact } = req.params;
   const crmUser = req.crmUser!;
   try {
     const isSuperAdmin = crmUser.role === "super_admin";
     const { crmCallLogs, crmLeads: crmLeadsTable } = await import("@workspace/db/schema").then(m => m);
-    const campaignFilter: any = isSuperAdmin || !crmUser.campaignId
+    const callCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
       ? sql`TRUE`
       : eq(crmCallLogs.campaignId, crmUser.campaignId);
+    const smsCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
+      ? sql`TRUE`
+      : eq(crmOpenPhoneMessages.campaignId, crmUser.campaignId);
 
     const numDigits = number.replace(/\D/g, "").slice(-10);
     const ctDigits = contact.replace(/\D/g, "").slice(-10);
 
-    const rows = await db
-      .select()
-      .from(crmCallLogs)
-      .where(
-        and(
-          campaignFilter,
+    const [callRows, smsRows] = await Promise.all([
+      db.select().from(crmCallLogs)
+        .where(and(
+          callCampaignFilter,
           sql`(
             (RIGHT(REGEXP_REPLACE(${crmCallLogs.fromNumber}, '[^0-9]', '', 'g'), 10) = ${numDigits}
               AND RIGHT(REGEXP_REPLACE(${crmCallLogs.toNumber}, '[^0-9]', '', 'g'), 10) = ${ctDigits})
@@ -956,13 +957,32 @@ router.get("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, asyn
             (RIGHT(REGEXP_REPLACE(${crmCallLogs.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ctDigits}
               AND RIGHT(REGEXP_REPLACE(${crmCallLogs.toNumber}, '[^0-9]', '', 'g'), 10) = ${numDigits})
           )`
-        )
-      )
-      .orderBy(desc(crmCallLogs.createdAt))
-      .limit(200);
+        ))
+        .orderBy(desc(crmCallLogs.createdAt))
+        .limit(200),
+
+      db.select().from(crmOpenPhoneMessages)
+        .where(and(
+          smsCampaignFilter,
+          sql`(
+            (RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.fromNumber}, '[^0-9]', '', 'g'), 10) = ${numDigits}
+              AND RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.toNumber}, '[^0-9]', '', 'g'), 10) = ${ctDigits})
+            OR
+            (RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ctDigits}
+              AND RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.toNumber}, '[^0-9]', '', 'g'), 10) = ${numDigits})
+          )`
+        ))
+        .orderBy(desc(crmOpenPhoneMessages.createdAt))
+        .limit(200),
+    ]);
+
+    const thread = [
+      ...callRows.map(r => ({ ...r, type: "call" as const })),
+      ...smsRows.map(r => ({ ...r, type: "sms" as const })),
+    ].sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
 
     let lead = null;
-    const leadId = rows.find(r => r.leadId)?.leadId;
+    const leadId = callRows.find(r => r.leadId)?.leadId ?? smsRows.find(r => r.leadId)?.leadId;
     if (leadId) {
       const [l] = await db.select({
         id: crmLeadsTable.id,
@@ -974,10 +994,46 @@ router.get("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, asyn
       lead = l ?? null;
     }
 
-    res.json({ calls: rows, total: rows.length, lead });
+    res.json({ thread, calls: callRows, total: thread.length, lead });
   } catch (err: any) {
     logger.error(err, "[phone-numbers/conversations/contact] error");
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/auto-missed-call-sms ─────────────────────────────────────
+// Sends an automatic follow-up SMS after a missed call in the Power Dialer.
+router.post("/twilio/auto-missed-call-sms", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  const { to, from, message, leadId } = req.body as {
+    to: string; from: string; message: string; leadId?: number | null;
+  };
+  if (!to || !from || !message) {
+    res.status(400).json({ error: "to, from, and message are required" }); return;
+  }
+  const isSuperAdminSms = crmUser.role === "super_admin";
+  try {
+    const creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdminSms);
+    const toE164Result = toE164(to);
+    if (!toE164Result) { res.status(400).json({ error: "Invalid destination phone number" }); return; }
+    const body = new URLSearchParams({ From: from, To: toE164Result, Body: message });
+    const data = await twilioFetch(creds, "/Messages.json", { method: "POST", body: body.toString() });
+    if (data.sid) {
+      await db.insert(crmOpenPhoneMessages).values({
+        leadId: leadId ? Number(leadId) : null,
+        campaignId: crmUser.campaignId,
+        openPhoneMessageId: data.sid,
+        direction: "outgoing",
+        fromNumber: from,
+        toNumber: toE164Result,
+        content: message,
+        status: data.status || "sent",
+      }).onConflictDoNothing();
+    }
+    res.json({ success: true, sid: data.sid });
+  } catch (err: any) {
+    logger.error(err, "[auto-missed-call-sms] error");
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
