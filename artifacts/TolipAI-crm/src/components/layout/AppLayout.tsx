@@ -86,12 +86,24 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { isDark, toggleTheme } = useTheme();
   useEffect(() => { if (isError) setLocation("/login"); }, [isError, setLocation]);
   const handleLogout = () => { localStorage.removeItem("crm_token"); setLocation("/login"); };
-  const { data: newLeadsData } = useQuery<any>({ queryKey: ["crm-nav-new-leads"], queryFn: () => apiFetch("/leads?status=new&limit=1"), refetchInterval: 30_000, enabled: !!user });
+  const [sseLeadDelta, setSseLeadDelta] = React.useState(0);
+  const sseRef = useRef<EventSource | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem("crm_token");
+    if (!token || !user) return;
+    if (sseRef.current) return;
+    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+    sseRef.current = es;
+    const handler = () => setSseLeadDelta(d => d + 1);
+    es.addEventListener("lead_created", handler);
+    return () => { es.close(); sseRef.current = null; };
+  }, [user]);
+  const { data: newLeadsData } = useQuery<any>({ queryKey: ["crm-stats"], queryFn: () => apiFetch("/stats"), refetchInterval: 60_000, enabled: !!user, onSuccess: () => setSseLeadDelta(0) } as any);
   const { data: pendingTasksData } = useQuery<any>({ queryKey: ["crm-nav-pending-tasks"], queryFn: () => apiFetch("/tasks?status=pending"), refetchInterval: 30_000, enabled: !!user });
   if (isLoading || !user) return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary" /></div>;
   const isSuperAdmin = user.role === "super_admin";
   const isAdmin = user.role === "admin" || isSuperAdmin;
-  const newLeadsCount: number = newLeadsData?.total ?? 0;
+  const newLeadsCount: number = (newLeadsData?.newLeadsLast24h ?? 0) + sseLeadDelta;
   const pendingTasksCount: number = Array.isArray(pendingTasksData) ? pendingTasksData.length : 0;
   const mainNavItems = isSuperAdmin ? [{ label: "Campaigns", href: "/campaigns", icon: Globe }, { label: "All Leads", href: "/leads", icon: Users, badge: newLeadsCount }, { label: "Pipeline", href: "/pipeline", icon: Columns }, { label: "Analytics", href: "/analytics", icon: BarChart2 }, { label: "Call Quality", href: "/analytics/call-quality", icon: Gauge }, { label: "All Tasks", href: "/tasks", icon: CheckSquare, badge: pendingTasksCount }, { label: "Buyers List", href: "/buyers", icon: BookUser }, { label: "Cash Buyer DB", href: "/cash-buyers", icon: Database }, { label: "Distressed Lead Gen", href: "/lead-gen", icon: Zap }, { label: "Power Dialer", href: "/dialer/power", icon: PhoneCall }] : [{ label: "Dashboard", href: "/", icon: LayoutDashboard }, { label: "Leads", href: "/leads", icon: Users, badge: newLeadsCount }, { label: "Pipeline", href: "/pipeline", icon: Columns }, { label: "Analytics", href: "/analytics", icon: BarChart2 }, { label: "Call Quality", href: "/analytics/call-quality", icon: Gauge }, { label: "Tasks", href: "/tasks", icon: CheckSquare, badge: pendingTasksCount }, { label: "Buyers List", href: "/buyers", icon: BookUser }, { label: "Cash Buyer DB", href: "/cash-buyers", icon: Database }, { label: "Distressed Lead Gen", href: "/lead-gen", icon: Zap }, { label: "Power Dialer", href: "/dialer/power", icon: PhoneCall }];
   const adminNavItems = [{ label: "Team Users", href: "/admin/users", icon: Settings }, { label: "Submission Links", href: "/admin/links", icon: LinkIcon }, { label: "Email Sequences", href: "/admin/sequences", icon: Mail }, ...(!isSuperAdmin ? [{ label: "Billing", href: "/admin/billing", icon: CreditCard }] : [])];

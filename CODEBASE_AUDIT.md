@@ -727,5 +727,21 @@ These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle).
 
 ---
 
-*Report generated: May 17, 2026 — Last updated: S21 (May 17, 2026). All P0 critical bugs fixed. All P1 high-impact items done (19/19). Remaining P2/P3: TASK-14 (dead code line numbers shifted), TASK-17 (seed files from build), TASK-18 (demo-video artifact), TASK-19 (in-memory job cache), TASK-21 (FastAPI response_model), TASK-23-26 (type safety + bundle).*
+---
+
+## S22 Changes (May 17, 2026)
+
+| Task | Component | Priority | Description | File(s) | Status |
+|------|-----------|----------|-------------|---------|--------|
+| S22-01 | api-server | 🔴 CRITICAL | Fix `d.map is not a function` in SmsConversations — defensive array coercion in queryFn | `SmsConversations.tsx` | ✅ Done |
+| S22-02 | api-server | 🔴 CRITICAL | Fix `d.map is not a function` in ContractsCard — already applied in prior session | `ContractsCard.tsx` | ✅ Done |
+| S22-03 | api-server | 🟠 HIGH | Phone Numbers endpoint silently swallowed errors — now returns proper HTTP status + error message | `routes/twilio.ts` | ✅ Done |
+| S22-04 | crm | 🟠 HIGH | Phone Numbers page now shows actionable error message when Twilio not configured | `PhoneNumbers.tsx` | ✅ Done |
+| S22-05 | api-server | 🟡 MEDIUM | Add `newLeadsLast24h` to `/crm/stats` endpoint for real-time sidebar badge | `routes/crm/stats.ts` | ✅ Done |
+| S22-06 | crm | 🟡 MEDIUM | Sidebar Leads badge now shows leads created in the last 24 hours, updating live via SSE `lead_created` events | `AppLayout.tsx` | ✅ Done |
+| S22-07 | api-server | 🟡 MEDIUM | Bulk CSV lead import backend — `POST /crm/leads/bulk-import` (up to 500 rows, per-row error reporting) | `routes/crm/leads.ts` | ✅ Done |
+| S22-08 | crm | 🟡 MEDIUM | Bulk CSV import modal — file upload, column auto-mapping, preview, submit with per-row error display | `BulkImportModal.tsx`, `LeadList.tsx` | ✅ Done |
+| S22-09 | infra | 🟡 MEDIUM | Replit preview fixed — TolipAI API Server workflow configured on port 5000 | `replit` config | ✅ Done |
+
+*Report generated: May 17, 2026 — Last updated: S22 (May 17, 2026). All P0 critical bugs fixed. All P1 high-impact items done (19/19). S22 adds bulk import + 24h leads badge + preview fix + map-crash fix. Remaining P2/P3: TASK-14, TASK-17, TASK-18, TASK-21, TASK-23-26.*
 *Awaiting PM review and explicit approval before executing any TASK.*

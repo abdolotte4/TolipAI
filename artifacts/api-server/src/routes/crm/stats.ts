@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { crmLeads, crmTasks, crmUsers } from "@workspace/db/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, gte } from "drizzle-orm";
 import { crmAuth } from "./middleware";
 
 const router = Router();
@@ -26,6 +26,7 @@ router.get("/", crmAuth, async (req, res) => {
     if (crmUser.role === "va") taskConditions.push(eq(crmTasks.assignedTo, crmUser.userId));
     const taskWhere = taskConditions.length > 0 ? and(...taskConditions) : undefined;
 
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [
       [{ total }],
       [{ newCount }],
@@ -33,6 +34,7 @@ router.get("/", crmAuth, async (req, res) => {
       [{ closed }],
       [{ totalTasks }],
       [{ pendingTasks }],
+      [{ newLeads24h }],
       statusGroups,
       recentLeads,
     ] = await Promise.all([
@@ -42,6 +44,7 @@ router.get("/", crmAuth, async (req, res) => {
       db.select({ closed: sql<number>`count(*)::int` }).from(crmLeads).where(leadWhere ? and(leadWhere, eq(crmLeads.status, "closed")) : eq(crmLeads.status, "closed")),
       db.select({ totalTasks: sql<number>`count(*)::int` }).from(crmTasks).where(taskWhere),
       db.select({ pendingTasks: sql<number>`count(*)::int` }).from(crmTasks).where(taskWhere ? and(taskWhere, eq(crmTasks.status, "pending")) : eq(crmTasks.status, "pending")),
+      db.select({ newLeads24h: sql<number>`count(*)::int` }).from(crmLeads).where(leadWhere ? and(leadWhere, gte(crmLeads.createdAt, since24h)) : gte(crmLeads.createdAt, since24h)),
       db.select({ status: crmLeads.status, count: sql<number>`count(*)::int` }).from(crmLeads).where(leadWhere).groupBy(crmLeads.status),
       db.select().from(crmLeads).where(leadWhere).orderBy(desc(crmLeads.createdAt)).limit(5),
     ]);
@@ -58,7 +61,7 @@ router.get("/", crmAuth, async (req, res) => {
     }
 
     res.json({
-      totalLeads: total, newLeads: newCount, underContract, closed, totalTasks, pendingTasks,
+      totalLeads: total, newLeads: newCount, newLeadsLast24h: Number(newLeads24h) || 0, underContract, closed, totalTasks, pendingTasks,
       leadsByStatus: statusGroups,
       recentLeads: recentLeads.map(l => ({
         id: l.id, campaignId: l.campaignId, sellerName: l.sellerName, phone: l.phone, email: l.email, leadSource: l.leadSource,

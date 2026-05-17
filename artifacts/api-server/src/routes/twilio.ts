@@ -226,7 +226,11 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
     }));
     res.json({ phoneNumbers: numbers });
   } catch (err: any) {
-    res.json({ phoneNumbers: [] });
+    const status = typeof err?.status === "number" ? err.status : 500;
+    res.status(status).json({
+      error: err?.message || "Failed to load phone numbers",
+      phoneNumbers: [],
+    });
   }
 });
 

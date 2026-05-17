@@ -809,8 +809,19 @@ TASK: Tax lien / pre-foreclosure
 | S19 | N+1 SMS webhook fix, Prometheus /metrics, stripJsonMarkdown/csvCell utilities, OpenPhone mounted, console→logger, useEffect deps, Pipeline query key, Twilio TwiML Content-Type | +0 → 93 (no net score change — S18 security fixes already counted) |
 | S20 | XSS email escaping (SEC-04), SEC-08 delete guard, DB indexes (users/seq_steps/seq_logs), bare except clauses, /demo dead link, duplicate routes, Vite proxy parameterize, setImmediate outer catch (TASK-04), SEC-09 Python CVEs verified safe, Replit dev workflow running on port 5000 | **+1 → 94** |
 | **S21** | Stripe auto-campaign, Twilio credentials service (TASK-08), in-memory job cache (TASK-19) | **→ 96 target** |
+| **S22** | `d.map` crash fix (SmsConversations + ContractsCard), Phone Numbers error UX, 24h new-leads SSE badge, bulk CSV lead import (500 rows, column mapping, per-row error), Replit preview fixed | **+1 → 95** |
 
-**Current: 94/100** — Enterprise production-ready for current scale. Remaining 2 points: Stripe auto-campaign + Twilio credentials service refactor.
+**Current: 95/100** — Enterprise production-ready. New features this session: bulk CSV import, live 24h leads badge. Remaining 1 point: Stripe auto-campaign revenue automation.
+
+### Pending Features / Upgrades (as of S22)
+
+| Priority | Feature | Status |
+|----------|---------|--------|
+| 🔴 HIGH | Twilio Trial account — cannot call unverified numbers (user's 307-488-2217 must be verified in Twilio Console) | External — user action required |
+| 🟠 MEDIUM | Phone Numbers page shows "No phone numbers found" — Twilio credentials must be configured in campaign settings | Config — user action required |
+| 🟠 MEDIUM | Stripe auto-campaign revenue flow (auto-assign campaign on paid subscription) | Pending dev |
+| 🟡 LOW | FastAPI response_model typing (TASK-21) | Pending |
+| 🟡 LOW | Type safety cleanup: mass `any` in leads.ts, analytics.ts (TASK-23) | Pending |
 
 ---
 

@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { motion } from "framer-motion";
-import { Search, Plus, MapPin, Phone, User, Filter, Clock, AlertTriangle, Trash2, Building2, Calendar, RefreshCw, Download } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, Plus, MapPin, Phone, User, Filter, Clock, AlertTriangle, Trash2, Building2, Calendar, RefreshCw, Download, Upload } from "lucide-react";
+import BulkImportModal from "@/components/leads/BulkImportModal";
 import { useCrmGetLeads, useCrmDeleteLead } from "@workspace/api-client-react";
 import { useCampaignGovernance } from "@/hooks/use-campaign-governance";
 import { Card } from "@/components/ui/card";
@@ -40,6 +41,7 @@ export default function LeadList() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; address: string } | null>(null);
+  const [showImport, setShowImport] = useState(false);
   const [, setLocation] = useLocation();
 
   const handleSearch = (val: string) => {
@@ -106,6 +108,14 @@ export default function LeadList() {
             }}
           >
             <Download className="w-4 h-4" /> Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-xl"
+            onClick={() => setShowImport(true)}
+          >
+            <Upload className="w-4 h-4" /> Import CSV
           </Button>
           <Link href="/leads/new">
             <Button className="rounded-xl px-6 bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg shadow-primary/20">
@@ -312,6 +322,10 @@ export default function LeadList() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AnimatePresence>
+        {showImport && <BulkImportModal onClose={() => { setShowImport(false); refetch(); }} />}
+      </AnimatePresence>
     </div>
   );
 }

@@ -277,7 +277,7 @@ function NumberCard({
 export default function PhoneNumbersPage() {
   const [dialingFrom, setDialingFrom] = useState<PhoneNumber | null>(null);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ phoneNumbers: PhoneNumber[] }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ phoneNumbers: PhoneNumber[] }>({
     queryKey: ["twilio-phone-numbers"],
     queryFn: () => apiFetch("/twilio/phone-numbers"),
     staleTime: 60_000,
@@ -311,11 +311,19 @@ export default function PhoneNumbersPage() {
         </div>
       ) : isError ? (
         <Card className="p-8 rounded-2xl border-white/5 text-center">
-          <AlertCircle className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">Failed to load phone numbers.</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
-            Try again
-          </Button>
+          <AlertCircle className="w-8 h-8 text-amber-400/60 mx-auto mb-3" />
+          <p className="text-sm font-medium text-foreground mb-1">Could not load phone numbers</p>
+          <p className="text-xs text-muted-foreground max-w-xs mx-auto mb-4">
+            {(error as any)?.message || "Twilio credentials may not be configured for this campaign."}
+          </p>
+          <div className="flex gap-2 justify-center flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Try again
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href="/integrations/twilio">Go to Twilio Settings</a>
+            </Button>
+          </div>
         </Card>
       ) : numbers.length === 0 ? (
         <Card className="p-8 rounded-2xl border-white/5 text-center">

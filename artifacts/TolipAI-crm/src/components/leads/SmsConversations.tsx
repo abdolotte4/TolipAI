@@ -45,7 +45,12 @@ export default function SmsConversations({ leadId, leadPhone, campaignId }: Prop
   // Fetch SMS conversation thread
   const { data: messages = [], isFetching, refetch } = useQuery<SmsMessage[]>({
     queryKey: ["/api/twilio/sms-conversations", leadId],
-    queryFn: () => apiFetch(`/twilio/sms-conversations/${leadId}`),
+    queryFn: async () => {
+      const d = await apiFetch(`/twilio/sms-conversations/${leadId}`);
+      if (Array.isArray(d)) return d as SmsMessage[];
+      if (d && Array.isArray((d as any).messages)) return (d as any).messages as SmsMessage[];
+      return [] as SmsMessage[];
+    },
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
