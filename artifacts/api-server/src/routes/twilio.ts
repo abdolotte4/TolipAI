@@ -410,16 +410,22 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers: any[] = data.incoming_phone_numbers || [];
 
+    const voiceWebhook = `${apiBase}/twilio/voice/inbound`;
     const results = await Promise.all(
       numbers.map(async (n: any) => {
         try {
-          const body = new URLSearchParams({ SmsUrl: smsWebhook, SmsMethod: "POST" });
+          const body = new URLSearchParams({
+            SmsUrl: smsWebhook,
+            SmsMethod: "POST",
+            VoiceUrl: voiceWebhook,
+            VoiceMethod: "POST",
+          });
           await twilioFetch(creds, `/IncomingPhoneNumbers/${n.sid}.json`, {
             method: "POST",
             body: body.toString(),
             headers: { "X-HTTP-Method-Override": "PUT" },
           });
-          return { number: n.phone_number, sid: n.sid, status: "configured", webhook: smsWebhook };
+          return { number: n.phone_number, sid: n.sid, status: "configured", smsWebhook, voiceWebhook };
         } catch (err: any) {
           return { number: n.phone_number, sid: n.sid, status: "error", error: err.message };
         }

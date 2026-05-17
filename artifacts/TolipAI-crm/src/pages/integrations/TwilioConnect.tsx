@@ -121,7 +121,7 @@ export default function TwilioConnect() {
       const result = await apiFetch("/twilio/setup-webhooks", { method: "POST" });
       toast({
         title: `Webhooks configured on ${result.configured} number(s)`,
-        description: "Inbound SMS will now appear automatically in the CRM.",
+        description: "Inbound calls now route to your browser dialer (or AI agent). Inbound SMS appears in CRM automatically.",
       });
       qc.invalidateQueries({ queryKey: configQueryKey });
     } catch (err: any) {

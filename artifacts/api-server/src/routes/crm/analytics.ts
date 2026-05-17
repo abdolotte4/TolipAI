@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { crmLeads, crmCallLogs, crmUsers, crmCampaigns } from "@workspace/db/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { crmAuth } from "./middleware";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -143,7 +144,11 @@ router.get("/dashboard", crmAuth, async (req, res) => {
       })),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.warn({ err: err.message }, "[crm/analytics/dashboard] returning empty data");
+    res.json({
+      summary: { totalLeads: 0, closedLeads: 0, underContract: 0, newLeads: 0, closeRate: 0, avgDaysToClose: null, totalClosed: 0 },
+      velocity: [], weeklyTrend: [], funnel: [], topSources: [],
+    });
   }
 });
 
@@ -264,7 +269,11 @@ router.get("/calls", crmAuth, async (req, res) => {
       })),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.warn({ err: err.message }, "[crm/analytics/calls] returning empty data");
+    res.json({
+      summary: { totalCalls: 0, outbound: 0, inbound: 0, avgDurationSec: null, totalDurationSec: 0, answered: 0, answerRate: 0, activeAgents: 0 },
+      volume: [], dispositions: [], agents: [],
+    });
   }
 });
 
@@ -396,7 +405,12 @@ router.get("/call-quality", crmAuth, async (req, res) => {
       })),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.warn({ err: err.message }, "[crm/analytics/call-quality] returning empty data");
+    res.json({
+      days,
+      summary: { totalCalls: 0, callsWithQuality: 0, avgMos: null, avgJitter: null, avgPacketLoss: null, bands: { excellent: 0, good: 0, fair: 0, poor: 0 } },
+      agents: [], trend: [],
+    });
   }
 });
 
@@ -454,7 +468,8 @@ router.get("/campaigns", crmAuth, async (req, res) => {
       })),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.warn({ err: err.message }, "[crm/analytics/campaigns] returning empty data");
+    res.json({ campaigns: [] });
   }
 });
 

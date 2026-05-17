@@ -19,11 +19,14 @@ import {
   crmCampaigns,
   crmCallLogs,
   crmLeads,
+  crmUsers,
 } from "@workspace/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import {
   type TwilioVoiceConfig,
   resolveVoiceConfig,
+  getSmsCreds,
+  getGlobalSmsCreds,
 } from "../services/twilioCredentials";
 import { logger } from "../lib/logger";
 
@@ -221,9 +224,27 @@ router.post("/twilio/voice/recording", async (req, res) => {
 
     // Fire-and-forget AI transcription if OpenAI key available
     if (recordingUrl && process.env.OPENAI_API_KEY) {
+      // Look up campaign for recording auth (callSid already bound in outer scope)
+      let recordingAuthHeader: Record<string, string> = {};
+      try {
+        const [callLogRow] = await db
+          .select({ campaignId: crmCallLogs.campaignId })
+          .from(crmCallLogs)
+          .where(eq(crmCallLogs.callSid, callSid!))
+          .limit(1);
+        const creds = callLogRow?.campaignId
+          ? (await getSmsCreds(callLogRow.campaignId) ?? getGlobalSmsCreds())
+          : getGlobalSmsCreds();
+        if (creds) {
+          recordingAuthHeader = {
+            Authorization: `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64")}`,
+          };
+        }
+      } catch { /* auth header best-effort — fall through without it */ }
+
       setImmediate(async () => {
         try {
-          const audioResp = await fetch(`${recordingUrl}.mp3`);
+          const audioResp = await fetch(`${recordingUrl}.mp3`, { headers: recordingAuthHeader });
           if (!audioResp.ok) return;
           const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
 
@@ -667,6 +688,172 @@ router.post("/twilio/voice/complete-transfer", crmAuth, async (req, res) => {
     logger.error(err, "[twilio/voice/complete-transfer] error");
     res.status(err.status || 500).json({ error: err.message });
   }
+});
+
+// ── POST /api/twilio/voice/inbound ────────────────────────────────────────────
+// Smart inbound call router — set this as the Voice URL for your Twilio number.
+//
+// Routing logic:
+//   Caller IS a known CRM lead → rings all browser-connected agents simultaneously.
+//     If no agent answers within 20s → falls back to AI qualification agent.
+//   Caller is NOT in CRM → routes directly to AI qualification agent.
+//
+// Configure via: CRM → Integrations → Twilio → "Auto-Configure Webhooks"
+// Or set manually in the Twilio Console phone number Voice URL field.
+router.post("/twilio/voice/inbound", async (req, res) => {
+  res.set("Content-Type", "text/xml");
+
+  const callSid   = (req.body?.CallSid as string)  || "";
+  const fromNum   = (req.body?.From   as string)    || "";
+  const toNum     = (req.body?.To     as string)    || "";
+  const accountSidFromTwilio = (req.body?.AccountSid as string) || "";
+
+  const rawHost = (req.headers.host || "").replace(/:\d+$/, "");
+  const apiBase = process.env.API_BASE_URL ||
+    `https://${process.env.REPLIT_DEV_DOMAIN || rawHost || "localhost"}/api`;
+
+  // Helper: TwiML that connects directly to the AI agent stream
+  const aiAgentTwiml = () => {
+    const wsBase = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
+    const streamUrl = `${wsBase}/twilio/voice/agent-stream`;
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${streamUrl}">
+      <Parameter name="from" value="${fromNum}"/>
+      <Parameter name="to" value="${toNum}"/>
+    </Stream>
+  </Connect>
+</Response>`;
+  };
+
+  try {
+    // ── 1. Identify the campaign by the called Twilio number ──────────────────
+    let campaignId: number | null = null;
+    if (toNum || accountSidFromTwilio) {
+      const toDigits = toNum.replace(/\D/g, "");
+      const camps = await db
+        .select({ id: crmCampaigns.id, twilioAccountSid: crmCampaigns.twilioAccountSid, twilioPhoneNumber: crmCampaigns.twilioPhoneNumber })
+        .from(crmCampaigns)
+        .where(eq(crmCampaigns.twilioEnabled, true));
+
+      for (const c of camps) {
+        const sidMatch = accountSidFromTwilio && c.twilioAccountSid === accountSidFromTwilio;
+        const numMatch = c.twilioPhoneNumber &&
+          c.twilioPhoneNumber.replace(/\D/g, "").slice(-10) === toDigits.slice(-10);
+        if (sidMatch || numMatch) { campaignId = c.id; break; }
+      }
+    }
+
+    // ── 2. Look up the caller in CRM leads ────────────────────────────────────
+    const fromDigits10 = fromNum.replace(/\D/g, "").slice(-10);
+    const [lead] = await db
+      .select({ id: crmLeads.id, sellerName: crmLeads.sellerName, status: crmLeads.status })
+      .from(crmLeads)
+      .where(
+        sql`regexp_replace(${crmLeads.phone}, '[^0-9]', '', 'g') LIKE ${"%" + fromDigits10}`
+      )
+      .orderBy(desc(crmLeads.createdAt))
+      .limit(1);
+
+    if (!lead) {
+      // Unknown caller — AI agent qualifies them as a new lead
+      logger.info({ fromNum, toNum }, "[twilio/voice/inbound] unknown caller → AI agent");
+      res.send(aiAgentTwiml());
+      return;
+    }
+
+    // ── 3. Find browser-connected agents for this campaign ────────────────────
+    const agentWhere = campaignId
+      ? eq(crmUsers.campaignId, campaignId)
+      : sql`1=1`;
+
+    const agents = await db
+      .select({ id: crmUsers.id, name: crmUsers.name })
+      .from(crmUsers)
+      .where(agentWhere)
+      .limit(8);
+
+    if (agents.length === 0) {
+      logger.info({ fromNum, leadId: lead.id }, "[twilio/voice/inbound] no agents → AI agent");
+      res.send(aiAgentTwiml());
+      return;
+    }
+
+    // ── 4. Log the inbound call ───────────────────────────────────────────────
+    if (callSid) {
+      db.insert(crmCallLogs).values({
+        callSid,
+        campaignId,
+        leadId: lead.id,
+        direction: "inbound",
+        status: "ringing",
+        fromNumber: fromNum,
+        toNumber: toNum,
+        disposition: "inbound_lead",
+      }).onConflictDoNothing().catch(() => { /* non-fatal */ });
+    }
+
+    // ── 5. Ring all agents simultaneously in the browser dialer ──────────────
+    // Twilio Client identity format matches the token issued in /voice/token:
+    //   identity = `user_${crmUser.id}`
+    const sellerName = (lead.sellerName || "a lead").replace(/[<>&"]/g, (c) =>
+      ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
+    );
+    const clientTags = agents.map((a) => `    <Client>user_${a.id}</Client>`).join("\n");
+
+    logger.info(
+      { fromNum, toNum, leadId: lead.id, agents: agents.length },
+      "[twilio/voice/inbound] known lead → ringing agents"
+    );
+
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Incoming call from ${sellerName}.</Say>
+  <Dial timeout="20" action="${apiBase}/twilio/voice/inbound-no-answer" method="POST">
+${clientTags}
+  </Dial>
+</Response>`);
+  } catch (err) {
+    logger.error(err, "[twilio/voice/inbound] error — falling back to AI agent");
+    const wsBase = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${wsBase}/twilio/voice/agent-stream">
+      <Parameter name="from" value="${fromNum}"/>
+      <Parameter name="to" value="${toNum}"/>
+    </Stream>
+  </Connect>
+</Response>`);
+  }
+});
+
+// ── POST /api/twilio/voice/inbound-no-answer ──────────────────────────────────
+// Dial action callback — called when no browser agent answers within the timeout.
+// Falls back to the AI qualification agent so the caller is never dropped.
+router.post("/twilio/voice/inbound-no-answer", async (req, res) => {
+  res.set("Content-Type", "text/xml");
+
+  const fromNum = (req.body?.From as string) || "";
+  const toNum   = (req.body?.To   as string) || "";
+  const rawHost = (req.headers.host || "").replace(/:\d+$/, "");
+  const apiBase = process.env.API_BASE_URL ||
+    `https://${process.env.REPLIT_DEV_DOMAIN || rawHost || "localhost"}/api`;
+  const wsBase  = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
+
+  logger.info({ fromNum, toNum }, "[twilio/voice/inbound-no-answer] no agent answered → AI agent");
+
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Please hold while we connect you with our assistant.</Say>
+  <Connect>
+    <Stream url="${wsBase}/twilio/voice/agent-stream">
+      <Parameter name="from" value="${fromNum}"/>
+      <Parameter name="to" value="${toNum}"/>
+    </Stream>
+  </Connect>
+</Response>`);
 });
 
 export default router;

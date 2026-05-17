@@ -19,7 +19,11 @@ export function apiFetch(path: string, options?: RequestInit): Promise<any> {
       window.location.href = "/login";
       throw new Error("Session expired — please log in again.");
     }
-    return r.json();
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      throw new Error(json?.error || `Request failed: ${r.status}`);
+    }
+    return json;
   });
 }
 
