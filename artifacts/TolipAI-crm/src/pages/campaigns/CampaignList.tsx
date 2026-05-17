@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -44,19 +45,9 @@ interface OpenPhoneNumber {
   number?: string;
 }
 
-function apiUrl(path: string) {
-  return `/api/crm${path}`;
-}
-
-function authHeaders() {
-  const token = localStorage.getItem("crm_token");
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
 
 async function fetchCampaigns(): Promise<Campaign[]> {
-  const r = await fetch(apiUrl("/campaigns"), { headers: authHeaders() });
-  if (!r.ok) throw new Error("Failed to fetch campaigns");
-  return r.json();
+  return apiFetch("/campaigns");
 }
 
 async function createCampaign(data: {
@@ -66,14 +57,7 @@ async function createCampaign(data: {
   skipTraceDailyLimit: number; fetchCompsDailyLimit: number;
   openPhoneNumberId?: string | null; openPhoneNumber?: string | null; dialerEnabled?: boolean;
 }): Promise<Campaign> {
-  const r = await fetch(apiUrl("/campaigns"), {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(data),
-  });
-  const json = await r.json();
-  if (!r.ok) throw new Error(json.error || "Failed to create campaign");
-  return json;
+  return apiFetch("/campaigns", { method: "POST", body: JSON.stringify(data) });
 }
 
 async function updateGovernance(id: number, data: {
@@ -82,25 +66,11 @@ async function updateGovernance(id: number, data: {
   openPhoneNumberId?: string | null; openPhoneNumber?: string | null; dialerEnabled?: boolean;
   aiSmsEnabled?: boolean; aiSmsPersonality?: string; aiSmsMaxRepliesPerDay?: number;
 }): Promise<Campaign> {
-  const r = await fetch(apiUrl(`/campaigns/${id}`), {
-    method: "PATCH",
-    headers: authHeaders(),
-    body: JSON.stringify(data),
-  });
-  const json = await r.json();
-  if (!r.ok) throw new Error(json.error || "Failed to update campaign");
-  return json;
+  return apiFetch(`/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
 async function toggleCampaign(id: number, active: boolean): Promise<Campaign> {
-  const r = await fetch(apiUrl(`/campaigns/${id}`), {
-    method: "PATCH",
-    headers: authHeaders(),
-    body: JSON.stringify({ active }),
-  });
-  const json = await r.json();
-  if (!r.ok) throw new Error(json.error || "Failed to update campaign");
-  return json;
+  return apiFetch(`/campaigns/${id}`, { method: "PATCH", body: JSON.stringify({ active }) });
 }
 
 function slugify(text: string) {
@@ -197,16 +167,11 @@ export default function CampaignList() {
   const [deleteShowPassword, setDeleteShowPassword] = useState(false);
 
   const deleteMutation = useMutation({
-    mutationFn: async ({ id, password }: { id: number; password: string }) => {
-      const r = await fetch(apiUrl(`/campaigns/${id}`), {
+    mutationFn: ({ id, password }: { id: number; password: string }) =>
+      apiFetch(`/campaigns/${id}`, {
         method: "DELETE",
-        headers: authHeaders(),
         body: JSON.stringify({ superAdminPassword: password }),
-      });
-      const json = await r.json();
-      if (!r.ok) throw new Error(json.error || "Failed to delete campaign");
-      return json;
-    },
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["crm-campaigns"] });
       setDeleteTarget(null);

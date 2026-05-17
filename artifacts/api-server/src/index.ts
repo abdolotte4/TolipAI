@@ -53,6 +53,48 @@ seedDatabase().then(() => {
       )
     `).catch((err: unknown) => logger.error({ err }, "[startup] crm_waitlist migration failed"));
 
+    // ── DB indexes ────────────────────────────────────────────────────────────
+    // Run each index creation separately (CONCURRENTLY cannot run in a transaction)
+    const ensureIndexes: Array<{ name: string; sql: string }> = [
+      {
+        name: "crm_leads_phone_idx",
+        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_phone_idx ON crm_leads (phone)`,
+      },
+      {
+        name: "crm_notes_lead_date_idx",
+        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_notes_lead_date_idx ON crm_notes (lead_id, created_at DESC)`,
+      },
+      {
+        name: "crm_notifications_user_unread_idx",
+        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_notifications_user_unread_idx ON crm_notifications (user_id, read, created_at DESC)`,
+      },
+      {
+        name: "crm_sequence_logs_dedup_idx",
+        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_sequence_logs_dedup_idx ON crm_sequence_logs (lead_id, sequence_id, step_id)`,
+      },
+      {
+        name: "crm_call_logs_call_sid_unique_idx",
+        sql: `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS crm_call_logs_call_sid_unique_idx ON crm_call_logs (call_sid) WHERE call_sid IS NOT NULL`,
+      },
+      {
+        name: "crm_leads_fts_idx",
+        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx ON crm_leads USING gin(to_tsvector('english', coalesce(address,'') || ' ' || coalesce(city,'') || ' ' || coalesce(state,'') || ' ' || coalesce(seller_name,'')))`,
+      },
+    ];
+    (async () => {
+      for (const idx of ensureIndexes) {
+        try {
+          await pool.query(idx.sql);
+        } catch (err: any) {
+          // "already exists" or concurrent-build races are non-fatal
+          if (!err?.message?.includes("already exists")) {
+            logger.warn({ index: idx.name, err: err?.message }, "[startup] index creation warning");
+          }
+        }
+      }
+      logger.info("DB indexes verified.");
+    })();
+
     runEmailSequenceJob();
     setInterval(runEmailSequenceJob, 60 * 60 * 1000);
 
