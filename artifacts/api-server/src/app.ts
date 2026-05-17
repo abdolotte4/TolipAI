@@ -90,7 +90,7 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         scriptSrcAttr: ["'none'"],
         // Google Fonts + Twilio Insights SDK font loader (estatic.com)
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.estatic.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.estatic.com", "https://fonts.static.com"],
         imgSrc: ["'self'", "data:", "https:"],
         // Twilio Voice SDK + OpenAI Realtime API + Groq + font CDNs
         connectSrc: [
@@ -106,14 +106,25 @@ app.use(
           "wss://*.twilio.com",
           "https://eventgw.twilio.com",
           "https://insights.twilio.com",
-          // Twilio Insights SDK loads fonts from *.estatic.com (wildcard covers all subdomains)
+          // Twilio Insights SDK — covers *.estatic.com and fonts.static.com
           "https://*.estatic.com",
-          // Google Fonts loaded via fetch in some environments
+          "https://fonts.static.com",
+          // Google Fonts
           "https://fonts.googleapis.com",
           "https://fonts.gstatic.com",
+          // Twilio regional signalling
+          "https://*.la1-c1.twilio.com",
+          "wss://*.la1-c1.twilio.com",
+          "https://*.la1-ix.twilio.com",
+          "wss://*.la1-ix.twilio.com",
         ],
-        // Twilio Insights SDK loads fonts from fonts.estatic.com (wildcard covers all subdomains)
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://*.estatic.com", "data:"],
+        fontSrc: [
+          "'self'",
+          "https://fonts.gstatic.com",
+          "https://*.estatic.com",
+          "https://fonts.static.com",
+          "data:",
+        ],
         // blob: required for Twilio audio worklets; mediastream: for WebRTC getUserMedia streams
         workerSrc: ["'self'", "blob:"],
         childSrc: ["'self'", "blob:", "mediastream:"],

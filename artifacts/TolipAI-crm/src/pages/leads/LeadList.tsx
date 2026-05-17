@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Search, Plus, MapPin, Phone, User, Filter, Clock, AlertTriangle, Trash2, Building2, Calendar, RefreshCw } from "lucide-react";
+import { Search, Plus, MapPin, Phone, User, Filter, Clock, AlertTriangle, Trash2, Building2, Calendar, RefreshCw, Download } from "lucide-react";
 import { useCrmGetLeads, useCrmDeleteLead } from "@workspace/api-client-react";
 import { useCampaignGovernance } from "@/hooks/use-campaign-governance";
 import { Card } from "@/components/ui/card";
@@ -91,11 +91,28 @@ export default function LeadList() {
             {data?.total != null ? `${data.total.toLocaleString()} total leads` : "Manage and track your properties"}
           </p>
         </div>
-        <Link href="/leads/new">
-          <Button className="rounded-xl px-6 bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg shadow-primary/20">
-            <Plus className="w-4 h-4 mr-2" /> New Lead
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-xl"
+            onClick={() => {
+              const token = localStorage.getItem("crm_token");
+              const params = new URLSearchParams();
+              if (token) params.set("token", token);
+              if (debouncedSearch) params.set("search", debouncedSearch);
+              if (statusFilter) params.set("status", statusFilter);
+              window.open(`/api/crm/leads/export?${params.toString()}`, "_blank");
+            }}
+          >
+            <Download className="w-4 h-4" /> Export CSV
           </Button>
-        </Link>
+          <Link href="/leads/new">
+            <Button className="rounded-xl px-6 bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg shadow-primary/20">
+              <Plus className="w-4 h-4 mr-2" /> New Lead
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <Card className="p-4 rounded-2xl border-white/5 bg-card shadow-lg flex flex-col md:flex-row gap-4">

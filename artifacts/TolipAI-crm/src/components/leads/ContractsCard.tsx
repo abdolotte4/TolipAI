@@ -89,7 +89,12 @@ const ContractsCard = memo(function ContractsCard({
 
   const { data: contracts = [], isLoading } = useQuery<Contract[]>({
     queryKey: ["contracts", leadId],
-    queryFn: () => apiFetch(`/crm/contracts?leadId=${leadId}`),
+    queryFn: async () => {
+      const res = await apiFetch(`/crm/contracts?leadId=${leadId}`);
+      if (Array.isArray(res)) return res as Contract[];
+      if (res && Array.isArray((res as any).contracts)) return (res as any).contracts as Contract[];
+      return [] as Contract[];
+    },
     staleTime: 10_000,
   });
 

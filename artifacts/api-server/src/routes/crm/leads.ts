@@ -208,6 +208,83 @@ async function notifyFollowers(leadId: number, excludeUserId: number, content: s
   }
 }
 
+// ── GET /crm/leads/export — download all filtered leads as CSV ─────────────────
+router.get("/export", crmAuth, async (req, res) => {
+  const { status, search, archived } = req.query as Record<string, string | undefined>;
+  const crmUser = req.crmUser!;
+
+  try {
+    const conditions: any[] = [];
+    const campaignCond = getCampaignCondition(crmUser);
+    if (campaignCond) conditions.push(campaignCond);
+    if (archived === "true") {
+      conditions.push(eq(crmLeads.archived, true));
+    } else {
+      conditions.push(eq(crmLeads.archived, false));
+    }
+    if (status) conditions.push(eq(crmLeads.status, status));
+    if (search) {
+      conditions.push(or(
+        ilike(crmLeads.sellerName, `%${search}%`),
+        ilike(crmLeads.address, `%${search}%`),
+        ilike(crmLeads.phone, `%${search}%`),
+        ilike(crmLeads.email, `%${search}%`),
+      ));
+    }
+    if (crmUser.role === "va") {
+      conditions.push(eq(crmLeads.assignedTo, crmUser.userId));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const rows = await db
+      .select({ lead: crmLeads, assignedToName: crmUsers.name, campaignName: crmCampaigns.name })
+      .from(crmLeads)
+      .leftJoin(crmUsers, eq(crmLeads.assignedTo, crmUsers.id))
+      .leftJoin(crmCampaigns, eq(crmLeads.campaignId, crmCampaigns.id))
+      .where(where)
+      .orderBy(desc(crmLeads.createdAt))
+      .limit(10_000);
+
+    const escCsv = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const headers = [
+      "ID","Seller Name","Phone","Email","Address","City","State","Zip",
+      "Status","Lead Source","Property Type","Beds","Baths","Sqft","Condition",
+      "Occupancy","Asking Price","ARV","ERC","MAO","Assigned To","Campaign",
+      "Created At",
+    ];
+
+    const csvLines = [
+      headers.join(","),
+      ...rows.map(r => {
+        const l = r.lead;
+        return [
+          l.id, l.sellerName, l.phone, l.email,
+          l.address, l.city, l.state, l.zip,
+          l.status, l.leadSource, l.propertyType,
+          l.beds, l.baths, l.sqft, l.condition,
+          l.occupancy,
+          l.askingPrice, l.arv, l.estimatedRepairCost, l.mao,
+          r.assignedToName, r.campaignName,
+          l.createdAt instanceof Date ? l.createdAt.toISOString() : l.createdAt,
+        ].map(escCsv).join(",");
+      }),
+    ];
+
+    const filename = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(csvLines.join("\n"));
+  } catch (err) {
+    logger.error(err, "CRM export leads error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/", crmAuth, async (req, res) => {
   const { status, search, page = "1", limit = "20", archived } = req.query as Record<string, string | undefined>;
   const crmUser = req.crmUser!;

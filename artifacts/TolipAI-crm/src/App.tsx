@@ -35,6 +35,7 @@ import AnalyticsDashboard from "@/pages/analytics/Dashboard";
 import CallReport from "@/pages/analytics/CallReport";
 import CallQualityDashboard from "@/pages/analytics/CallQualityDashboard";
 import PowerDialer from "@/pages/dialer/PowerDialer";
+import PhoneNumbersPage from "@/pages/integrations/PhoneNumbers";
 import SignContract from "@/pages/public/SignContract";
 import ToS from "@/pages/public/ToS";
 import WaitlistAdmin from "@/pages/admin/WaitlistAdmin";
@@ -84,6 +85,7 @@ function Router() {
       <Route path="/integrations/propelio"><AppLayout><ProperioConnect /></AppLayout></Route>
       <Route path="/integrations/propwire"><AppLayout><PropwireConnect /></AppLayout></Route>
       <Route path="/integrations/twilio"><AppLayout><TwilioConnect /></AppLayout></Route>
+      <Route path="/phone-numbers"><AppLayout><PhoneNumbersPage /></AppLayout></Route>
       <Route path="/analytics"><AppLayout><AnalyticsDashboard /></AppLayout></Route>
       <Route path="/analytics/calls"><AppLayout><CallReport /></AppLayout></Route>
       <Route path="/analytics/call-quality"><AppLayout><CallQualityDashboard /></AppLayout></Route>
