@@ -89,7 +89,7 @@ router.get("/dashboard", crmAuth, async (req, res) => {
     ]);
 
     // Total leads
-    const [totalsRow] = await db.execute(sql`
+    const totalsResult = await db.execute(sql`
       SELECT
         count(*)::int AS total,
         count(*) FILTER (WHERE status = 'closed')::int AS closed,
@@ -105,7 +105,7 @@ router.get("/dashboard", crmAuth, async (req, res) => {
       .filter(s => funnelMap[s] != null)
       .map(s => ({ status: s, count: funnelMap[s] as number }));
 
-    const totals = totalsRow as any;
+    const totals = (totalsResult.rows[0] ?? {}) as any;
     const closeRate = totals.total > 0
       ? Math.round((totals.closed / totals.total) * 100)
       : 0;
