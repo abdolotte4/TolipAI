@@ -204,7 +204,8 @@ router.post("/twilio/voice/call-status", async (req, res) => {
 // ── POST /api/twilio/voice/recording ─────────────────────────────────────────
 // Twilio recording status callback — stores recording SID & URL, triggers AI transcription.
 router.post("/twilio/voice/recording", async (req, res) => {
-  res.type("text/xml").send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
+  // Recording status callbacks expect a 200 with no TwiML — not text/xml
+  res.status(200).json({ received: true });
   try {
     const callSid = req.body?.CallSid as string | undefined;
     const recordingSid = req.body?.RecordingSid as string | undefined;
@@ -458,56 +459,14 @@ router.get("/twilio/voice/calls", crmAuth, async (req, res) => {
 });
 
 // ── POST /api/twilio/voice/hold ───────────────────────────────────────────────
-// Plays hold music to the remote party (hold=true) or stops it (hold=false).
-// The browser SDK's local mute is handled client-side; this endpoint updates what
-// the REMOTE party hears via the Twilio REST API — best-effort, non-blocking.
+// Hold is handled entirely client-side via the Twilio Voice SDK mute() function.
+// This endpoint is kept for API compatibility but just returns success.
+// Redirecting the browser call SID via the REST API would disconnect the SDK,
+// so we intentionally avoid any Twilio REST calls here.
 // Body: { callSid: string, hold: boolean }
 router.post("/twilio/voice/hold", crmAuth, async (req, res) => {
-  const crmUser = req.crmUser!;
-  const { callSid, hold } = req.body as { callSid?: string; hold?: boolean };
-
-  if (!callSid) {
-    res.status(400).json({ error: "callSid is required" });
-    return;
-  }
-
-  try {
-    const isSuperAdmin = crmUser.role === "super_admin";
-    const cfg = await resolveVoiceConfig(crmUser.campaignId, isSuperAdmin);
-
-    // Hold → play royalty-free hold music loop.
-    // Unhold → <Hangup> ends the hold-music leg; the browser SDK leg stays
-    //           connected so the agent can speak again immediately.
-    const twiml = hold
-      ? `<?xml version="1.0" encoding="UTF-8"?><Response><Play loop="10">https://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP.mp3</Play></Response>`
-      : `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`;
-
-    const creds = Buffer.from(`${cfg.apiKeySid}:${cfg.apiKeySecret}`).toString("base64");
-    const twilioResp = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls/${encodeURIComponent(callSid)}.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${creds}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({ Twiml: twiml }).toString(),
-      }
-    );
-
-    if (!twilioResp.ok) {
-      const body = await twilioResp.json().catch(() => ({})) as any;
-      throw Object.assign(
-        new Error(body?.message || `Twilio API error ${twilioResp.status}`),
-        { status: twilioResp.status }
-      );
-    }
-
-    res.json({ success: true, held: hold });
-  } catch (err: any) {
-    logger.error(err, "[twilio/voice/hold] error");
-    res.status(err.status || 500).json({ error: err.message });
-  }
+  const { hold } = req.body as { callSid?: string; hold?: boolean };
+  res.json({ success: true, held: hold ?? false });
 });
 
 // ── POST /api/twilio/voice/voicemail-drop ─────────────────────────────────────

@@ -7,7 +7,9 @@ import { setupFetchInterceptor } from "./lib/api-setup";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useCrmGetMe } from "@workspace/api-client-react";
-import { useToast } from "@/hooks/use-toast";
+import { PhoneProvider } from "@/contexts/PhoneContext";
+import IncomingCallPopup from "@/components/phone/IncomingCallPopup";
+import ActiveCallBar from "@/components/phone/ActiveCallBar";
 
 setupFetchInterceptor();
 
@@ -97,41 +99,20 @@ function Router() {
   );
 }
 
-// Global SSE listener — shows a toast whenever an inbound call arrives so every
-// agent sees the notification regardless of which page they are on.
-function IncomingCallNotifier() {
-  const { toast } = useToast();
-  useEffect(() => {
-    const token = localStorage.getItem("crm_token");
-    if (!token) return;
-    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
-    const handler = (e: MessageEvent) => {
-      try {
-        const d = JSON.parse(e.data);
-        toast({
-          title: "Incoming Call",
-          description: `${d.leadName || "Unknown caller"}${d.phone ? ` · ${d.phone}` : ""}`,
-          duration: 25_000,
-        });
-      } catch { }
-    };
-    es.addEventListener("incoming_call", handler);
-    return () => es.close();
-  }, [toast]);
-  return null;
-}
-
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "") }>
-          <ErrorBoundary>
-            <Router />
-          </ErrorBoundary>
-        </WouterRouter>
-        <Toaster />
-        <IncomingCallNotifier />
+        <PhoneProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <ErrorBoundary>
+              <Router />
+            </ErrorBoundary>
+          </WouterRouter>
+          <Toaster />
+          <IncomingCallPopup />
+          <ActiveCallBar />
+        </PhoneProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
