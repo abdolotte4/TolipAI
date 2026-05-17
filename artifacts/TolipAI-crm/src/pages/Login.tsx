@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { useCrmLogin } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import AuroraBackground from "./login/AuroraBackground";
@@ -9,6 +9,7 @@ import LiveStatsTicker from "./login/LiveStatsTicker";
 import ComparisonMatrix from "./login/ComparisonMatrix";
 import TestimonialMarquee from "./login/TestimonialMarquee";
 import FeaturesShowcase from "./login/FeaturesShowcase";
+import PricingSection from "./login/PricingSection";
 
 // Floating sparkle particles
 function Particles() {
@@ -246,6 +247,11 @@ export default function Login() {
 
         {/* ── FEATURES SHOWCASE ────────────────────────────────────────────── */}
         <FeaturesShowcase />
+
+        <GlowDivider />
+
+        {/* ── PRICING ───────────────────────────────────────────────────────── */}
+        <PricingSection />
 
         <GlowDivider />
 

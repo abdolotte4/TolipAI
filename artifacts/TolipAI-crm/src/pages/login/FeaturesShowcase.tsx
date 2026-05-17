@@ -1,9 +1,9 @@
 import { motion } from "framer-motion";
 import {
   Brain, Phone, MessageSquare, BarChart3, Satellite, Search,
-  Globe, Shield, Smartphone, Zap, Users, Clock, Target,
+  Globe, Smartphone, Zap, Users, Target,
   FileText, Bell, Map, RefreshCw, Lock, Headphones, Radio,
-  Layers, GitBranch, Mic, Video, Mail, Database, TrendingUp,
+  Layers, GitBranch, Mic, Mail, Database, TrendingUp,
 } from "lucide-react";
 
 const FEATURES = [

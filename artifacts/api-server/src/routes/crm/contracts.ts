@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { crmContracts, crmLeads, crmCampaigns, crmUsers } from "@workspace/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { crmContracts, crmLeads, crmCampaigns } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { crmAuth } from "./middleware";
