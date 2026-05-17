@@ -30,6 +30,12 @@ export interface CallAnalytics {
   packetLoss: number | null;
 }
 
+export interface TranscriptSegment {
+  track: "inbound" | "outbound";
+  text: string;
+  ts: number;
+}
+
 interface PhoneContextValue {
   status: PhoneStatus;
   errorMsg: string;
@@ -44,6 +50,8 @@ interface PhoneContextValue {
   hasPendingIncoming: boolean;
   activeLeadId: number | null;
   activeLeadName: string | null;
+  liveTranscript: TranscriptSegment[];
+  aiSuggestion: string | null;
 
   initDevice: () => Promise<boolean>;
   startCall: (phone: string, leadId: number | null, leadName: string, record: boolean) => Promise<void>;
@@ -54,6 +62,7 @@ interface PhoneContextValue {
   acceptIncoming: (leadId?: number | null) => void;
   declineIncoming: () => void;
   resetLastCall: () => void;
+  clearTranscript: () => void;
 }
 
 const PhoneContext = createContext<PhoneContextValue | null>(null);
@@ -123,6 +132,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const currentCallSidRef = useRef<string | null>(null);
   const pendingIncomingCallRef = useRef<Call | null>(null);
   const ringStopRef = useRef<(() => void) | null>(null);
+  const analyticsRef = useRef<CallAnalytics>({ mos: null, jitter: null, packetLoss: null });
 
   const [status, setStatus] = useState<PhoneStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -137,6 +147,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const [hasPendingIncoming, setHasPendingIncoming] = useState(false);
   const [activeLeadId, setActiveLeadId] = useState<number | null>(null);
   const [activeLeadName, setActiveLeadName] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState<TranscriptSegment[]>([]);
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
 
   const stopRing = useCallback(() => {
     if (ringStopRef.current) {
@@ -150,6 +162,11 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+  }, []);
+
+  const clearTranscript = useCallback(() => {
+    setLiveTranscript([]);
+    setAiSuggestion(null);
   }, []);
 
   useEffect(() => {
@@ -246,10 +263,12 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       setStatus("calling");
       setDuration(0);
       setAnalytics({ mos: null, jitter: null, packetLoss: null });
+      analyticsRef.current = { mos: null, jitter: null, packetLoss: null };
       setMuted(false);
       setHeld(false);
       setActiveLeadId(leadId);
       setActiveLeadName(leadName);
+      clearTranscript();
 
       const params: Record<string, string> = {
         To: phone,
@@ -283,12 +302,14 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
       call.on("sample", (sample: any) => {
         if (!sample) return;
-        setAnalytics({
+        const newAnalytics = {
           mos: typeof sample.mos === "number" ? Math.round(sample.mos * 100) / 100 : null,
           jitter: typeof sample.jitter === "number" ? Math.round(sample.jitter * 10) / 10 : null,
           packetLoss: typeof sample.packetsLostFraction === "number"
             ? Math.round(sample.packetsLostFraction * 1000) / 10 : null,
-        });
+        };
+        analyticsRef.current = newAnalytics;
+        setAnalytics(newAnalytics);
       });
 
       const onDisconnect = async () => {
@@ -296,12 +317,19 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         setStatus("idle");
         setHeld(false);
         const sid = currentCallSidRef.current;
-        setLastAnalytics({ mos: analytics.mos, jitter: analytics.jitter, packetLoss: analytics.packetLoss });
+        const finalAnalytics = analyticsRef.current;
+        setLastAnalytics(finalAnalytics);
+
         if (sid) {
           try {
             await authFetch(`/twilio/voice/log/${sid}`, {
               method: "PATCH",
-              body: JSON.stringify({ status: "completed" }),
+              body: JSON.stringify({
+                status: "completed",
+                mos: finalAnalytics.mos,
+                jitter: finalAnalytics.jitter,
+                packetLoss: finalAnalytics.packetLoss,
+              }),
             });
           } catch { }
         }
@@ -322,7 +350,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         setCurrentCallSid(null);
       });
     },
-    [initDevice, callerIdUsed, analytics, stopTimer]
+    [initDevice, callerIdUsed, stopTimer, clearTranscript]
   );
 
   const hangUp = useCallback(() => {
@@ -364,26 +392,47 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     setStatus("in-progress");
     setDuration(0);
     setAnalytics({ mos: null, jitter: null, packetLoss: null });
+    analyticsRef.current = { mos: null, jitter: null, packetLoss: null };
     setMuted(false);
     setHeld(false);
+    clearTranscript();
 
     const phone = (call.parameters as any)?.From || "";
     if (leadId !== undefined) setActiveLeadId(leadId ?? null);
 
     call.on("sample", (sample: any) => {
       if (!sample) return;
-      setAnalytics({
+      const newAnalytics = {
         mos: typeof sample.mos === "number" ? Math.round(sample.mos * 100) / 100 : null,
         jitter: typeof sample.jitter === "number" ? Math.round(sample.jitter * 10) / 10 : null,
         packetLoss: typeof sample.packetsLostFraction === "number"
           ? Math.round(sample.packetsLostFraction * 1000) / 10 : null,
-      });
+      };
+      analyticsRef.current = newAnalytics;
+      setAnalytics(newAnalytics);
     });
 
-    call.on("disconnect", () => {
+    call.on("disconnect", async () => {
       stopTimer();
       setStatus("idle");
       setHeld(false);
+      const sid = currentCallSidRef.current;
+      const finalAnalytics = analyticsRef.current;
+      setLastAnalytics(finalAnalytics);
+
+      if (sid) {
+        try {
+          await authFetch(`/twilio/voice/log/${sid}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: "completed",
+              mos: finalAnalytics.mos,
+              jitter: finalAnalytics.jitter,
+              packetLoss: finalAnalytics.packetLoss,
+            }),
+          });
+        } catch { }
+      }
       callRef.current = null;
       currentCallSidRef.current = null;
       setCurrentCallSid(null);
@@ -408,7 +457,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         }),
       }).catch(() => {});
     }
-  }, [stopRing, stopTimer]);
+  }, [stopRing, stopTimer, clearTranscript]);
 
   const declineIncoming = useCallback(() => {
     stopRing();
@@ -425,10 +474,12 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     setCurrentCallSid(null);
   }, []);
 
+  // ── SSE: incoming call metadata + live transcript ────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem("crm_token");
     if (!token) return;
     const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+
     es.addEventListener("incoming_call", (e: MessageEvent) => {
       try {
         const d = JSON.parse(e.data);
@@ -439,6 +490,27 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         }));
       } catch { }
     });
+
+    es.addEventListener("call_transcript", (e: MessageEvent) => {
+      try {
+        const d = JSON.parse(e.data);
+        const callSid = currentCallSidRef.current;
+        if (!callSid || d.callSid !== callSid) return;
+        const seg = d.segment as TranscriptSegment;
+        if (!seg?.text) return;
+        setLiveTranscript((prev) => [...prev.slice(-99), seg]);
+      } catch { }
+    });
+
+    es.addEventListener("call_suggestion", (e: MessageEvent) => {
+      try {
+        const d = JSON.parse(e.data);
+        const callSid = currentCallSidRef.current;
+        if (!callSid || d.callSid !== callSid) return;
+        if (d.suggestion) setAiSuggestion(d.suggestion);
+      } catch { }
+    });
+
     return () => es.close();
   }, []);
 
@@ -456,6 +528,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     hasPendingIncoming,
     activeLeadId,
     activeLeadName,
+    liveTranscript,
+    aiSuggestion,
     initDevice,
     startCall,
     hangUp,
@@ -465,6 +539,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     acceptIncoming,
     declineIncoming,
     resetLastCall,
+    clearTranscript,
   };
 
   return <PhoneContext.Provider value={value}>{children}</PhoneContext.Provider>;

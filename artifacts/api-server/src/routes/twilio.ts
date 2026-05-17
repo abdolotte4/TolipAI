@@ -219,18 +219,26 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
 
-  // Helper: build a synthetic entry from the DB-configured number so the page
+  // Helper: build a synthetic entry from configured credentials so the page
   // always shows something useful even when the Twilio REST API is unavailable.
   const dbFallback = async (): Promise<any[]> => {
     try {
-      if (!crmUser.campaignId) return [];
-      const creds = await getSmsCreds(crmUser.campaignId);
-      if (!creds?.phoneNumber) return [];
+      let phone: string | null | undefined = null;
+      if (crmUser.campaignId) {
+        const creds = await getSmsCreds(crmUser.campaignId);
+        phone = creds?.phoneNumber;
+      }
+      // Fall back to global env var for super admins
+      if (!phone && isSuperAdmin) {
+        phone = getGlobalSmsCreds()?.phoneNumber || process.env.TWILIO_VOICE_CALLER_ID || null;
+      }
+      if (!phone) return [];
       return [{
-        id: creds.phoneNumber,
+        id: phone,
         sid: "configured",
-        number: creds.phoneNumber,
-        name: `${creds.phoneNumber} (configured)`,
+        number: phone,
+        name: `${phone} (configured)`,
+        capabilities: { voice: true, sms: true, mms: false },
       }];
     } catch { return []; }
   };
@@ -243,6 +251,7 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
       sid: n.sid,
       number: n.phone_number,
       name: n.friendly_name || n.phone_number,
+      capabilities: n.capabilities ?? { voice: true, sms: true, mms: false },
     }));
     // If Twilio API returned nothing, still show the DB-configured number
     const phoneNumbers = numbers.length > 0 ? numbers : await dbFallback();

@@ -36,6 +36,25 @@ const router: IRouter = Router();
 const { AccessToken } = twilioJwt;
 const { VoiceGrant } = AccessToken;
 
+// ── In-memory live transcript store (per callSid) ────────────────────────────
+interface TranscriptSegment {
+  track: "inbound" | "outbound";
+  text: string;
+  ts: number;
+}
+interface LiveCallTranscript {
+  segments: TranscriptSegment[];
+  aiSuggestionTimer: ReturnType<typeof setTimeout> | null;
+  fullText: string;
+}
+const liveTranscripts = new Map<string, LiveCallTranscript>();
+
+function cleanupTranscript(callSid: string) {
+  const entry = liveTranscripts.get(callSid);
+  if (entry?.aiSuggestionTimer) clearTimeout(entry.aiSuggestionTimer);
+  liveTranscripts.delete(callSid);
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // ── POST /api/twilio/voice/token ──────────────────────────────────────────────
@@ -148,9 +167,14 @@ router.post("/twilio/voice/answer", async (req, res) => {
       // Non-fatal — whisper is optional
     }
 
+    const transcriptionXml = `
+  <Start>
+    <Transcription statusCallbackUrl="${apiBase}/twilio/voice/transcript" statusCallbackMethod="POST" track="both" />
+  </Start>`;
+
     if (record) {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>${whisperXml}
+<Response>${whisperXml}${transcriptionXml}
   <Dial callerId="${callerId}" record="record-from-answer"
         recordingStatusCallback="${apiBase}/twilio/voice/recording"
         recordingStatusCallbackMethod="POST"
@@ -160,7 +184,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
 </Response>`);
     } else {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>${whisperXml}
+<Response>${whisperXml}${transcriptionXml}
   <Dial callerId="${callerId}" action="${statusCallbackUrl}" method="POST">
     <Number>${to}</Number>
   </Dial>
@@ -981,6 +1005,87 @@ router.get("/twilio/voice/recording-proxy", crmAuth, async (req, res) => {
   } catch (err: any) {
     logger.error(err, "[recording-proxy] error");
     res.status(500).json({ error: "Failed to proxy recording" });
+  }
+});
+
+// ── POST /api/twilio/voice/transcript ─────────────────────────────────────────
+// Twilio Voice Intelligence real-time transcription webhook.
+// Emits `call_transcript` and (debounced) `call_suggestion` SSE events.
+router.post("/twilio/voice/transcript", async (req, res) => {
+  res.status(200).json({ received: true });
+  try {
+    const callSid   = req.body?.CallSid        as string | undefined;
+    const event     = req.body?.TranscriptionEvent as string | undefined;
+    const rawData   = req.body?.TranscriptionData  as string | undefined;
+    const track     = (req.body?.Track as string | undefined) || "";
+
+    if (!callSid || !event) return;
+
+    if (event === "transcription-stopped") { cleanupTranscript(callSid); return; }
+    if (event !== "transcription-content") return;
+
+    let transcriptText = "";
+    try { transcriptText = rawData ? (JSON.parse(rawData)?.transcript || "") : ""; } catch { transcriptText = rawData || ""; }
+    if (!transcriptText.trim()) return;
+
+    if (!liveTranscripts.has(callSid)) {
+      liveTranscripts.set(callSid, { segments: [], aiSuggestionTimer: null, fullText: "" });
+    }
+    const entry = liveTranscripts.get(callSid)!;
+    const isInbound = track.toLowerCase().includes("inbound");
+    const segment: TranscriptSegment = { track: isInbound ? "inbound" : "outbound", text: transcriptText, ts: Date.now() };
+    entry.segments.push(segment);
+    entry.fullText += ` ${transcriptText}`;
+
+    let campaignId: number | null = null;
+    try {
+      const [row] = await db.select({ campaignId: crmCallLogs.campaignId }).from(crmCallLogs)
+        .where(eq(crmCallLogs.callSid, callSid)).limit(1);
+      campaignId = row?.campaignId ?? null;
+    } catch { /* non-fatal */ }
+
+    emitCrmActivity("call_transcript", {
+      campaignId, callSid,
+      segment: { track: segment.track, text: segment.text, ts: segment.ts },
+    });
+
+    // Debounced AI rebuttal suggestion — fires 8 s after last inbound segment
+    if (isInbound && getOpenAIKey()) {
+      if (entry.aiSuggestionTimer) clearTimeout(entry.aiSuggestionTimer);
+      entry.aiSuggestionTimer = setTimeout(async () => {
+        try {
+          const recentText = entry.fullText.slice(-3000);
+          const resp = await fetch(`${getOpenAIBaseUrl()}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${getOpenAIKey()}` },
+            signal: AbortSignal.timeout(10_000),
+            body: JSON.stringify({
+              model: "gpt-4o-mini",
+              max_tokens: 200,
+              messages: [
+                {
+                  role: "system",
+                  content: `You are a real estate wholesaling coach listening live to a seller call.
+Based on the last thing the seller said, give ONE short, specific rebuttal or talking point the agent can say RIGHT NOW.
+Keep it under 40 words. Be direct. If no objection is detected, return an empty string.
+Return ONLY the suggested response text — nothing else.`,
+                },
+                { role: "user", content: `Live transcript:\n${recentText}\n\nWhat should the agent say now?` },
+              ],
+            }),
+          });
+          if (resp.ok) {
+            const aiData = await resp.json() as any;
+            const suggestion = (aiData.choices?.[0]?.message?.content || "").trim();
+            if (suggestion) {
+              emitCrmActivity("call_suggestion", { campaignId, callSid, suggestion, ts: Date.now() });
+            }
+          }
+        } catch (err) { logger.warn(err, "[transcript] AI suggestion error"); }
+      }, 8_000);
+    }
+  } catch (err) {
+    logger.error(err, "[twilio/voice/transcript] error");
   }
 });
 
