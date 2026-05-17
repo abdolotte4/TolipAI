@@ -1,10 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Users2, Search, Download, ExternalLink, X, Loader2,
+  Users2, Search, Download, X, Loader2,
   Mail, TrendingUp, Clock, ChevronLeft, ChevronRight,
   Trash2, Phone, Building2, User, ChevronDown,
+  Pencil, Check,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -86,6 +87,92 @@ function nextStatus(current: WaitlistStatus): WaitlistStatus {
   return STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
 }
 
+// ─── NoteCell ─────────────────────────────────────────────────────────────────
+// Click-to-edit inline notes with auto-save on blur.
+
+function NoteCell({
+  rowId,
+  initialNote,
+  onSave,
+}: {
+  rowId: string;
+  initialNote: string | null;
+  onSave: (id: string, notes: string) => Promise<void>;
+}) {
+  const [editing, setEditing]   = useState(false);
+  const [value,   setValue]     = useState(initialNote ?? "");
+  const [saved,   setSaved]     = useState(false);
+  const [saving,  setSaving]    = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Keep in sync when parent data refreshes
+  useEffect(() => { setValue(initialNote ?? ""); }, [initialNote]);
+
+  function startEdit() {
+    setEditing(true);
+    setSaved(false);
+    setTimeout(() => {
+      ref.current?.focus();
+      // place cursor at end
+      const len = ref.current?.value.length ?? 0;
+      ref.current?.setSelectionRange(len, len);
+    }, 0);
+  }
+
+  async function handleBlur() {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed === (initialNote ?? "").trim()) return;
+    setSaving(true);
+    try {
+      await onSave(rowId, trimmed);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Escape") { setValue(initialNote ?? ""); setEditing(false); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ref.current?.blur(); }
+  }
+
+  if (editing) {
+    return (
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        rows={2}
+        placeholder="Add a note… (Enter to save, Esc to cancel)"
+        className="w-full min-w-[180px] max-w-[260px] rounded-lg border border-violet-500/50 bg-background/80 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-violet-500/60 shadow-sm"
+      />
+    );
+  }
+
+  return (
+    <button
+      onClick={startEdit}
+      className="group flex items-start gap-1.5 text-left max-w-[220px] min-w-[120px]"
+      title="Click to edit note"
+    >
+      {saving ? (
+        <Loader2 className="w-3 h-3 text-muted-foreground animate-spin mt-0.5 shrink-0" />
+      ) : saved ? (
+        <Check className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
+      ) : (
+        <Pencil className="w-3 h-3 text-muted-foreground/40 group-hover:text-muted-foreground mt-0.5 shrink-0 transition-colors" />
+      )}
+      <span className={`text-xs leading-snug line-clamp-2 ${value ? "text-foreground/80" : "text-muted-foreground/50 italic"}`}>
+        {saved ? <span className="text-emerald-400 not-italic">Saved</span> : (value || "Add note…")}
+      </span>
+    </button>
+  );
+}
+
 // ─── Small Components ─────────────────────────────────────────────────────────
 
 function StatCard({ label, value, icon: Icon, color = "text-primary" }: {
@@ -144,6 +231,17 @@ export default function WaitlistAdmin() {
       apiFetch(`/crm/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crm-waitlist"] }),
   });
+
+  const patchNotes = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes: string }) =>
+      apiFetch(`/crm/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ notes }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crm-waitlist"] }),
+  });
+
+  const saveNote = useCallback(
+    (id: string, notes: string) => patchNotes.mutateAsync({ id, notes }),
+    [patchNotes]
+  );
 
   const deleteEntry = useMutation({
     mutationFn: (id: string) =>
@@ -351,7 +449,7 @@ export default function WaitlistAdmin() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5 bg-secondary/30">
-                  {["Email / Tag", "Name", "Phone", "Source", "Status", "Joined", ""].map(h => (
+                  {["Email / Tag", "Name", "Phone", "Source", "Status", "Notes", "Joined", ""].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -419,6 +517,15 @@ export default function WaitlistAdmin() {
                           {sm.label}
                           <ChevronDown className="w-2.5 h-2.5 opacity-60" />
                         </button>
+                      </td>
+
+                      {/* Notes — click-to-edit, auto-save on blur */}
+                      <td className="px-4 py-3">
+                        <NoteCell
+                          rowId={row.id}
+                          initialNote={row.notes}
+                          onSave={saveNote}
+                        />
                       </td>
 
                       {/* Joined */}
@@ -493,7 +600,7 @@ export default function WaitlistAdmin() {
       </AlertDialog>
 
       <p className="text-xs text-muted-foreground text-center pb-2">
-        Click any status badge to cycle it forward · Signups auto-tagged by email domain
+        Click any status badge to cycle it forward · Click any note to edit and auto-save · Signups auto-tagged by email domain
       </p>
     </div>
   );
