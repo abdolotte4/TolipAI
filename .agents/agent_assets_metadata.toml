@@ -11,3 +11,9 @@ id = "HUNYFUncrXV0gFOWE0tu7"
 uri = "file://AUDIT_REPORT.md"
 type = "text"
 title = "Full Codebase Audit Report"
+
+[[outputs]]
+id = "wSKcHaTcpCkvGnzIJ6n0_"
+uri = "file://CODEBASE_AUDIT.md"
+type = "text"
+title = "TolipAI Monorepo — Full Codebase Audit Report"
