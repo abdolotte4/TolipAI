@@ -5,7 +5,7 @@ import {
   Users2, Search, Download, X, Loader2,
   Mail, TrendingUp, Clock, ChevronLeft, ChevronRight,
   Trash2, Phone, Building2, User, ChevronDown,
-  Pencil, Check,
+  Pencil, Check, CheckSquare, Square, AlertTriangle,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -88,7 +88,6 @@ function nextStatus(current: WaitlistStatus): WaitlistStatus {
 }
 
 // ─── NoteCell ─────────────────────────────────────────────────────────────────
-// Click-to-edit inline notes with auto-save on blur.
 
 function NoteCell({
   rowId,
@@ -105,7 +104,6 @@ function NoteCell({
   const [saving,  setSaving]    = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  // Keep in sync when parent data refreshes
   useEffect(() => { setValue(initialNote ?? ""); }, [initialNote]);
 
   function startEdit() {
@@ -113,7 +111,6 @@ function NoteCell({
     setSaved(false);
     setTimeout(() => {
       ref.current?.focus();
-      // place cursor at end
       const len = ref.current?.value.length ?? 0;
       ref.current?.setSelectionRange(len, len);
     }, 0);
@@ -191,6 +188,89 @@ function StatCard({ label, value, icon: Icon, color = "text-primary" }: {
   );
 }
 
+// ─── Bulk Action Toolbar ───────────────────────────────────────────────────────
+
+function BulkToolbar({
+  selectedCount,
+  onClearSelection,
+  onBulkStatus,
+  onBulkDelete,
+  bulkPending,
+}: {
+  selectedCount: number;
+  onClearSelection: () => void;
+  onBulkStatus: (status: WaitlistStatus) => void;
+  onBulkDelete: () => void;
+  bulkPending: boolean;
+}) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  return (
+    <>
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl bg-card border border-violet-500/30 shadow-2xl shadow-violet-900/30 backdrop-blur-sm animate-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-center gap-2 text-sm font-semibold text-violet-300">
+          <CheckSquare className="w-4 h-4" />
+          {selectedCount} selected
+        </div>
+        <div className="w-px h-5 bg-white/10" />
+
+        <Select onValueChange={(v) => onBulkStatus(v as WaitlistStatus)} disabled={bulkPending}>
+          <SelectTrigger className="w-36 h-8 text-xs bg-background/60 border-white/10 focus:border-violet-500/50">
+            <SelectValue placeholder="Set status…" />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUS_CYCLE.map(s => (
+              <SelectItem key={s} value={s} className="text-xs">{STATUS_META[s].label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 text-xs gap-1.5 border-red-500/30 text-red-400 hover:text-red-300 hover:border-red-400/50 hover:bg-red-500/10"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={bulkPending}
+        >
+          {bulkPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          Delete
+        </Button>
+
+        <button
+          onClick={onClearSelection}
+          className="text-muted-foreground hover:text-foreground transition-colors ml-1"
+          title="Clear selection"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent className="border-white/10 bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              Delete {selectedCount} signup{selectedCount !== 1 ? "s" : ""}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This will permanently remove the selected waitlist entries. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => { setShowDeleteConfirm(false); onBulkDelete(); }}
+            >
+              Delete {selectedCount} entries
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function WaitlistAdmin() {
@@ -203,6 +283,10 @@ export default function WaitlistAdmin() {
   const [page,     setPage]     = useState(1);
   const [toDelete, setToDelete] = useState<WaitlistRow | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkPending, setBulkPending] = useState(false);
 
   // ── Queries ──
   const params = new URLSearchParams();
@@ -253,6 +337,74 @@ export default function WaitlistAdmin() {
     },
   });
 
+  // ── Selection helpers ──
+  const rows       = data?.rows       ?? [];
+  const stats      = data?.stats      ?? { total: 0, last7days: 0, last30days: 0 };
+  const totalPages = data?.totalPages ?? 1;
+  const chartDays  = chartData?.days  ?? [];
+
+  const allPageIds = rows.map(r => r.id);
+  const allSelected = allPageIds.length > 0 && allPageIds.every(id => selectedIds.has(id));
+  const someSelected = allPageIds.some(id => selectedIds.has(id)) && !allSelected;
+
+  function toggleRow(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  // ── Bulk mutations ──
+  async function handleBulkStatus(newStatus: WaitlistStatus) {
+    setBulkPending(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map(id =>
+          apiFetch(`/crm/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ status: newStatus }) })
+        )
+      );
+      await qc.invalidateQueries({ queryKey: ["crm-waitlist"] });
+      clearSelection();
+    } catch { /* ignore partial failure */ }
+    finally { setBulkPending(false); }
+  }
+
+  async function handleBulkDelete() {
+    setBulkPending(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map(id =>
+          apiFetch(`/crm/admin/waitlist/${id}`, { method: "DELETE" })
+        )
+      );
+      await qc.invalidateQueries({ queryKey: ["crm-waitlist"] });
+      await qc.invalidateQueries({ queryKey: ["crm-waitlist-chart"] });
+      clearSelection();
+    } catch { /* ignore partial failure */ }
+    finally { setBulkPending(false); }
+  }
+
   // ── Handlers ──
   const clearFilters = useCallback(() => {
     setSearch(""); setStatus("all"); setFrom(""); setTo(""); setPage(1);
@@ -284,14 +436,20 @@ export default function WaitlistAdmin() {
     finally { setExporting(false); }
   }
 
-  const rows       = data?.rows       ?? [];
-  const stats      = data?.stats      ?? { total: 0, last7days: 0, last30days: 0 };
-  const totalPages = data?.totalPages ?? 1;
-  const chartDays  = chartData?.days  ?? [];
-
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
+
+      {/* Bulk toolbar */}
+      {selectedIds.size > 0 && (
+        <BulkToolbar
+          selectedCount={selectedIds.size}
+          onClearSelection={clearSelection}
+          onBulkStatus={handleBulkStatus}
+          onBulkDelete={handleBulkDelete}
+          bulkPending={bulkPending}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -425,6 +583,9 @@ export default function WaitlistAdmin() {
           <p className="text-xs text-muted-foreground mt-3">
             Showing {rows.length} of <strong className="text-foreground">{data.total}</strong> result{data.total !== 1 ? "s" : ""}
             {hasFilters && <> · filtered</>}
+            {selectedIds.size > 0 && (
+              <span className="ml-2 text-violet-400 font-medium">· {selectedIds.size} selected</span>
+            )}
           </p>
         )}
       </Card>
@@ -449,6 +610,24 @@ export default function WaitlistAdmin() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5 bg-secondary/30">
+                  {/* Select all checkbox */}
+                  <th className="px-4 py-3 w-10">
+                    <button
+                      onClick={toggleAll}
+                      className="text-muted-foreground hover:text-violet-400 transition-colors"
+                      title={allSelected ? "Deselect all" : "Select all on page"}
+                    >
+                      {allSelected ? (
+                        <CheckSquare className="w-4 h-4 text-violet-400" />
+                      ) : someSelected ? (
+                        <div className="w-4 h-4 rounded border border-muted-foreground/50 bg-violet-500/20 flex items-center justify-center">
+                          <div className="w-2 h-0.5 bg-violet-400 rounded" />
+                        </div>
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  </th>
                   {["Email / Tag", "Name", "Phone", "Source", "Status", "Notes", "Joined", ""].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                       {h}
@@ -465,12 +644,30 @@ export default function WaitlistAdmin() {
                   const joining = row.created_at
                     ? format(new Date(row.created_at), "MMM d, yyyy")
                     : "—";
+                  const isSelected = selectedIds.has(row.id);
 
                   return (
                     <tr
                       key={row.id}
-                      className={`hover:bg-secondary/30 transition-colors ${i % 2 === 0 ? "" : "bg-secondary/10"}`}
+                      className={`hover:bg-secondary/30 transition-colors ${
+                        isSelected
+                          ? "bg-violet-500/8 border-l-2 border-l-violet-500/40"
+                          : i % 2 === 0 ? "" : "bg-secondary/10"
+                      }`}
                     >
+                      {/* Checkbox */}
+                      <td className="px-4 py-3 w-10">
+                        <button
+                          onClick={() => toggleRow(row.id)}
+                          className="text-muted-foreground hover:text-violet-400 transition-colors"
+                        >
+                          {isSelected
+                            ? <CheckSquare className="w-4 h-4 text-violet-400" />
+                            : <Square className="w-4 h-4" />
+                          }
+                        </button>
+                      </td>
+
                       {/* Email + auto-tag */}
                       <td className="px-4 py-3">
                         <a
@@ -553,55 +750,55 @@ export default function WaitlistAdmin() {
             </table>
           </div>
         )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
+            <p className="text-xs text-muted-foreground">
+              Page {page} of {totalPages}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost" size="icon"
+                className="w-7 h-7"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost" size="icon"
+                className="w-7 h-7"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <p className="text-muted-foreground text-xs">Page {page} of {totalPages}</p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="gap-1 h-8">
-              <ChevronLeft className="w-3.5 h-3.5" /> Prev
-            </Button>
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const n = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
-              return (
-                <Button key={n} variant={n === page ? "default" : "outline"} size="sm" className="h-8 w-8 p-0 text-xs" onClick={() => setPage(n)}>
-                  {n}
-                </Button>
-              );
-            })}
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="gap-1 h-8">
-              Next <ChevronRight className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirm */}
-      <AlertDialog open={!!toDelete} onOpenChange={o => { if (!o) setToDelete(null); }}>
-        <AlertDialogContent>
+      {/* Single delete confirm */}
+      <AlertDialog open={!!toDelete} onOpenChange={open => !open && setToDelete(null)}>
+        <AlertDialogContent className="border-white/10 bg-card">
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove this signup?</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>{toDelete?.email}</strong> will be permanently removed from the waitlist. This cannot be undone.
+            <AlertDialogTitle>Delete this signup?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This will permanently remove <strong className="text-foreground">{toDelete?.email}</strong> from the waitlist.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 text-white"
               onClick={() => toDelete && deleteEntry.mutate(toDelete.id)}
             >
-              {deleteEntry.isPending ? "Removing…" : "Remove"}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <p className="text-xs text-muted-foreground text-center pb-2">
-        Click any status badge to cycle it forward · Click any note to edit and auto-save · Signups auto-tagged by email domain
-      </p>
     </div>
   );
 }

@@ -175,7 +175,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
     }
 
     const apiBase = process.env.API_BASE_URL ||
-      `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
+      `https://${req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
     const statusCallbackUrl = `${apiBase}/twilio/voice/call-status`;
 
     // ── Call Whisper (P1-10) ──────────────────────────────────────────────────
@@ -608,6 +608,129 @@ router.post("/twilio/voice/voicemail-drop", crmAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err: any) {
     logger.error(err, "[twilio/voice/voicemail-drop] error");
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/voice/warm-transfer ─────────────────────────────────────
+// Warm / blind transfer: puts lead on hold, dials a second number (partner or
+// title company), lets the agent speak privately, then bridges all parties into
+// a Twilio Conference so the agent can introduce them before dropping off.
+//
+// Body: { callSid: string, transferTo: string }
+// Returns: { conferenceRoom: string, transferCallSid: string }
+router.post("/twilio/voice/warm-transfer", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  const { callSid, transferTo } = req.body as { callSid?: string; transferTo?: string };
+
+  if (!callSid || !transferTo) {
+    res.status(400).json({ error: "callSid and transferTo are required" });
+    return;
+  }
+
+  try {
+    const isSuperAdmin = crmUser.role === "super_admin";
+    const cfg = await resolveVoiceConfig(crmUser.campaignId, isSuperAdmin);
+
+    const creds = Buffer.from(`${cfg.apiKeySid}:${cfg.apiKeySecret}`).toString("base64");
+    const conferenceRoom = `wtxfr-${callSid.slice(-8)}-${Date.now()}`;
+
+    const conferenceTwiml = (muted: boolean, startOnEnter: boolean, endOnExit: boolean) =>
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Dial><Conference beep="false" startConferenceOnEnter="${startOnEnter}" endConferenceOnExit="${endOnExit}" muted="${muted}" waitUrl="https://twimlets.com/holdmusic?Bucket=com.twilio.music.classical">${conferenceRoom}</Conference></Dial></Response>`;
+
+    // Step 1: Move the existing call (agent + lead) into the conference.
+    // Redirect callSid (parent browser call) → conference, agent is unmuted.
+    const redirectResp = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls/${encodeURIComponent(callSid)}.json`,
+      {
+        method: "POST",
+        headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ Twiml: conferenceTwiml(false, true, false) }).toString(),
+      }
+    );
+
+    if (!redirectResp.ok) {
+      const body = await redirectResp.json().catch(() => ({})) as any;
+      throw Object.assign(new Error(body?.message || `Twilio redirect error ${redirectResp.status}`), { status: redirectResp.status });
+    }
+
+    // Also redirect any child calls (the lead's phone leg) to the same conference — muted until bridge.
+    try {
+      const childResp = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls.json?ParentCallSid=${encodeURIComponent(callSid)}&Status=in-progress`,
+        { headers: { Authorization: `Basic ${creds}` } }
+      );
+      if (childResp.ok) {
+        const childData = await childResp.json() as any;
+        for (const child of (childData.calls || [])) {
+          await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls/${encodeURIComponent(child.sid)}.json`,
+            {
+              method: "POST",
+              headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({ Twiml: conferenceTwiml(true, false, true) }).toString(),
+            }
+          );
+        }
+      }
+    } catch { /* non-critical — child redirect is best-effort */ }
+
+    // Step 2: Dial the transfer target into the same conference.
+    const apiBase = process.env.API_BASE_URL ||
+      `https://${req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
+
+    const callCreateResp = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls.json`,
+      {
+        method: "POST",
+        headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          To: transferTo,
+          From: cfg.callerId || "",
+          Twiml: `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Polly.Joanna">Please hold while your call is connected.</Say><Dial><Conference beep="true" startConferenceOnEnter="true" endConferenceOnExit="true" muted="false">${conferenceRoom}</Conference></Dial></Response>`,
+          StatusCallback: `${apiBase}/twilio/voice/call-status`,
+          StatusCallbackMethod: "POST",
+        }).toString(),
+      }
+    );
+
+    if (!callCreateResp.ok) {
+      const body = await callCreateResp.json().catch(() => ({})) as any;
+      throw Object.assign(new Error(body?.message || `Twilio dial error ${callCreateResp.status}`), { status: callCreateResp.status });
+    }
+
+    const newCall = await callCreateResp.json() as any;
+
+    logger.info({ callSid, transferTo, conferenceRoom, newCallSid: newCall.sid }, "[twilio/voice/warm-transfer] initiated");
+    res.json({ conferenceRoom, transferCallSid: newCall.sid });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/warm-transfer] error");
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/voice/complete-transfer ──────────────────────────────────
+// Agent hangs up their conference leg, leaving lead + transfer target connected.
+// Body: { callSid: string } — the agent's browser call SID
+router.post("/twilio/voice/complete-transfer", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  const { callSid } = req.body as { callSid?: string };
+  if (!callSid) { res.status(400).json({ error: "callSid is required" }); return; }
+  try {
+    const isSuperAdmin = crmUser.role === "super_admin";
+    const cfg = await resolveVoiceConfig(crmUser.campaignId, isSuperAdmin);
+    const creds = Buffer.from(`${cfg.apiKeySid}:${cfg.apiKeySecret}`).toString("base64");
+    await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls/${encodeURIComponent(callSid)}.json`,
+      {
+        method: "POST",
+        headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ Status: "completed" }).toString(),
+      }
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/complete-transfer] error");
     res.status(err.status || 500).json({ error: err.message });
   }
 });

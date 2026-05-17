@@ -3,9 +3,11 @@ import { Device, Call } from "@twilio/voice-sdk";
 import {
   PhoneOff, PhoneCall, Mic, MicOff, Loader2,
   Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles, Voicemail, PauseCircle,
+  PhoneForwarded, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -80,6 +82,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const callRef = useRef<Call | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentCallSidRef = useRef<string | null>(null);
+  const coachingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const wasRecordedRef = useRef(false);
 
@@ -99,12 +102,21 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const [coaching, setCoaching] = useState<any | null>(null);
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [showCoaching, setShowCoaching] = useState(false);
+  const [coachingCountdown, setCoachingCountdown] = useState<number | null>(null);
   const [droppingVoicemail, setDroppingVoicemail] = useState(false);
   const [held, setHeld] = useState(false);
+
+  // Warm transfer states
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferNumber, setTransferNumber] = useState("");
+  const [transferring, setTransferring] = useState(false);
+  const [transferActive, setTransferActive] = useState(false);
+  const [conferenceRoom, setConferenceRoom] = useState<string | null>(null);
 
   // ── Teardown helper ────────────────────────────────────────────────────────
   const destroyDevice = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (coachingTimerRef.current) { clearTimeout(coachingTimerRef.current); coachingTimerRef.current = null; }
     if (callRef.current) { callRef.current.disconnect(); callRef.current = null; }
     if (deviceRef.current) { deviceRef.current.destroy(); deviceRef.current = null; }
   }, []);
@@ -117,27 +129,21 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     setStatus("initializing");
     setErrorMsg("");
     try {
-      // Pre-warm the microphone before Twilio Device creation.
-      // This prevents AcquisitionFailedError (31402) which occurs when Twilio's
-      // getUserMedia call encounters an un-negotiated audio device on first access.
       try {
         const warmStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         warmStream.getTracks().forEach(t => t.stop());
       } catch (micErr: any) {
-        // If mic is genuinely denied, surface a cleaner error immediately
         const errName = micErr?.name || "";
         if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
           setErrorMsg("Microphone access denied. Click the 🔒 icon in your browser's address bar and allow microphone, then refresh.");
           setStatus("error");
           return false;
         }
-        // NotFoundError = no mic attached; NotReadableError = device busy
         if (errName === "NotFoundError" || errName === "NotReadableError") {
           setErrorMsg("No microphone found or it is in use by another application. Connect a headset and try again.");
           setStatus("error");
           return false;
         }
-        // Other failures — let Twilio Device handle it below
       }
 
       const { token, callerId } = await authFetch("/twilio/voice/token", { method: "POST" });
@@ -146,8 +152,6 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       const device = new Device(token, {
         logLevel: "warn",
         codecPreferences: ["opus", "pcmu"] as any,
-        // Permissive audio constraints — avoids 31402 on strict OS audio policies.
-        // Cast needed: audioConstraints is a valid SDK option not yet in TS typings.
         audioConstraints: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -158,11 +162,9 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       device.on("error", (err: any) => {
         const code = err?.code;
         let msg = err?.message || "Device error";
-        // 31402 = AcquisitionFailedError — browser got mic permission but stream failed
         if (code === 31402) {
           msg = "Audio device error (31402): Your microphone was allowed but could not start. Try: close other apps using the mic, reconnect your headset, or use Chrome/Edge. Then click ↺ to retry.";
         }
-        // 31003 = Transport closed (network issue)
         if (code === 31003) {
           msg = "Connection dropped (31003): Check your internet connection and click ↺ to reconnect.";
         }
@@ -190,6 +192,38 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     }
   }, [toast]);
 
+  // ── Auto-fetch AI coaching after call ends (if recorded) ───────────────────
+  const autoFetchCoaching = useCallback(async (sid: string) => {
+    // Wait 90 seconds for Twilio recording + OpenAI transcription to complete
+    const WAIT_SECONDS = 90;
+    let remaining = WAIT_SECONDS;
+    setCoachingCountdown(remaining);
+
+    const tick = setInterval(() => {
+      remaining -= 1;
+      setCoachingCountdown(remaining);
+      if (remaining <= 0) clearInterval(tick);
+    }, 1000);
+
+    coachingTimerRef.current = setTimeout(async () => {
+      clearInterval(tick);
+      setCoachingCountdown(null);
+      setCoachingLoading(true);
+      try {
+        const data = await authFetch("/twilio/voice/coach", {
+          method: "POST",
+          body: JSON.stringify({ callSid: sid }),
+        });
+        setCoaching(data.coaching);
+        setShowCoaching(true);
+      } catch {
+        // Silently fail — user can still trigger manually
+      } finally {
+        setCoachingLoading(false);
+      }
+    }, WAIT_SECONDS * 1000);
+  }, []);
+
   // ── Start call ─────────────────────────────────────────────────────────────
   const startCall = useCallback(async () => {
     if (!leadPhone) return;
@@ -205,14 +239,17 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     setDispositionSaved(false);
     setCoaching(null);
     setShowCoaching(false);
+    setCoachingCountdown(null);
+    setTransferActive(false);
+    setConferenceRoom(null);
     wasRecordedRef.current = record;
 
     try {
       const params: Record<string, string> = {
-  To: leadPhone,
-  CallerId: callerIdUsed || "",  // ← ADD THIS
-  ...(record ? { Record: "true" } : {}),
-};
+        To: leadPhone,
+        CallerId: callerIdUsed || "",
+        ...(record ? { Record: "true" } : {}),
+      };
 
       const call = await deviceRef.current.connect({ params });
       callRef.current = call;
@@ -222,10 +259,8 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
         const sid = c.parameters?.CallSid || null;
         currentCallSidRef.current = sid;
 
-        // Start duration timer
         timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
 
-        // Log call creation to backend
         try {
           await authFetch("/twilio/voice/log", {
             method: "POST",
@@ -242,7 +277,6 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       });
 
       call.on("sample", (sample: any) => {
-        // Real-time quality metrics from the SDK
         if (!sample) return;
         const live: CallAnalytics = {
           mos: typeof sample.mos === "number" ? Math.round(sample.mos * 100) / 100 : null,
@@ -257,22 +291,25 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       call.on("disconnect", async (_c: Call) => {
         setStatus("idle");
         setHeld(false);
+        setTransferOpen(false);
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
-        // Capture final metrics
         const sid = currentCallSidRef.current;
         const finalMos = analytics.mos;
         const finalJitter = analytics.jitter;
         const finalPacketLoss = analytics.packetLoss;
         setLastAnalytics({ mos: finalMos, jitter: finalJitter, packetLoss: finalPacketLoss });
 
-        // Show post-call panels
         if (sid) {
           setLastCallSid(sid);
           setLastCallRecorded(wasRecordedRef.current);
+
+          // Auto-trigger coaching if call was recorded
+          if (wasRecordedRef.current) {
+            autoFetchCoaching(sid);
+          }
         }
 
-        // Update call log with final analytics
         if (sid) {
           try {
             await authFetch(`/twilio/voice/log/${sid}`, {
@@ -294,6 +331,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       call.on("cancel", () => {
         setStatus("idle");
         setHeld(false);
+        setTransferOpen(false);
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
         callRef.current = null;
         currentCallSidRef.current = null;
@@ -304,6 +342,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
         setErrorMsg(msg);
         setStatus("error");
         setHeld(false);
+        setTransferOpen(false);
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
         callRef.current = null;
         currentCallSidRef.current = null;
@@ -314,7 +353,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       setErrorMsg(msg);
       setStatus(deviceRef.current ? "ready" : "error");
     }
-  }, [leadPhone, leadId, record, callerIdUsed, analytics, initDevice, onCallLogged]);
+  }, [leadPhone, leadId, record, callerIdUsed, analytics, initDevice, onCallLogged, autoFetchCoaching]);
 
   // ── Save disposition ───────────────────────────────────────────────────────
   const saveDisposition = useCallback(async (d: string) => {
@@ -330,9 +369,12 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     }
   }, [lastCallSid]);
 
-  // ── AI call coaching ───────────────────────────────────────────────────────
+  // ── Manual AI coaching fetch ───────────────────────────────────────────────
   const getCoaching = useCallback(async () => {
     if (!lastCallSid) return;
+    // Cancel auto-countdown if still pending
+    if (coachingTimerRef.current) { clearTimeout(coachingTimerRef.current); coachingTimerRef.current = null; }
+    setCoachingCountdown(null);
     setCoachingLoading(true);
     setCoaching(null);
     try {
@@ -353,18 +395,60 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const toggleHold = useCallback(async () => {
     if (!callRef.current || status !== "in-progress") return;
     const newHeld = !held;
-    // Mute local mic immediately — no latency, no backend required
     callRef.current.mute(newHeld);
     setHeld(newHeld);
-    // Best-effort: play hold music to the remote party via Twilio REST API
     const sid = currentCallSidRef.current;
     if (sid) {
       authFetch("/twilio/voice/hold", {
         method: "POST",
         body: JSON.stringify({ callSid: sid, hold: newHeld }),
-      }).catch(() => { /* non-critical — local mute already active */ });
+      }).catch(() => { /* non-critical */ });
     }
   }, [held, status]);
+
+  // ── Warm transfer ──────────────────────────────────────────────────────────
+  const initiateWarmTransfer = useCallback(async () => {
+    const callSid = currentCallSidRef.current;
+    if (!callSid || !transferNumber.trim()) return;
+    setTransferring(true);
+    try {
+      const data = await authFetch("/twilio/voice/warm-transfer", {
+        method: "POST",
+        body: JSON.stringify({ callSid, transferTo: transferNumber.trim() }),
+      });
+      setConferenceRoom(data.conferenceRoom);
+      setTransferActive(true);
+      setTransferOpen(false);
+      setTransferNumber("");
+      toast({
+        title: "Warm transfer initiated",
+        description: `Connecting to ${transferNumber.trim()}… All parties are joining the conference.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Transfer failed", description: err.message, variant: "destructive" });
+    } finally {
+      setTransferring(false);
+    }
+  }, [transferNumber, toast]);
+
+  const completeTransfer = useCallback(async () => {
+    const callSid = currentCallSidRef.current;
+    if (!callSid) {
+      if (callRef.current) callRef.current.disconnect();
+      return;
+    }
+    try {
+      await authFetch("/twilio/voice/complete-transfer", {
+        method: "POST",
+        body: JSON.stringify({ callSid }),
+      });
+      toast({ title: "Transfer complete", description: "You have left the conference. The parties remain connected." });
+    } catch {
+      if (callRef.current) callRef.current.disconnect();
+    }
+    setTransferActive(false);
+    setConferenceRoom(null);
+  }, [toast]);
 
   // ── Voicemail drop ─────────────────────────────────────────────────────────
   const dropVoicemail = useCallback(async () => {
@@ -380,7 +464,6 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
         body: JSON.stringify({ callSid }),
       });
       toast({ title: "Voicemail dropped", description: "Message is playing. You can move to the next lead." });
-      // Disconnect the browser-side call after dropping voicemail
       if (callRef.current) callRef.current.disconnect();
     } catch (err: any) {
       toast({ title: "Voicemail drop failed", description: err.message, variant: "destructive" });
@@ -436,10 +519,15 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
              status === "initializing" ? "Starting…" :
              status === "ready" ? "Ready" :
              status === "calling" ? "Calling…" :
-             status === "in-progress" ? "In call" :
+             status === "in-progress" ? (transferActive ? "In conference" : "In call") :
              status === "disconnecting" ? "Ending…" :
              "Error"}
           </Badge>
+          {transferActive && (
+            <Badge className="text-[10px] border bg-violet-500/10 text-violet-400 border-violet-500/30 animate-pulse">
+              Transfer Active
+            </Badge>
+          )}
         </div>
         {leadPhone && (
           <span className="text-xs font-mono text-muted-foreground">{leadPhone}</span>
@@ -456,7 +544,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
           </div>
         )}
 
-        {/* No caller ID warning — device is ready but outbound calls need a phone number */}
+        {/* No caller ID warning */}
         {status === "ready" && !callerIdUsed && (
           <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -524,6 +612,51 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
                 ))}
               </div>
             )}
+
+            {/* Conference info when transfer is active */}
+            {transferActive && (
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-xs text-violet-300">
+                <PhoneForwarded className="w-3.5 h-3.5 shrink-0" />
+                <div>
+                  <span className="font-medium">Conference active</span>
+                  <span className="text-violet-400/70 ml-1">— Lead + Transfer target connected</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Warm Transfer Input Panel */}
+        {transferOpen && status === "in-progress" && (
+          <div className="rounded-xl bg-violet-500/5 border border-violet-500/20 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-violet-400 flex items-center gap-1.5">
+                <PhoneForwarded className="w-3 h-3" /> Warm Transfer — Enter second number
+              </p>
+              <button onClick={() => setTransferOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Lead will be placed on hold. You'll speak with the second party first, then bridge them together.</p>
+            <div className="flex gap-2">
+              <Input
+                type="tel"
+                placeholder="+1 (555) 000-0000"
+                value={transferNumber}
+                onChange={e => setTransferNumber(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && transferNumber.trim()) initiateWarmTransfer(); }}
+                className="bg-background/60 border-violet-500/30 text-sm h-8 rounded-lg"
+                autoFocus
+              />
+              <Button
+                size="sm"
+                className="h-8 bg-violet-600 hover:bg-violet-700 text-white text-xs px-3 shrink-0"
+                disabled={!transferNumber.trim() || transferring}
+                onClick={initiateWarmTransfer}
+              >
+                {transferring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Connect"}
+              </Button>
+            </div>
           </div>
         )}
 
@@ -583,23 +716,48 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
           </div>
         )}
 
-        {/* AI Call Coaching — only if call was recorded (transcription prerequisite) */}
+        {/* AI Call Coaching Panel — auto-appears after recorded calls */}
         {status === "idle" && lastCallSid && lastCallRecorded && (
           <div className="space-y-2">
-            {!showCoaching && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full gap-2 text-xs border-indigo-500/30 text-indigo-400 hover:text-indigo-300 hover:border-indigo-400/50 hover:bg-indigo-500/5"
-                onClick={getCoaching}
-                disabled={coachingLoading}
-              >
-                {coachingLoading
-                  ? <><Loader2 className="w-3 h-3 animate-spin" /> Analyzing call…</>
-                  : <><Sparkles className="w-3 h-3" /> Get AI Coaching</>
-                }
-              </Button>
+            {/* Countdown while waiting for transcription */}
+            {coachingCountdown !== null && coachingCountdown > 0 && (
+              <div className="rounded-xl bg-indigo-500/5 border border-indigo-500/15 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                  <p className="text-xs font-semibold text-indigo-400">AI Coaching — Waiting for transcription…</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-indigo-500 transition-all duration-1000"
+                      style={{ width: `${((90 - coachingCountdown) / 90) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-mono w-8">{coachingCountdown}s</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Twilio is processing the recording. AI analysis will appear automatically.
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-indigo-400 hover:text-indigo-300 h-7"
+                  onClick={getCoaching}
+                >
+                  Try now anyway
+                </Button>
+              </div>
             )}
+
+            {/* Loading state */}
+            {coachingLoading && (
+              <div className="rounded-xl bg-indigo-500/5 border border-indigo-500/15 p-3 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                <p className="text-xs text-indigo-400">Analyzing call with AI…</p>
+              </div>
+            )}
+
+            {/* Coaching result */}
             {showCoaching && coaching && (
               <div className="rounded-xl bg-indigo-500/5 border border-indigo-500/20 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -607,7 +765,11 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
                     <Sparkles className="w-3 h-3" /> AI Call Coaching
                   </p>
                   {coaching.score != null && (
-                    <Badge className="text-[10px] bg-indigo-500/10 text-indigo-400 border-indigo-500/20 border">
+                    <Badge className={`text-[10px] border ${
+                      coaching.score >= 8 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                      coaching.score >= 5 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                      "bg-red-500/10 text-red-400 border-red-500/20"
+                    }`}>
                       {coaching.score}/10
                     </Badge>
                   )}
@@ -636,6 +798,18 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Manual trigger — shown if countdown has finished but no coaching yet */}
+            {coachingCountdown === null && !coachingLoading && !showCoaching && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 text-xs border-indigo-500/30 text-indigo-400 hover:text-indigo-300 hover:border-indigo-400/50 hover:bg-indigo-500/5"
+                onClick={getCoaching}
+              >
+                <Sparkles className="w-3 h-3" /> Get AI Coaching
+              </Button>
             )}
           </div>
         )}
@@ -668,6 +842,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
               >
                 {muted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </Button>
+
               {/* Hold / Resume */}
               <Button
                 variant="outline"
@@ -683,6 +858,34 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
               >
                 <PauseCircle className="w-4 h-4" />
               </Button>
+
+              {/* Warm Transfer */}
+              {!transferActive ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={`h-9 w-9 rounded-xl transition-colors ${
+                    transferOpen
+                      ? "bg-violet-500/20 border-violet-500/50 text-violet-400"
+                      : "border-border text-muted-foreground hover:text-violet-400 hover:border-violet-500/40"
+                  }`}
+                  disabled={status !== "in-progress"}
+                  onClick={() => setTransferOpen(o => !o)}
+                  title="Warm transfer — dial a second party and bridge them in"
+                >
+                  <PhoneForwarded className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-xl border-violet-500/40 text-violet-400 hover:bg-violet-500/10 text-xs px-2"
+                  onClick={completeTransfer}
+                  title="Complete transfer — leave the conference and connect the two parties"
+                >
+                  Complete Transfer
+                </Button>
+              )}
 
               <Button
                 variant="outline"

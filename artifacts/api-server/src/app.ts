@@ -101,18 +101,19 @@ app.use(
           // Groq
           "https://groq.com",
           "https://api.groq.com",
-          // Twilio: signalling, insights, CDN assets (fonts.static.com loaded via XHR by the SDK)
+          // Twilio: signalling, insights, CDN assets
           "https://*.twilio.com",
           "wss://*.twilio.com",
           "https://eventgw.twilio.com",
           "https://insights.twilio.com",
           "https://fonts.static.com",
+          "https://fonts.estatic.com",
           // Google Fonts loaded via fetch in some environments
           "https://fonts.googleapis.com",
           "https://fonts.gstatic.com",
         ],
-        // fonts.static.com: Twilio Insights SDK loads fonts from here
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.static.com", "data:"],
+        // Twilio Insights SDK loads fonts from fonts.static.com and fonts.estatic.com
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.static.com", "https://fonts.estatic.com", "data:"],
         // blob: required for Twilio audio worklets; mediastream: for WebRTC getUserMedia streams
         workerSrc: ["'self'", "blob:"],
         childSrc: ["'self'", "blob:", "mediastream:"],

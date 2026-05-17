@@ -400,4 +400,62 @@ router.get("/call-quality", crmAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/crm/analytics/campaigns ─────────────────────────────────────────
+// Per-campaign close rates, lead counts, and performance notes.
+// Super-admins see all campaigns; campaign users see only their own.
+router.get("/campaigns", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  const isSuperAdmin = crmUser.role === "super_admin";
+  const campaignId = crmUser.campaignId;
+
+  const campaignFilter = (!isSuperAdmin && campaignId)
+    ? sql`AND l.campaign_id = ${campaignId}`
+    : sql``;
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        c.id                                                        AS campaign_id,
+        c.name                                                      AS campaign_name,
+        COUNT(l.id)::int                                            AS total_leads,
+        COUNT(l.id) FILTER (WHERE l.status = 'closed')::int        AS closed_leads,
+        COUNT(l.id) FILTER (WHERE l.status = 'under_contract')::int AS under_contract,
+        COUNT(l.id) FILTER (WHERE l.status = 'new')::int           AS new_leads,
+        COUNT(l.id) FILTER (WHERE l.status = 'contacted')::int     AS contacted_leads,
+        ROUND(
+          CASE WHEN COUNT(l.id) > 0
+            THEN COUNT(l.id) FILTER (WHERE l.status = 'closed')::numeric / COUNT(l.id) * 100
+            ELSE 0
+          END, 1
+        )::float AS close_rate,
+        ROUND(AVG(
+          CASE WHEN l.status = 'closed'
+            THEN EXTRACT(EPOCH FROM (l.updated_at - l.created_at)) / 86400
+          END
+        )::numeric, 1)::float AS avg_days_to_close
+      FROM crm_campaigns c
+      LEFT JOIN crm_leads l ON l.campaign_id = c.id
+        ${campaignFilter}
+      GROUP BY c.id, c.name
+      ORDER BY close_rate DESC, total_leads DESC
+    `);
+
+    res.json({
+      campaigns: (rows.rows as any[]).map(r => ({
+        campaignId: r.campaign_id,
+        campaignName: r.campaign_name,
+        totalLeads: Number(r.total_leads) || 0,
+        closedLeads: Number(r.closed_leads) || 0,
+        underContract: Number(r.under_contract) || 0,
+        newLeads: Number(r.new_leads) || 0,
+        contactedLeads: Number(r.contacted_leads) || 0,
+        closeRate: r.close_rate != null ? Number(r.close_rate) : 0,
+        avgDaysToClose: r.avg_days_to_close != null ? Number(r.avg_days_to_close) : null,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

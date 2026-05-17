@@ -7,7 +7,8 @@ import {
 } from "recharts";
 import {
   TrendingUp, Users, CheckCircle2, Clock, ArrowRight,
-  PhoneCall, BarChart2, RefreshCw, Loader2,
+  PhoneCall, BarChart2, RefreshCw, Loader2, Trophy, FileText,
+  Target, AlertCircle,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -61,6 +62,161 @@ function fmtDuration(sec: number | null) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+function closeRateColor(rate: number) {
+  if (rate >= 20) return "text-emerald-400";
+  if (rate >= 10) return "text-amber-400";
+  return "text-red-400";
+}
+
+function closeRateBadge(rate: number) {
+  if (rate >= 20) return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  if (rate >= 10) return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  if (rate > 0)   return "bg-orange-500/10 text-orange-400 border-orange-500/20";
+  return "bg-secondary text-muted-foreground border-white/10";
+}
+
+function getCampaignNote(campaign: any): string {
+  const rate = campaign.closeRate;
+  const total = campaign.totalLeads;
+  const closed = campaign.closedLeads;
+  const daysStr = campaign.avgDaysToClose != null ? ` avg ${campaign.avgDaysToClose}d to close` : "";
+
+  if (total === 0) return "No leads yet";
+  if (rate >= 25) return `Top performer — ${closed} closed of ${total} leads${daysStr}`;
+  if (rate >= 15) return `Strong conversion — ${closed} closed of ${total} leads${daysStr}`;
+  if (rate >= 5)  return `Active pipeline — ${closed} closed, ${campaign.underContract} under contract${daysStr}`;
+  if (closed > 0) return `${closed} closed of ${total} leads${daysStr}`;
+  if (campaign.underContract > 0) return `${campaign.underContract} under contract, no closed yet`;
+  if (campaign.contactedLeads > 0) return `${campaign.contactedLeads} contacted, nurturing pipeline`;
+  return `${total} new lead${total !== 1 ? "s" : ""} in pipeline`;
+}
+
+// ─── Campaign Performance Table ───────────────────────────────────────────────
+
+function CampaignPerformanceSection({ refresh }: { refresh: number }) {
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: ["analytics-campaigns", refresh],
+    queryFn: () => apiFetch("/crm/analytics/campaigns"),
+    staleTime: 60_000,
+  });
+
+  const campaigns = data?.campaigns ?? [];
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+      <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-amber-400" /> Campaign Performance &amp; Close Rates
+          </h2>
+          <span className="text-xs text-muted-foreground">Ranked by close rate</span>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground text-sm">
+            <AlertCircle className="w-4 h-4" /> Failed to load campaign data.
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+            No campaigns found.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/5 bg-secondary/20">
+                  {["#", "Campaign", "Leads", "Closed", "Under Contract", "Close Rate", "Avg Days", "Notes"].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/4">
+                {campaigns.map((c: any, i: number) => (
+                  <tr key={c.campaignId} className={`hover:bg-secondary/20 transition-colors ${i % 2 === 0 ? "" : "bg-secondary/5"}`}>
+                    {/* Rank */}
+                    <td className="px-4 py-3 w-10">
+                      {i === 0 && c.closeRate > 0 ? (
+                        <Trophy className="w-4 h-4 text-amber-400" />
+                      ) : (
+                        <span className="text-xs font-mono text-muted-foreground">{i + 1}</span>
+                      )}
+                    </td>
+
+                    {/* Campaign name */}
+                    <td className="px-4 py-3">
+                      <span className="font-medium text-foreground truncate max-w-[180px] block">{c.campaignName}</span>
+                    </td>
+
+                    {/* Total leads */}
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-sm">{c.totalLeads.toLocaleString()}</span>
+                    </td>
+
+                    {/* Closed */}
+                    <td className="px-4 py-3">
+                      <span className={`font-mono text-sm font-semibold ${c.closedLeads > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
+                        {c.closedLeads}
+                      </span>
+                    </td>
+
+                    {/* Under contract */}
+                    <td className="px-4 py-3">
+                      <span className={`font-mono text-sm ${c.underContract > 0 ? "text-amber-400" : "text-muted-foreground"}`}>
+                        {c.underContract}
+                      </span>
+                    </td>
+
+                    {/* Close rate with progress bar */}
+                    <td className="px-4 py-3 min-w-[120px]">
+                      <div className="flex items-center gap-2">
+                        <Badge className={`text-[11px] font-mono font-semibold border ${closeRateBadge(c.closeRate)}`}>
+                          {c.closeRate.toFixed(1)}%
+                        </Badge>
+                        <div className="flex-1 h-1.5 rounded-full bg-secondary/50 overflow-hidden min-w-[50px]">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(c.closeRate * 3, 100)}%`,
+                              background: c.closeRate >= 20 ? "#10b981" : c.closeRate >= 10 ? "#f59e0b" : "#6366f1",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Avg days to close */}
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {c.avgDaysToClose != null ? `${c.avgDaysToClose}d` : "—"}
+                      </span>
+                    </td>
+
+                    {/* Auto-generated note */}
+                    <td className="px-4 py-3 max-w-[260px]">
+                      <div className="flex items-start gap-1.5">
+                        <FileText className="w-3 h-3 text-muted-foreground/50 shrink-0 mt-0.5" />
+                        <span className="text-xs text-muted-foreground leading-snug">{getCampaignNote(c)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </motion.div>
+  );
+}
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
+
 export default function AnalyticsDashboard() {
   const [refresh, setRefresh] = useState(0);
 
@@ -86,8 +242,12 @@ export default function AnalyticsDashboard() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-96 text-muted-foreground text-sm">
-        Failed to load analytics. Please try again.
+      <div className="flex flex-col items-center justify-center h-96 gap-3 text-muted-foreground text-sm">
+        <AlertCircle className="w-8 h-8 opacity-40" />
+        <p>Failed to load analytics. Please try again.</p>
+        <Button variant="outline" size="sm" onClick={() => setRefresh(r => r + 1)} className="gap-2">
+          <RefreshCw className="w-3.5 h-3.5" /> Retry
+        </Button>
       </div>
     );
   }
@@ -257,9 +417,12 @@ export default function AnalyticsDashboard() {
         </Card>
       </motion.div>
 
+      {/* Campaign Performance with Close Rate Notes */}
+      <CampaignPerformanceSection refresh={refresh} />
+
       {/* Weekly Multi-Status Trend */}
       {weeklyTrend?.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
             <div className="p-5 border-b border-border">
               <h2 className="font-semibold">Weekly Status Breakdown — Last 12 Weeks</h2>
