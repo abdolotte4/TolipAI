@@ -34,6 +34,7 @@ import CallQualityDashboard from "@/pages/analytics/CallQualityDashboard";
 import PowerDialer from "@/pages/dialer/PowerDialer";
 import SignContract from "@/pages/public/SignContract";
 import ToS from "@/pages/public/ToS";
+import WaitlistAdmin from "@/pages/admin/WaitlistAdmin";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,7 @@ function Router() {
       <Route path="/cash-buyers"><AppLayout><CashBuyersAll /></AppLayout></Route>
       <Route path="/lead-gen"><AppLayout><DistressedLeadGen /></AppLayout></Route>
       <Route path="/admin/sequences"><AppLayout><SequenceList /></AppLayout></Route>
+      <Route path="/admin/waitlist"><AppLayout><WaitlistAdmin /></AppLayout></Route>
       <Route path="/integrations"><AppLayout><IntegrationsDashboard /></AppLayout></Route>
       <Route path="/integrations/propelio"><AppLayout><ProperioConnect /></AppLayout></Route>
       <Route path="/integrations/propwire"><AppLayout><PropwireConnect /></AppLayout></Route>

@@ -15,6 +15,7 @@ import notificationsRouter from "./notifications";
 import buyersRouter from "./buyers";
 import analyticsRouter from "./analytics";
 import contractsRouter from "./contracts";
+import waitlistRouter from "./waitlist";
 
 const router = Router();
 
@@ -143,6 +144,9 @@ router.use("/crm/analytics", analyticsRouter);
 
 // E-sign contracts (CRUD + native signing)
 router.use("/crm/contracts", contractsRouter);
+
+// Waitlist admin — list + CSV export of landing-page signups
+router.use("/crm/admin/waitlist", waitlistRouter);
 
 // Public waitlist: POST /crm/public/waitlist
 router.post("/crm/public/waitlist", async (req, res) => {
