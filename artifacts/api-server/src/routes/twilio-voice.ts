@@ -35,7 +35,7 @@ interface VoiceConfig {
   apiKeySid: string;
   apiKeySecret: string;
   appSid: string;
-  callerId: string;
+  callerId?: string | null;
 }
 
 function getGlobalVoiceConfig(): VoiceConfig | null {
@@ -43,8 +43,8 @@ function getGlobalVoiceConfig(): VoiceConfig | null {
   const apiKeySid = process.env.TWILIO_API_KEY_SID;
   const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
   const appSid = process.env.TWILIO_VOICE_APP_SID;
-  const callerId = process.env.TWILIO_VOICE_CALLER_ID;
-  if (!accountSid || !apiKeySid || !apiKeySecret || !appSid || !callerId) return null;
+  if (!accountSid || !apiKeySid || !apiKeySecret || !appSid) return null;
+  const callerId = process.env.TWILIO_VOICE_CALLER_ID || null;
   return { accountSid, apiKeySid, apiKeySecret, appSid, callerId };
 }
 
@@ -61,9 +61,11 @@ async function getCampaignVoiceConfig(campaignId: number): Promise<VoiceConfig |
   const apiKeySid = campaign.twilioApiKeySid;
   const encApiSecret = campaign.twilioApiKeySecret;
   const appSid = campaign.twilioVoiceAppSid;
-  const callerId = campaign.twilioPhoneNumber;
 
-  if (!accountSid || !apiKeySid || !encApiSecret || !appSid || !callerId) return null;
+  // Phone number is optional — needed for outbound callerId but not for token generation
+  const callerId = campaign.twilioPhoneNumber || null;
+
+  if (!accountSid || !apiKeySid || !encApiSecret || !appSid) return null;
 
   let apiKeySecret: string;
   try {
@@ -90,7 +92,7 @@ async function resolveVoiceConfig(
   throw Object.assign(
     new Error(
       campaignId
-        ? "Twilio Voice is not fully configured for this campaign. Set API Key SID, API Key Secret, Voice App SID, and Phone Number in Campaign → Twilio settings."
+        ? "Twilio Voice is not fully configured for this campaign. Set API Key SID, API Key Secret, and TwiML App SID in Campaign → Twilio settings."
         : "Twilio Voice is not configured. Ask your admin to set up Twilio credentials."
     ),
     { status: 422 }
@@ -133,8 +135,29 @@ router.post("/twilio/voice/answer", async (req, res) => {
   res.set("Content-Type", "text/xml");
   try {
     const to = (req.body?.To as string | undefined) || "";
-    const callerId = (req.body?.CallerId as string | undefined) || "";
+    let callerId = (req.body?.CallerId as string | undefined) || "";
     const record = (req.body?.Record as string | undefined) === "true";
+    const accountSidFromTwilio = (req.body?.AccountSid as string | undefined) || "";
+
+    // If CallerId is missing or not a real E.164 phone number, look up the campaign phone
+    // from the DB using the AccountSid that Twilio always sends in the POST body.
+    if ((!callerId || !callerId.startsWith("+")) && accountSidFromTwilio) {
+      try {
+        const [camp] = await db
+          .select({ phone: crmCampaigns.twilioPhoneNumber })
+          .from(crmCampaigns)
+          .where(eq(crmCampaigns.twilioAccountSid, accountSidFromTwilio))
+          .limit(1);
+        if (camp?.phone) callerId = camp.phone;
+      } catch {
+        // Non-fatal — handled below
+      }
+    }
+
+    // Global env-var fallback
+    if (!callerId || !callerId.startsWith("+")) {
+      callerId = process.env.TWILIO_VOICE_CALLER_ID || "";
+    }
 
     if (!to) {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
@@ -146,7 +169,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
     if (!callerId) {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Missing caller ID.</Say>
+  <Say>No phone number is configured for this campaign. Please add a Twilio phone number in the campaign Twilio settings.</Say>
 </Response>`);
       return;
     }

@@ -186,7 +186,7 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
     const apiKeySid = campaign?.twilioApiKeySid ?? null;
     const apiKeySecret = campaign?.twilioApiKeySecret ?? null;
     const voiceAppSid = campaign?.twilioVoiceAppSid ?? null;
-    const voiceConfigured = !!(sid && apiKeySid && apiKeySecret && voiceAppSid && phone);
+    const voiceConfigured = !!(sid && apiKeySid && apiKeySecret && voiceAppSid);
     res.json({
       configured: !!(sid && token),
       voiceConfigured,

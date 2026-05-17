@@ -396,6 +396,20 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
           </div>
         )}
 
+        {/* No caller ID warning — device is ready but outbound calls need a phone number */}
+        {status === "ready" && !callerIdUsed && (
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">No outbound phone number configured</p>
+              <p className="mt-0.5 text-amber-400/80">Voice SDK is connected. Add a Twilio Phone Number in campaign settings so outbound calls display the correct caller ID.</p>
+              <a href="/integrations/twilio" className="underline mt-1 inline-block">
+                Add phone number →
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Error */}
         {status === "error" && errorMsg && (
           <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
@@ -403,11 +417,9 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
             <div>
               <p className="font-medium">Connection error</p>
               <p className="mt-0.5 text-red-400/80">{errorMsg}</p>
-              {errorMsg.toLowerCase().includes("voice") && (
-                <a href="/integrations/twilio" className="underline mt-1 inline-block">
-                  Configure Voice credentials →
-                </a>
-              )}
+              <a href="/integrations/twilio" className="underline mt-1 inline-block">
+                Configure Voice credentials →
+              </a>
             </div>
           </div>
         )}
