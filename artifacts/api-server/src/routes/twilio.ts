@@ -134,6 +134,7 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
     const apiKeySid = campaign?.twilioApiKeySid ?? null;
     const apiKeySecret = campaign?.twilioApiKeySecret ?? null;
     const voiceAppSid = campaign?.twilioVoiceAppSid ?? null;
+    const forwardPhone = campaign?.twilioForwardPhone ?? null;
     const voiceConfigured = !!(sid && apiKeySid && apiKeySecret && voiceAppSid);
     res.json({
       configured: !!(sid && token),
@@ -142,6 +143,7 @@ router.get("/twilio/config", crmAuth, async (req, res) => {
       accountSid: sid || null,
       authTokenMasked: token ? "••••••••••••••••••••••••" + token.slice(-4) : null,
       phoneNumber: phone || null,
+      forwardPhone: forwardPhone || null,
       apiKeySid: apiKeySid || null,
       apiKeySecretMasked: apiKeySecret ? "••••••••••••••••••••••••" + apiKeySecret.slice(-4) : null,
       voiceAppSid: voiceAppSid || null,
@@ -157,7 +159,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
 
-  const { accountSid, authToken, phoneNumber, twilioEnabled, apiKeySid, apiKeySecret, voiceAppSid, campaignId: bodyCampaignId } = req.body;
+  const { accountSid, authToken, phoneNumber, forwardPhone, twilioEnabled, apiKeySid, apiKeySecret, voiceAppSid, campaignId: bodyCampaignId } = req.body;
   if (!accountSid || !authToken) {
     res.status(400).json({ error: "accountSid and authToken are required" }); return;
   }
@@ -194,6 +196,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
       twilioAccountSid: accountSid,
       twilioAuthToken: encToken,
       twilioPhoneNumber: phoneNumber || null,
+      twilioForwardPhone: forwardPhone || null,
       twilioEnabled: twilioEnabled !== false,
     };
     if (apiKeySid) updateFields.twilioApiKeySid = apiKeySid;
@@ -215,6 +218,23 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
 router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
+
+  // Helper: build a synthetic entry from the DB-configured number so the page
+  // always shows something useful even when the Twilio REST API is unavailable.
+  const dbFallback = async (): Promise<any[]> => {
+    try {
+      if (!crmUser.campaignId) return [];
+      const creds = await getSmsCreds(crmUser.campaignId);
+      if (!creds?.phoneNumber) return [];
+      return [{
+        id: creds.phoneNumber,
+        sid: "configured",
+        number: creds.phoneNumber,
+        name: `${creds.phoneNumber} (configured)`,
+      }];
+    } catch { return []; }
+  };
+
   try {
     const creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdmin);
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
@@ -224,13 +244,20 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
       number: n.phone_number,
       name: n.friendly_name || n.phone_number,
     }));
-    res.json({ phoneNumbers: numbers });
+    // If Twilio API returned nothing, still show the DB-configured number
+    const phoneNumbers = numbers.length > 0 ? numbers : await dbFallback();
+    res.json({ phoneNumbers });
   } catch (err: any) {
     const status = typeof err?.status === "number" ? err.status : 500;
-    res.status(status).json({
-      error: err?.message || "Failed to load phone numbers",
-      phoneNumbers: [],
-    });
+    const fallback = await dbFallback();
+    if (fallback.length > 0) {
+      res.json({ phoneNumbers: fallback, warning: "Twilio API unreachable — showing configured number only." });
+    } else {
+      res.status(status).json({
+        error: err?.message || "Failed to load phone numbers",
+        phoneNumbers: [],
+      });
+    }
   }
 });
 

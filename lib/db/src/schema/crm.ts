@@ -20,6 +20,7 @@ export const crmCampaigns = pgTable("crm_campaigns", {
   twilioApiKeySecret: text("twilio_api_key_secret"),    // stored AES-256 encrypted
   twilioVoiceAppSid: text("twilio_voice_app_sid"),      // AP... — TwiML App for browser calling
   twilioPhoneNumber: text("twilio_phone_number"),
+  twilioForwardPhone: text("twilio_forward_phone"),   // personal / backup phone for call forwarding
   twilioEnabled: boolean("twilio_enabled").notNull().default(false),
   // Propelio: per-campaign login (AES-256 encrypted passwords)
   scraperProperioEmail: text("scraper_propelio_email"),

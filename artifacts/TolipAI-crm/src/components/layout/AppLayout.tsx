@@ -98,7 +98,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     es.addEventListener("lead_created", handler);
     return () => { es.close(); sseRef.current = null; };
   }, [user]);
-  const { data: newLeadsData } = useQuery<any>({ queryKey: ["crm-stats"], queryFn: () => apiFetch("/stats"), refetchInterval: 60_000, enabled: !!user, onSuccess: () => setSseLeadDelta(0) } as any);
+  const { data: newLeadsData } = useQuery<any>({ queryKey: ["crm-stats"], queryFn: () => apiFetch("/stats"), refetchInterval: 60_000, enabled: !!user });
+  useEffect(() => { if (newLeadsData) setSseLeadDelta(0); }, [newLeadsData]);
   const { data: pendingTasksData } = useQuery<any>({ queryKey: ["crm-nav-pending-tasks"], queryFn: () => apiFetch("/tasks?status=pending"), refetchInterval: 30_000, enabled: !!user });
   if (isLoading || !user) return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary" /></div>;
   const isSuperAdmin = user.role === "super_admin";

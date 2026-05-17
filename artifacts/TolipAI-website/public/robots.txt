@@ -1,16 +1,22 @@
+# TolipAI — robots.txt
+# https://tolipai.com
+
 User-agent: *
 Allow: /
-Disallow: /admin
 Disallow: /admin/
+Disallow: /wp-admin/
+Disallow: /wp-login.php
 Disallow: /*?page_id=
-Disallow: /*?page_id
 Disallow: /*?p=
-Disallow: /*?p
 Disallow: /*?cat=
 Disallow: /*?tag=
 Disallow: /*?author=
 Disallow: /*?feed=
-Disallow: /*?s=
 Disallow: /*?attachment_id=
 
+# Google-specific: allow AdsBot to crawl landing pages
+User-agent: AdsBot-Google
+Allow: /
+
+# Sitemap
 Sitemap: https://tolipai.com/sitemap.xml

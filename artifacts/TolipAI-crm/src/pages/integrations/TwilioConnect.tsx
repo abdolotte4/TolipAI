@@ -43,6 +43,7 @@ export default function TwilioConnect() {
   const [apiKeySid, setApiKeySid] = useState("");
   const [apiKeySecret, setApiKeySecret] = useState("");
   const [voiceAppSid, setVoiceAppSid] = useState("");
+  const [forwardPhone, setForwardPhone] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
@@ -96,7 +97,7 @@ export default function TwilioConnect() {
   const saveMutation = useMutation({
     mutationFn: (body: {
       accountSid: string; authToken: string; phoneNumber: string; twilioEnabled: boolean;
-      apiKeySid: string; apiKeySecret: string; voiceAppSid: string; campaignId?: number;
+      apiKeySid: string; apiKeySecret: string; voiceAppSid: string; forwardPhone?: string; campaignId?: number;
     }) => apiFetch("/twilio/config", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       const noTarget = isSuperAdmin && !selectedCampaignId;
@@ -107,7 +108,7 @@ export default function TwilioConnect() {
           ? "Credentials active for this session. To persist across deploys, set TWILIO_* environment variables in Railway."
           : `Campaign "${campaignName}" is now connected to Twilio.`,
       });
-      setAccountSid(""); setAuthToken(""); setPhoneNumber("");
+      setAccountSid(""); setAuthToken(""); setPhoneNumber(""); setForwardPhone("");
       setApiKeySid(""); setApiKeySecret(""); setVoiceAppSid("");
       qc.invalidateQueries({ queryKey: configQueryKey });
     },
@@ -190,7 +191,7 @@ export default function TwilioConnect() {
                   const val = e.target.value;
                   setSelectedCampaignId(val === "" ? null : Number(val));
                   // Clear form fields when switching campaigns
-                  setAccountSid(""); setAuthToken(""); setPhoneNumber("");
+                  setAccountSid(""); setAuthToken(""); setPhoneNumber(""); setForwardPhone("");
                   setApiKeySid(""); setApiKeySecret(""); setVoiceAppSid("");
                 }}
               >
@@ -361,6 +362,16 @@ export default function TwilioConnect() {
                     />
                     <p className="text-[11px] text-muted-foreground">Your Twilio number in E.164 format, e.g. +17035551234</p>
                   </div>
+                  <div className="space-y-2">
+                    <Label>Call Forward Phone <span className="text-muted-foreground font-normal">(optional — your personal/backup phone for inbound calls)</span></Label>
+                    <Input
+                      className="bg-background/50 rounded-xl font-mono text-sm"
+                      placeholder={isConfigured && config?.forwardPhone ? config.forwardPhone : "+1 (307) 000-0000"}
+                      value={forwardPhone}
+                      onChange={e => setForwardPhone(e.target.value)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">When your browser dialer misses a call, Twilio will ring this number simultaneously. E.164 format, e.g. +13075551234</p>
+                  </div>
                 </div>
               </div>
 
@@ -446,6 +457,7 @@ export default function TwilioConnect() {
                 onClick={() => saveMutation.mutate({
                   accountSid, authToken, phoneNumber, twilioEnabled: true,
                   apiKeySid, apiKeySecret, voiceAppSid,
+                  ...(forwardPhone ? { forwardPhone } : {}),
                   ...(selectedCampaignId ? { campaignId: selectedCampaignId } : {}),
                 })}
               >
@@ -630,7 +642,7 @@ export default function TwilioConnect() {
                 if (confirm(`This will clear Twilio credentials and disable the dialer for ${target}. Continue?`)) {
                   saveMutation.mutate({
                     accountSid: "", authToken: "", phoneNumber: "", twilioEnabled: false,
-                    apiKeySid: "", apiKeySecret: "", voiceAppSid: "",
+                    apiKeySid: "", apiKeySecret: "", voiceAppSid: "", forwardPhone: "",
                     ...(selectedCampaignId ? { campaignId: selectedCampaignId } : {}),
                   });
                 }

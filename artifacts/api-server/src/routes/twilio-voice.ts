@@ -731,10 +731,11 @@ router.post("/twilio/voice/inbound", async (req, res) => {
   try {
     // ── 1. Identify the campaign by the called Twilio number ──────────────────
     let campaignId: number | null = null;
+    let campaignForwardPhone: string | null = null;
     if (toNum || accountSidFromTwilio) {
       const toDigits = toNum.replace(/\D/g, "");
       const camps = await db
-        .select({ id: crmCampaigns.id, twilioAccountSid: crmCampaigns.twilioAccountSid, twilioPhoneNumber: crmCampaigns.twilioPhoneNumber })
+        .select({ id: crmCampaigns.id, twilioAccountSid: crmCampaigns.twilioAccountSid, twilioPhoneNumber: crmCampaigns.twilioPhoneNumber, twilioForwardPhone: crmCampaigns.twilioForwardPhone })
         .from(crmCampaigns)
         .where(eq(crmCampaigns.twilioEnabled, true));
 
@@ -742,7 +743,7 @@ router.post("/twilio/voice/inbound", async (req, res) => {
         const sidMatch = accountSidFromTwilio && c.twilioAccountSid === accountSidFromTwilio;
         const numMatch = c.twilioPhoneNumber &&
           c.twilioPhoneNumber.replace(/\D/g, "").slice(-10) === toDigits.slice(-10);
-        if (sidMatch || numMatch) { campaignId = c.id; break; }
+        if (sidMatch || numMatch) { campaignId = c.id; campaignForwardPhone = c.twilioForwardPhone || null; break; }
       }
     }
 
@@ -802,9 +803,12 @@ router.post("/twilio/voice/inbound", async (req, res) => {
       ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
     );
     const clientTags = agents.map((a) => `    <Client>user_${a.id}</Client>`).join("\n");
+    // Also ring the campaign's personal/forward phone simultaneously (if set)
+    const forwardTag = campaignForwardPhone
+      ? `\n    <Number>${campaignForwardPhone}</Number>` : "";
 
     logger.info(
-      { fromNum, toNum, leadId: lead.id, agents: agents.length },
+      { fromNum, toNum, leadId: lead.id, agents: agents.length, forwardPhone: campaignForwardPhone },
       "[twilio/voice/inbound] known lead → ringing agents"
     );
 
@@ -822,8 +826,8 @@ router.post("/twilio/voice/inbound", async (req, res) => {
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna">Incoming call from ${sellerName}.</Say>
-  <Dial timeout="20" action="${apiBase}/twilio/voice/inbound-no-answer" method="POST">
-${clientTags}
+  <Dial timeout="30" action="${apiBase}/twilio/voice/inbound-no-answer" method="POST">
+${clientTags}${forwardTag}
   </Dial>
 </Response>`);
   } catch (err) {
@@ -854,7 +858,20 @@ router.post("/twilio/voice/inbound-no-answer", async (req, res) => {
     `https://${process.env.REPLIT_DEV_DOMAIN || rawHost || "localhost"}/api`;
   const wsBase  = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
 
-  logger.info({ fromNum, toNum }, "[twilio/voice/inbound-no-answer] no agent answered → AI agent");
+  logger.info({ fromNum, toNum }, "[twilio/voice/inbound-no-answer] no agent answered → AI agent or voicemail");
+
+  // If OpenAI is not configured, fall back to voicemail so the call never dead-ends
+  if (!process.env.OPENAI_API_KEY) {
+    logger.warn("[twilio/voice/inbound-no-answer] OPENAI_API_KEY not set — using voicemail");
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Thank you for calling. Our team is unavailable right now. Please leave a message after the tone and we will return your call within 24 hours.</Say>
+  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true" />
+  <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
+  <Hangup/>
+</Response>`);
+    return;
+  }
 
   res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>

@@ -474,6 +474,7 @@ The lead detail page is the core of the CRM. Every feature below is accessible f
 - **Browser Dialer** (Twilio Voice SDK): In-browser WebRTC calling with live quality metrics (MOS, jitter, packet loss), call recording, automatic Whisper transcription, and post-call disposition picker
 - **AI Call Coaching**: Post-call GPT-4o-mini analysis of the call transcript — returns score (1–10), strengths, improvements, a suggested follow-up task, and an offer price recommendation
 - Call disposition logging (Answered / No Answer / Left Voicemail / Not Interested / Wrong Number / Callback Requested)
+- **Inbound Call Routing**: Calls ring all browser clients simultaneously + a configurable forward phone number; on no-answer, routes to AI voice agent (OpenAI Realtime) or voicemail depending on key availability
 
 **Workflow**
 - Status pipeline: `new_lead → contacted → negotiating → under_contract → closed_won → closed_lost → on_hold`
@@ -1040,4 +1041,5 @@ aws logs tail /ecs/TolipAI-scraper --follow --region $AWS_REGION
 | `TWILIO_API_KEY_SID` | No | Global Twilio API Key SID — required for super admin browser dialer (Voice SDK token generation) |
 | `TWILIO_API_KEY_SECRET` | No | Global Twilio API Key Secret (paired with `TWILIO_API_KEY_SID`) |
 | `TWILIO_VOICE_APP_SID` | No | Global Twilio TwiML App SID — routes outbound browser calls for super admins |
+| `API_BASE_URL` | No | Public base URL of the API server (e.g. `https://your-app.railway.app/api`) — required for Twilio webhook URLs and WebSocket connections |
 

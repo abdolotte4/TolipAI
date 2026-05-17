@@ -10,6 +10,7 @@ that are intentionally omitted from the top-level README to keep it readable.
 - [Monorepo Layout](#monorepo-layout)
 - [Request Lifecycle](#request-lifecycle)
 - [Authentication & Multi-Tenancy](#authentication--multi-tenancy)
+- [Inbound Call Routing](#inbound-call-routing)
 - [Comparable Sales & ARV Math](#comparable-sales--arv-math)
 - [API Key Rotation](#api-key-rotation)
 - [Email Sequence Background Job](#email-sequence-background-job)
@@ -63,6 +64,48 @@ Railway ingress (path-based routing)
 
 All three React apps are thin clients. Business logic, validation (Zod), and
 all third-party API calls live exclusively in the api-server.
+
+---
+
+## Inbound Call Routing
+
+Inbound calls hit `POST /api/twilio/voice/inbound` via a Twilio webhook.
+
+### Resolution Chain
+
+```
+Twilio → POST /api/twilio/voice/inbound
+  │
+  ├─ 1. Identify campaign: match called number to crm_campaigns.twilio_phone_number
+  │       fallback → match Twilio AccountSid to crm_campaigns.twilio_account_sid
+  │       fallback → env var (TWILIO_VOICE_CALLER_ID)
+  │
+  ├─ 2. Lead lookup: crm_leads WHERE phone = fromNumber AND campaignId
+  │
+  ├─ 3. Known lead → <Dial timeout="30" action="/inbound-no-answer">
+  │         ├─ <Client>user_1</Client>  … <Client>user_N</Client>   (browser dialer)
+  │         └─ <Number>campaign.twilio_forward_phone</Number>        (simultaneous ring)
+  │
+  ├─ 4a. /inbound-no-answer (no one answered):
+  │         ├─ OPENAI_API_KEY set → 301 redirect → /agent-stream (AI voice agent)
+  │         └─ no key → <Record maxLength="120"> voicemail
+  │
+  └─ 4b. Unknown caller → /agent-stream (AI voice agent) directly
+```
+
+### AI Voice Agent (WebSocket)
+
+- Endpoint: `wss://<host>/api/twilio/voice/agent-stream`
+- Protocol: Twilio Media Stream (G.711 μ-law audio) ↔ OpenAI Realtime (gpt-4o-realtime-preview)
+- WebSocket close code: **1000** (Normal) — using 1011 triggers Twilio Error 31921
+- Graceful fallback: if `OPENAI_API_KEY` is missing → voicemail TwiML instead of upgrading WS
+
+### Forward Phone Feature
+
+`crm_campaigns.twilio_forward_phone` stores a personal/backup E.164 phone number.
+When set, Twilio dials both the browser clients AND this number simultaneously.
+The first to answer wins; the rest are cancelled by Twilio automatically.
+Configured in the TwilioConnect settings page → "Call Forward Phone" field.
 
 ---
 

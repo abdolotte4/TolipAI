@@ -282,8 +282,8 @@ export function handleAgentStream(
 ): void {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
-    logger.error("[agent] OPENAI_API_KEY not set — closing WebSocket");
-    twilioWs.close(1011, "OPENAI_API_KEY not configured");
+    logger.warn("[agent] OPENAI_API_KEY not set — closing WebSocket gracefully");
+    twilioWs.close(1000, "AI agent not configured");
     return;
   }
 

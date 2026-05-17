@@ -1,146 +1,97 @@
-# TolipAI LLC — Project Conventions & Architecture
+# TolipAI — Project Conventions
 
 ## Monorepo Structure
 
 ```
 /
 ├── artifacts/
-│   ├── api-server/          # Express + TypeScript REST API (PORT=8080)
+│   ├── api-server/          Express 5 + TypeScript REST API (PORT=5000, serves all)
 │   │   └── src/
-│   │       ├── routes/      # Route handlers (admin, leads, scraperEngine, tools, etc.)
-│   │       ├── db/          # Drizzle ORM schema + migrations
-│   │       └── index.ts     # App entry point
-│   ├── tolipai-website/       # Public marketing site (PORT=3000)
-│   ├── tolipai-crm/           # Internal CRM portal (PORT=3001)
-│   ├── tolipai-tools/         # Tools portal (PORT=3002)
-│   └── tolipai-scraper-engine/  # Python FastAPI scraper engine (PORT=8001)
-│       ├── workers/
-│       │   ├── main.py      # FastAPI app entry (2000+ lines)
-│       │   ├── db.py        # asyncpg DB helpers
-│       │   ├── distressed.py
-│       │   ├── cash_buyers.py
-│       │   ├── skip_trace.py
-│       │   ├── ai_research.py
-│       │   ├── http_client.py
-│       │   ├── llm.py       # LLM wrapper (Kimi K2 / Bedrock / OpenRouter)
-│       │   ├── config.py    # Settings via pydantic-settings
-│       │   ├── job_store.py
-│       │   ├── osint_skip_trace.py
-│       │   ├── pdf_parser.py
-│       │   ├── retry_queue.py
-│       │   └── scrapers/    # Individual site scrapers
-│       │       ├── county.py
-│       │       ├── county_deeds.py
-│       │       ├── distressed_sources.py
-│       │       ├── homeharvest_scraper.py
-│       │       ├── propelio.py / propelio_v2.py
-│       │       ├── propwire.py
-│       │       ├── satellite_dfd.py   # Drive-for-dollars AI engine
-│       │       ├── satellite_rekognition.py
-│       │       ├── attom.py
-│       │       ├── zillow.py / redfin.py
-│       │       └── _browser_session.py  # Playwright shared session
-│       └── test_logins.py
-├── packages/                # Shared TS packages (if any)
-├── pnpm-workspace.yaml
-├── .aider.conf.yml
-├── CONVENTIONS.md           # This file
-└── launch-aider.sh          # Start Aider AI assistant
+│   │       ├── routes/      Route handlers (one file per domain)
+│   │       ├── services/    Business logic (twilioCredentials, smsService, etc.)
+│   │       ├── lib/         logger, validate, rate-limit
+│   │       └── seed.ts      DB seed + idempotent column migrations
+│   ├── TolipAI-crm/         React + Vite CRM portal (base path: /crm/)
+│   ├── TolipAI-website/     React + Vite marketing site (base path: /)
+│   ├── TolipAI-tools/       React + Vite tools (base path: /tools/)
+│   └── TolipAI-scraper-engine/  Python FastAPI scraper (PORT=8000)
+├── lib/
+│   ├── db/                  Drizzle ORM schema + pg client
+│   └── api-client-react/    Generated TanStack Query hooks (do NOT edit)
+├── node-start.sh            Build + start script
+└── replit                   Workflow config
 ```
 
-## Language & Runtime
+## API Conventions
 
-- **TypeScript/Node** — api-server, tolipai-website, tolipai-crm, tolipai-tools
-  - Package manager: `pnpm` (workspace monorepo)
-  - ORM: Drizzle (PostgreSQL)
-  - Framework: Express
-- **Python 3.11** — tolipai-scraper-engine
-  - Framework: FastAPI + uvicorn
-  - HTTP: httpx + tenacity
-  - Browser automation: Playwright
-  - LLM: OpenRouter / Kimi K2 / AWS Bedrock
+- All CRM routes are prefixed `/api/crm/`
+- All Twilio routes are prefixed `/api/twilio/`
+- Auth middleware: `crmAuth` (sets `req.crmUser`), `crmAdminOnly`
+- HTTP error pattern: `res.status(4xx).json({ error: "message" })` — never silent 200 with empty data
+- TwiML responses: always `res.set("Content-Type", "text/xml")` first
+- WebSocket closes: use code **1000** (Normal), never 1011 (Internal Error — causes Twilio Error 31921)
 
-## Python Conventions
+## Database Conventions
 
-- Format with `black` (line length 120), lint with `flake8 --max-line-length=120`
-- One import per line (no `import a, b, c` — split onto separate lines)
-- No ambiguous single-letter variable names (`l`, `O`, `I`) — use descriptive names
-- Imports that must come after runtime patches go at their location with `# noqa: E402`
-- Remove unused imports; remove unused local variables
-- Async everywhere for I/O; use `asyncio.gather` for parallel tasks
-- All scraper functions return `List[Dict[str, Any]]`
+- ORM: Drizzle ORM, schema-first
+- Schema file: `lib/db/src/schema/crm.ts`
+- Adding columns: Add to schema THEN add `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` to `ensureColumns()` in `seed.ts`
+- Encrypted fields: auth tokens, API secrets, passwords → AES-256 via `encryptPassword()` / `decryptPassword()`
+- Indexes: added in `ensureIndexes()` in `seed.ts`
+- Never use raw SQL outside of seed migrations and special aggregations
 
 ## TypeScript Conventions
 
-- Strict mode enabled
-- No `any` unless necessary
-- Route files in `artifacts/api-server/src/routes/`
-- Shared types in the route files (no separate types dir currently)
+- No `any` in service/model code; `any` is acceptable in thin route handlers for request body
+- All DB queries typed via Drizzle's inferred types
+- Zod for body validation in critical endpoints (`validateBody(schema)`)
+- Logger: always use `logger.info/warn/error` (pino), never `console.log` in production code
+- Error handling: catch at route level, log with context, return structured error JSON
 
-## Environment Variables (set via Replit Secrets)
+## React / Frontend Conventions
 
-```
-DATABASE_URL          # PostgreSQL connection string
-OPENROUTER_API_KEY    # LLM calls (Kimi K2, Claude, GPT-4o)
-GROQ_API_KEY          # Fast inference fallback
-BRIGHTDATA_PROXY_URL  # Residential proxy for scrapers
-ATTOM_API_KEY         # ATTOM property data API
-GOOGLE_MAPS_API_KEY   # Google Maps / Places API
-GOOGLE_CLOUD_API_KEY  # Cloud Vision (satellite_rekognition)
-TWILIO_*          # Telephony
-OPENPHONE_*           # OpenPhone integration
-```
+- State management: TanStack Query (server state) + React useState (local UI)
+- `useQuery` options: **do not use `onSuccess`** (deprecated in v5) — use `useEffect(() => {...}, [data])` instead
+- `apiFetch` throws on non-2xx responses — all errors are caught by React Query's `isError`
+- Components: functional only, no class components
+- Defensive array rendering: always `Array.isArray(data) ? data : data?.items ?? []` before `.map()`
+- Tailwind v3: avoid `in-` selector variants (not supported); use standard group/peer selectors
 
-## Key Design Patterns
+## Twilio Conventions
 
-### Scraper Engine Jobs
-- Long-running jobs are tracked via `job_store.py` (in-memory dict + DB)
-- Endpoints return `job_id` immediately; client polls `/job-status/{job_id}`
-- Progress reported via `progress_cb(pct, message)` callbacks
+- Per-campaign credentials: always use `resolveSmsCreds()` / `resolveVoiceConfig()` — never hardcode account SID
+- TwiML: valid XML with `<?xml version="1.0" encoding="UTF-8"?>` header
+- Inbound calls: `<Dial>` with `<Client>` tags for browser + `<Number>` for forward phone; fallback to voicemail when no AI key
+- WebSocket handler: check `OPENAI_API_KEY` at start; close gracefully with code 1000 if unavailable
+- Webhook URLs: built from `API_BASE_URL` env var (never `req.headers.host` alone in production)
 
-### API → Scraper Bridge
-- `artifacts/api-server/src/routes/scraperEngine.ts` proxies requests to the Python engine
-- The Python engine runs on its own port (configured via `SCRAPER_ENGINE_URL` env var)
+## Security Conventions
 
-### LLM Integration
-- All LLM calls go through `workers/llm.py` → `_chat()` helper
-- Provider chain: Moonshot Kimi K2.6 (direct) → OpenRouter Kimi K2.6 → Groq (free fallback) → Cerebras → Together → NVIDIA
-- Primary model: **Kimi K2.6** — 1M token context, 200K input, agent swarm (up to 300 agents)
-- Set `MOONSHOT_KIMI_API_KEY` for direct Moonshot access (best); `OPENROUTER_API_KEY` for proxy access
-- Groq (`GROQ_API_KEY`) is the free fallback — always set this as backup
-- AWS Bedrock also supported via `USE_BEDROCK=1` env flag
+- JWT tokens in `Authorization: Bearer` header or `?token=` query param (SSE only)
+- Sensitive data encrypted at rest (AES-256-CBC, key from `ENCRYPTION_KEY` env var)
+- Super-admin routes protected by role check in middleware
+- No secrets in logs — log masked versions only
+- XSS: escape all user data in TwiML `<Say>` and HTML templates
 
-### Browser Sessions
-- `workers/scrapers/_browser_session.py` manages persistent Playwright contexts
-- Session state stored in `/tmp/<service>_state.json`
-- Re-login on cold start; session reuse otherwise
+## File Naming
 
-## Running the Project
+- Route files: `kebab-case.ts` in `artifacts/api-server/src/routes/`
+- React components: `PascalCase.tsx`
+- Services: `camelCase.ts`
+- DB schema: grouped by domain in `lib/db/src/schema/`
 
-```bash
-# Start all services
-pnpm run dev
+## Startup Order
 
-# Or individually:
-PORT=8080 pnpm --filter @workspace/api-server run dev
-PORT=3000 pnpm --filter @workspace/tolipai-website run dev
-PORT=3001 pnpm --filter @workspace/tolipai-crm run dev
-PORT=3002 pnpm --filter @workspace/tolipai-tools run dev
+1. `ensureIndexes()` — creates DB indexes if missing
+2. `ensureColumns()` — idempotent `ALTER TABLE IF NOT EXISTS` for new columns
+3. `seedDatabase()` — creates super-admin users if env vars set
+4. HTTP server + WebSocket upgrade handler start on PORT=5000
 
-# Python scraper engine
-cd artifacts/tolipai-scraper-engine
-uvicorn workers.main:app --reload --port 8001
+## Infrastructure Notes (Current)
 
-# Lint + format Python
-cd artifacts/tolipai-scraper-engine
-python -m black workers/ test_logins.py
-python -m flake8 workers/ test_logins.py --max-line-length=120 --extend-ignore=E203,W503,E501
-```
+- **Dev/Preview**: Replit — workflow runs pre-built server directly
+- **Production**: Railway — single dyno serves API + all 3 frontends
+- **DB**: NeonDB (serverless Postgres 17) — free tier has 100 CU-hour/month limit
+- **Recommended split** (future): Vercel/Cloudflare Pages for frontends, Railway for API, AWS Fargate for scraper engine
 
-## Switching Between Replit Agent and Aider
-
-- **Replit Agent**: Use the web chat interface in Replit. Agent auto-commits after each task.
-- **Aider**: Run `./launch-aider.sh` from the project root in a terminal shell.
-  - Aider edits files directly; commit manually with `git add -A && git commit -m "..."`
-  - Both tools can be used on the same codebase — just avoid editing the same file simultaneously.
-  - Aider reads `CONVENTIONS.md` automatically for project context. The internal directory names still use the `TolipAI-` prefix for backwards-compatibility with Railway deployments.
+## Last Updated: S22 — May 17, 2026
