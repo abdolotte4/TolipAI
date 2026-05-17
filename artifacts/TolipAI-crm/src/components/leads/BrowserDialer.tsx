@@ -116,16 +116,55 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     setStatus("initializing");
     setErrorMsg("");
     try {
+      // Pre-warm the microphone before Twilio Device creation.
+      // This prevents AcquisitionFailedError (31402) which occurs when Twilio's
+      // getUserMedia call encounters an un-negotiated audio device on first access.
+      try {
+        const warmStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        warmStream.getTracks().forEach(t => t.stop());
+      } catch (micErr: any) {
+        // If mic is genuinely denied, surface a cleaner error immediately
+        const errName = micErr?.name || "";
+        if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+          setErrorMsg("Microphone access denied. Click the 🔒 icon in your browser's address bar and allow microphone, then refresh.");
+          setStatus("error");
+          return false;
+        }
+        // NotFoundError = no mic attached; NotReadableError = device busy
+        if (errName === "NotFoundError" || errName === "NotReadableError") {
+          setErrorMsg("No microphone found or it is in use by another application. Connect a headset and try again.");
+          setStatus("error");
+          return false;
+        }
+        // Other failures — let Twilio Device handle it below
+      }
+
       const { token, callerId } = await authFetch("/twilio/voice/token", { method: "POST" });
       setCallerIdUsed(callerId || null);
 
       const device = new Device(token, {
         logLevel: "warn",
         codecPreferences: ["opus", "pcmu"] as any,
-      });
+        // Permissive audio constraints — avoids 31402 on strict OS audio policies.
+        // Cast needed: audioConstraints is a valid SDK option not yet in TS typings.
+        audioConstraints: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      } as any);
 
       device.on("error", (err: any) => {
-        const msg = err?.message || "Device error";
+        const code = err?.code;
+        let msg = err?.message || "Device error";
+        // 31402 = AcquisitionFailedError — browser got mic permission but stream failed
+        if (code === 31402) {
+          msg = "Audio device error (31402): Your microphone was allowed but could not start. Try: close other apps using the mic, reconnect your headset, or use Chrome/Edge. Then click ↺ to retry.";
+        }
+        // 31003 = Transport closed (network issue)
+        if (code === 31003) {
+          msg = "Connection dropped (31003): Check your internet connection and click ↺ to reconnect.";
+        }
         setErrorMsg(msg);
         setStatus("error");
         toast({ title: "Browser dialer error", description: msg, variant: "destructive" });
