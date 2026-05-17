@@ -28,6 +28,7 @@ import {
 } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { getSmsCreds, getGlobalSmsCreds } from "../services/twilioCredentials";
+import { getOpenAIKey } from "../services/aiConfig";
 import { logger } from "../lib/logger";
 import twilio from "twilio";
 
@@ -280,9 +281,9 @@ export function handleAgentStream(
   twilioWs: WebSocket,
   _req: IncomingMessage
 ): void {
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const openaiKey = getOpenAIKey();
   if (!openaiKey) {
-    logger.warn("[agent] OPENAI_API_KEY not set — closing WebSocket gracefully");
+    logger.warn("[agent] No OpenAI API key found (OPENAI_API_KEY or AI_INTEGRATIONS_OPENAI_API_KEY) — closing WebSocket gracefully");
     twilioWs.close(1000, "AI agent not configured");
     return;
   }
@@ -526,7 +527,7 @@ agentRouter.post("/twilio/voice/inbound-agent", async (req, res) => {
     return;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!getOpenAIKey()) {
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>The AI assistant is not configured. Please call back during business hours.</Say>

@@ -28,6 +28,7 @@ import {
   getSmsCreds,
   getGlobalSmsCreds,
 } from "../services/twilioCredentials";
+import { getOpenAIKey, getOpenAIBaseUrl } from "../services/aiConfig";
 import { logger } from "../lib/logger";
 import { emitCrmActivity } from "./sse";
 
@@ -224,7 +225,7 @@ router.post("/twilio/voice/recording", async (req, res) => {
     logger.info({ callSid, recordingSid }, "[twilio/voice/recording] stored");
 
     // Fire-and-forget AI transcription if OpenAI key available
-    if (recordingUrl && process.env.OPENAI_API_KEY) {
+    if (recordingUrl && getOpenAIKey()) {
       // Look up campaign for recording auth (callSid already bound in outer scope)
       let recordingAuthHeader: Record<string, string> = {};
       try {
@@ -253,9 +254,9 @@ router.post("/twilio/voice/recording", async (req, res) => {
           formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "recording.mp3");
           formData.append("model", "whisper-1");
 
-          const transcriptResp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          const transcriptResp = await fetch(`${getOpenAIBaseUrl()}/audio/transcriptions`, {
             method: "POST",
-            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+            headers: { Authorization: `Bearer ${getOpenAIKey()}` },
             body: formData,
           });
 
@@ -359,17 +360,17 @@ router.post("/twilio/voice/coach", crmAuth, async (req, res) => {
     return;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    res.status(503).json({ error: "AI coaching requires OPENAI_API_KEY to be configured." });
+  if (!getOpenAIKey()) {
+    res.status(503).json({ error: "AI coaching requires an OpenAI API key to be configured." });
     return;
   }
 
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    const resp = await fetch(`${getOpenAIBaseUrl()}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${getOpenAIKey()}`,
       },
       signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({
@@ -861,8 +862,8 @@ router.post("/twilio/voice/inbound-no-answer", async (req, res) => {
   logger.info({ fromNum, toNum }, "[twilio/voice/inbound-no-answer] no agent answered → AI agent or voicemail");
 
   // If OpenAI is not configured, fall back to voicemail so the call never dead-ends
-  if (!process.env.OPENAI_API_KEY) {
-    logger.warn("[twilio/voice/inbound-no-answer] OPENAI_API_KEY not set — using voicemail");
+  if (!getOpenAIKey()) {
+    logger.warn("[twilio/voice/inbound-no-answer] No OpenAI key configured — falling back to voicemail recording");
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna">Thank you for calling. Our team is unavailable right now. Please leave a message after the tone and we will return your call within 24 hours.</Say>
@@ -883,6 +884,68 @@ router.post("/twilio/voice/inbound-no-answer", async (req, res) => {
     </Stream>
   </Connect>
 </Response>`);
+});
+
+// ── GET /api/twilio/voice/voicemails ─────────────────────────────────────────
+// Returns all inbound call logs that are: missed, recorded, or AI-handled.
+// Used by the Voicemail Inbox page in the CRM.
+router.get("/twilio/voice/voicemails", crmAuth, async (req, res) => {
+  try {
+    const crmUser = req.crmUser!;
+    const isSuperAdmin = crmUser.role === "super_admin";
+
+    // Build where clause: inbound calls only
+    // Super-admins see all; campaign agents see only their campaign
+    const rows = await db
+      .select({
+        id:               crmCallLogs.id,
+        callSid:          crmCallLogs.callSid,
+        fromNumber:       crmCallLogs.fromNumber,
+        toNumber:         crmCallLogs.toNumber,
+        duration:         crmCallLogs.duration,
+        status:           crmCallLogs.status,
+        disposition:      crmCallLogs.disposition,
+        recordingUrl:     crmCallLogs.recordingUrl,
+        recordingSid:     crmCallLogs.recordingSid,
+        transcript:       crmCallLogs.transcript,
+        aiCoachingSummary: crmCallLogs.aiCoachingSummary,
+        leadId:           crmCallLogs.leadId,
+        campaignId:       crmCallLogs.campaignId,
+        createdAt:        crmCallLogs.createdAt,
+        updatedAt:        crmCallLogs.updatedAt,
+      })
+      .from(crmCallLogs)
+      .where(
+        isSuperAdmin
+          ? and(
+              eq(crmCallLogs.direction, "inbound"),
+              // Only show missed calls, voicemails, or AI-handled
+              sql`(
+                ${crmCallLogs.status} IN ('no-answer', 'missed', 'busy', 'failed')
+                OR ${crmCallLogs.recordingUrl} IS NOT NULL
+                OR ${crmCallLogs.disposition} IN ('ai_pending', 'ai_qualified', 'ai_unqualified', 'inbound_lead')
+              )`
+            )
+          : and(
+              eq(crmCallLogs.direction, "inbound"),
+              crmUser.campaignId
+                ? eq(crmCallLogs.campaignId, crmUser.campaignId)
+                : sql`TRUE`,
+              sql`(
+                ${crmCallLogs.status} IN ('no-answer', 'missed', 'busy', 'failed')
+                OR ${crmCallLogs.recordingUrl} IS NOT NULL
+                OR ${crmCallLogs.disposition} IN ('ai_pending', 'ai_qualified', 'ai_unqualified', 'inbound_lead')
+              )`
+            )
+      )
+      .orderBy(desc(crmCallLogs.createdAt))
+      .limit(200);
+
+    res.json({ voicemails: rows, total: rows.length });
+  } catch (err) {
+    logger.error(err, "[twilio/voice/voicemails] error");
+    res.status(500).json({ error: "Failed to load voicemails" });
+  }
 });
 
 export default router;
