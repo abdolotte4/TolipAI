@@ -434,15 +434,15 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx
 
 | ID | Severity | Finding | File | Status |
 |----|----------|---------|------|--------|
-| SEC-01 | 🔴 CRITICAL | N+1 scan + 2000-row memory load in SMS webhook | `twilio.ts:521` | ❌ Outstanding |
-| SEC-02 | 🟠 HIGH | JWT secret no minimum length — weak secret accepted silently | `middleware.ts:4` | ❌ Outstanding |
+| SEC-01 | 🔴 CRITICAL | N+1 scan + 2000-row memory load in SMS webhook | `twilio.ts:521` | ✅ Fixed (S19) |
+| SEC-02 | 🟠 HIGH | JWT secret no minimum length — weak secret accepted silently | `middleware.ts:4` | ✅ Fixed (S19 — verified already present) |
 | SEC-03 | 🟠 HIGH | No Sentry — crashes are invisible in production | All | ✅ Fixed (S9) |
-| SEC-04 | 🟠 HIGH | XSS via HTML email templates — lead data in `<template>` strings | `emailService.ts` | ❌ Outstanding |
+| SEC-04 | 🟠 HIGH | XSS via HTML email templates — lead data in `<template>` strings | `emailService.ts` | ✅ Fixed (S20) — `escapeHtml()` added; all user data escaped before template interpolation |
 | SEC-05 | 🟡 MEDIUM | Manual Twilio webhook signature verification (sha1 reimplementation) | `twilio.ts:439` | ✅ Fixed (S10) |
-| SEC-06 | 🟡 MEDIUM | `Object.assign(req.body, ...)` without allowlist — extra fields accepted | `sequences.ts` | ❌ Outstanding |
+| SEC-06 | 🟡 MEDIUM | `Object.assign(req.body, ...)` without allowlist — extra fields accepted | `sequences.ts` | ✅ Fixed (S20 — verified already using destructuring, no Object.assign present) |
 | SEC-07 | 🟡 MEDIUM | No Zod validation on most POST/PATCH routes | `leads.ts`, `tasks.ts` | 🔶 Partial (S13) |
-| SEC-08 | 🟡 MEDIUM | super_admin can delete campaign leads when `allowLeadDeletion=false` | `leads.ts:579` | ❌ Outstanding |
-| SEC-09 | 🟡 MEDIUM | Python vulnerable packages (aiohttp, multipart, pillow) | `requirements.txt` | ❌ Outstanding |
+| SEC-08 | 🟡 MEDIUM | super_admin can delete campaign leads when `allowLeadDeletion=false` | `leads.ts:619` | ✅ Fixed (S20) — allowLeadDeletion check now applies to ALL roles including super_admin |
+| SEC-09 | 🟡 MEDIUM | Python vulnerable packages (aiohttp, multipart, pillow) | `requirements.txt` | ✅ Fixed (S20) — versions 3.11.18 / 11.2.1 / 0.0.20 are post-CVE-patch; annotated with CVE refs |
 | SEC-10 | 🟢 LOW | CORS allows all `*.replit.app` — dev-only origin accepted in prod | `app.ts:36` | ❌ Outstanding |
 | SEC-11 | 🟢 LOW | AES-CBC used for Twilio credential encryption instead of AES-GCM | `crypto-util.ts` | ❌ Outstanding |
 | SEC-12 | ✅ FIXED | Waitlist endpoints accessible to all admins — exposed signup PII | `waitlist.ts` | ✅ Fixed (S18) |
@@ -526,7 +526,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx
 | Observability | 7/10 | 9/10 | Sentry ✅, Analytics Dashboard ✅, Campaign Close Rates ✅, Audit Log ✅ |
 | Database | 8/10 | 9/10 | Audit log ✅, background jobs ✅, missing indexes remain |
 | Access Control | 9/10 | 9/10 | Waitlist super_admin restriction ✅, route guard ✅, API middleware ✅ |
-| **Overall** | **93/100** | **96/100** | +1 pt this session (+20 total from baseline 73) |
+| **Overall** | **94/100** | **96/100** | +1 pt S20: XSS email fix, SEC-08 delete guard, DB indexes, bare excepts, /demo fix |
 
 ---
 
@@ -744,9 +744,11 @@ TASK: Tax lien / pre-foreclosure
 | S16 | Pricing page, email capture, Calendly, Lighthouse audit | +1 → 92 |
 | S17 | Warm transfer, AI coaching, close rate analytics, bulk health-check, CSP fix, bulk waitlist actions | +1 → 93 |
 | S18 | Waitlist super_admin restriction (backend + nav + route) | +0 → 93 (security hardening) |
-| **S19–S21** | N+1 fix, DB indexes, Stripe auto-campaign, data sources | **→ 96 target** |
+| S19 | N+1 SMS webhook fix, Prometheus /metrics, stripJsonMarkdown/csvCell utilities, OpenPhone mounted, console→logger, useEffect deps, Pipeline query key, Twilio TwiML Content-Type | +0 → 93 (no net score change — S18 security fixes already counted) |
+| S20 | XSS email escaping (SEC-04), SEC-08 delete guard, DB indexes (users/seq_steps/seq_logs), bare except clauses, /demo dead link, duplicate routes, Vite proxy parameterize, setImmediate outer catch (TASK-04), SEC-09 Python CVEs verified safe, Replit dev workflow running on port 5000 | **+1 → 94** |
+| **S21** | Stripe auto-campaign, Twilio credentials service (TASK-08), in-memory job cache (TASK-19) | **→ 96 target** |
 
-**Current: 93/100** — Enterprise production-ready for current scale. Remaining 3 points: N+1 fix + DB indexes + Stripe auto-campaign.
+**Current: 94/100** — Enterprise production-ready for current scale. Remaining 2 points: Stripe auto-campaign + Twilio credentials service refactor.
 
 ---
 

@@ -626,10 +626,13 @@ router.delete("/:id", crmAuth, async (req, res) => {
         res.status(403).json({ error: "Access denied." });
         return;
       }
+    }
+    // All roles — including super_admin — must respect the campaign's allowLeadDeletion flag (SEC-08)
+    if (existing.campaignId) {
       const [campaign] = await db.select({ allowLeadDeletion: crmCampaigns.allowLeadDeletion })
-        .from(crmCampaigns).where(eq(crmCampaigns.id, existing.campaignId!)).limit(1);
+        .from(crmCampaigns).where(eq(crmCampaigns.id, existing.campaignId)).limit(1);
       if (!campaign?.allowLeadDeletion) {
-        res.status(403).json({ error: "Lead deletion is not enabled for this campaign. Ask your super admin to enable it in campaign settings." });
+        res.status(403).json({ error: "Lead deletion is not enabled for this campaign. Enable it in campaign settings." });
         return;
       }
     }

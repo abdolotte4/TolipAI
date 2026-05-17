@@ -51,10 +51,10 @@ export function Navbar() {
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
             Mission, Vision &amp; Values
           </a>
-          <a href="/demo"
+          <button onClick={() => scrollTo("#services")}
             className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors whitespace-nowrap">
             Watch Demo
-          </a>
+          </button>
           <Button
             onClick={openSubscribe}
             variant="outline"
@@ -110,10 +110,10 @@ export function Navbar() {
               className="text-left text-lg font-medium text-muted-foreground hover:text-foreground py-2 border-b border-border/50">
               Mission, Vision &amp; Values
             </a>
-            <a href="/demo" onClick={() => setMobileMenuOpen(false)}
+            <button onClick={() => scrollTo("#services")}
               className="text-left text-lg font-semibold text-primary hover:text-primary/80 py-2 border-b border-border/50">
               Watch Demo
-            </a>
+            </button>
             <Button onClick={() => { setMobileMenuOpen(false); openSubscribe(); }}
               variant="outline"
               className="w-full border-primary/50 text-primary hover:bg-primary/10 flex items-center justify-center gap-2">

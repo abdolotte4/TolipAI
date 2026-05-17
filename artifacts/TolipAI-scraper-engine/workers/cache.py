@@ -167,8 +167,8 @@ class Cache:
                                     min(remaining, _REDIS_TTL),
                                     json.dumps({"v": val, "ttl": remaining}, default=str),
                                 )
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                log.debug("Cache redis setex error: %s", exc)
                         _memory[key] = (val, data["exp"])
                         return val
             except Exception as exc:
@@ -210,8 +210,8 @@ class Cache:
         if redis is not None:
             try:
                 await redis.delete(_cache_key(key))
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("Cache redis del error: %s", exc)
 
     async def get_or_fetch(
         self,
@@ -261,8 +261,8 @@ class Cache:
         if redis_connected:
             try:
                 redis_keys = sum(1 async for _ in redis.scan_iter(f"{_REDIS_KEY_PREFIX}*", count=200))
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("Cache redis scan error: %s", exc)
         return {
             "memory_entries": len(_memory),
             "redis_connected": redis_connected,

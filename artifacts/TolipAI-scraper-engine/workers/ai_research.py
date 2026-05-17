@@ -54,8 +54,8 @@ async def discover_trustees(state: str, *, county: str = "", max_results: int = 
         data = json.loads(raw)
         trustees = [t for t in (data.get("trustees") or []) if isinstance(t, dict) and t.get("name")]
         return trustees[:max_results]
-    except Exception:
-        log.warning("Trustee LLM parse returned non-JSON: %s", raw[:200])
+    except Exception as exc:
+        log.warning("Trustee LLM parse returned non-JSON: %s", raw[:200], exc_info=True)
         return []
 
 
@@ -82,8 +82,8 @@ async def hedge_fund_markets(max_results: int = 12) -> List[Dict[str, Any]]:
     try:
         data = json.loads(raw)
         return (data.get("markets") or [])[:max_results]
-    except Exception:
-        log.warning("Markets LLM parse failed")
+    except Exception as exc:
+        log.warning("Markets LLM parse failed", exc_info=True)
         return []
 
 
@@ -112,5 +112,6 @@ async def research(query: str, *, max_results: int = 10) -> Dict[str, Any]:
         data = json.loads(raw)
         results = (data.get("results") or [])[:max_results]
         return {"query": query, "results": results, "count": len(results)}
-    except Exception:
+    except Exception as exc:
+        log.warning("Research LLM parse returned non-JSON", exc_info=True)
         return {"query": query, "results": [], "count": 0, "error": "non-JSON"}

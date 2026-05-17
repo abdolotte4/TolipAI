@@ -152,13 +152,7 @@ function Router() {
         <Route path="/contact-enrichment">
           {() => <ProtectedRoute component={SkipTrace} />}
         </Route>
-        <Route path="/skip-trace">
-          {() => <ProtectedRoute component={SkipTrace} />}
-        </Route>
         <Route path="/opportunity-finder">
-          {() => <ProtectedRoute component={Distressed} />}
-        </Route>
-        <Route path="/distressed">
           {() => <ProtectedRoute component={Distressed} />}
         </Route>
         <Route path="/ai-distressed">

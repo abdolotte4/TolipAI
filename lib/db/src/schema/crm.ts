@@ -45,7 +45,9 @@ export const crmUsers = pgTable("crm_users", {
   campaignId: integer("campaign_id").references(() => crmCampaigns.id),
   lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("crm_users_campaign_id_idx").on(t.campaignId),
+]);
 
 export const crmLeads = pgTable("crm_leads", {
   id: serial("id").primaryKey(),
@@ -213,7 +215,9 @@ export const crmSequenceSteps = pgTable("crm_sequence_steps", {
   subject: text("subject").notNull().default(""),
   body: text("body").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("crm_sequence_steps_sequence_id_idx").on(t.sequenceId),
+]);
 
 export const crmSequenceLogs = pgTable("crm_sequence_logs", {
   id: serial("id").primaryKey(),
@@ -228,6 +232,7 @@ export const crmSequenceLogs = pgTable("crm_sequence_logs", {
   index("crm_sequence_logs_lead_id_idx").on(t.leadId),
   index("crm_sequence_logs_step_id_idx").on(t.stepId),
   index("crm_sequence_logs_sent_at_idx").on(t.sentAt),
+  uniqueIndex("crm_sequence_logs_dedup_idx").on(t.leadId, t.sequenceId, t.stepId),
 ]);
 
 export const crmCallLogs = pgTable("crm_call_logs", {

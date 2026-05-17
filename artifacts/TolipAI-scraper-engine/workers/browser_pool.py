@@ -84,12 +84,12 @@ class _PooledBrowser:
     async def close(self) -> None:
         try:
             await self.browser.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Browser.close error: %s", exc)
         try:
             await self._pw.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Playwright.stop error: %s", exc)
 
 
 class BrowserPool:
@@ -147,7 +147,8 @@ class BrowserPool:
             )
             _ensure_nix_ld_path()
             exec_path: Optional[str] = _find_chromium_executable()
-        except Exception:
+        except Exception as exc:
+            log.debug("Chromium exec lookup error: %s", exc)
             exec_path = None
 
         pw = await async_playwright().start()
@@ -245,8 +246,8 @@ class BrowserPool:
             finally:
                 try:
                     await page.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.debug("Page.close error: %s", exc)
 
     # ── Idle eviction ─────────────────────────────────────────────────────────
 

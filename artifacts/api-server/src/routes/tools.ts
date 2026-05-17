@@ -326,43 +326,48 @@ router.post("/tools/distressed/enrich/:jobId", requirePin, async (req: Request, 
 
     // Run enrichment in the background — do not await.
     setImmediate(async () => {
-      for (const listing of listings) {
-        try {
-          const street    = listing.address || listing.street || "";
-          const city      = listing.city || "";
-          const state     = listing.state || "";
-          const zip       = listing.zip || listing.zip_code || "";
-          const ownerName = listing.owner_name || listing.ownerName || "";
-          const parts     = ownerName.trim().split(/\s+/);
-          const firstName = parts[0] || null;
-          const lastName  = parts.length > 1 ? parts.slice(1).join(" ") : null;
+      try {
+        for (const listing of listings) {
+          try {
+            const street    = listing.address || listing.street || "";
+            const city      = listing.city || "";
+            const state     = listing.state || "";
+            const zip       = listing.zip || listing.zip_code || "";
+            const ownerName = listing.owner_name || listing.ownerName || "";
+            const parts     = ownerName.trim().split(/\s+/);
+            const firstName = parts[0] || null;
+            const lastName  = parts.length > 1 ? parts.slice(1).join(" ") : null;
 
-          const st = await runSkipTrace(
-            street, city || null, state || null, zip || null,
-            firstName, lastName,
-          );
+            const st = await runSkipTrace(
+              street, city || null, state || null, zip || null,
+              firstName, lastName,
+            );
 
-          enrichJob.results.push({
-            ...listing,
-            phones: st ? st.phones.map((p: any) => p.number || p) : [],
-            emails: st ? st.emails : [],
-            skip_trace_status: st ? "found" : "not_found",
-          });
-        } catch {
-          enrichJob.results.push({
-            ...listing,
-            phones: [],
-            emails: [],
-            skip_trace_status: "error",
-          });
+            enrichJob.results.push({
+              ...listing,
+              phones: st ? st.phones.map((p: any) => p.number || p) : [],
+              emails: st ? st.emails : [],
+              skip_trace_status: st ? "found" : "not_found",
+            });
+          } catch {
+            enrichJob.results.push({
+              ...listing,
+              phones: [],
+              emails: [],
+              skip_trace_status: "error",
+            });
+          }
+
+          enrichJob.processed++;
+          // Throttle ~2 records/sec to respect API rate limits
+          await new Promise(r => setTimeout(r, 500));
         }
 
-        enrichJob.processed++;
-        // Throttle ~2 records/sec to respect API rate limits
-        await new Promise(r => setTimeout(r, 500));
+        enrichJob.status = "completed";
+      } catch (err: any) {
+        enrichJob.status = "failed";
+        logger.error({ enrichJobId, err: err?.message }, "[distressed] enrich job crashed");
       }
-
-      enrichJob.status = "completed";
     });
 
     logger.info({ enrichJobId, sourceJobId: req.params.jobId, total: listings.length }, "[distressed] enrich job started");

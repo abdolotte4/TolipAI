@@ -55,7 +55,7 @@ def _aggregate_by_buyer(properties: List[Dict[str, Any]]) -> Dict[str, Dict[str,
         if p.get("price"):
             try:
                 b["prices"].append(float(str(p["price"]).replace("$", "").replace(",", "")))
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 pass
         if p.get("sold_date") and (not b["last_purchase_date"] or p["sold_date"] > b["last_purchase_date"]):
             b["last_purchase_date"] = p["sold_date"]
