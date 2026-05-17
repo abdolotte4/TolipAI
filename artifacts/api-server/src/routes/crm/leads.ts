@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers, crmNotifications, crmComps } from "@workspace/db/schema";
-import { eq, desc, ilike, and, or, sql, ne } from "drizzle-orm";
+import { eq, desc, ilike, and, or, sql, ne, inArray } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
 import { stripJsonMarkdown } from "../../lib/textUtils";
@@ -501,6 +501,76 @@ router.post("/bulk-import", crmAuth, async (req, res) => {
   }
 
   res.json({ created, failed: errors.length, errors });
+});
+
+// ── POST /bulk-status — batch status update ──────────────────────────────────
+const LEAD_STATUSES = ["new", "contacted", "qualified", "negotiating", "under_contract", "closed", "dead"] as const;
+
+router.post("/bulk-status", crmAuth, crmAdminOnly, async (req, res) => {
+  const { ids, status } = req.body as { ids?: unknown; status?: unknown };
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids must be a non-empty array" });
+    return;
+  }
+  if (ids.length > 200) {
+    res.status(400).json({ error: "Cannot update more than 200 leads at once" });
+    return;
+  }
+  if (typeof status !== "string" || !(LEAD_STATUSES as readonly string[]).includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${LEAD_STATUSES.join(", ")}` });
+    return;
+  }
+
+  const numericIds = (ids as unknown[]).map(Number).filter(n => !isNaN(n) && n > 0);
+  if (numericIds.length === 0) {
+    res.status(400).json({ error: "No valid lead IDs provided" });
+    return;
+  }
+
+  const crmUser = req.crmUser!;
+
+  try {
+    const whereClause = crmUser.role === "super_admin"
+      ? inArray(crmLeads.id, numericIds)
+      : and(inArray(crmLeads.id, numericIds), eq(crmLeads.campaignId, crmUser.campaignId));
+
+    const existing = await db
+      .select({ id: crmLeads.id, status: crmLeads.status })
+      .from(crmLeads)
+      .where(whereClause);
+
+    if (existing.length === 0) {
+      res.status(404).json({ error: "No matching leads found" });
+      return;
+    }
+
+    const idsToUpdate = existing.map(l => l.id);
+
+    await db
+      .update(crmLeads)
+      .set({ status: status as any, updatedAt: new Date() })
+      .where(inArray(crmLeads.id, idsToUpdate));
+
+    for (const lead of existing) {
+      if (lead.status !== status) {
+        await writeAuditLog({
+          tableName: "crm_leads",
+          rowId: lead.id,
+          actorId: crmUser.userId,
+          action: "update",
+          before: { status: lead.status },
+          after: { status },
+        });
+        setImmediate(() => onLeadStatusChanged(lead.id, status, crmUser.userId).catch(() => {}));
+      }
+    }
+
+    res.json({ updated: idsToUpdate.length, status });
+  } catch (err: any) {
+    logger.error(err, "[bulk-status]");
+    res.status(500).json({ error: err?.message || "Internal server error" });
+  }
 });
 
 router.get("/:id", crmAuth, async (req, res) => {
