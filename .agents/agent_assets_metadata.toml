@@ -17,3 +17,9 @@ id = "wSKcHaTcpCkvGnzIJ6n0_"
 uri = "file://CODEBASE_AUDIT.md"
 type = "text"
 title = "TolipAI Monorepo — Full Codebase Audit Report"
+
+[[outputs]]
+id = "nX1YnzNtYZASh5DARnYXN"
+uri = "file://merged_neondb.zip"
+type = "unspecified"
+title = "merged_neondb.zip — Download & upload to NeonDB"
