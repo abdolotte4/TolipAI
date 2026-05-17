@@ -5,8 +5,70 @@ import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { crmAuth } from "./middleware";
+import * as DropboxSign from "@dropbox/sign";
+import type { RequestFile } from "@dropbox/sign";
 
 const router = Router();
+
+// ── Dropbox Sign (HelloSign) helper ──────────────────────────────────────────
+// Returns true when the env var is present — auto-upgrades to certified e-sigs.
+function getDropboxSignClient(): DropboxSign.SignatureRequestApi | null {
+  const apiKey = process.env.DROPBOX_SIGN_API_KEY;
+  if (!apiKey) return null;
+  const client = new DropboxSign.SignatureRequestApi();
+  client.username = apiKey;
+  return client;
+}
+
+interface DropboxResult {
+  signatureRequestId: string;
+  signingUrl: string | null;
+  provider: "dropbox_sign";
+}
+
+async function sendViaDropboxSign(opts: {
+  sellerName: string;
+  sellerEmail: string;
+  propertyAddress: string;
+  contractType: string;
+  documentHtml: string;
+  contractId: number;
+}): Promise<DropboxResult | null> {
+  const client = getDropboxSignClient();
+  if (!client) return null;
+
+  const isTest = process.env.NODE_ENV !== "production";
+  const htmlBuffer = Buffer.from(opts.documentHtml, "utf-8");
+  const title = opts.contractType === "assignment"
+    ? `Assignment of Contract — ${opts.propertyAddress}`
+    : `Purchase Agreement — ${opts.propertyAddress}`;
+
+  try {
+    const sendData: DropboxSign.SignatureRequestSendRequest = {
+      title,
+      subject: `Please sign: ${title}`,
+      message: `Hi ${opts.sellerName}, please review and sign the purchase agreement for your property at ${opts.propertyAddress}. This is a legally binding document — please read carefully before signing.`,
+      signers: [{ name: opts.sellerName, emailAddress: opts.sellerEmail, order: 0 }],
+      files: [htmlBuffer as unknown as RequestFile],
+      metadata: { contractId: String(opts.contractId), source: "TolipAI CRM" },
+      testMode: isTest,
+    };
+    const resp = await client.signatureRequestSend(sendData);
+
+    const sigReq = resp.body.signatureRequest;
+    const signingUrl = sigReq?.signingUrl ?? null;
+
+    return {
+      signatureRequestId: sigReq?.signatureRequestId ?? "",
+      signingUrl,
+      provider: "dropbox_sign",
+    };
+  } catch (err: any) {
+    // If Dropbox Sign fails, fall through to native
+    console.error("[DropboxSign] API error — falling back to native:", err?.message);
+    return null;
+  }
+}
 
 // ── Mailer (optional — only works if SMTP env vars are set) ───────────────────
 function createMailer() {
@@ -213,45 +275,76 @@ router.post("/", crmAuth, async (req, res) => {
       documentHtml,
     }).returning();
 
-    // Determine signing URL — use Railway domain if available, else request origin
-    const appBase = process.env.RAILWAY_PUBLIC_DOMAIN
-      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-      : (req.headers.origin || `${req.protocol}://${req.get("host")}`);
-    // Frontend serves this — strip /api prefix
-    const signingUrl = `${appBase}/sign/${signingToken}`;
-
-    // Optional: email seller if email provided and SMTP configured
+    // ── Try Dropbox Sign first (auto-upgrade when API key is configured) ──────
+    let signingUrl: string;
     let emailSent = false;
-    if (sellerEmail) {
-      try {
-        const mailer = createMailer();
-        if (mailer) {
-          await mailer.sendMail({
-            from: process.env.SMTP_FROM || process.env.SMTP_USER,
-            to: sellerEmail,
-            subject: `Please sign your Purchase Agreement — ${propertyAddress}`,
-            html: `
-              <p>Hi ${sellerName},</p>
-              <p>Please review and sign the Purchase Agreement for your property at <strong>${propertyAddress}</strong>.</p>
-              <p style="margin:24px 0">
-                <a href="${signingUrl}" style="background:#6d28d9;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
-                  Review &amp; Sign Agreement →
-                </a>
-              </p>
-              <p>This link expires in 30 days. If you have any questions, please reply to this email.</p>
-              <p style="color:#888;font-size:12px">Powered by TolipAI CRM</p>
-            `,
-          });
-          await db.update(crmContracts)
-            .set({ status: "sent", emailSentAt: new Date() })
-            .where(eq(crmContracts.id, contract.id));
-          contract.status = "sent";
-          emailSent = true;
-        }
-      } catch { /* email failure is non-fatal */ }
+    let usedProvider = "native";
+
+    if (sellerEmail && getDropboxSignClient()) {
+      const dsResult = await sendViaDropboxSign({
+        sellerName,
+        sellerEmail,
+        propertyAddress,
+        contractType,
+        documentHtml,
+        contractId: contract.id,
+      });
+
+      if (dsResult) {
+        // Dropbox Sign handled delivery — update the contract record
+        await db.update(crmContracts)
+          .set({
+            provider:      "dropbox_sign",
+            status:        "sent",
+            emailSentAt:   new Date(),
+            signingToken:  dsResult.signatureRequestId, // reuse field to store DS request ID
+          })
+          .where(eq(crmContracts.id, contract.id));
+        contract.status  = "sent";
+        signingUrl        = dsResult.signingUrl ?? "";
+        emailSent         = true;
+        usedProvider      = "dropbox_sign";
+      }
     }
 
-    res.status(201).json({ ...contract, signingUrl, emailSent });
+    // ── Native fallback ───────────────────────────────────────────────────────
+    if (!emailSent) {
+      const appBase = process.env.RAILWAY_PUBLIC_DOMAIN
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+        : (req.headers.origin || `${req.protocol}://${req.get("host")}`);
+      signingUrl = `${appBase}/sign/${signingToken}`;
+
+      if (sellerEmail) {
+        try {
+          const mailer = createMailer();
+          if (mailer) {
+            await mailer.sendMail({
+              from:    process.env.SMTP_FROM || process.env.SMTP_USER,
+              to:      sellerEmail,
+              subject: `Please sign your Purchase Agreement — ${propertyAddress}`,
+              html: `
+                <p>Hi ${sellerName},</p>
+                <p>Please review and sign the Purchase Agreement for your property at <strong>${propertyAddress}</strong>.</p>
+                <p style="margin:24px 0">
+                  <a href="${signingUrl}" style="background:#6d28d9;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+                    Review &amp; Sign Agreement →
+                  </a>
+                </p>
+                <p>This link expires in 30 days. If you have any questions, please reply to this email.</p>
+                <p style="color:#888;font-size:12px">Powered by TolipAI CRM</p>
+              `,
+            });
+            await db.update(crmContracts)
+              .set({ status: "sent", emailSentAt: new Date() })
+              .where(eq(crmContracts.id, contract.id));
+            contract.status = "sent";
+            emailSent = true;
+          }
+        } catch { /* email failure is non-fatal */ }
+      }
+    }
+
+    res.status(201).json({ ...contract, signingUrl: signingUrl!, emailSent, provider: usedProvider });
   } catch (err: any) {
     req.log.error({ err }, "Create contract error");
     res.status(500).json({ error: "Internal server error" });
@@ -454,6 +547,75 @@ router.post("/public/sign/:token", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+// ── POST /api/crm/contracts/dropbox-webhook — Dropbox Sign status callbacks ───
+// Configure in Dropbox Sign dashboard: Callback URL = https://yourapp.railway.app/api/crm/contracts/dropbox-webhook
+// Events handled: signature_request_signed, signature_request_viewed, signature_request_declined
+router.post("/dropbox-webhook", async (req, res) => {
+  try {
+    // Dropbox Sign sends the event as JSON or form-encoded with a `json` field
+    const payload = req.body?.json
+      ? (typeof req.body.json === "string" ? JSON.parse(req.body.json) : req.body.json)
+      : req.body;
+
+    const event = payload?.event;
+    const sigReq = payload?.signature_request;
+
+    if (!event || !sigReq) {
+      // Must respond with "Hello API Event Received" to acknowledge
+      res.status(200).send("Hello API Event Received");
+      return;
+    }
+
+    const signatureRequestId: string = sigReq.signature_request_id ?? "";
+    const eventType: string = event.event_type ?? "";
+
+    if (signatureRequestId) {
+      // Find the contract where signingToken holds the Dropbox Sign request ID
+      const [contract] = await db
+        .select({ id: crmContracts.id, status: crmContracts.status })
+        .from(crmContracts)
+        .where(eq(crmContracts.signingToken, signatureRequestId))
+        .limit(1);
+
+      if (contract) {
+        if (eventType === "signature_request_signed") {
+          await db.update(crmContracts)
+            .set({ status: "signed", signedAt: new Date(), updatedAt: new Date() })
+            .where(eq(crmContracts.id, contract.id));
+        } else if (eventType === "signature_request_viewed") {
+          if (contract.status === "sent") {
+            await db.update(crmContracts)
+              .set({ status: "viewed", viewedAt: new Date(), updatedAt: new Date() })
+              .where(eq(crmContracts.id, contract.id));
+          }
+        } else if (eventType === "signature_request_declined") {
+          await db.update(crmContracts)
+            .set({ status: "voided", updatedAt: new Date() })
+            .where(eq(crmContracts.id, contract.id));
+        }
+      }
+    }
+
+    // Required acknowledgment response
+    res.status(200).send("Hello API Event Received");
+  } catch (err: any) {
+    console.error("[DropboxSign webhook]", err?.message);
+    res.status(200).send("Hello API Event Received"); // always ack to prevent retries
+  }
+});
+
+// ── GET /api/crm/contracts/dropbox-status — Check if Dropbox Sign is active ──
+router.get("/dropbox-status", crmAuth, (_req, res) => {
+  const active = !!process.env.DROPBOX_SIGN_API_KEY;
+  res.json({
+    active,
+    provider: active ? "dropbox_sign" : "native",
+    description: active
+      ? "Legally certified e-signatures with Dropbox Sign audit certificates"
+      : "Native e-signature (typed name + IP logging). Set DROPBOX_SIGN_API_KEY to upgrade.",
+  });
 });
 
 export default router;

@@ -250,11 +250,6 @@ export default function Login() {
 
         <GlowDivider />
 
-        {/* ── PRICING ───────────────────────────────────────────────────────── */}
-        <PricingSection />
-
-        <GlowDivider />
-
         {/* ── COMPARISON MATRIX ────────────────────────────────────────────── */}
         <div id="compare" className="px-4 pb-16">
           <ComparisonMatrix />
@@ -309,6 +304,9 @@ export default function Login() {
             </p>
           </div>
         </motion.div>
+
+        {/* ── PRICING ───────────────────────────────────────────────────────── */}
+        <PricingSection />
 
       </div>
     </div>
