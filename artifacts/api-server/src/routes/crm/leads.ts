@@ -11,6 +11,7 @@ import { parseMoney } from "../../services/coreCalculations";
 import { getRentcastValuation } from "../../services/rentcastApi";
 import { geocodeViaAttom, fetchCompsViaAttom, hasAttomKey, fetchAttomAvm, fetchPropertyDataViaAttom } from "../../services/attomApi";
 import { writeAuditLog } from "../../lib/auditLog";
+import { emitCrmActivity } from "../sse";
 
 // ─── In-memory comps job store ────────────────────────────────────────────────
 interface CompsJob {
@@ -331,6 +332,16 @@ router.post("/", crmAuth, async (req, res) => {
         actorName: actorUser?.name || "A team member",
       }).catch(e => logger.error(e, "automation.onLeadCreated error"));
     }
+    setImmediate(() => {
+      emitCrmActivity("lead_created", {
+        campaignId: lead.campaignId ?? null,
+        leadId: lead.id,
+        leadName: lead.sellerName || "Unknown",
+        address: lead.address ?? "",
+        source: lead.leadSource || "manual",
+        ts: Date.now(),
+      });
+    });
     res.status(201).json(formatLead(lead));
   } catch (err) {
     logger.error(err, "CRM create lead error");

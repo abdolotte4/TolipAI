@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -8,7 +8,7 @@ import {
 import {
   TrendingUp, Users, CheckCircle2, Clock, ArrowRight,
   PhoneCall, BarChart2, RefreshCw, Loader2, Trophy, FileText,
-  Target, AlertCircle,
+  Target, AlertCircle, Activity, Mail, Phone,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -215,7 +215,104 @@ function CampaignPerformanceSection({ refresh }: { refresh: number }) {
   );
 }
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+// ─── Live Activity Feed ────────────────────────────────────────────────────────
+
+interface ActivityEvent {
+  type: string;
+  leadName?: string;
+  address?: string;
+  phone?: string;
+  source?: string;
+  leadId?: number | null;
+  ts: number;
+}
+
+function ActivityFeed() {
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("crm_token");
+    if (!token) return;
+    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+
+    es.addEventListener("connected", () => setConnected(true));
+    es.onerror = () => setConnected(false);
+
+    const push = (type: string) => (e: MessageEvent) => {
+      try {
+        const d = JSON.parse(e.data);
+        setEvents(prev => [{ type, ...d, ts: d.ts ?? Date.now() }, ...prev].slice(0, 50));
+      } catch { }
+    };
+
+    (["lead_created", "incoming_call", "call_attempt", "email_open"] as const)
+      .forEach(t => es.addEventListener(t, push(t)));
+
+    return () => es.close();
+  }, []);
+
+  const icon = (type: string) => {
+    if (type === "lead_created")  return <Users className="w-3.5 h-3.5 text-primary" />;
+    if (type === "incoming_call") return <Phone className="w-3.5 h-3.5 text-emerald-400" />;
+    if (type === "call_attempt")  return <PhoneCall className="w-3.5 h-3.5 text-cyan-400" />;
+    if (type === "email_open")    return <Mail className="w-3.5 h-3.5 text-amber-400" />;
+    return <Activity className="w-3.5 h-3.5 text-muted-foreground" />;
+  };
+
+  const label = (ev: ActivityEvent) => {
+    if (ev.type === "lead_created")
+      return `New lead: ${ev.leadName || "Unknown"}${ev.address ? ` — ${ev.address}` : ""}${ev.source ? ` via ${ev.source}` : ""}`;
+    if (ev.type === "incoming_call")
+      return `${ev.leadName || ev.phone || "Unknown"} is calling in`;
+    if (ev.type === "call_attempt")
+      return `Call logged for ${ev.leadName || ev.phone || "lead"}`;
+    if (ev.type === "email_open")
+      return `${ev.leadName || "A lead"} opened an email`;
+    return "Activity";
+  };
+
+  const timeAgo = (ts: number) => {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 5)    return "just now";
+    if (s < 60)   return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    return `${Math.floor(s / 3600)}h ago`;
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+      <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+        <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+          <h2 className="font-semibold flex items-center gap-2 text-sm">
+            <Activity className="w-4 h-4 text-primary" /> Live Activity Feed
+          </h2>
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/40"}`} />
+            <span className="text-xs text-muted-foreground">{connected ? "Connected" : "Connecting…"}</span>
+          </div>
+        </div>
+        {events.length === 0 ? (
+          <div className="px-5 py-8 text-center text-muted-foreground text-sm">
+            Waiting for activity… new leads, incoming calls, and email opens will appear here in real time.
+          </div>
+        ) : (
+          <div className="divide-y divide-white/4 max-h-[280px] overflow-y-auto">
+            {events.map((ev, i) => (
+              <div key={i} className="px-5 py-2.5 flex items-center gap-3 hover:bg-secondary/20 transition-colors">
+                <div className="shrink-0">{icon(ev.type)}</div>
+                <p className="flex-1 text-sm text-foreground truncate">{label(ev)}</p>
+                <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">{timeAgo(ev.ts)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </motion.div>
+  );
+}
+
+// ─── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function AnalyticsDashboard() {
   const [refresh, setRefresh] = useState(0);
@@ -306,6 +403,9 @@ export default function AnalyticsDashboard() {
           color="text-cyan-400"
         />
       </motion.div>
+
+      {/* Live Activity Feed */}
+      <ActivityFeed />
 
       {/* Lead Velocity Chart */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>

@@ -93,6 +93,18 @@ export default function ArvCalculator() {
         </Alert>
       )}
 
+      {calculateArv.isError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Calculation Failed</AlertTitle>
+          <AlertDescription>
+            {calculateArv.error instanceof Error
+              ? calculateArv.error.message
+              : "ARV calculation failed. Verify your ATTOM API key is configured in environment settings."}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         <div className="xl:col-span-4">
           <Card className="border-border/50 shadow-sm h-full">

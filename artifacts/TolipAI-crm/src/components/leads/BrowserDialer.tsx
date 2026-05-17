@@ -85,6 +85,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const coachingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const wasRecordedRef = useRef(false);
+  const pendingIncomingCallRef = useRef<Call | null>(null);
 
   const [status, setStatus] = useState<DialerStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -105,6 +106,11 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const [coachingCountdown, setCoachingCountdown] = useState<number | null>(null);
   const [droppingVoicemail, setDroppingVoicemail] = useState(false);
   const [held, setHeld] = useState(false);
+  const [incomingCallInfo, setIncomingCallInfo] = useState<{
+    leadName: string | null;
+    phone: string;
+    leadId: number | null;
+  } | null>(null);
 
   // Warm transfer states
   const [transferOpen, setTransferOpen] = useState(false);
@@ -122,6 +128,24 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   }, []);
 
   useEffect(() => () => destroyDevice(), [destroyDevice]);
+
+  // ── SSE: listen for incoming_call events from the server ──────────────────
+  useEffect(() => {
+    const token = localStorage.getItem("crm_token");
+    if (!token) return;
+    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+    es.addEventListener("incoming_call", (e: MessageEvent) => {
+      try {
+        const d = JSON.parse(e.data);
+        setIncomingCallInfo(prev => ({
+          phone:    prev?.phone    ?? d.phone    ?? "",
+          leadName: d.leadName     ?? prev?.leadName ?? null,
+          leadId:   d.leadId       ?? prev?.leadId   ?? null,
+        }));
+      } catch { }
+    });
+    return () => es.close();
+  }, []);
 
   // ── Initialize Twilio Device ───────────────────────────────────────────────
   const initDevice = useCallback(async (): Promise<boolean> => {
@@ -181,6 +205,22 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
       });
 
       await device.register();
+
+      // Handle inbound calls routed to this agent via <Dial><Client>
+      device.on("incoming", (call: Call) => {
+        pendingIncomingCallRef.current = call;
+        const phone = (call.parameters as any)?.From || "";
+        setIncomingCallInfo(prev => ({
+          phone,
+          leadName: prev?.leadName ?? null,
+          leadId:   prev?.leadId   ?? null,
+        }));
+        call.on("cancel", () => {
+          pendingIncomingCallRef.current = null;
+          setIncomingCallInfo(null);
+        });
+      });
+
       deviceRef.current = device;
       setStatus("ready");
       return true;
@@ -472,6 +512,65 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     }
   }, [toast]);
 
+  // ── Accept / Decline inbound call ─────────────────────────────────────────
+  const acceptIncomingCall = useCallback(() => {
+    const call = pendingIncomingCallRef.current;
+    if (!call) return;
+    pendingIncomingCallRef.current = null;
+    setIncomingCallInfo(null);
+    callRef.current = call;
+    setStatus("in-progress");
+    setDuration(0);
+    setAnalytics({ mos: null, jitter: null, packetLoss: null });
+    setMuted(false);
+    setDisposition(null);
+    setDispositionSaved(false);
+    wasRecordedRef.current = false;
+
+    call.on("sample", (sample: any) => {
+      if (!sample) return;
+      setAnalytics({
+        mos:        typeof sample.mos               === "number" ? Math.round(sample.mos * 100) / 100 : null,
+        jitter:     typeof sample.jitter            === "number" ? Math.round(sample.jitter * 10) / 10 : null,
+        packetLoss: typeof sample.packetsLostFraction === "number"
+          ? Math.round(sample.packetsLostFraction * 1000) / 10 : null,
+      });
+    });
+
+    call.on("disconnect", () => {
+      setStatus("idle");
+      setHeld(false);
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      const sid = currentCallSidRef.current;
+      if (sid) { setLastCallSid(sid); setLastCallRecorded(false); }
+    });
+
+    timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+    call.accept();
+
+    const sid = (call.parameters as any)?.CallSid;
+    if (sid) {
+      currentCallSidRef.current = sid;
+      authFetch("/twilio/voice/log", {
+        method: "POST",
+        body: JSON.stringify({
+          callSid: sid,
+          leadId: leadId ?? null,
+          fromNumber: (call.parameters as any)?.From || null,
+          toNumber: null,
+          direction: "inbound",
+        }),
+      }).catch(() => {});
+      if (onCallLogged) onCallLogged(sid);
+    }
+  }, [leadId, onCallLogged]);
+
+  const declineIncomingCall = useCallback(() => {
+    pendingIncomingCallRef.current?.reject();
+    pendingIncomingCallRef.current = null;
+    setIncomingCallInfo(null);
+  }, []);
+
   // ── Hang up ────────────────────────────────────────────────────────────────
   const hangUp = useCallback(() => {
     setStatus("disconnecting");
@@ -536,6 +635,41 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
 
       {/* Body */}
       <div className="p-4 space-y-3">
+        {/* Incoming call banner */}
+        {incomingCallInfo && (
+          <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 animate-pulse">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <PhoneCall className="w-4 h-4 text-emerald-400 shrink-0 animate-bounce" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-emerald-300 leading-tight">Incoming Call</p>
+                  <p className="text-xs text-emerald-400/80 truncate">
+                    {incomingCallInfo.leadName || incomingCallInfo.phone || "Unknown caller"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 text-xs px-3"
+                  disabled={!pendingIncomingCallRef.current}
+                  onClick={acceptIncomingCall}
+                >
+                  <PhoneCall className="w-3 h-3" /> Answer
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 border-red-500/40 text-red-400 hover:bg-red-500/10 gap-1.5 text-xs px-3"
+                  onClick={declineIncomingCall}
+                >
+                  <PhoneOff className="w-3 h-3" /> Decline
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* No phone number warning */}
         {!leadPhone && (
           <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">

@@ -29,6 +29,7 @@ import {
   getGlobalSmsCreds,
 } from "../services/twilioCredentials";
 import { logger } from "../lib/logger";
+import { emitCrmActivity } from "./sse";
 
 const router: IRouter = Router();
 const { AccessToken } = twilioJwt;
@@ -806,6 +807,17 @@ router.post("/twilio/voice/inbound", async (req, res) => {
       { fromNum, toNum, leadId: lead.id, agents: agents.length },
       "[twilio/voice/inbound] known lead → ringing agents"
     );
+
+    // Notify all connected browser clients so agents see the incoming call toast
+    setImmediate(() => {
+      emitCrmActivity("incoming_call", {
+        campaignId: campaignId ?? null,
+        leadId: lead.id,
+        leadName: lead.sellerName || null,
+        phone: fromNum,
+        ts: Date.now(),
+      });
+    });
 
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
