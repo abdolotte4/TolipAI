@@ -3,7 +3,7 @@ import { crmAuth } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmOpenPhoneMessages, crmLeads, crmCampaigns, crmUsers, crmNotifications } from "@workspace/db/schema";
 import { eq, desc, or, sql as drizzleSql } from "drizzle-orm";
-import { toE164 } from "../services/coreCalculations";
+import { toE164, digitsOnly } from "../services/coreCalculations";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -192,9 +192,8 @@ router.post("/openphone/webhook", async (req, res) => {
 
     if (!fromNumber) return;
 
-    // Normalize phone for lookup (strip non-digits except leading +)
-    const normalize = (p: string) => p.replace(/[^\d+]/g, "");
-    const normFrom = normalize(fromNumber);
+    // Normalize phone for lookup (strip non-digits for comparison)
+    const normFrom = digitsOnly(fromNumber);
 
     // Find matching lead by phone number
     const allLeads = await db
@@ -202,7 +201,7 @@ router.post("/openphone/webhook", async (req, res) => {
       .from(crmLeads)
       .limit(500);
 
-    const lead = allLeads.find(l => l.phone && normalize(l.phone) === normFrom);
+    const lead = allLeads.find(l => l.phone && digitsOnly(l.phone) === normFrom);
     if (!lead) {
       // No lead found — store without leadId for reference
       await db.insert(crmOpenPhoneMessages).values({

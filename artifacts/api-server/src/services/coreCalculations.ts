@@ -36,6 +36,14 @@ export function toE164(phone: string): string | null {
 }
 
 /**
+ * Strip all non-digit characters for digit-only phone comparison and lookup.
+ * Use this instead of inline `.replace(/\D/g, "")` lambdas.
+ */
+export function digitsOnly(phone: string): string {
+  return phone.replace(/\D/g, "");
+}
+
+/**
  * Format a number as a USD currency string (no cents).
  * e.g. 325000 → "$325,000"
  */

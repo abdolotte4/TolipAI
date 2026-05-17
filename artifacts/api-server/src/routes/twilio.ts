@@ -26,7 +26,7 @@ import { crmAuth, crmAdminOnly } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations } from "@workspace/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { toE164 } from "../services/coreCalculations";
+import { toE164, digitsOnly } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
 import {
   type TwilioSmsCreds,
@@ -451,8 +451,7 @@ async function validateTwilioSignature(req: any): Promise<boolean> {
   let authToken: string | null = null;
   for (const c of campaigns) {
     if (!c.twilioPhoneNumber) continue;
-    const normalize = (p: string) => p.replace(/\D/g, "");
-    if (normalize(c.twilioPhoneNumber) === normalize(toNumber)) {
+    if (digitsOnly(c.twilioPhoneNumber) === digitsOnly(toNumber)) {
       try {
         authToken = c.twilioAuthToken
           ? (c.twilioAuthToken.includes(":") ? decryptPassword(c.twilioAuthToken) : c.twilioAuthToken)
@@ -505,8 +504,7 @@ router.post("/twilio/webhook", async (req, res) => {
     const sid = req.body?.MessageSid || req.body?.SmsSid;
     if (!fromNumber) return;
 
-    const normalize = (p: string) => p.replace(/\D/g, "");
-    const normFrom = normalize(fromNumber);
+    const normFrom = digitsOnly(fromNumber);
     // Query DB directly using normalized phone — avoids full-table scan + JS find
     const allLeads = await db
       .select({ id: crmLeads.id, phone: crmLeads.phone, campaignId: crmLeads.campaignId })
