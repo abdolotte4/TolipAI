@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers, crmNotifications, crmComps } from "@workspace/db/schema";
+import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers, crmNotifications, crmComps, crmCallLogs } from "@workspace/db/schema";
 import { eq, desc, ilike, and, or, sql, ne, inArray } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
@@ -324,6 +324,17 @@ router.get("/", crmAuth, async (req, res) => {
           lead: crmLeads,
           assignedToName: crmUsers.name,
           campaignName: crmCampaigns.name,
+          // Most recent MOS score for this lead — shown as a quality badge on the Kanban card
+          lastCallMos: sql<string | null>`(
+            SELECT mos_score FROM crm_call_logs
+            WHERE lead_id = ${crmLeads.id} AND mos_score IS NOT NULL
+            ORDER BY created_at DESC LIMIT 1
+          )`,
+          lastCallAt: sql<string | null>`(
+            SELECT created_at FROM crm_call_logs
+            WHERE lead_id = ${crmLeads.id}
+            ORDER BY created_at DESC LIMIT 1
+          )`,
         })
         .from(crmLeads)
         .leftJoin(crmUsers, eq(crmLeads.assignedTo, crmUsers.id))
@@ -335,11 +346,15 @@ router.get("/", crmAuth, async (req, res) => {
     ]);
 
     res.json({
-      leads: rows.map(r => formatLeadSummary(
-        r.lead,
-        r.assignedToName ? { name: r.assignedToName } : null,
-        r.campaignName ?? null,
-      )),
+      leads: rows.map(r => ({
+        ...formatLeadSummary(
+          r.lead,
+          r.assignedToName ? { name: r.assignedToName } : null,
+          r.campaignName ?? null,
+        ),
+        lastCallMos: r.lastCallMos != null ? parseFloat(String(r.lastCallMos)) : null,
+        lastCallAt: r.lastCallAt ?? null,
+      })),
       total: count,
       page: pageNum,
       limit: limitNum,

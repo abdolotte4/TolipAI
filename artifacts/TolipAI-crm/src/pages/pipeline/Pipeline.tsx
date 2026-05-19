@@ -23,7 +23,7 @@ import { useCampaignGovernance } from "@/hooks/use-campaign-governance";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { GripVertical, Phone, Mail, Clock, AlertTriangle, Trash2 } from "lucide-react";
+import { GripVertical, Phone, Mail, Clock, AlertTriangle, Trash2, Signal } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import {
   AlertDialog,
@@ -49,6 +49,26 @@ const COLUMNS = [
 function fmt$(v: any) {
   if (!v) return null;
   return "$" + Number(v).toLocaleString();
+}
+
+function MosBadge({ mos }: { mos: number }) {
+  const { color, label } =
+    mos >= 4.0
+      ? { color: "bg-emerald-100 text-emerald-700 border-emerald-200", label: "Excellent" }
+      : mos >= 3.5
+      ? { color: "bg-green-100 text-green-700 border-green-200", label: "Good" }
+      : mos >= 3.0
+      ? { color: "bg-amber-100 text-amber-700 border-amber-200", label: "Fair" }
+      : { color: "bg-red-100 text-red-700 border-red-200", label: "Poor" };
+  return (
+    <span
+      title={`Last call quality: ${label} (MOS ${mos.toFixed(1)})`}
+      className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border ${color}`}
+    >
+      <Signal className="w-3 h-3" />
+      {mos.toFixed(1)}
+    </span>
+  );
 }
 
 function AgingBadge({ date }: { date: string }) {
@@ -141,9 +161,12 @@ function LeadCard({
               ) : (
                 <span />
               )}
-              {lead.leadSource && (
-                <span className="text-xs text-muted-foreground/70 truncate max-w-[80px]">{lead.leadSource}</span>
-              )}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {lead.lastCallMos != null && <MosBadge mos={lead.lastCallMos} />}
+                {lead.leadSource && (
+                  <span className="text-xs text-muted-foreground/70 truncate max-w-[80px]">{lead.leadSource}</span>
+                )}
+              </div>
             </div>
           </div>
         </div>

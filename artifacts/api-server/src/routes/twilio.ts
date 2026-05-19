@@ -207,7 +207,49 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
       .set(updateFields)
       .where(eq(crmCampaigns.id, targetCampaignId!));
 
-    res.json({ success: true, configured: true });
+    // ── Auto-create TwiML App if voice API Key supplied but no VoiceAppSid ──
+    // This saves campaign admins from having to manually create a TwiML App in
+    // the Twilio Console and paste the SID back into the CRM.
+    let autoCreatedVoiceAppSid: string | null = null;
+    if (apiKeySid && !voiceAppSid) {
+      try {
+        const apiBase =
+          process.env.API_BASE_URL ||
+          `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:3000"}/api`;
+        const appBody = new URLSearchParams({
+          FriendlyName: `TolipAI CRM Voice – Campaign ${targetCampaignId}`,
+          VoiceUrl: `${apiBase}/twilio/voice/inbound`,
+          VoiceMethod: "POST",
+          StatusCallback: `${apiBase}/twilio/voice/status`,
+          StatusCallbackMethod: "POST",
+        });
+        const tempCreds = { accountSid, authToken, phoneNumber: phoneNumber || "" };
+        const appData = await twilioFetch(tempCreds as any, "/Applications.json", {
+          method: "POST",
+          body: appBody.toString(),
+        });
+        if (appData?.sid) {
+          autoCreatedVoiceAppSid = appData.sid;
+          await db
+            .update(crmCampaigns)
+            .set({ twilioVoiceAppSid: appData.sid })
+            .where(eq(crmCampaigns.id, targetCampaignId!));
+          logger.info(
+            { campaignId: targetCampaignId, voiceAppSid: appData.sid },
+            "[twilio/config] Auto-created TwiML App for campaign"
+          );
+        }
+      } catch (appErr) {
+        // Non-fatal — user can manually create the TwiML App if this fails
+        logger.warn(appErr, "[twilio/config] Auto TwiML App creation failed — user must create manually in Twilio Console");
+      }
+    }
+
+    res.json({
+      success: true,
+      configured: true,
+      ...(autoCreatedVoiceAppSid ? { voiceAppSidCreated: autoCreatedVoiceAppSid } : {}),
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -99,13 +99,16 @@ export default function TwilioConnect() {
       accountSid: string; authToken: string; phoneNumber: string; twilioEnabled: boolean;
       apiKeySid: string; apiKeySecret: string; voiceAppSid: string; forwardPhone?: string; campaignId?: number;
     }) => apiFetch("/twilio/config", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       const noTarget = isSuperAdmin && !selectedCampaignId;
       const campaignName = campaigns?.find((c: any) => c.id === selectedCampaignId)?.name;
+      const autoSid = result?.voiceAppSidCreated;
       toast({
         title: "Twilio credentials saved",
         description: noTarget
-          ? "Credentials active for this session. To persist across deploys, set TWILIO_* environment variables in Railway."
+          ? "Credentials active for this session. To persist across deploys, set TWILIO_* environment variables."
+          : autoSid
+          ? `Campaign "${campaignName}" connected. TwiML App created automatically (${autoSid}).`
           : `Campaign "${campaignName}" is now connected to Twilio.`,
       });
       setAccountSid(""); setAuthToken(""); setPhoneNumber(""); setForwardPhone("");
