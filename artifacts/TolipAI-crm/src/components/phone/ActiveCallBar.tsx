@@ -44,10 +44,15 @@ export default function ActiveCallBar() {
     if (liveTranscript.length === 1) setShowTranscript(true);
   }, [liveTranscript.length]);
 
-  // Reset dismissed suggestion when a new one arrives
+  const [suggestionIsNew, setSuggestionIsNew] = useState(false);
+
+  // Reset dismissed suggestion when a new one arrives; pulse the card briefly
   useEffect(() => {
     if (aiSuggestion && aiSuggestion !== dismissedSuggestion) {
       setDismissedSuggestion(null);
+      setSuggestionIsNew(true);
+      const t = setTimeout(() => setSuggestionIsNew(false), 3000);
+      return () => clearTimeout(t);
     }
   }, [aiSuggestion]);
 
@@ -117,12 +122,20 @@ export default function ActiveCallBar() {
 
       {/* ── AI Suggestion Card ────────────────────────────────────────────── */}
       {activeSuggestion && (
-        <div className="border-b border-white/5 px-4 py-2.5 flex items-start gap-3 bg-amber-500/5">
-          <div className="w-6 h-6 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <div className={`border-b px-4 py-2.5 flex items-start gap-3 transition-all duration-300 ${
+          suggestionIsNew
+            ? "bg-amber-500/15 border-amber-500/40 shadow-[0_0_12px_0_rgba(245,158,11,0.25)]"
+            : "bg-amber-500/5 border-white/5"
+        }`}>
+          <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
+            suggestionIsNew ? "bg-amber-500/30 animate-pulse" : "bg-amber-500/15"
+          }`}>
             <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-0.5">AI Suggestion</p>
+            <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-0.5">
+              AI Suggestion {suggestionIsNew && <span className="text-amber-300">· New</span>}
+            </p>
             <p className="text-xs text-foreground leading-relaxed">{activeSuggestion}</p>
           </div>
           <button

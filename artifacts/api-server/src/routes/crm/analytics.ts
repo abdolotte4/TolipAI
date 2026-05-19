@@ -25,7 +25,7 @@ router.get("/dashboard", crmAuth, async (req, res) => {
     : sql`WHERE 1=1`;
 
   try {
-    const [velocityRows, funnelRows, avgCloseRows, sourceRows, weeklyTrendRows] = await Promise.all([
+    const _dashboardResults = await Promise.allSettled([
       // Lead velocity: new leads per week for past 8 weeks
       db.execute(sql`
         SELECT
@@ -88,6 +88,15 @@ router.get("/dashboard", crmAuth, async (req, res) => {
         ORDER BY 2
       `),
     ]);
+    const [velocityR, funnelR, avgCloseR, sourceR, weeklyTrendR] = _dashboardResults;
+    _dashboardResults.forEach((r, i) => {
+      if (r.status === "rejected") logger.warn({ reason: (r as PromiseRejectedResult).reason?.message, i }, "[crm/analytics/dashboard] sub-query failed");
+    });
+    const velocityRows   = velocityR.status    === "fulfilled" ? velocityR.value    : { rows: [] };
+    const funnelRows     = funnelR.status      === "fulfilled" ? funnelR.value      : { rows: [] };
+    const avgCloseRows   = avgCloseR.status    === "fulfilled" ? avgCloseR.value    : { rows: [{}] };
+    const sourceRows     = sourceR.status      === "fulfilled" ? sourceR.value      : { rows: [] };
+    const weeklyTrendRows= weeklyTrendR.status === "fulfilled" ? weeklyTrendR.value : { rows: [] };
 
     // Total leads
     const totalsResult = await db.execute(sql`
@@ -169,7 +178,7 @@ router.get("/calls", crmAuth, async (req, res) => {
     : sql`WHERE 1=1`;
 
   try {
-    const [volumeRows, dispositionRows, agentRows, summaryRows] = await Promise.all([
+    const _callsResults = await Promise.allSettled([
       // Call volume + avg duration by week for past 8 weeks
       db.execute(sql`
         SELECT
@@ -231,6 +240,14 @@ router.get("/calls", crmAuth, async (req, res) => {
         ${campaignWhere}
       `),
     ]);
+    const [volumeR, dispositionR, agentCallsR, summaryR] = _callsResults;
+    _callsResults.forEach((r, i) => {
+      if (r.status === "rejected") logger.warn({ reason: (r as PromiseRejectedResult).reason?.message, i }, "[crm/analytics/calls] sub-query failed");
+    });
+    const volumeRows      = volumeR.status      === "fulfilled" ? volumeR.value      : { rows: [] };
+    const dispositionRows = dispositionR.status === "fulfilled" ? dispositionR.value : { rows: [] };
+    const agentRows       = agentCallsR.status  === "fulfilled" ? agentCallsR.value  : { rows: [] };
+    const summaryRows     = summaryR.status     === "fulfilled" ? summaryR.value     : { rows: [{}] };
 
     const summary = summaryRows.rows[0] as any;
 
@@ -295,7 +312,7 @@ router.get("/call-quality", crmAuth, async (req, res) => {
     : sql``;
 
   try {
-    const [summaryRows, agentRows, trendRows] = await Promise.all([
+    const _qualityResults = await Promise.allSettled([
 
       // Campaign-level summary
       db.execute(sql`
@@ -358,6 +375,13 @@ router.get("/call-quality", crmAuth, async (req, res) => {
         ORDER BY 2
       `),
     ]);
+    const [summaryQR, agentQR, trendQR] = _qualityResults;
+    _qualityResults.forEach((r, i) => {
+      if (r.status === "rejected") logger.warn({ reason: (r as PromiseRejectedResult).reason?.message, i }, "[crm/analytics/call-quality] sub-query failed");
+    });
+    const summaryRows = summaryQR.status === "fulfilled" ? summaryQR.value : { rows: [{}] };
+    const agentRows   = agentQR.status   === "fulfilled" ? agentQR.value   : { rows: [] };
+    const trendRows   = trendQR.status   === "fulfilled" ? trendQR.value   : { rows: [] };
 
     const summary = (summaryRows.rows as any[])[0] || {};
 

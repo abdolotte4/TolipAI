@@ -25,7 +25,9 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import {
   type TwilioVoiceConfig,
   resolveVoiceConfig,
+  getVoiceConfig,
   getSmsCreds,
+  getGlobalVoiceConfig,
   getGlobalSmsCreds,
 } from "../services/twilioCredentials";
 import { getOpenAIKey, getOpenAIBaseUrl } from "../services/aiConfig";
@@ -53,6 +55,41 @@ function cleanupTranscript(callSid: string) {
   const entry = liveTranscripts.get(callSid);
   if (entry?.aiSuggestionTimer) clearTimeout(entry.aiSuggestionTimer);
   liveTranscripts.delete(callSid);
+}
+
+// ── Conference state (enables hold with music) ────────────────────────────────
+interface ConferenceState {
+  conferenceName: string;
+  agentCallSid: string;
+  callerCallSid: string | null;
+  conferenceSid: string | null;
+  accountSid: string;
+  apiKeySid: string;
+  apiKeySecret: string;
+}
+const activeConferences = new Map<string, ConferenceState>();
+
+// Resolve voice API key credentials by Twilio Account SID.
+// Used inside the /answer webhook (no crmAuth — looks up campaign by accountSid).
+async function getVoiceConfigByAccountSid(accountSid: string): Promise<{
+  accountSid: string; apiKeySid: string; apiKeySecret: string;
+} | null> {
+  try {
+    const [camp] = await db
+      .select({ id: crmCampaigns.id })
+      .from(crmCampaigns)
+      .where(eq(crmCampaigns.twilioAccountSid, accountSid))
+      .limit(1);
+    if (camp?.id) {
+      const cfg = await getVoiceConfig(camp.id);
+      if (cfg) return { accountSid: cfg.accountSid, apiKeySid: cfg.apiKeySid, apiKeySecret: cfg.apiKeySecret };
+    }
+    const global = getGlobalVoiceConfig();
+    if (global && global.accountSid === accountSid) {
+      return { accountSid: global.accountSid, apiKeySid: global.apiKeySid, apiKeySecret: global.apiKeySecret };
+    }
+    return null;
+  } catch { return null; }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -93,6 +130,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
   res.set("Content-Type", "text/xml");
   try {
     const to = (req.body?.To as string | undefined) || "";
+    const agentCallSid = (req.body?.CallSid as string | undefined) || "";
     let callerId = (req.body?.CallerId as string | undefined) || "";
     const record = (req.body?.Record as string | undefined) === "true";
     const accountSidFromTwilio = (req.body?.AccountSid as string | undefined) || "";
@@ -172,8 +210,83 @@ router.post("/twilio/voice/answer", async (req, res) => {
     <Transcription statusCallbackUrl="${apiBase}/twilio/voice/transcript" statusCallbackMethod="POST" track="both" />
   </Start>`;
 
-    if (record) {
+    // Try Conference-based calling (enables proper hold music via participant API).
+    // Falls back to classic <Dial><Number> when API key credentials are unavailable.
+    const confName = agentCallSid ? `conf-${agentCallSid}` : null;
+    const voiceCfg = confName && accountSidFromTwilio
+      ? await getVoiceConfigByAccountSid(accountSidFromTwilio).catch(() => null)
+      : null;
+
+    if (confName && voiceCfg) {
+      // ── Conference-based TwiML (hold music capable) ───────────────────────
+      const recordAttr = record
+        ? `record="record-from-start" recordingStatusCallback="${apiBase}/twilio/voice/recording" recordingStatusCallbackMethod="POST"`
+        : "";
+
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>${whisperXml}${transcriptionXml}
+  <Dial callerId="${callerId}" action="${statusCallbackUrl}" method="POST">
+    <Conference startConferenceOnEnter="true"
+                endConferenceOnExit="true"
+                beep="false"
+                waitUrl="https://twimlets.com/holdmusic?Bucket=com.twilio.music.classical"
+                waitMethod="GET"
+                ${recordAttr}
+                statusCallback="${apiBase}/twilio/voice/conference-status?agentCallSid=${encodeURIComponent(agentCallSid)}"
+                statusCallbackMethod="POST"
+                statusCallbackEvent="join start end">
+      ${confName}
+    </Conference>
+  </Dial>
+</Response>`);
+
+      // Dial the destination into the conference via Twilio REST API (async — after TwiML is sent)
+      const finalCfg = voiceCfg;
+      const finalTo = to;
+      const finalCallerId = callerId;
+      const finalApiBase = apiBase;
+      const finalConfName = confName;
+      setImmediate(async () => {
+        try {
+          const auth = Buffer.from(`${finalCfg.apiKeySid}:${finalCfg.apiKeySecret}`).toString("base64");
+          const dialResp = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${finalCfg.accountSid}/Calls.json`,
+            {
+              method: "POST",
+              headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                To: finalTo,
+                From: finalCallerId,
+                Url: `${finalApiBase}/twilio/voice/join-conference?conf=${encodeURIComponent(finalConfName)}`,
+                Method: "POST",
+              }).toString(),
+            }
+          );
+          if (dialResp.ok) {
+            const data = await dialResp.json() as any;
+            const existing = activeConferences.get(finalConfName);
+            activeConferences.set(finalConfName, {
+              conferenceName: finalConfName,
+              agentCallSid,
+              callerCallSid: data.sid,
+              conferenceSid: existing?.conferenceSid ?? null,
+              accountSid: finalCfg.accountSid,
+              apiKeySid: finalCfg.apiKeySid,
+              apiKeySecret: finalCfg.apiKeySecret,
+            });
+            logger.info({ confName: finalConfName, callerSid: data.sid }, "[twilio/voice/answer] dialed destination into conference");
+          } else {
+            const text = await dialResp.text();
+            logger.error({ text, to: finalTo }, "[twilio/voice/answer] failed to dial destination into conference — callee may not hear ring");
+          }
+        } catch (err) {
+          logger.error(err, "[twilio/voice/answer] conference REST dial error");
+        }
+      });
+    } else {
+      // ── Fallback: classic <Dial><Number> (no hold music) ─────────────────
+      if (record) {
+        res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>${whisperXml}${transcriptionXml}
   <Dial callerId="${callerId}" record="record-from-answer"
         recordingStatusCallback="${apiBase}/twilio/voice/recording"
@@ -182,13 +295,14 @@ router.post("/twilio/voice/answer", async (req, res) => {
     <Number>${to}</Number>
   </Dial>
 </Response>`);
-    } else {
-      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+      } else {
+        res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>${whisperXml}${transcriptionXml}
   <Dial callerId="${callerId}" action="${statusCallbackUrl}" method="POST">
     <Number>${to}</Number>
   </Dial>
 </Response>`);
+      }
     }
   } catch (err) {
     logger.error(err, "[twilio/voice/answer] error");
@@ -196,6 +310,59 @@ router.post("/twilio/voice/answer", async (req, res) => {
 <Response>
   <Say>There was an error connecting your call.</Say>
 </Response>`);
+  }
+});
+
+// ── POST /api/twilio/voice/join-conference ────────────────────────────────────
+// TwiML URL for the called party (destination) to join the agent's conference room.
+router.post("/twilio/voice/join-conference", async (req, res) => {
+  res.set("Content-Type", "text/xml");
+  const confName = (req.query.conf as string | undefined) || "";
+  if (!confName) {
+    res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
+    return;
+  }
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference startConferenceOnEnter="true"
+                endConferenceOnExit="true"
+                beep="false">
+      ${confName}
+    </Conference>
+  </Dial>
+</Response>`);
+});
+
+// ── POST /api/twilio/voice/conference-status ──────────────────────────────────
+// Twilio fires this when the conference state changes (join/start/end).
+// We capture the ConferenceSid so the hold endpoint can use the participant API.
+router.post("/twilio/voice/conference-status", async (req, res) => {
+  res.status(204).end();
+  try {
+    const agentCallSid = (req.query.agentCallSid as string | undefined) || "";
+    const conferenceSid = (req.body?.ConferenceSid as string | undefined) || "";
+    if (!agentCallSid || !conferenceSid) return;
+    const confName = `conf-${agentCallSid}`;
+    const existing = activeConferences.get(confName);
+    if (existing) {
+      existing.conferenceSid = conferenceSid;
+      activeConferences.set(confName, existing);
+    } else {
+      const global = getGlobalVoiceConfig();
+      activeConferences.set(confName, {
+        conferenceName: confName,
+        agentCallSid,
+        callerCallSid: null,
+        conferenceSid,
+        accountSid: global?.accountSid || "",
+        apiKeySid: global?.apiKeySid || "",
+        apiKeySecret: global?.apiKeySecret || "",
+      });
+    }
+    logger.info({ confName, conferenceSid }, "[twilio/voice/conference-status] stored");
+  } catch (err) {
+    logger.error(err, "[twilio/voice/conference-status] error");
   }
 });
 
@@ -231,21 +398,46 @@ router.post("/twilio/voice/recording", async (req, res) => {
   // Recording status callbacks expect a 200 with no TwiML — not text/xml
   res.status(200).json({ received: true });
   try {
-    const callSid = req.body?.CallSid as string | undefined;
+    let callSid = req.body?.CallSid as string | undefined;
     const recordingSid = req.body?.RecordingSid as string | undefined;
     const recordingUrl = req.body?.RecordingUrl as string | undefined;
     const recordingStatus = req.body?.RecordingStatus as string | undefined;
 
+    // Conference recordings don't send CallSid — extract it from ConferenceName ("conf-{agentCallSid}")
+    if (!callSid) {
+      const conferenceName = req.body?.ConferenceName as string | undefined;
+      if (conferenceName?.startsWith("conf-")) {
+        callSid = conferenceName.slice(5);
+      }
+    }
+
     if (!callSid || recordingStatus !== "completed") return;
 
-    await db
+    const [updated] = await db
       .update(crmCallLogs)
       .set({
         recordingSid: recordingSid ?? null,
         recordingUrl: recordingUrl ? `${recordingUrl}.mp3` : null,
         updatedAt: new Date(),
       })
-      .where(eq(crmCallLogs.callSid, callSid));
+      .where(eq(crmCallLogs.callSid, callSid))
+      .returning({ id: crmCallLogs.id });
+
+    // If no call log row exists yet (race condition or log-creation failure), insert a minimal one
+    if (!updated) {
+      try {
+        await db.insert(crmCallLogs).values({
+          callSid,
+          recordingSid: recordingSid ?? null,
+          recordingUrl: recordingUrl ? `${recordingUrl}.mp3` : null,
+          direction: "outbound",
+          status: "completed",
+        } as any).onConflictDoNothing();
+        logger.info({ callSid }, "[twilio/voice/recording] inserted orphaned recording row");
+      } catch (insertErr) {
+        logger.error(insertErr, "[twilio/voice/recording] failed to insert orphaned recording");
+      }
+    }
 
     logger.info({ callSid, recordingSid }, "[twilio/voice/recording] stored");
 
@@ -483,14 +675,56 @@ router.get("/twilio/voice/calls", crmAuth, async (req, res) => {
 });
 
 // ── POST /api/twilio/voice/hold ───────────────────────────────────────────────
-// Hold is handled entirely client-side via the Twilio Voice SDK mute() function.
-// This endpoint is kept for API compatibility but just returns success.
-// Redirecting the browser call SID via the REST API would disconnect the SDK,
-// so we intentionally avoid any Twilio REST calls here.
+// Hold the active call. When conference-based calling is in use (API keys configured),
+// uses the Twilio Conference Participant REST API to play hold music to the caller.
+// Falls back gracefully when conference state isn't available (e.g. fallback Number dial).
 // Body: { callSid: string, hold: boolean }
 router.post("/twilio/voice/hold", crmAuth, async (req, res) => {
-  const { hold } = req.body as { callSid?: string; hold?: boolean };
-  res.json({ success: true, held: hold ?? false });
+  const { callSid, hold } = req.body as { callSid?: string; hold?: boolean };
+  const isHold = hold ?? false;
+
+  if (!callSid) {
+    res.json({ success: true, held: isHold, mode: "mute-only" });
+    return;
+  }
+
+  const confName = `conf-${callSid}`;
+  const conf = activeConferences.get(confName);
+
+  if (!conf?.conferenceSid || !conf?.callerCallSid) {
+    // Conference not yet established — client-side mute handles audio
+    res.json({ success: true, held: isHold, mode: "mute-only" });
+    return;
+  }
+
+  try {
+    const auth = Buffer.from(`${conf.apiKeySid}:${conf.apiKeySecret}`).toString("base64");
+    const holdBody = new URLSearchParams({ Hold: isHold ? "true" : "false" });
+    if (isHold) {
+      holdBody.set("HoldUrl", "https://twimlets.com/holdmusic?Bucket=com.twilio.music.classical");
+      holdBody.set("HoldMethod", "GET");
+    }
+
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${conf.accountSid}/Conferences/${conf.conferenceSid}/Participants/${conf.callerCallSid}.json`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: holdBody.toString(),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      logger.warn({ text, callSid }, "[twilio/voice/hold] participant API error — falling back to mute-only");
+      res.json({ success: true, held: isHold, mode: "mute-only", warning: "Hold music unavailable" });
+      return;
+    }
+
+    logger.info({ callSid, isHold, confName }, "[twilio/voice/hold] conference hold set");
+    res.json({ success: true, held: isHold, mode: "conference" });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/hold] error");
+    res.json({ success: true, held: isHold, mode: "mute-only" });
+  }
 });
 
 // ── POST /api/twilio/voice/voicemail-drop ─────────────────────────────────────

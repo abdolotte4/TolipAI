@@ -372,8 +372,17 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const toggleHold = useCallback(() => {
     if (!callRef.current || status !== "in-progress") return;
     const newHeld = !held;
+    // Apply local mute immediately so the caller can't hear the agent during hold
     callRef.current.mute(newHeld);
     setHeld(newHeld);
+    // Also call backend to set conference hold (plays music to the caller)
+    const sid = currentCallSidRef.current;
+    if (sid) {
+      authFetch("/twilio/voice/hold", {
+        method: "POST",
+        body: JSON.stringify({ callSid: sid, hold: newHeld }),
+      }).catch(() => { /* non-fatal — local mute still applied */ });
+    }
   }, [held, status]);
 
   const sendDTMF = useCallback((digit: string) => {

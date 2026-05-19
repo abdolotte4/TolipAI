@@ -219,14 +219,20 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
 
-  // Helper: build a synthetic entry from configured credentials so the page
+  // Helper: build a synthetic entry from the configured phone number so the page
   // always shows something useful even when the Twilio REST API is unavailable.
+  // Queries the phone number directly — does NOT require credentials to be set.
   const dbFallback = async (): Promise<any[]> => {
     try {
       let phone: string | null | undefined = null;
       if (crmUser.campaignId) {
-        const creds = await getSmsCreds(crmUser.campaignId);
-        phone = creds?.phoneNumber;
+        // Direct query for the phone number only — skips credential validation
+        const [camp] = await db
+          .select({ phone: crmCampaigns.twilioPhoneNumber })
+          .from(crmCampaigns)
+          .where(eq(crmCampaigns.id, crmUser.campaignId))
+          .limit(1);
+        phone = camp?.phone;
       }
       // Fall back to global env var for super admins
       if (!phone && isSuperAdmin) {
