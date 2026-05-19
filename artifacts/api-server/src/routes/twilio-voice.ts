@@ -500,6 +500,8 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
   try {
     const { callSid, leadId, toNumber, fromNumber, direction, analytics } = req.body;
 
+    // Use UPSERT so the recording webhook's minimal row (if it arrived first)
+    // gets enriched with lead/user/campaign metadata instead of being ignored.
     const [log] = await db.insert(crmCallLogs).values({
       callSid: callSid || null,
       campaignId: crmUser.campaignId,
@@ -512,7 +514,20 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
       mosScore: analytics?.mos ? String(analytics.mos) : null,
       jitterMs: analytics?.jitter ? String(analytics.jitter) : null,
       packetLossPct: analytics?.packetLoss ? String(analytics.packetLoss) : null,
-    }).onConflictDoNothing().returning();
+    }).onConflictDoUpdate({
+      target: crmCallLogs.callSid,
+      set: {
+        // Enrich any existing minimal row with the full frontend metadata
+        campaignId: sql`COALESCE(crm_call_logs.campaign_id, EXCLUDED.campaign_id)`,
+        leadId: sql`COALESCE(crm_call_logs.lead_id, EXCLUDED.lead_id)`,
+        userId: sql`COALESCE(crm_call_logs.user_id, EXCLUDED.user_id)`,
+        fromNumber: sql`COALESCE(crm_call_logs.from_number, EXCLUDED.from_number)`,
+        toNumber: sql`COALESCE(crm_call_logs.to_number, EXCLUDED.to_number)`,
+        // Don't downgrade status if recording webhook already set 'completed'
+        status: sql`CASE WHEN crm_call_logs.status = 'completed' THEN crm_call_logs.status ELSE EXCLUDED.status END`,
+        updatedAt: new Date(),
+      },
+    }).returning();
 
     res.json({ success: true, id: log?.id ?? null });
   } catch (err: any) {
@@ -574,26 +589,17 @@ router.post("/twilio/voice/coach", crmAuth, async (req, res) => {
     return;
   }
 
-  if (!getOpenAIKey()) {
-    res.status(503).json({ error: "AI coaching requires an OpenAI API key to be configured." });
+  if (!hasAI()) {
+    res.status(503).json({ error: "AI coaching requires OPENAI_API_KEY or GROQ_API_KEY to be configured." });
     return;
   }
 
   try {
-    const resp = await fetch(`${getOpenAIBaseUrl()}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getOpenAIKey()}`,
-      },
-      signal: AbortSignal.timeout(20_000),
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_tokens: 500,
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert real estate wholesaling call coach. Analyze the call transcript and return ONLY valid JSON with these exact keys:
+    const raw = await callAI(
+      [
+        {
+          role: "system",
+          content: `You are an expert real estate wholesaling call coach. Analyze the call transcript and return ONLY valid JSON with these exact keys:
 {
   "score": <integer 1-10>,
   "strengths": "<one short sentence highlighting what went well>",
@@ -601,23 +607,16 @@ router.post("/twilio/voice/coach", crmAuth, async (req, res) => {
   "followUpTask": "<specific actionable next step, e.g. 'Send offer letter for $145,000 by Friday'>",
   "suggestedOffer": <number or null>,
   "offerRationale": "<one sentence explaining the suggested offer price, or null if no offer context>"
-}`,
-          },
-          {
-            role: "user",
-            content: `Analyze this real estate wholesaling call transcript:\n\n${transcript.slice(0, 3000)}`,
-          },
-        ],
-      }),
-    });
-
-    if (!resp.ok) {
-      const errBody = await resp.json().catch(() => ({})) as any;
-      throw new Error(errBody?.error?.message || `OpenAI API error ${resp.status}`);
-    }
-
-    const aiData = await resp.json() as any;
-    const raw = aiData.choices?.[0]?.message?.content || "{}";
+}
+Return ONLY the JSON object — no markdown, no explanation.`,
+        },
+        {
+          role: "user",
+          content: `Analyze this real estate wholesaling call transcript:\n\n${transcript.slice(0, 3000)}`,
+        },
+      ],
+      { maxTokens: 500, timeoutMs: 20_000, jsonMode: true }
+    );
 
     let coaching: any;
     try {
@@ -1217,13 +1216,27 @@ router.get("/twilio/voice/recording-proxy", crmAuth, async (req, res) => {
   }
   try {
     const crmUser = req.crmUser!;
-    const creds = crmUser.campaignId
-      ? (await getSmsCreds(crmUser.campaignId) ?? getGlobalSmsCreds())
-      : getGlobalSmsCreds();
-    if (!creds?.accountSid || !creds?.authToken) {
-      res.status(503).json({ error: "Twilio credentials not configured" }); return;
+
+    // Prefer API Key auth (from voice config) — works even when SMS auth token isn't configured.
+    // Falls back to account SID + auth token from SMS credentials.
+    let authHeader: string | null = null;
+    if (crmUser.campaignId) {
+      const voiceCfg = await getVoiceConfig(crmUser.campaignId).catch(() => null) ?? getGlobalVoiceConfig();
+      if (voiceCfg?.apiKeySid && voiceCfg?.apiKeySecret) {
+        authHeader = `Basic ${Buffer.from(`${voiceCfg.apiKeySid}:${voiceCfg.apiKeySecret}`).toString("base64")}`;
+      }
     }
-    const authHeader = `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64")}`;
+    if (!authHeader) {
+      const smsCreds = crmUser.campaignId
+        ? (await getSmsCreds(crmUser.campaignId).catch(() => null) ?? getGlobalSmsCreds())
+        : getGlobalSmsCreds();
+      if (smsCreds?.accountSid && smsCreds?.authToken) {
+        authHeader = `Basic ${Buffer.from(`${smsCreds.accountSid}:${smsCreds.authToken}`).toString("base64")}`;
+      }
+    }
+    if (!authHeader) {
+      res.status(503).json({ error: "Twilio credentials not configured — set API keys or auth token in Integrations" }); return;
+    }
     const upstream = await fetch(url, { headers: { Authorization: authHeader } });
     if (!upstream.ok) {
       res.status(upstream.status).json({ error: "Failed to fetch recording from Twilio" }); return;
@@ -1280,40 +1293,31 @@ router.post("/twilio/voice/transcript", async (req, res) => {
       segment: { track: segment.track, text: segment.text, ts: segment.ts },
     });
 
-    // Debounced AI rebuttal suggestion — fires 8 s after last inbound segment
-    if (isInbound && getOpenAIKey()) {
+    // Debounced AI rebuttal suggestion — fires 5 s after last inbound segment
+    // Uses OpenAI (gpt-4o-mini) with automatic Groq fallback via callAI().
+    if (isInbound && hasAI()) {
       if (entry.aiSuggestionTimer) clearTimeout(entry.aiSuggestionTimer);
       entry.aiSuggestionTimer = setTimeout(async () => {
         try {
           const recentText = entry.fullText.slice(-3000);
-          const resp = await fetch(`${getOpenAIBaseUrl()}/chat/completions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${getOpenAIKey()}` },
-            signal: AbortSignal.timeout(10_000),
-            body: JSON.stringify({
-              model: "gpt-4o-mini",
-              max_tokens: 200,
-              messages: [
-                {
-                  role: "system",
-                  content: `You are a real estate wholesaling coach listening live to a seller call.
+          const suggestion = await callAI(
+            [
+              {
+                role: "system",
+                content: `You are a real estate wholesaling coach listening live to a seller call.
 Based on the last thing the seller said, give ONE short, specific rebuttal or talking point the agent can say RIGHT NOW.
 Keep it under 40 words. Be direct. If no objection is detected, return an empty string.
 Return ONLY the suggested response text — nothing else.`,
-                },
-                { role: "user", content: `Live transcript:\n${recentText}\n\nWhat should the agent say now?` },
-              ],
-            }),
-          });
-          if (resp.ok) {
-            const aiData = await resp.json() as any;
-            const suggestion = (aiData.choices?.[0]?.message?.content || "").trim();
-            if (suggestion) {
-              emitCrmActivity("call_suggestion", { campaignId, callSid, suggestion, ts: Date.now() });
-            }
+              },
+              { role: "user", content: `Live transcript:\n${recentText}\n\nWhat should the agent say now?` },
+            ],
+            { maxTokens: 100, timeoutMs: 10_000 }
+          );
+          if (suggestion) {
+            emitCrmActivity("call_suggestion", { campaignId, callSid, suggestion, ts: Date.now() });
           }
-        } catch (err) { logger.warn(err, "[transcript] AI suggestion error"); }
-      }, 8_000);
+        } catch (err) { logger.warn(err, "[transcript] AI suggestion error (OpenAI + Groq both failed)"); }
+      }, 5_000);
     }
   } catch (err) {
     logger.error(err, "[twilio/voice/transcript] error");

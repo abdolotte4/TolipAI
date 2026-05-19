@@ -302,6 +302,7 @@ export function handleAgentStream(
   // ── OpenAI events ──
 
   openaiWs.on("open", () => {
+    clearTimeout(openTimeout);
     logger.info("[agent] OpenAI Realtime connected");
     // Configure the session
     openaiWs.send(
@@ -408,13 +409,28 @@ export function handleAgentStream(
     }
   });
 
-  openaiWs.on("error", (err) => {
-    logger.error(err, "[agent] OpenAI WebSocket error");
+  openaiWs.on("error", (err: Error & { code?: string }) => {
+    logger.error(
+      { code: err.code, message: err.message },
+      "[agent] OpenAI Realtime WebSocket error — NOTE: Groq has no Realtime API equivalent; OpenAI is the only provider for AI voice"
+    );
+    // Close the Twilio side gracefully so the caller hears a busy signal
+    // rather than silence. The call will fall through to the <Say> fallback.
+    if (twilioWs.readyState === WebSocket.OPEN) twilioWs.close(1011, "AI provider error");
   });
 
-  openaiWs.on("close", () => {
-    logger.info("[agent] OpenAI Realtime disconnected");
+  openaiWs.on("close", (code: number, reason: Buffer) => {
+    logger.info({ code, reason: reason.toString() }, "[agent] OpenAI Realtime disconnected");
   });
+
+  // Safety valve: if OpenAI never opens within 8 s, close Twilio gracefully
+  const openTimeout = setTimeout(() => {
+    if (openaiWs.readyState !== WebSocket.OPEN) {
+      logger.error("[agent] OpenAI Realtime connection timed out after 8 s");
+      openaiWs.terminate();
+      if (twilioWs.readyState === WebSocket.OPEN) twilioWs.close(1011, "AI provider timeout");
+    }
+  }, 8_000);
 
   // ── Twilio events ──
 
