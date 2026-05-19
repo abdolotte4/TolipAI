@@ -30,7 +30,14 @@ import {
   getGlobalVoiceConfig,
   getGlobalSmsCreds,
 } from "../services/twilioCredentials";
-import { getOpenAIKey, getOpenAIBaseUrl } from "../services/aiConfig";
+import {
+  getOpenAIKey,
+  getOpenAIBaseUrl,
+  callAI,
+  transcribeAudio,
+  hasAI,
+  getChatModel,
+} from "../services/aiConfig";
 import { logger } from "../lib/logger";
 import { emitCrmActivity } from "./sse";
 
@@ -467,18 +474,8 @@ router.post("/twilio/voice/recording", async (req, res) => {
           if (!audioResp.ok) return;
           const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
 
-          const formData = new FormData();
-          formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "recording.mp3");
-          formData.append("model", "whisper-1");
-
-          const transcriptResp = await fetch(`${getOpenAIBaseUrl()}/audio/transcriptions`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${getOpenAIKey()}` },
-            body: formData,
-          });
-
-          if (!transcriptResp.ok) return;
-          const { text } = await transcriptResp.json() as { text: string };
+          const text = await transcribeAudio(audioBuffer, "recording.mp3");
+          if (!text) return;
 
           await db
             .update(crmCallLogs)
@@ -487,7 +484,7 @@ router.post("/twilio/voice/recording", async (req, res) => {
 
           logger.info({ callSid }, "[twilio/voice/recording] transcript saved");
         } catch (err) {
-          logger.error(err, "[twilio/voice/recording] transcription error");
+          logger.error(err, "[twilio/voice/recording] transcription error (OpenAI + Groq both failed)");
         }
       });
     }

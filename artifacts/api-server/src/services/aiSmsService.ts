@@ -1,15 +1,18 @@
 /**
- * aiSmsService.ts — AI-powered SMS reply generation via gpt-4o-mini.
+ * aiSmsService.ts — AI-powered SMS reply generation.
+ *
+ * Provider chain: OpenAI (gpt-4o-mini) → Groq (llama-3.3-70b-versatile) fallback.
+ * Uses the unified callAI() helper from aiConfig so provider selection is automatic.
  *
  * Features:
  * - Per-personality system prompts (professional_investor / friendly / aggressive)
- * - Uses existing circuit-breaker pattern (module-level aiSmsBreaker)
- * - Guardrails: empty/too-long replies fall back to a generic reply
+ * - Circuit breaker: stops calling AI after 5 consecutive failures in 60 s
+ * - Guardrails: empty or too-long replies fall back to a safe static reply
  * - Cap: 320 chars (2 SMS segments max)
- * - Cost: ~$0.005/reply (gpt-4o-mini at ~150 tokens)
  */
 
 import { logger } from "../lib/logger";
+import { callAI, getSmsModel, hasAI } from "./aiConfig";
 
 class CircuitBreaker {
   private failures = 0;
@@ -38,7 +41,8 @@ class CircuitBreaker {
 export const aiSmsBreaker = new CircuitBreaker();
 
 export const AI_SMS_COST_USD = 0.005;
-export const AI_SMS_FALLBACK = "Thanks for reaching out! Can we schedule a quick call? — TolipAI Team";
+export const AI_SMS_FALLBACK =
+  "Thanks for reaching out! Can we schedule a quick call? — TolipAI Team";
 
 const PERSONALITIES: Record<string, string> = {
   professional_investor: `You are a professional real estate investor following up with a property owner.
@@ -90,21 +94,22 @@ export async function generateAiSmsReply({
     return AI_SMS_FALLBACK;
   }
 
-  const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!aiBaseUrl || !aiApiKey) {
-    logger.warn("[aiSmsService] AI not configured — returning fallback");
+  if (!hasAI()) {
+    logger.warn("[aiSmsService] no AI provider configured (set OPENAI_API_KEY or GROQ_API_KEY) — returning fallback");
     return AI_SMS_FALLBACK;
   }
 
-  const personalityPrompt = PERSONALITIES[personality] ?? PERSONALITIES.professional_investor;
+  const personalityPrompt =
+    PERSONALITIES[personality] ?? PERSONALITIES.professional_investor;
 
   const ctx = [
     lead.sellerName ? `Seller: ${lead.sellerName}` : null,
     lead.address
       ? `Property: ${[lead.address, lead.city, lead.state].filter(Boolean).join(", ")}`
       : null,
-    lead.askingPrice ? `Asking: $${Number(lead.askingPrice).toLocaleString()}` : null,
+    lead.askingPrice
+      ? `Asking: $${Number(lead.askingPrice).toLocaleString()}`
+      : null,
     lead.arv ? `ARV: $${Number(lead.arv).toLocaleString()}` : null,
   ]
     .filter(Boolean)
@@ -118,56 +123,36 @@ export async function generateAiSmsReply({
     "If the lead texts HUMAN, CALL ME, or TALK TO PERSON, acknowledge and say someone will follow up soon.",
   ].join("\n");
 
-  const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: systemPrompt },
-    ...conversationHistory.slice(-10).map(m => ({
-      role: m.direction === "outbound" ? "assistant" : "user",
+  const messages = [
+    { role: "system" as const, content: systemPrompt },
+    ...conversationHistory.slice(-10).map((m) => ({
+      role: (m.direction === "outbound" ? "assistant" : "user") as "assistant" | "user",
       content: m.body,
     })),
-    { role: "user", content: inboundMessage },
+    { role: "user" as const, content: inboundMessage },
   ];
 
   try {
-    const res = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        Authorization: `Bearer ${aiApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.AI_SMS_MODEL || process.env.AI_MODEL || "openai/gpt-4o-mini",
-        max_tokens: 150,
-        temperature: 0.7,
-        messages,
-      }),
+    const raw = await callAI(messages, {
+      model: getSmsModel(),
+      maxTokens: 150,
+      temperature: 0.7,
+      timeoutMs: 15_000,
     });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      logger.error({ status: res.status, text }, "[aiSmsService] AI API error");
-      aiSmsBreaker.recordFailure();
-      return AI_SMS_FALLBACK;
-    }
-
-    const json = (await res.json()) as any;
-    const raw: string = json?.choices?.[0]?.message?.content?.trim() ?? "";
 
     if (!raw || raw.length < 2) {
       logger.warn("[aiSmsService] empty reply from AI — returning fallback");
       return AI_SMS_FALLBACK;
     }
     if (raw.length > 500) {
-      logger.warn({ len: raw.length }, "[aiSmsService] reply too long — returning fallback");
-      return AI_SMS_FALLBACK;
+      logger.warn({ len: raw.length }, "[aiSmsService] reply too long — truncating");
     }
 
-    // Cap at 320 chars (2 SMS segments)
     const reply = raw.length > 320 ? raw.slice(0, 317) + "..." : raw;
     aiSmsBreaker.recordSuccess();
     return reply;
   } catch (err) {
-    logger.error(err, "[aiSmsService] generateAiSmsReply threw");
+    logger.error(err, "[aiSmsService] generateAiSmsReply failed");
     aiSmsBreaker.recordFailure();
     return AI_SMS_FALLBACK;
   }
@@ -177,14 +162,23 @@ export async function generateAiSmsReply({
 export const OPT_OUT_KEYWORDS = ["STOP", "UNSUBSCRIBE", "CANCEL", "QUIT", "END"];
 
 // Keywords that trigger human-handoff flag
-export const HUMAN_HANDOFF_KEYWORDS = ["CALL ME", "TALK TO PERSON", "HUMAN", "REAL PERSON", "AGENT"];
+export const HUMAN_HANDOFF_KEYWORDS = [
+  "CALL ME",
+  "TALK TO PERSON",
+  "HUMAN",
+  "REAL PERSON",
+  "AGENT",
+];
 
 export function isOptOutMessage(body: string): boolean {
   const upper = body.trim().toUpperCase();
-  return OPT_OUT_KEYWORDS.some(k => upper === k || upper.startsWith(k + " ") || upper.endsWith(" " + k));
+  return OPT_OUT_KEYWORDS.some(
+    (k) =>
+      upper === k || upper.startsWith(k + " ") || upper.endsWith(" " + k)
+  );
 }
 
 export function isHumanHandoffRequest(body: string): boolean {
   const upper = body.trim().toUpperCase();
-  return HUMAN_HANDOFF_KEYWORDS.some(k => upper.includes(k));
+  return HUMAN_HANDOFF_KEYWORDS.some((k) => upper.includes(k));
 }
