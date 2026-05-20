@@ -212,11 +212,6 @@ router.post("/twilio/voice/answer", async (req, res) => {
       // Non-fatal — whisper is optional
     }
 
-    const transcriptionXml = `
-  <Start>
-    <Transcription statusCallbackUrl="${apiBase}/twilio/voice/transcript" statusCallbackMethod="POST" track="both" />
-  </Start>`;
-
     // Try Conference-based calling (enables proper hold music via participant API).
     // Falls back to classic <Dial><Number> when API key credentials are unavailable.
     const confName = agentCallSid ? `conf-${agentCallSid}` : null;
@@ -225,19 +220,22 @@ router.post("/twilio/voice/answer", async (req, res) => {
       : null;
 
     if (confName && voiceCfg) {
-      // ── Conference-based TwiML (hold music capable) ───────────────────────
+      // ── Conference-based TwiML (hold music capable via participant API) ───────────────────────
+      // NOTE: No waitUrl on the agent leg — the agent should hear silence/ringing while the
+      // destination is being dialed, not hold music. Hold music is applied to the callee only
+      // when the agent explicitly triggers hold via the /hold endpoint (Participant API).
+      // NOTE: <Transcription> is intentionally omitted — it requires Twilio Voice Intelligence
+      // service setup and causes Error 12200 XML validation warnings without it.
       const recordAttr = record
         ? `record="record-from-start" recordingStatusCallback="${apiBase}/twilio/voice/recording" recordingStatusCallbackMethod="POST"`
         : "";
 
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>${whisperXml}${transcriptionXml}
+<Response>${whisperXml}
   <Dial callerId="${callerId}" action="${statusCallbackUrl}" method="POST">
     <Conference startConferenceOnEnter="true"
                 endConferenceOnExit="true"
                 beep="false"
-                waitUrl="https://twimlets.com/holdmusic?Bucket=com.twilio.music.classical"
-                waitMethod="GET"
                 ${recordAttr}
                 statusCallback="${apiBase}/twilio/voice/conference-status?agentCallSid=${encodeURIComponent(agentCallSid)}"
                 statusCallbackMethod="POST"

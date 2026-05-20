@@ -87,8 +87,19 @@ router.get("/dashboard", crmAuth, async (req, res) => {
         GROUP BY 1, 2
         ORDER BY 2
       `),
+
+      // Total leads summary (inside allSettled so a failure returns zeros rather than crashing the whole handler)
+      db.execute(sql`
+        SELECT
+          count(*)::int AS total,
+          count(*) FILTER (WHERE status = 'closed')::int AS closed,
+          count(*) FILTER (WHERE status = 'under_contract')::int AS under_contract,
+          count(*) FILTER (WHERE status = 'new')::int AS new_count
+        FROM crm_leads
+        ${campaignWhere}
+      `),
     ]);
-    const [velocityR, funnelR, avgCloseR, sourceR, weeklyTrendR] = _dashboardResults;
+    const [velocityR, funnelR, avgCloseR, sourceR, weeklyTrendR, totalsR] = _dashboardResults;
     _dashboardResults.forEach((r, i) => {
       if (r.status === "rejected") logger.warn({ reason: (r as PromiseRejectedResult).reason?.message, i }, "[crm/analytics/dashboard] sub-query failed");
     });
@@ -97,17 +108,7 @@ router.get("/dashboard", crmAuth, async (req, res) => {
     const avgCloseRows   = avgCloseR.status    === "fulfilled" ? avgCloseR.value    : { rows: [{}] };
     const sourceRows     = sourceR.status      === "fulfilled" ? sourceR.value      : { rows: [] };
     const weeklyTrendRows= weeklyTrendR.status === "fulfilled" ? weeklyTrendR.value : { rows: [] };
-
-    // Total leads
-    const totalsResult = await db.execute(sql`
-      SELECT
-        count(*)::int AS total,
-        count(*) FILTER (WHERE status = 'closed')::int AS closed,
-        count(*) FILTER (WHERE status = 'under_contract')::int AS under_contract,
-        count(*) FILTER (WHERE status = 'new')::int AS new_count
-      FROM crm_leads
-      ${campaignWhere}
-    `);
+    const totalsResult   = totalsR.status      === "fulfilled" ? totalsR.value      : { rows: [] };
 
     const funnelOrder = ["new", "contacted", "qualified", "under_contract", "closed", "dead"];
     const funnelMap = Object.fromEntries((funnelRows.rows as any[]).map(r => [r.status, r.count]));

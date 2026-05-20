@@ -698,7 +698,9 @@ function ListDialer() {
 function CRMDialer() {
   const { toast } = useToast();
   const { data: me } = useCrmGetMe();
+  const { startCall, status: browserCallStatus } = usePhone();
 
+  const [callMode, setCallMode] = useState<"browser" | "bridge">("browser");
   const [agentPhone, setAgentPhone] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>(["new", "contacted", "follow_up"]);
   const [lines, setLines] = useState(1);
@@ -723,7 +725,11 @@ function CRMDialer() {
   const startMutation = useMutation({
     mutationFn: () => apiFetch("/twilio/voice/power-dial/session", {
       method: "POST",
-      body: JSON.stringify({ agentPhone, filters: { status: statusFilter }, lines }),
+      body: JSON.stringify({
+        agentPhone: callMode === "bridge" ? agentPhone : undefined,
+        filters: { status: statusFilter },
+        lines,
+      }),
     }),
     onSuccess: (data) => {
       setSessionId(data.sessionId);
@@ -734,12 +740,24 @@ function CRMDialer() {
   });
 
   const callMutation = useMutation({
-    mutationFn: () => apiFetch(`/twilio/voice/power-dial/session/${sessionId}/call`, { method: "POST" }),
+    mutationFn: async () => {
+      if (callMode === "browser") {
+        // Browser call: use Twilio SDK directly — no need for the bridge API
+        const lead = session?.currentLead;
+        if (!lead?.phone) throw new Error("No phone number for current lead");
+        await startCall(lead.phone, lead.id ?? null, lead.name ?? lead.phone, true);
+        return { leadPhone: lead.phone };
+      }
+      return apiFetch(`/twilio/voice/power-dial/session/${sessionId}/call`, { method: "POST" });
+    },
     onMutate: () => setCalling(true),
     onSettled: () => setCalling(false),
     onSuccess: (data) => {
-      toast({ title: `Calling ${data.leadPhone}`, description: "Your phone will ring first, then the lead." });
-      refetchSession();
+      const desc = callMode === "bridge"
+        ? "Your phone will ring first, then the lead."
+        : "Browser call connected.";
+      toast({ title: `Calling ${(data as any).leadPhone}`, description: desc });
+      if (callMode === "bridge") refetchSession();
     },
     onError: (err: Error) =>
       toast({ title: "Call failed", description: err.message, variant: "destructive" }),
@@ -800,12 +818,49 @@ function CRMDialer() {
             <p className="text-xs text-muted-foreground mt-0.5">Configure who to call and where to reach you.</p>
           </div>
           <div className="p-5 space-y-5">
+            {/* Call Mode Toggle */}
             <div className="space-y-2">
-              <Label>Your Phone Number</Label>
-              <Input className="bg-background/50 rounded-xl font-mono" placeholder="+15551234567"
-                value={agentPhone} onChange={e => setAgentPhone(e.target.value)} />
-              <p className="text-[11px] text-muted-foreground">Twilio will call <strong>this number</strong> first. When you answer, it bridges to the lead.</p>
+              <Label>Call Mode</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setCallMode("browser")}
+                  className={`py-2.5 rounded-xl text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${
+                    callMode === "browser"
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "bg-secondary text-muted-foreground border-white/10 hover:bg-secondary/80"
+                  }`}
+                >
+                  <PhoneCall className="w-3.5 h-3.5" />
+                  Browser Call
+                </button>
+                <button
+                  onClick={() => setCallMode("bridge")}
+                  className={`py-2.5 rounded-xl text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${
+                    callMode === "bridge"
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "bg-secondary text-muted-foreground border-white/10 hover:bg-secondary/80"
+                  }`}
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  Bridge (Phone)
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {callMode === "browser"
+                  ? "Calls go through your browser using your microphone."
+                  : "Twilio calls your physical phone first, then bridges to the lead."}
+              </p>
             </div>
+
+            {/* Bridge mode: physical phone number input */}
+            {callMode === "bridge" && (
+              <div className="space-y-2">
+                <Label>Your Phone Number</Label>
+                <Input className="bg-background/50 rounded-xl font-mono" placeholder="+15551234567"
+                  value={agentPhone} onChange={e => setAgentPhone(e.target.value)} />
+                <p className="text-[11px] text-muted-foreground">Twilio will call <strong>this number</strong> first. When you answer, it bridges to the lead.</p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Lead Status Filter</Label>
               <div className="flex flex-wrap gap-2">
@@ -894,8 +949,11 @@ function CRMDialer() {
               )}
             </div>
 
-            <Button className="w-full gap-2" disabled={!agentPhone || statusFilter.length === 0 || startMutation.isPending}
-              onClick={() => startMutation.mutate()}>
+            <Button
+              className="w-full gap-2"
+              disabled={(callMode === "bridge" && !agentPhone) || statusFilter.length === 0 || startMutation.isPending}
+              onClick={() => startMutation.mutate()}
+            >
               {startMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : lines > 1 ? <Zap className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               {lines > 1 ? `Start ${lines}-Line Power Session` : "Start Power Session"}
             </Button>

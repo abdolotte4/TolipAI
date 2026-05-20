@@ -218,7 +218,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
           `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:3000"}/api`;
         const appBody = new URLSearchParams({
           FriendlyName: `TolipAI CRM Voice – Campaign ${targetCampaignId}`,
-          VoiceUrl: `${apiBase}/twilio/voice/inbound`,
+          VoiceUrl: `${apiBase}/twilio/voice/answer`,
           VoiceMethod: "POST",
           StatusCallback: `${apiBase}/twilio/voice/status`,
           StatusCallbackMethod: "POST",

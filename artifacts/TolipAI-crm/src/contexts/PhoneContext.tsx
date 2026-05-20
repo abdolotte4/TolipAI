@@ -178,6 +178,20 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     };
   }, [stopRing, stopTimer]);
 
+  // Auto-register the device for inbound calls if the user previously initialised it.
+  // This lets inbound Twilio calls ring in the browser without the agent manually clicking
+  // "Initialize Dialer" every session.
+  useEffect(() => {
+    const shouldAutoInit = localStorage.getItem("crm_phone_auto_init") === "true";
+    if (!shouldAutoInit) return;
+    const token = localStorage.getItem("crm_token");
+    if (!token) return;
+    // Defer slightly so the page finishes rendering before we request mic permissions
+    const t = setTimeout(() => { initDevice().catch(() => {}); }, 1500);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const initDevice = useCallback(async (): Promise<boolean> => {
     if (deviceRef.current) return true;
     setStatus("initializing");
@@ -247,6 +261,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
       deviceRef.current = device;
       setStatus("ready");
+      // Remember that the device was successfully initialised so we can auto-register on next load
+      try { localStorage.setItem("crm_phone_auto_init", "true"); } catch { }
       return true;
     } catch (err: any) {
       setErrorMsg(err?.message || "Failed to initialize browser dialer");
