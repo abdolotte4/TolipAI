@@ -5,6 +5,7 @@ import { rateLimit } from "express-rate-limit";
 import pinoHttp from "pino-http";
 import compression from "compression";
 import path from "path";
+import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import * as Sentry from "@sentry/node";
@@ -243,7 +244,12 @@ if (process.env.NODE_ENV === "production") {
 
   app.use("/", express.static(websiteDir));
   app.get("/*path", (_req: Request, res: Response) => {
-    res.sendFile(path.join(websiteDir, "index.html"));
+    const websiteIndex = path.join(websiteDir, "index.html");
+    if (fs.existsSync(websiteIndex)) {
+      res.sendFile(websiteIndex);
+    } else {
+      res.status(404).send("Not found");
+    }
   });
 }
 

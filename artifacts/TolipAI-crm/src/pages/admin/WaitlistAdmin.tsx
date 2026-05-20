@@ -299,26 +299,26 @@ export default function WaitlistAdmin() {
 
   const { data, isLoading, isError } = useQuery<WaitlistResponse>({
     queryKey: ["crm-waitlist", status, search, from, to, page],
-    queryFn:  () => apiFetch(`/crm/admin/waitlist?${params}`),
+    queryFn:  () => apiFetch(`/admin/waitlist?${params}`),
     placeholderData: (prev) => prev,
   });
 
   const { data: chartData } = useQuery<{ days: ChartDay[] }>({
     queryKey: ["crm-waitlist-chart"],
-    queryFn:  () => apiFetch("/crm/admin/waitlist/chart"),
+    queryFn:  () => apiFetch("/admin/waitlist/chart"),
     staleTime: 5 * 60_000,
   });
 
   // ── Mutations ──
   const patchStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      apiFetch(`/crm/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+      apiFetch(`/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crm-waitlist"] }),
   });
 
   const patchNotes = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes: string }) =>
-      apiFetch(`/crm/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ notes }) }),
+      apiFetch(`/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ notes }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["crm-waitlist"] }),
   });
 
@@ -329,7 +329,7 @@ export default function WaitlistAdmin() {
 
   const deleteEntry = useMutation({
     mutationFn: (id: string) =>
-      apiFetch(`/crm/admin/waitlist/${id}`, { method: "DELETE" }),
+      apiFetch(`/admin/waitlist/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["crm-waitlist"] });
       qc.invalidateQueries({ queryKey: ["crm-waitlist-chart"] });
@@ -381,7 +381,7 @@ export default function WaitlistAdmin() {
     try {
       await Promise.all(
         Array.from(selectedIds).map(id =>
-          apiFetch(`/crm/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ status: newStatus }) })
+          apiFetch(`/admin/waitlist/${id}`, { method: "PATCH", body: JSON.stringify({ status: newStatus }) })
         )
       );
       await qc.invalidateQueries({ queryKey: ["crm-waitlist"] });
@@ -395,7 +395,7 @@ export default function WaitlistAdmin() {
     try {
       await Promise.all(
         Array.from(selectedIds).map(id =>
-          apiFetch(`/crm/admin/waitlist/${id}`, { method: "DELETE" })
+          apiFetch(`/admin/waitlist/${id}`, { method: "DELETE" })
         )
       );
       await qc.invalidateQueries({ queryKey: ["crm-waitlist"] });
@@ -421,7 +421,7 @@ export default function WaitlistAdmin() {
       if (from)   ep.set("from", from);
       if (to)     ep.set("to", to);
       const token = localStorage.getItem("crm_token");
-      const resp  = await fetch(`/api/crm/admin/waitlist/export?${ep}`, {
+      const resp  = await fetch(`/api/admin/waitlist/export?${ep}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!resp.ok) throw new Error("Export failed");

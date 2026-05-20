@@ -60,7 +60,7 @@ export default function CallReport() {
 
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["analytics-calls", refresh],
-    queryFn: () => apiFetch("/crm/analytics/calls"),
+    queryFn: () => apiFetch("/analytics/calls"),
     staleTime: 60_000,
   });
 

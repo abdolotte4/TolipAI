@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { crmUsers } from "@workspace/db/schema";
 import { and, eq, notInArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -54,14 +54,12 @@ async function seedAdmin(email: string, password: string, name: string) {
       .where(eq(crmUsers.email, email));
     logger.info({ email }, "CRM super admin password synced from secrets.");
   } else {
-    await db.insert(crmUsers).values({
-      name,
-      email,
-      passwordHash,
-      role: "super_admin",
-      campaignId: null,
-      status: "active",
-    });
+    // Use explicit id = MAX(id)+1 to bypass broken/missing serial sequences on Neon
+    await db.execute(sql`
+      INSERT INTO crm_users (id, name, email, password_hash, role, status, campaign_id, created_at)
+      SELECT COALESCE(MAX(id), 0) + 1, ${name}, ${email}, ${passwordHash}, 'super_admin', 'active', NULL, NOW()
+      FROM crm_users
+    `);
     logger.info({ email }, "CRM super admin created successfully.");
   }
 }
@@ -83,6 +81,24 @@ async function ensureColumns() {
   logger.info("DB column migrations verified.");
 }
 
+async function repairSequences() {
+  const tables = ["crm_users", "crm_call_logs", "crm_leads"];
+  for (const table of tables) {
+    try {
+      const seqRes = await pool.query(
+        `SELECT pg_get_serial_sequence($1, 'id') AS seq`, [table]
+      );
+      const seq: string | null = seqRes.rows[0]?.seq ?? null;
+      if (seq) {
+        await pool.query(
+          `SELECT setval($1, GREATEST(COALESCE((SELECT MAX(id) FROM ${table}), 0), 1), true)`,
+          [seq]
+        );
+      }
+    } catch (_) {}
+  }
+}
+
 export async function seedDatabase() {
   const adminEmail = process.env.CRM_ADMIN_EMAIL;
   const adminPassword = process.env.CRM_ADMIN_PASSWORD;
@@ -97,6 +113,8 @@ export async function seedDatabase() {
     return;
   }
 
+  // Repair serial sequences before any INSERT (sequences can drift to 0/null on Neon)
+  await repairSequences();
   // Ensure all performance indexes exist (idempotent — safe to run every startup)
   await ensureIndexes();
   // Ensure schema columns exist (idempotent ALTER TABLE IF NOT EXISTS)

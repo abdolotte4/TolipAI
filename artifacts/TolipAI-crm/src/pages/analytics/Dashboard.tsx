@@ -96,7 +96,7 @@ function getCampaignNote(campaign: any): string {
 function CampaignPerformanceSection({ refresh }: { refresh: number }) {
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["analytics-campaigns", refresh],
-    queryFn: () => apiFetch("/crm/analytics/campaigns"),
+    queryFn: () => apiFetch("/analytics/campaigns"),
     staleTime: 60_000,
   });
 
@@ -319,13 +319,13 @@ export default function AnalyticsDashboard() {
 
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["analytics-dashboard", refresh],
-    queryFn: () => apiFetch("/crm/analytics/dashboard"),
+    queryFn: () => apiFetch("/analytics/dashboard"),
     staleTime: 60_000,
   });
 
   const { data: callData, isLoading: callLoading } = useQuery<any>({
     queryKey: ["analytics-calls-summary", refresh],
-    queryFn: () => apiFetch("/crm/analytics/calls"),
+    queryFn: () => apiFetch("/analytics/calls"),
     staleTime: 60_000,
   });
 

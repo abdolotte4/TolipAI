@@ -97,7 +97,7 @@ export default function CallQualityDashboard() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["call-quality", days],
-    queryFn: () => apiFetch(`/crm/analytics/call-quality?days=${days}`),
+    queryFn: () => apiFetch(`/analytics/call-quality?days=${days}`),
     staleTime: 60_000,
   });
 

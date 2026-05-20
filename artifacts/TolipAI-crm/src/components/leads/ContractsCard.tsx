@@ -90,7 +90,7 @@ const ContractsCard = memo(function ContractsCard({
   const { data: contracts = [], isLoading } = useQuery<Contract[]>({
     queryKey: ["contracts", leadId],
     queryFn: async () => {
-      const res = await apiFetch(`/crm/contracts?leadId=${leadId}`);
+      const res = await apiFetch(`/contracts?leadId=${leadId}`);
       if (Array.isArray(res)) return res as Contract[];
       if (res && Array.isArray((res as any).contracts)) return (res as any).contracts as Contract[];
       return [] as Contract[];
@@ -100,7 +100,7 @@ const ContractsCard = memo(function ContractsCard({
 
   const createMutation = useMutation({
     mutationFn: (data: typeof form & { leadId: number }) =>
-      apiFetch("/crm/contracts", {
+      apiFetch("/contracts", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -121,7 +121,7 @@ const ContractsCard = memo(function ContractsCard({
 
   const voidMutation = useMutation({
     mutationFn: (id: number) =>
-      apiFetch(`/crm/contracts/${id}/void`, { method: "POST" }),
+      apiFetch(`/contracts/${id}/void`, { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contracts", leadId] });
       toast({ title: "Contract voided" });
@@ -130,7 +130,7 @@ const ContractsCard = memo(function ContractsCard({
 
   const resendMutation = useMutation({
     mutationFn: (id: number) =>
-      apiFetch(`/crm/contracts/${id}/resend`, { method: "POST" }),
+      apiFetch(`/contracts/${id}/resend`, { method: "POST" }),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ["contracts", leadId] });
       toast({ title: res.emailSent ? "Reminder sent" : "New link generated" });

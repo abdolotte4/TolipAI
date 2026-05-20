@@ -55,7 +55,7 @@ export default function TwilioConnect() {
   // Fetch campaign list for super admin
   const { data: campaigns } = useQuery<any[]>({
     queryKey: ["campaigns-list"],
-    queryFn: () => apiFetch("/crm/campaigns"),
+    queryFn: () => apiFetch("/campaigns"),
     enabled: !!isSuperAdmin,
     retry: false,
   });
