@@ -93,6 +93,34 @@ seedDatabase().then(() => {
         }
       }
       logger.info("DB indexes verified.");
+
+      // ── Sequence / identity health-check ──────────────────────────────────
+      // Neon DB id sequences can drift (last_value=0 or NULL) causing INSERT failures.
+      // Works for both SERIAL (uses setval) and GENERATED ... AS IDENTITY (uses ALTER TABLE).
+      const seqTables = ["crm_call_logs", "crm_users", "crm_leads"];
+      for (const table of seqTables) {
+        try {
+          // Step 1: find the actual sequence backing the id column (works for serial & identity)
+          const seqRes = await pool.query(
+            `SELECT pg_get_serial_sequence($1, 'id') AS seq`, [table]
+          );
+          const seq: string | null = seqRes.rows[0]?.seq ?? null;
+          if (!seq) {
+            // identity column — restart the identity directly
+            await pool.query(
+              `DO $$ DECLARE v INT; BEGIN SELECT COALESCE(MAX(id),0)+1 INTO v FROM ${table}; EXECUTE 'ALTER TABLE ${table} ALTER COLUMN id RESTART WITH '||v; END $$`
+            );
+          } else {
+            // serial column — reset the sequence
+            await pool.query(
+              `SELECT setval($1, GREATEST(COALESCE((SELECT MAX(id) FROM ${table}),0), 1), true)`, [seq]
+            );
+          }
+        } catch (e: any) {
+          logger.warn({ table, err: e?.message }, "[startup] sequence reset warning");
+        }
+      }
+      logger.info("DB sequences verified.");
     })();
 
     runEmailSequenceJob();

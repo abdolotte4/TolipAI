@@ -280,7 +280,7 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       res.status(422).json({ error: "Twilio credentials not configured for this campaign" }); return;
     }
 
-    const apiBase = process.env.API_BASE_URL || `https://${req.headers.host || "localhost"}/api`;
+    const apiBase = (process.env.API_BASE_URL || `https://${req.headers.host || "localhost"}/api`).trim();
     const phones = dialableLeads.map(l => l.phone!).filter(Boolean);
 
     let twimlUrl: string;

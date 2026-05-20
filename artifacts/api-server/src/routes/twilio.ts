@@ -214,9 +214,9 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     let autoCreatedVoiceAppSid: string | null = null;
     if (apiKeySid && !voiceAppSid) {
       try {
-        const apiBase =
+        const apiBase = (
           process.env.API_BASE_URL ||
-          `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:3000"}/api`;
+          `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:3000"}/api`).trim();
         const appBody = new URLSearchParams({
           FriendlyName: `TolipAI CRM Voice – Campaign ${targetCampaignId}`,
           VoiceUrl: `${apiBase}/twilio/voice/answer`,
@@ -486,7 +486,7 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
   const agentE164 = toE164(agentPhone);
   if (!leadE164) { res.status(400).json({ error: "Invalid lead phone number" }); return; }
   if (!agentE164) { res.status(400).json({ error: "Invalid agent phone number" }); return; }
-  const apiBase = process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
+  const apiBase = (process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`).trim();
   const twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(leadE164)}&callerId=${encodeURIComponent(fromNumber)}`;
 
   try {
@@ -523,9 +523,11 @@ router.post("/twilio/reconfigure-twiml-app", crmAuth, crmAdminOnly, async (req, 
 
   try {
     const voiceCfg = await resolveVoiceConfig(targetCampaignId, isSuperAdmin);
-    const apiBase = process.env.API_BASE_URL ||
-      `https://${(req.headers["x-forwarded-host"] as string) || req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
-    const voiceUrl = `${apiBase}/twilio/voice/answer`;
+    // Always use the server that handled THIS request — not API_BASE_URL (which may point to a different env).
+    // x-forwarded-host is set by Replit/Railway proxies and carries the public hostname.
+    const ownHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080";
+    const ownBase = `https://${ownHost.split(",")[0].trim()}/api`;
+    const voiceUrl = `${ownBase}/twilio/voice/answer`;
 
     const auth = Buffer.from(`${voiceCfg.apiKeySid}:${voiceCfg.apiKeySecret}`).toString("base64");
     const resp = await fetch(
@@ -536,7 +538,7 @@ router.post("/twilio/reconfigure-twiml-app", crmAuth, crmAdminOnly, async (req, 
         body: new URLSearchParams({
           VoiceUrl: voiceUrl,
           VoiceMethod: "POST",
-          StatusCallback: `${apiBase}/twilio/voice/call-status`,
+          StatusCallback: `${ownBase}/twilio/voice/call-status`,
           StatusCallbackMethod: "POST",
         }).toString(),
       }
@@ -566,7 +568,7 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const creds = await resolveSmsCreds(crmUser.campaignId, false);
-    const apiBase = process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
+    const apiBase = (process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`).trim();
     const smsWebhook = `${apiBase}/twilio/webhook`;
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers: any[] = data.incoming_phone_numbers || [];

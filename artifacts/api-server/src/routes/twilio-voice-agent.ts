@@ -556,9 +556,9 @@ agentRouter.post("/twilio/voice/inbound-agent", async (req, res) => {
   // Priority: API_BASE_URL env var → REPLIT_DEV_DOMAIN → req.headers.host (strips port so WSS works).
   // NOTE: req.headers.host may include ":8080" which would break public WebSocket URLs behind a proxy.
   const rawHost = (req.headers.host || "").replace(/:\d+$/, ""); // strip port
-  const apiBase: string =
+  const apiBase: string = (
     process.env.API_BASE_URL ||
-    `https://${process.env.REPLIT_DEV_DOMAIN || rawHost || "localhost"}/api`;
+    `https://${process.env.REPLIT_DEV_DOMAIN || rawHost || "localhost"}/api`).trim();
   const wsBase = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
   const streamUrl = `${wsBase}/twilio/voice/agent-stream`;
 
