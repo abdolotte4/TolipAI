@@ -47,6 +47,7 @@ export default function TwilioConnect() {
   const [showToken, setShowToken] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
+  const [reconfiguring, setReconfiguring] = useState(false);
 
   // Super admin campaign selector — null means "global / session" mode
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
@@ -118,6 +119,27 @@ export default function TwilioConnect() {
     onError: (err: Error) =>
       toast({ title: "Save failed", description: err.message, variant: "destructive" }),
   });
+
+  async function handleReconfigureTwimlApp() {
+    setReconfiguring(true);
+    try {
+      const body: Record<string, any> = {};
+      if (isSuperAdmin && selectedCampaignId) body.campaignId = selectedCampaignId;
+      const result = await apiFetch("/twilio/reconfigure-twiml-app", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      toast({
+        title: "TwiML App updated",
+        description: `Voice URL is now: ${result.voiceUrl}`,
+      });
+      qc.invalidateQueries({ queryKey: configQueryKey });
+    } catch (err: any) {
+      toast({ title: "Re-configure failed", description: err.message, variant: "destructive" });
+    } finally {
+      setReconfiguring(false);
+    }
+  }
 
   async function handleSetupWebhooks() {
     setSettingUp(true);
@@ -450,6 +472,20 @@ export default function TwilioConnect() {
   {typeof window !== 'undefined' ? window.location.origin : ''}/api/twilio/voice/answer
 </span>
                     </p>
+                    {isVoiceConfigured && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[11px] gap-1.5 mt-1 border-amber-500/30 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                        disabled={reconfiguring}
+                        onClick={handleReconfigureTwimlApp}
+                      >
+                        {reconfiguring
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <RefreshCw className="w-3 h-3" />}
+                        Re-configure TwiML App Voice URL
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>

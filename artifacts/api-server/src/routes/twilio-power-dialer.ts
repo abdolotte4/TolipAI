@@ -111,16 +111,18 @@ function formatSessionResponse(job: any, currentLead: any | null) {
 
 router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
-  const { agentPhone, filters = {} } = req.body as {
-    agentPhone: string;
+  const { agentPhone, callMode = "bridge", filters = {} } = req.body as {
+    agentPhone?: string;
+    callMode?: "browser" | "bridge";
     filters?: {
       status?: string | string[];
       assignedTo?: number;
     };
   };
 
-  if (!agentPhone) {
-    res.status(400).json({ error: "agentPhone is required — the number Twilio will call first" });
+  // agentPhone is only required for bridge (phone) mode — browser mode uses the SDK device
+  if (callMode !== "browser" && !agentPhone) {
+    res.status(400).json({ error: "agentPhone is required for Bridge mode — enter the number Twilio will call first" });
     return;
   }
 

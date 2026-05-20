@@ -726,6 +726,7 @@ function CRMDialer() {
     mutationFn: () => apiFetch("/twilio/voice/power-dial/session", {
       method: "POST",
       body: JSON.stringify({
+        callMode,
         agentPhone: callMode === "bridge" ? agentPhone : undefined,
         filters: { status: statusFilter },
         lines,

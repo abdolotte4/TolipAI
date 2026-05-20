@@ -536,6 +536,7 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
 
 // ── PATCH /api/twilio/voice/log/:callSid ─────────────────────────────────────
 // Update a call log with final analytics (MOS, jitter, packet loss) from the SDK.
+// Emits a `lead_call_quality` SSE event so the Pipeline tab refreshes the badge in real time.
 router.patch("/twilio/voice/log/:callSid", crmAuth, async (req, res) => {
   const { callSid } = req.params;
   try {
@@ -553,6 +554,26 @@ router.patch("/twilio/voice/log/:callSid", crmAuth, async (req, res) => {
         updatedAt: new Date(),
       })
       .where(eq(crmCallLogs.callSid, callSid as string));
+
+    // Emit real-time SSE so any open Pipeline tab refreshes the MOS badge immediately
+    if (mos != null || jitter != null || packetLoss != null) {
+      try {
+        const [log] = await db
+          .select({ leadId: crmCallLogs.leadId, campaignId: crmCallLogs.campaignId })
+          .from(crmCallLogs)
+          .where(eq(crmCallLogs.callSid, callSid as string))
+          .limit(1);
+        emitCrmActivity("lead_call_quality", {
+          callSid,
+          leadId: log?.leadId ?? null,
+          mos: mos ?? null,
+          jitter: jitter ?? null,
+          packetLoss: packetLoss ?? null,
+          campaignId: log?.campaignId ?? null,
+        });
+      } catch { /* non-fatal — SSE failure must not block the response */ }
+    }
+
     res.json({ success: true });
   } catch (err: any) {
     logger.error(err, "[twilio/voice/log PATCH] error");

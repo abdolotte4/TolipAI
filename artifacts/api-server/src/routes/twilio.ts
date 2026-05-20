@@ -25,7 +25,7 @@ import twilio from "twilio";
 import { crmAuth, crmAdminOnly } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations } from "@workspace/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { toE164, digitsOnly } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
 import {
@@ -33,6 +33,7 @@ import {
   getSmsCreds,
   resolveSmsCreds,
   getGlobalSmsCreds,
+  resolveVoiceConfig,
 } from "../services/twilioCredentials";
 import { logger } from "../lib/logger";
 import { generateAiSmsReply, isOptOutMessage, isHumanHandoffRequest, AI_SMS_COST_USD } from "../services/aiSmsService";
@@ -280,6 +281,24 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
       if (!phone && isSuperAdmin) {
         phone = getGlobalSmsCreds()?.phoneNumber || process.env.TWILIO_VOICE_CALLER_ID || null;
       }
+      // Super admin last resort: scan ALL campaigns for any configured phone number
+      if (!phone && isSuperAdmin) {
+        const camps = await db
+          .select({ phone: crmCampaigns.twilioPhoneNumber })
+          .from(crmCampaigns)
+          .where(isNotNull(crmCampaigns.twilioPhoneNumber))
+          .limit(20);
+        const phones = camps.filter(c => c.phone);
+        if (phones.length > 0) {
+          return phones.map(c => ({
+            id: c.phone!,
+            sid: "configured",
+            number: c.phone!,
+            name: `${c.phone} (configured)`,
+            capabilities: { voice: true, sms: true, mms: false },
+          }));
+        }
+      }
       if (!phone) return [];
       return [{
         id: phone,
@@ -482,6 +501,60 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
     const data = await twilioFetch(creds, "/Calls.json", { method: "POST", body: body.toString() });
     res.json({ success: true, callSid: data.sid, status: data.status, leadPhone: leadE164, agentPhone: agentE164 });
   } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/reconfigure-twiml-app ───────────────────────────────────
+// Updates an existing TwiML App's Voice URL to the correct /answer endpoint.
+// Fixes campaigns that were set up before the /inbound → /answer rename.
+
+router.post("/twilio/reconfigure-twiml-app", crmAuth, crmAdminOnly, async (req, res) => {
+  const crmUser = req.crmUser!;
+  const isSuperAdmin = crmUser.role === "super_admin";
+  const targetCampaignId = isSuperAdmin
+    ? (req.body?.campaignId ? Number(req.body.campaignId) : null)
+    : crmUser.campaignId;
+
+  if (!targetCampaignId) {
+    res.status(400).json({ error: "Select a campaign first (or pass campaignId in the request body)." });
+    return;
+  }
+
+  try {
+    const voiceCfg = await resolveVoiceConfig(targetCampaignId, isSuperAdmin);
+    const apiBase = process.env.API_BASE_URL ||
+      `https://${(req.headers["x-forwarded-host"] as string) || req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`;
+    const voiceUrl = `${apiBase}/twilio/voice/answer`;
+
+    const auth = Buffer.from(`${voiceCfg.apiKeySid}:${voiceCfg.apiKeySecret}`).toString("base64");
+    const resp = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${voiceCfg.accountSid}/Applications/${voiceCfg.appSid}.json`,
+      {
+        method: "POST",
+        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          VoiceUrl: voiceUrl,
+          VoiceMethod: "POST",
+          StatusCallback: `${apiBase}/twilio/voice/call-status`,
+          StatusCallbackMethod: "POST",
+        }).toString(),
+      }
+    );
+
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({})) as any;
+      throw Object.assign(
+        new Error(body?.message || `Twilio error ${resp.status}`),
+        { status: resp.status }
+      );
+    }
+
+    const data = await resp.json() as any;
+    logger.info({ appSid: data.sid, voiceUrl, campaignId: targetCampaignId }, "[twilio/reconfigure-twiml-app] updated");
+    res.json({ success: true, voiceUrl, appSid: data.sid, friendlyName: data.friendly_name });
+  } catch (err: any) {
+    logger.error(err, "[twilio/reconfigure-twiml-app] error");
     res.status(err.status || 500).json({ error: err.message });
   }
 });
