@@ -214,14 +214,18 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     let autoCreatedVoiceAppSid: string | null = null;
     if (apiKeySid && !voiceAppSid) {
       try {
-        const apiBase = (
-          process.env.API_BASE_URL ||
-          `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:3000"}/api`).trim();
+        // Always derive the base URL from the current request's host — NOT from
+        // API_BASE_URL which may point to a different deployment (Railway vs Replit).
+        const ownHost = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
+          || (req.headers.host as string | undefined)
+          || process.env.REPLIT_DEV_DOMAIN
+          || "localhost:8080";
+        const apiBase = `https://${ownHost.replace(/:\d+$/, "")}/api`;
         const appBody = new URLSearchParams({
           FriendlyName: `TolipAI CRM Voice – Campaign ${targetCampaignId}`,
           VoiceUrl: `${apiBase}/twilio/voice/answer`,
           VoiceMethod: "POST",
-          StatusCallback: `${apiBase}/twilio/voice/status`,
+          StatusCallback: `${apiBase}/twilio/voice/call-status`,
           StatusCallbackMethod: "POST",
         });
         const tempCreds = { accountSid, authToken, phoneNumber: phoneNumber || "" };
@@ -243,6 +247,38 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
       } catch (appErr) {
         // Non-fatal — user can manually create the TwiML App if this fails
         logger.warn(appErr, "[twilio/config] Auto TwiML App creation failed — user must create manually in Twilio Console");
+      }
+    }
+
+    // ── Auto-update existing TwiML App URL to point at this server ──────────
+    // Runs whenever voiceAppSid is already stored — ensures the URL stays correct
+    // across environment changes (e.g. Railway → Replit or domain updates).
+    const existingVoiceAppSid = voiceAppSid || autoCreatedVoiceAppSid;
+    if (apiKeySid && apiKeySecret && existingVoiceAppSid && targetCampaignId) {
+      const ownHostCfg = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
+        || (req.headers.host as string | undefined)
+        || process.env.REPLIT_DEV_DOMAIN
+        || "localhost:8080";
+      const cfgBase = `https://${ownHostCfg.replace(/:\d+$/, "")}/api`;
+      try {
+        const rawSecret = apiKeySecret; // user just submitted plaintext secret in body
+        const authHdr = Buffer.from(`${apiKeySid}:${rawSecret}`).toString("base64");
+        await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Applications/${existingVoiceAppSid}.json`,
+          {
+            method: "POST",
+            headers: { Authorization: `Basic ${authHdr}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              VoiceUrl: `${cfgBase}/twilio/voice/answer`,
+              VoiceMethod: "POST",
+              StatusCallback: `${cfgBase}/twilio/voice/call-status`,
+              StatusCallbackMethod: "POST",
+            }).toString(),
+          }
+        );
+        logger.info({ existingVoiceAppSid, cfgBase }, "[twilio/config] TwiML App URL auto-updated to current server");
+      } catch (updateErr) {
+        logger.warn(updateErr, "[twilio/config] TwiML App URL auto-update failed (non-fatal)");
       }
     }
 
@@ -310,8 +346,60 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
     } catch { return []; }
   };
 
+  // For super admin with no campaignId, try to find usable creds from any campaign in the DB
+  // so the Twilio REST API can be called to list real purchased phone numbers.
+  const tryFetchWithAnyCampaignCreds = async (): Promise<any[] | null> => {
+    if (!isSuperAdmin || crmUser.campaignId) return null;
+    try {
+      const campaigns = await db
+        .select({
+          id: crmCampaigns.id,
+          accountSid: crmCampaigns.twilioAccountSid,
+          authToken: crmCampaigns.twilioAuthToken,
+          phoneNumber: crmCampaigns.twilioPhoneNumber,
+        })
+        .from(crmCampaigns)
+        .where(isNotNull(crmCampaigns.twilioAccountSid))
+        .limit(5);
+
+      for (const camp of campaigns) {
+        if (!camp.accountSid || !camp.authToken) continue;
+        try {
+          const { safeDec } = await import("../lib/encryption");
+          const campCreds = {
+            accountSid: camp.accountSid,
+            authToken: safeDec(camp.authToken),
+            phoneNumber: camp.phoneNumber || "",
+          };
+          const data = await twilioFetch(campCreds as any, "/IncomingPhoneNumbers.json");
+          const nums = data.incoming_phone_numbers || [];
+          if (nums.length > 0) {
+            return nums.map((n: any) => ({
+              id: n.phone_number, sid: n.sid, number: n.phone_number,
+              name: n.friendly_name || n.phone_number,
+              capabilities: n.capabilities ?? { voice: true, sms: true, mms: false },
+            }));
+          }
+        } catch { continue; }
+      }
+    } catch { }
+    return null;
+  };
+
   try {
-    const creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdmin);
+    let creds: any;
+    try {
+      creds = await resolveSmsCreds(crmUser.campaignId, isSuperAdmin);
+    } catch (credErr: any) {
+      // Super admin without global env vars — try campaign DB creds before giving up
+      const fromCampaigns = await tryFetchWithAnyCampaignCreds();
+      if (fromCampaigns) {
+        const phoneNumbers = fromCampaigns.length > 0 ? fromCampaigns : await dbFallback();
+        res.json({ phoneNumbers });
+        return;
+      }
+      throw credErr;
+    }
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers = (data.incoming_phone_numbers || []).map((n: any) => ({
       id: n.phone_number,
@@ -486,7 +574,11 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
   const agentE164 = toE164(agentPhone);
   if (!leadE164) { res.status(400).json({ error: "Invalid lead phone number" }); return; }
   if (!agentE164) { res.status(400).json({ error: "Invalid agent phone number" }); return; }
-  const apiBase = (process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`).trim();
+  const ownHostCtC = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
+    || (req.headers.host as string | undefined)
+    || process.env.REPLIT_DEV_DOMAIN
+    || "localhost:8080";
+  const apiBase = `https://${ownHostCtC.replace(/:\d+$/, "")}/api`;
   const twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(leadE164)}&callerId=${encodeURIComponent(fromNumber)}`;
 
   try {
@@ -568,7 +660,13 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const creds = await resolveSmsCreds(crmUser.campaignId, false);
-    const apiBase = (process.env.API_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`).trim();
+    // Derive URLs from THIS request's host so webhooks always point to the server
+    // that is actually handling traffic — never to a stale API_BASE_URL env var.
+    const ownHostWH = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
+      || (req.headers.host as string | undefined)
+      || process.env.REPLIT_DEV_DOMAIN
+      || "localhost:8080";
+    const apiBase = `https://${ownHostWH.replace(/:\d+$/, "")}/api`;
     const smsWebhook = `${apiBase}/twilio/webhook`;
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers: any[] = data.incoming_phone_numbers || [];

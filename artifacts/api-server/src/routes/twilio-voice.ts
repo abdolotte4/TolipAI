@@ -255,9 +255,8 @@ router.post("/twilio/voice/answer", async (req, res) => {
 
     if (confName && voiceCfg) {
       // ── Conference-based TwiML (hold music capable via participant API) ───────────────────────
-      // NOTE: No waitUrl on the agent leg — the agent should hear silence/ringing while the
-      // destination is being dialed, not hold music. Hold music is applied to the callee only
-      // when the agent explicitly triggers hold via the /hold endpoint (Participant API).
+      // waitUrl="" → agent hears silence (not Twilio's default hold music) while waiting for
+      // the destination leg to connect. Hold music can be toggled later via the Participant API.
       // NOTE: <Transcription> is intentionally omitted — it requires Twilio Voice Intelligence
       // service setup and causes Error 12200 XML validation warnings without it.
       const recordAttr = record
@@ -270,6 +269,8 @@ router.post("/twilio/voice/answer", async (req, res) => {
     <Conference startConferenceOnEnter="true"
                 endConferenceOnExit="true"
                 beep="false"
+                waitUrl=""
+                waitMethod="GET"
                 ${recordAttr}
                 statusCallback="${apiBase}/twilio/voice/conference-status?agentCallSid=${encodeURIComponent(agentCallSid)}"
                 statusCallbackMethod="POST"
@@ -366,7 +367,9 @@ router.post("/twilio/voice/join-conference", async (req, res) => {
   <Dial>
     <Conference startConferenceOnEnter="true"
                 endConferenceOnExit="true"
-                beep="false">
+                beep="false"
+                waitUrl=""
+                waitMethod="GET">
       ${confName}
     </Conference>
   </Dial>
