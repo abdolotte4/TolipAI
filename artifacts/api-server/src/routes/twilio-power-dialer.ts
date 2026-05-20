@@ -22,7 +22,7 @@ import {
   crmLeads,
   crmCallLogs,
 } from "@workspace/db/schema";
-import { eq, and, inArray, asc } from "drizzle-orm";
+import { eq, and, inArray, asc, sql } from "drizzle-orm";
 import { crmAuth } from "./crm/middleware";
 import { logger } from "../lib/logger";
 import {
@@ -33,6 +33,7 @@ import {
 } from "../lib/backgroundJobStore";
 import { writeAuditLog } from "../lib/auditLog";
 import { getSmsCreds } from "../services/twilioCredentials";
+import { emitCrmActivity } from "./sse";
 import twilio from "twilio";
 
 const router: IRouter = Router();
@@ -290,12 +291,17 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       twimlUrl = `${apiBase}/twilio/twiml/multi-call?numbers=${encodeURIComponent(phones.join(","))}&callerId=${encodeURIComponent(p.callerIdPhone)}`;
     }
 
+    const statusCallbackUrl = `${apiBase}/twilio/voice/power-dial/call-status?sessionId=${encodeURIComponent(job.id)}`;
+
     const client = twilio(creds.accountSid, creds.authToken);
     const call = await client.calls.create({
       from: p.callerIdPhone,
       to: p.agentPhone,
       url: twimlUrl,
       method: "GET",
+      statusCallback: statusCallbackUrl,
+      statusCallbackMethod: "POST",
+      statusCallbackEvent: ["completed"],
     });
 
     // Track call SID and batch in session
@@ -465,6 +471,123 @@ router.delete("/twilio/voice/power-dial/session/:id", crmAuth, async (req, res) 
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /twilio/voice/power-dial/call-status ──────────────────────────────────
+// Public Twilio status-callback webhook. Fires when a power-dial bridge call
+// reaches "completed". Infers disposition from call duration and auto-advances
+// the session so the agent doesn't have to click a button after every call.
+// Query param: ?sessionId=<job-id>
+
+router.post("/twilio/voice/power-dial/call-status", async (req, res) => {
+  // Respond immediately — Twilio expects a fast 2xx
+  res.status(204).end();
+
+  try {
+    const sessionId = (req.query.sessionId as string | undefined) || "";
+    const callStatus = (req.body?.CallStatus as string | undefined) || "";
+    const callDuration = parseInt((req.body?.CallDuration as string | undefined) || "0", 10) || 0;
+    const callSid = (req.body?.CallSid as string | undefined) || "";
+
+    if (!sessionId || callStatus !== "completed") return;
+
+    const job = await getBackgroundJob(sessionId);
+    if (!job || job.type !== "power_dial" || job.status !== "running") return;
+
+    const p = job.payload as PowerDialPayload;
+
+    // Only auto-advance if this status callback matches the current active call
+    // (guards against stale callbacks from previous calls in the same session)
+    if (p.currentCallSid && p.currentCallSid !== callSid) return;
+
+    // Session already at the end or no active call to advance
+    if (p.currentIndex >= p.leadIds.length) return;
+
+    const currentLeadId = p.leadIds[p.currentIndex]!;
+    const [currentLead] = await db.select().from(crmLeads)
+      .where(eq(crmLeads.id, currentLeadId)).limit(1);
+
+    // Infer disposition from call duration:
+    //   >= 30 s  → "answered"  (meaningful conversation)
+    //   1–29 s   → "no_answer" (picked up then dropped, VM detection, etc.)
+    //   0 s      → "no_answer" (no pickup)
+    const inferredDispo: "answered" | "no_answer" = callDuration >= 30 ? "answered" : "no_answer";
+
+    // Update stats
+    if (inferredDispo === "answered") p.stats.answered += 1;
+    else p.stats.noAnswer += 1;
+
+    // Record disposition
+    p.dispositions.push({
+      leadId: currentLeadId,
+      leadName: currentLead?.sellerName ?? "Unknown",
+      leadAddress: currentLead?.address ?? "",
+      leadPhone: currentLead?.phone ?? "",
+      disposition: inferredDispo,
+      callSid: p.currentCallSid,
+      calledAt: new Date().toISOString(),
+    });
+
+    // Update call log
+    if (p.currentCallSid) {
+      await db.update(crmCallLogs)
+        .set({ disposition: inferredDispo, status: "completed", duration: callDuration, updatedAt: new Date() })
+        .where(eq(crmCallLogs.callSid, p.currentCallSid));
+    }
+
+    // Advance session
+    const advance = Math.max(1, p.currentBatchLeadIds?.length ?? 1);
+    p.currentIndex += advance;
+    p.currentCallSid = null;
+    p.currentBatchLeadIds = [];
+
+    const isDone = p.currentIndex >= p.leadIds.length;
+
+    if (isDone) {
+      await updateBackgroundJob(sessionId, {
+        status: "done",
+        payload: p as unknown as Record<string, unknown>,
+        result: { stats: p.stats } as Record<string, unknown>,
+        progress: 100,
+      });
+    } else {
+      const progress = Math.round((p.currentIndex / p.leadIds.length) * 100);
+      await updateBackgroundJob(sessionId, {
+        payload: p as unknown as Record<string, unknown>,
+        progress,
+      });
+    }
+
+    // Load next lead for the SSE payload
+    let nextLead: any = null;
+    if (!isDone) {
+      const [lead] = await db.select().from(crmLeads)
+        .where(eq(crmLeads.id, p.leadIds[p.currentIndex]!)).limit(1);
+      nextLead = lead ?? null;
+    }
+
+    // Emit SSE so the browser UI can show a toast and refresh without polling delay
+    emitCrmActivity("power_dial_call_ended", {
+      sessionId,
+      callSid,
+      callDuration,
+      disposition: inferredDispo,
+      autoAdvanced: true,
+      done: isDone,
+      currentIndex: p.currentIndex,
+      total: p.leadIds.length,
+      nextLeadName: nextLead?.sellerName ?? null,
+      nextLeadPhone: nextLead?.phone ?? null,
+      campaignId: p.campaignId,
+    });
+
+    logger.info(
+      { sessionId, callSid, callDuration, inferredDispo, currentIndex: p.currentIndex, isDone },
+      "[powerDial/call-status] auto-advanced session after call completion"
+    );
+  } catch (err) {
+    logger.error(err, "[powerDial/call-status] auto-advance error");
   }
 });
 

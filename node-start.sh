@@ -26,15 +26,25 @@ echo "[node-start] node $(node --version 2>/dev/null || echo 'not found')"
 
 NPM_LOCAL_BIN="$HOME/.local/bin"
 PNPM_BIN=""
-for candidate in \
-  "$NPM_LOCAL_BIN/pnpm" \
-  "$(which pnpm 2>/dev/null)" \
-  "$HOME/.local/share/pnpm/pnpm"; do
-  if [ -x "$candidate" ]; then
-    PNPM_BIN="$candidate"
-    break
-  fi
-done
+
+# Check common locations including nix store (newest version wins)
+_find_pnpm() {
+  for candidate in \
+    "$NPM_LOCAL_BIN/pnpm" \
+    "$(which pnpm 2>/dev/null)" \
+    "$HOME/.local/share/pnpm/pnpm"; do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"; return 0
+    fi
+  done
+  # Scan nix store for pnpm — pick highest semver by sorting descending
+  local NIX_PNPM
+  NIX_PNPM="$(ls /nix/store/*pnpm*/bin/pnpm 2>/dev/null | sort -rV | head -1)"
+  if [ -x "$NIX_PNPM" ]; then echo "$NIX_PNPM"; return 0; fi
+  return 1
+}
+
+PNPM_BIN="$(_find_pnpm 2>/dev/null || true)"
 
 if [ -z "$PNPM_BIN" ]; then
   echo "[node-start] pnpm not found — installing pnpm@9 via npm to ~/.local..."

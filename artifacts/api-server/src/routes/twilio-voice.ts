@@ -326,7 +326,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
       // ── Fallback: classic <Dial><Number> (no hold music) ─────────────────
       if (record) {
         res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>${whisperXml}${transcriptionXml}
+<Response>${whisperXml}
   <Dial callerId="${callerId}" record="record-from-answer"
         recordingStatusCallback="${apiBase}/twilio/voice/recording"
         recordingStatusCallbackMethod="POST"
@@ -336,7 +336,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
 </Response>`);
       } else {
         res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>${whisperXml}${transcriptionXml}
+<Response>${whisperXml}
   <Dial callerId="${callerId}" action="${statusCallbackUrl}" method="POST">
     <Number>${to}</Number>
   </Dial>

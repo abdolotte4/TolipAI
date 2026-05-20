@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -721,6 +721,35 @@ function CRMDialer() {
     enabled: !!sessionId,
     refetchInterval: sessionId ? 5000 : false,
   });
+
+  // Listen for auto-advance SSE events so the UI updates instantly without waiting for the poll
+  useEffect(() => {
+    if (!sessionId) return;
+    const token = localStorage.getItem("crm_token");
+    if (!token) return;
+    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+    es.addEventListener("power_dial_call_ended", (e: MessageEvent) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.sessionId !== sessionId) return;
+        const durSec = d.callDuration ?? 0;
+        const mins = Math.floor(durSec / 60);
+        const secs = durSec % 60;
+        const durStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        const disp = d.disposition === "answered" ? "Answered" : "No Answer";
+        if (d.done) {
+          toast({ title: "Session complete!", description: `All leads dialed.` });
+        } else {
+          toast({
+            title: `Call ended (${durStr}) · ${disp}`,
+            description: d.nextLeadName ? `Next: ${d.nextLeadName}` : "Moving to next lead…",
+          });
+        }
+        refetchSession();
+      } catch { }
+    });
+    return () => es.close();
+  }, [sessionId, refetchSession, toast]);
 
   const startMutation = useMutation({
     mutationFn: () => apiFetch("/twilio/voice/power-dial/session", {
