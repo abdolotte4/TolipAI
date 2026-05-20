@@ -35,6 +35,7 @@ import { writeAuditLog } from "../lib/auditLog";
 import { getSmsCreds } from "../services/twilioCredentials";
 import { emitCrmActivity } from "./sse";
 import twilio from "twilio";
+import { getWebhookBase } from "../lib/webhookBase";
 
 const router: IRouter = Router();
 
@@ -281,7 +282,7 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       res.status(422).json({ error: "Twilio credentials not configured for this campaign" }); return;
     }
 
-    const apiBase = (process.env.API_BASE_URL || `https://${req.headers.host || "localhost"}/api`).trim();
+    const apiBase = getWebhookBase(req);
     const phones = dialableLeads.map(l => l.phone!).filter(Boolean);
 
     let twimlUrl: string;

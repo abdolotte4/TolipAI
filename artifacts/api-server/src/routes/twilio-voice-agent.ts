@@ -31,6 +31,7 @@ import { getSmsCreds, getGlobalSmsCreds } from "../services/twilioCredentials";
 import { getOpenAIKey } from "../services/aiConfig";
 import { logger } from "../lib/logger";
 import twilio from "twilio";
+import { getWebhookBase } from "../lib/webhookBase";
 
 export const agentRouter: IRouter = Router();
 
@@ -552,13 +553,8 @@ agentRouter.post("/twilio/voice/inbound-agent", async (req, res) => {
     return;
   }
 
-  // Determine WebSocket URL.
-  // Priority: API_BASE_URL env var → REPLIT_DEV_DOMAIN → req.headers.host (strips port so WSS works).
-  // NOTE: req.headers.host may include ":8080" which would break public WebSocket URLs behind a proxy.
-  const rawHost = (req.headers.host || "").replace(/:\d+$/, ""); // strip port
-  const apiBase: string = (
-    process.env.API_BASE_URL ||
-    `https://${process.env.REPLIT_DEV_DOMAIN || rawHost || "localhost"}/api`).trim();
+  // Determine WebSocket URL from the request host (works correctly in all environments).
+  const apiBase: string = getWebhookBase(req);
   const wsBase = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
   const streamUrl = `${wsBase}/twilio/voice/agent-stream`;
 

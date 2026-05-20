@@ -99,17 +99,7 @@ interface ConferenceState {
 }
 const activeConferences = new Map<string, ConferenceState>();
 
-// ── Webhook base URL helper ───────────────────────────────────────────────────
-// For endpoints called BY Twilio (inbound webhooks), always derive the base URL
-// from the incoming request's host — NOT from API_BASE_URL (which points to a
-// specific deployment and would route callbacks to the wrong server in dev).
-// API_BASE_URL is only correct when THIS server initiates outbound REST calls.
-import type { Request } from "express";
-function getWebhookBase(req: Request): string {
-  const fwdHost = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim();
-  const host = fwdHost || req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080";
-  return `https://${host.replace(/:\d+$/, "")}/api`;
-}
+import { getWebhookBase } from "../lib/webhookBase";
 
 // Resolve voice API key credentials by Twilio Account SID.
 // Used inside the /answer webhook (no crmAuth — looks up campaign by accountSid).
@@ -933,8 +923,7 @@ router.post("/twilio/voice/warm-transfer", crmAuth, async (req, res) => {
     } catch { /* non-critical — child redirect is best-effort */ }
 
     // Step 2: Dial the transfer target into the same conference.
-    const apiBase = (process.env.API_BASE_URL ||
-      `https://${req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080"}/api`).trim();
+    const apiBase = getWebhookBase(req);
 
     const callCreateResp = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Calls.json`,

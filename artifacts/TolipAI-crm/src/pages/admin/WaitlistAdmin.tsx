@@ -421,7 +421,7 @@ export default function WaitlistAdmin() {
       if (from)   ep.set("from", from);
       if (to)     ep.set("to", to);
       const token = localStorage.getItem("crm_token");
-      const resp  = await fetch(`/api/admin/waitlist/export?${ep}`, {
+      const resp  = await fetch(`/api/crm/admin/waitlist/export?${ep}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!resp.ok) throw new Error("Export failed");
