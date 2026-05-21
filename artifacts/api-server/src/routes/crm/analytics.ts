@@ -451,6 +451,11 @@ router.get("/campaigns", crmAuth, async (req, res) => {
     ? sql`AND l.campaign_id = ${campaignId}`
     : sql``;
 
+  // Non-super-admins only see their own campaign row in the table
+  const campaignWhereFinal = (!isSuperAdmin && campaignId)
+    ? sql`WHERE c.id = ${campaignId}`
+    : sql``;
+
   try {
     const rows = await db.execute(sql`
       SELECT
@@ -473,6 +478,7 @@ router.get("/campaigns", crmAuth, async (req, res) => {
           END
         )::numeric, 1)::float AS avg_days_to_close
       FROM crm_campaigns c
+      ${campaignWhereFinal}
       LEFT JOIN crm_leads l ON l.campaign_id = c.id
         ${campaignFilter}
       GROUP BY c.id, c.name

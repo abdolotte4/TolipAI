@@ -11,6 +11,7 @@ import {
   Target, AlertCircle, Activity, Mail, Phone,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useCrmGetMe } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -316,6 +317,8 @@ function ActivityFeed() {
 
 export default function AnalyticsDashboard() {
   const [refresh, setRefresh] = useState(0);
+  const { data: meData } = useCrmGetMe();
+  const isSuperAdmin = meData?.role === "super_admin";
 
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["analytics-dashboard", refresh],
@@ -517,8 +520,8 @@ export default function AnalyticsDashboard() {
         </Card>
       </motion.div>
 
-      {/* Campaign Performance with Close Rate Notes */}
-      <CampaignPerformanceSection refresh={refresh} />
+      {/* Campaign Performance — super_admin only (cross-campaign view) */}
+      {isSuperAdmin && <CampaignPerformanceSection refresh={refresh} />}
 
       {/* Weekly Multi-Status Trend */}
       {weeklyTrend?.length > 0 && (

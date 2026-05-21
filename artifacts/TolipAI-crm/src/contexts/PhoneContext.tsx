@@ -134,6 +134,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const pendingAcceptLeadIdRef = useRef<{ leadId?: number | null } | null>(null);
   const ringStopRef = useRef<(() => void) | null>(null);
   const analyticsRef = useRef<CallAnalytics>({ mos: null, jitter: null, packetLoss: null });
+  const speechRecognitionRef = useRef<any>(null);
 
   const [status, setStatus] = useState<PhoneStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -425,6 +426,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     if (!call) {
       // Device hasn't fired `incoming` yet (SSE arrived before Twilio SDK event).
       // Store the intent — it will be auto-accepted once the Device fires.
+      // Stop the ring immediately so the UI doesn't keep ringing while we wait.
+      stopRing();
       pendingAcceptLeadIdRef.current = { leadId };
       return;
     }
@@ -518,6 +521,52 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     setActiveLeadName(null);
     setCurrentCallSid(null);
   }, []);
+
+  // ── Browser SpeechRecognition — transcribes the agent's microphone live ──────
+  useEffect(() => {
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) return;
+
+    if (status === "in-progress") {
+      try {
+        const recognition = new SpeechRec();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = "en-US";
+        recognition.onresult = (event: any) => {
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result.isFinal) {
+              const text = (result[0]?.transcript || "").trim();
+              if (text) {
+                setLiveTranscript(prev => [...prev.slice(-99), { track: "outbound", text, ts: Date.now() }]);
+              }
+            }
+          }
+        };
+        recognition.onerror = () => {};
+        recognition.onend = () => {
+          if (speechRecognitionRef.current === recognition && callRef.current) {
+            try { recognition.start(); } catch { }
+          }
+        };
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch { }
+    } else {
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.abort(); } catch { }
+        speechRecognitionRef.current = null;
+      }
+    }
+
+    return () => {
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.abort(); } catch { }
+        speechRecognitionRef.current = null;
+      }
+    };
+  }, [status]);
 
   // ── SSE: incoming call metadata + live transcript ────────────────────────────
   useEffect(() => {

@@ -73,7 +73,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
 
   const coachingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [record, setRecord] = useState(false);
+  const [record, setRecord] = useState(true);
   const [lastCallSid, setLastCallSid] = useState<string | null>(null);
   const [lastCallRecorded, setLastCallRecorded] = useState(false);
   const [disposition, setDisposition] = useState<string | null>(null);
