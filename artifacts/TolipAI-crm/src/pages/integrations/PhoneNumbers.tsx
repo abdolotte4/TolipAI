@@ -201,27 +201,85 @@ function DialPad({
   fromNumber?: string;
 }) {
   const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
   const subtext: Record<string, string> = {
     "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL",
     "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ",
+    "0": "+",
+  };
+
+  const appendChar = (ch: string) => {
+    setInput(p => p.length < 20 ? p + ch : p);
   };
 
   const handleKey = (k: string) => {
-    if (input.length < 15) setInput(p => p + k);
+    if (k === "0" && longPressTriggered.current) {
+      longPressTriggered.current = false;
+      return;
+    }
+    appendChar(k);
+    inputRef.current?.focus();
+  };
+
+  const handlePointerDown = (k: string) => {
+    if (k !== "0") return;
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      appendChar("+");
+    }, 600);
+  };
+
+  const handlePointerUp = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const cleaned = e.target.value.replace(/[^0-9+*#]/g, "").slice(0, 20);
+    setInput(cleaned);
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      if (input) onCall(input);
+    }
   };
 
   return (
     <div className="flex flex-col items-center gap-4 py-6 px-4 max-w-xs mx-auto">
-      {/* Display */}
-      <div className="w-full flex items-center gap-2 bg-secondary/60 border border-border rounded-2xl px-5 py-3.5">
+      {/* Display — real input for paste & direct typing */}
+      <div className="w-full flex items-center gap-2 bg-secondary/60 border border-border rounded-2xl px-5 py-3.5 focus-within:ring-1 focus-within:ring-primary/40">
         <Keyboard className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        <span className={`flex-1 font-mono text-xl text-center ${input ? "text-foreground" : "text-muted-foreground/50"}`}>
-          {input ? fmtPhone(input) : "Enter number"}
-        </span>
-        {input && (
-          <button onClick={() => setInput(p => p.slice(0, -1))} className="text-muted-foreground hover:text-foreground transition-colors">
+        <input
+          ref={inputRef}
+          type="tel"
+          value={input}
+          onChange={handleInputChange}
+          onKeyDown={handleInputKeyDown}
+          placeholder="Enter number"
+          className="flex-1 bg-transparent font-mono text-xl text-center text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+        />
+        {input ? (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={() => setInput(p => p.slice(0, -1))}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
             <Delete className="w-4 h-4" />
+          </button>
+        ) : (
+          <button
+            onClick={() => appendChar("+")}
+            className="text-muted-foreground hover:text-primary transition-colors font-mono text-lg font-bold leading-none"
+            title="Add +"
+          >
+            +
           </button>
         )}
       </div>
@@ -232,6 +290,9 @@ function DialPad({
           <button
             key={k}
             onClick={() => handleKey(k)}
+            onPointerDown={() => handlePointerDown(k)}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
             className="flex flex-col items-center justify-center h-14 rounded-2xl bg-card border border-border hover:bg-secondary transition-colors active:scale-95 select-none"
           >
             <span className="text-xl font-semibold text-foreground leading-none">{k}</span>

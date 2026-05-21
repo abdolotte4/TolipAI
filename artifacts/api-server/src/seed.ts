@@ -81,6 +81,36 @@ async function ensureColumns() {
   logger.info("DB column migrations verified.");
 }
 
+async function ensureTables() {
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS crm_faxes (
+        id           SERIAL PRIMARY KEY,
+        campaign_id  INTEGER REFERENCES crm_campaigns(id),
+        lead_id      INTEGER REFERENCES crm_leads(id),
+        direction    TEXT NOT NULL DEFAULT 'inbound',
+        status       TEXT NOT NULL DEFAULT 'queued',
+        from_number  TEXT NOT NULL DEFAULT '',
+        to_number    TEXT NOT NULL DEFAULT '',
+        num_pages    INTEGER,
+        pdf_url      TEXT,
+        media_url    TEXT,
+        fax_sid      TEXT UNIQUE,
+        error_code   TEXT,
+        error_message TEXT,
+        created_at   TIMESTAMP DEFAULT NOW() NOT NULL,
+        updated_at   TIMESTAMP DEFAULT NOW() NOT NULL
+      )
+    `));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS crm_faxes_campaign_id_idx ON crm_faxes(campaign_id)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS crm_faxes_lead_id_idx ON crm_faxes(lead_id)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS crm_faxes_created_at_idx ON crm_faxes(created_at DESC)`));
+    logger.info("DB tables verified.");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Table migration warning (non-fatal).");
+  }
+}
+
 async function repairSequences() {
   const tables = ["crm_users", "crm_call_logs", "crm_leads"];
   for (const table of tables) {
@@ -117,6 +147,8 @@ export async function seedDatabase() {
   await repairSequences();
   // Ensure all performance indexes exist (idempotent — safe to run every startup)
   await ensureIndexes();
+  // Ensure new tables exist (idempotent CREATE TABLE IF NOT EXISTS)
+  await ensureTables();
   // Ensure schema columns exist (idempotent ALTER TABLE IF NOT EXISTS)
   await ensureColumns();
 

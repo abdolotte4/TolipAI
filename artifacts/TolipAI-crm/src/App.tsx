@@ -38,6 +38,7 @@ import CallReport from "@/pages/analytics/CallReport";
 import CallQualityDashboard from "@/pages/analytics/CallQualityDashboard";
 import PowerDialer from "@/pages/dialer/PowerDialer";
 import VoicemailInbox from "@/pages/dialer/VoicemailInbox";
+import FaxInbox from "@/pages/dialer/FaxInbox";
 import PhoneNumbersPage from "@/pages/integrations/PhoneNumbers";
 import SignContract from "@/pages/public/SignContract";
 import ToS from "@/pages/public/ToS";
@@ -94,6 +95,7 @@ function Router() {
       <Route path="/analytics/call-quality"><AppLayout><CallQualityDashboard /></AppLayout></Route>
       <Route path="/dialer/power"><AppLayout><PowerDialer /></AppLayout></Route>
       <Route path="/voicemail"><AppLayout><VoicemailInbox /></AppLayout></Route>
+      <Route path="/fax"><AppLayout><FaxInbox /></AppLayout></Route>
       <Route><AppLayout><NotFound /></AppLayout></Route>
     </Switch>
   );

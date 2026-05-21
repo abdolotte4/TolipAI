@@ -638,6 +638,31 @@ export const crmContracts = pgTable("crm_contracts", {
   index("crm_contracts_signing_token_idx").on(t.signingToken),
 ]);
 
+// ── crm_faxes ─────────────────────────────────────────────────────────────────
+// Stores inbound and outbound fax records for Twilio Programmable Fax.
+// Inbound faxes are automatically matched to leads by phone number.
+export const crmFaxes = pgTable("crm_faxes", {
+  id:           serial("id").primaryKey(),
+  campaignId:   integer("campaign_id").references(() => crmCampaigns.id),
+  leadId:       integer("lead_id").references(() => crmLeads.id),
+  direction:    text("direction").notNull().default("inbound"),   // inbound | outbound
+  status:       text("status").notNull().default("queued"),       // received | sent | failed | queued | delivering | no-answer
+  fromNumber:   text("from_number").notNull().default(""),
+  toNumber:     text("to_number").notNull().default(""),
+  numPages:     integer("num_pages"),
+  pdfUrl:       text("pdf_url"),
+  mediaUrl:     text("media_url"),
+  faxSid:       text("fax_sid").unique(),
+  errorCode:    text("error_code"),
+  errorMessage: text("error_message"),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+  updatedAt:    timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_faxes_campaign_id_idx").on(t.campaignId),
+  index("crm_faxes_lead_id_idx").on(t.leadId),
+  index("crm_faxes_created_at_idx").on(t.createdAt),
+]);
+
 // ── crm_waitlist ─────────────────────────────────────────────────────────────
 // Dedicated table for landing-page waitlist signups.
 // Source values: landing_hero | landing_compare | landing_cta | referral | organic

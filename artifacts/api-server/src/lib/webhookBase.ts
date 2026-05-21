@@ -2,12 +2,19 @@ import type { Request } from "express";
 
 /**
  * Returns the correct HTTPS base URL for Twilio webhook callbacks.
- * Always derived from the incoming request host so it works correctly
- * in every environment (Replit dev, Railway prod, local) without relying
- * on the API_BASE_URL env var, which points to a specific deployment and
- * would route Twilio callbacks to the wrong server if you're testing in dev.
+ *
+ * Priority order:
+ * 1. API_BASE_URL env var — set this in Railway to your production domain
+ *    e.g. API_BASE_URL=https://heroic-curiosity-production-dc5a.up.railway.app/api
+ *    This guarantees Twilio always calls back the correct server no matter
+ *    which environment originally configured the TwiML App.
+ * 2. x-forwarded-host header — set by Railway / Replit proxies.
+ * 3. Host header — local dev fallback.
  */
 export function getWebhookBase(req: Request): string {
+  if (process.env.API_BASE_URL) {
+    return process.env.API_BASE_URL.replace(/\/+$/, "");
+  }
   const fwdHost = (req.headers["x-forwarded-host"] as string | undefined)
     ?.split(",")[0]
     ?.trim();
