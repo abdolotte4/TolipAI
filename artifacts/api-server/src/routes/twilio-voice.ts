@@ -96,6 +96,7 @@ interface ConferenceState {
   accountSid: string;
   apiKeySid: string;
   apiKeySecret: string;
+  authToken: string;
 }
 const activeConferences = new Map<string, ConferenceState>();
 
@@ -303,6 +304,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
               accountSid: finalCfg.accountSid,
               apiKeySid: finalCfg.apiKeySid,
               apiKeySecret: finalCfg.apiKeySecret,
+              authToken: "",
             });
             logger.info({ confName: finalConfName, callerSid: data.sid }, "[twilio/voice/answer] dialed destination into conference");
           } else {
@@ -376,20 +378,46 @@ router.post("/twilio/voice/conference-status", async (req, res) => {
     const conferenceSid = (req.body?.ConferenceSid as string | undefined) || "";
     if (!agentCallSid || !conferenceSid) return;
     const confName = `conf-${agentCallSid}`;
+    // Always resolve campaign credentials so hold & recording auth is correct.
+    const global = getGlobalVoiceConfig();
+    const globalSms = getGlobalSmsCreds();
+    let campAccountSid = global?.accountSid || globalSms?.accountSid || "";
+    let campApiKeySid = global?.apiKeySid || "";
+    let campApiKeySecret = global?.apiKeySecret || "";
+    let campAuthToken = globalSms?.authToken || "";
+    try {
+      const [cl] = await db
+        .select({ campaignId: crmCallLogs.campaignId })
+        .from(crmCallLogs)
+        .where(eq(crmCallLogs.callSid, agentCallSid))
+        .limit(1);
+      if (cl?.campaignId) {
+        const smsCreds = await getSmsCreds(cl.campaignId);
+        if (smsCreds) { campAccountSid = smsCreds.accountSid; campAuthToken = smsCreds.authToken; }
+        const vCfg = await resolveVoiceConfig(cl.campaignId, false).catch(() => null);
+        if (vCfg) { campApiKeySid = vCfg.apiKeySid; campApiKeySecret = vCfg.apiKeySecret; }
+      }
+    } catch { /* non-fatal */ }
+
     const existing = activeConferences.get(confName);
     if (existing) {
       existing.conferenceSid = conferenceSid;
+      // Fill in any credentials that weren't available when the entry was first created
+      if (!existing.authToken) existing.authToken = campAuthToken;
+      if (!existing.apiKeySid) existing.apiKeySid = campApiKeySid;
+      if (!existing.apiKeySecret) existing.apiKeySecret = campApiKeySecret;
+      if (!existing.accountSid) existing.accountSid = campAccountSid;
       activeConferences.set(confName, existing);
     } else {
-      const global = getGlobalVoiceConfig();
       activeConferences.set(confName, {
         conferenceName: confName,
         agentCallSid,
         callerCallSid: null,
         conferenceSid,
-        accountSid: global?.accountSid || "",
-        apiKeySid: global?.apiKeySid || "",
-        apiKeySecret: global?.apiKeySecret || "",
+        accountSid: campAccountSid,
+        apiKeySid: campApiKeySid,
+        apiKeySecret: campApiKeySecret,
+        authToken: campAuthToken,
       });
     }
     logger.info({ confName, conferenceSid }, "[twilio/voice/conference-status] stored");
@@ -435,13 +463,51 @@ router.post("/twilio/voice/recording", async (req, res) => {
     const recordingUrl = req.body?.RecordingUrl as string | undefined;
     const recordingStatus = req.body?.RecordingStatus as string | undefined;
 
-    // Conference recordings don't send CallSid — extract from ConferenceName ("conf-{agentCallSid}").
-    // If CallSid IS present it may be the caller's SID, not the agent's; we still try ConferenceName as
-    // a secondary key when the direct callSid update finds zero rows.
+    // Conference recordings send ConferenceSid but NOT ConferenceName/CallSid.
+    // Resolution order:
+    //   1. ConferenceName body field (present in some call types)
+    //   2. activeConferences reverse-lookup by ConferenceSid (in-memory)
+    //   3. Twilio REST API → FriendlyName → extract agentCallSid (handles server restarts)
     const conferenceName = req.body?.ConferenceName as string | undefined;
     const conferenceSid  = req.body?.ConferenceSid  as string | undefined;
     if (!callSid && conferenceName?.startsWith("conf-")) {
       callSid = conferenceName.slice(5);
+    }
+    // Reverse-lookup by ConferenceSid in active map (fastest path)
+    if (!callSid && conferenceSid) {
+      for (const [, conf] of activeConferences.entries()) {
+        if (conf.conferenceSid === conferenceSid) {
+          callSid = conf.agentCallSid;
+          break;
+        }
+      }
+    }
+    // Twilio REST API fallback — handles cases where activeConferences was cleared
+    if (!callSid && conferenceSid) {
+      try {
+        const accountSidFromTwilio = req.body?.AccountSid as string | undefined;
+        let smsCreds = accountSidFromTwilio
+          ? await (async () => {
+              const [camp] = await db.select({ id: crmCampaigns.id }).from(crmCampaigns)
+                .where(eq(crmCampaigns.twilioAccountSid, accountSidFromTwilio)).limit(1);
+              return camp?.id ? getSmsCreds(camp.id) : getGlobalSmsCreds();
+            })()
+          : getGlobalSmsCreds();
+        if (smsCreds) {
+          const auth = Buffer.from(`${smsCreds.accountSid}:${smsCreds.authToken}`).toString("base64");
+          const confResp = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${smsCreds.accountSid}/Conferences/${conferenceSid}.json`,
+            { headers: { Authorization: `Basic ${auth}` } }
+          );
+          if (confResp.ok) {
+            const confData = await confResp.json() as any;
+            const fn = confData?.friendly_name as string | undefined;
+            if (fn?.startsWith("conf-")) callSid = fn.slice(5);
+          }
+        }
+      } catch (apiErr) {
+        logger.warn({ apiErr, conferenceSid }, "[twilio/voice/recording] Twilio API fallback failed");
+      }
     }
 
     if (!callSid || recordingStatus !== "completed") return;
@@ -838,6 +904,7 @@ router.post("/twilio/voice/hold", crmAuth, async (req, res) => {
               accountSid: smsCreds.accountSid,
               apiKeySid: voiceCfg?.apiKeySid ?? "",
               apiKeySecret: voiceCfg?.apiKeySecret ?? "",
+              authToken: smsCreds.authToken,
             };
             activeConferences.set(confName, conf);
             logger.info({ confName, conferenceSid: conference.sid }, "[twilio/voice/hold] conference state recovered via REST API");
@@ -855,13 +922,12 @@ router.post("/twilio/voice/hold", crmAuth, async (req, res) => {
   }
 
   try {
-    // Prefer API key auth; fall back to account SID + auth token basic auth
+    // Prefer API key auth; fall back to account SID + stored auth token
     const authStr = conf.apiKeySid && conf.apiKeySecret
       ? Buffer.from(`${conf.apiKeySid}:${conf.apiKeySecret}`).toString("base64")
-      : (() => {
-          const g = getGlobalSmsCreds();
-          return g ? Buffer.from(`${g.accountSid}:${g.authToken}`).toString("base64") : "";
-        })();
+      : conf.authToken
+      ? Buffer.from(`${conf.accountSid}:${conf.authToken}`).toString("base64")
+      : "";
 
     const holdBody = new URLSearchParams({ Hold: isHold ? "true" : "false" });
     if (isHold) {

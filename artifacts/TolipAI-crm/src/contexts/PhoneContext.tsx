@@ -131,6 +131,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentCallSidRef = useRef<string | null>(null);
   const pendingIncomingCallRef = useRef<Call | null>(null);
+  const pendingAcceptLeadIdRef = useRef<{ leadId?: number | null } | null>(null);
   const ringStopRef = useRef<(() => void) | null>(null);
   const analyticsRef = useRef<CallAnalytics>({ mos: null, jitter: null, packetLoss: null });
 
@@ -248,12 +249,25 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         }));
         setHasPendingIncoming(true);
 
-        const stopSignal = { stopped: false };
-        ringStopRef.current = playRing(stopSignal);
+        // If the user already clicked Accept before the Device fired (SSE arrived first),
+        // honour that intent now and accept the call immediately.
+        const pendingAccept = pendingAcceptLeadIdRef.current;
+        if (pendingAccept) {
+          pendingAcceptLeadIdRef.current = null;
+          // Small defer so state setters above flush first
+          setTimeout(() => acceptIncoming(pendingAccept.leadId), 0);
+          return;
+        }
+
+        if (!ringStopRef.current) {
+          const stopSignal = { stopped: false };
+          ringStopRef.current = playRing(stopSignal);
+        }
 
         call.on("cancel", () => {
           stopRing();
           pendingIncomingCallRef.current = null;
+          pendingAcceptLeadIdRef.current = null;
           setIncomingCallInfo(null);
           setHasPendingIncoming(false);
         });
@@ -408,7 +422,12 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
   const acceptIncoming = useCallback((leadId?: number | null) => {
     const call = pendingIncomingCallRef.current;
-    if (!call) return;
+    if (!call) {
+      // Device hasn't fired `incoming` yet (SSE arrived before Twilio SDK event).
+      // Store the intent — it will be auto-accepted once the Device fires.
+      pendingAcceptLeadIdRef.current = { leadId };
+      return;
+    }
     stopRing();
     pendingIncomingCallRef.current = null;
     setHasPendingIncoming(false);
@@ -488,6 +507,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     stopRing();
     pendingIncomingCallRef.current?.reject();
     pendingIncomingCallRef.current = null;
+    pendingAcceptLeadIdRef.current = null;
     setIncomingCallInfo(null);
     setHasPendingIncoming(false);
   }, [stopRing]);
@@ -513,6 +533,19 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
           leadName: d.leadName ?? prev?.leadName ?? null,
           leadId: d.leadId ?? prev?.leadId ?? null,
         }));
+        // Enable the Accept button immediately — clicking it will queue the accept if
+        // the Device's `incoming` event hasn't fired yet (race handled by pendingAcceptLeadIdRef).
+        setHasPendingIncoming(true);
+        // Play ring right away (Device `incoming` plays it too, but the ref guard prevents double-ring).
+        if (!ringStopRef.current) {
+          const stopSignal = { stopped: false };
+          ringStopRef.current = playRing(stopSignal);
+        }
+        // Auto-initialize the Twilio Device so the `incoming` event can fire and the
+        // call can actually be answered in the browser.
+        if (!deviceRef.current) {
+          initDevice().catch(() => {});
+        }
       } catch { }
     });
 

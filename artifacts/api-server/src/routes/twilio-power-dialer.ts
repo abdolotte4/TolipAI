@@ -21,6 +21,7 @@ import { db } from "@workspace/db";
 import {
   crmLeads,
   crmCallLogs,
+  crmCampaigns,
 } from "@workspace/db/schema";
 import { eq, and, inArray, asc, sql } from "drizzle-orm";
 import { crmAuth } from "./crm/middleware";
@@ -128,10 +129,29 @@ router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
     return;
   }
 
-  const campaignId = crmUser.campaignId;
+  const isSuperAdmin = crmUser.role === "super_admin";
+  let campaignId: number = crmUser.campaignId as number;
   if (!campaignId) {
-    res.status(400).json({ error: "You must be assigned to a campaign to use the Power Dialer" });
-    return;
+    if (!isSuperAdmin) {
+      res.status(400).json({ error: "You must be assigned to a campaign to use the Power Dialer" });
+      return;
+    }
+    // Super admin: use campaignId from request body or fall back to first Twilio-enabled campaign
+    const requestedId = req.body?.campaignId ? Number(req.body.campaignId) : null;
+    if (requestedId) {
+      campaignId = requestedId;
+    } else {
+      const [firstCamp] = await db
+        .select({ id: crmCampaigns.id })
+        .from(crmCampaigns)
+        .where(eq(crmCampaigns.twilioEnabled, true))
+        .limit(1);
+      if (!firstCamp) {
+        res.status(422).json({ error: "No Twilio-enabled campaigns found. Configure Twilio credentials in a campaign first." });
+        return;
+      }
+      campaignId = firstCamp.id;
+    }
   }
 
   try {
@@ -177,7 +197,7 @@ router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
     const payload: PowerDialPayload = {
       leadIds,
       currentIndex: 0,
-      agentPhone,
+      agentPhone: agentPhone ?? "",
       callerIdPhone: creds.phoneNumber,
       campaignId,
       lines,
