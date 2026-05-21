@@ -10,7 +10,7 @@ import {
   Mail, Bell, BellOff, UserCheck, Activity, Archive,
   RefreshCw, Database, Search,
   Phone, Send, PhoneCall, PhoneIncoming, ChevronDown, Copy, Check,
-  Loader2,
+  Loader2, Play, Pause, Square, Mic,
 } from "lucide-react";
 import {
   useCrmUpdateLead,
@@ -30,6 +30,53 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+
+// ─── Mini Audio Player (for call recordings) ─────────────────────────────────
+function MiniPlayer({ url }: { url: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const proxyUrl = `/api/twilio/voice/recording-proxy?url=${encodeURIComponent(url)}`;
+  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const toggle = async () => {
+    const el = audioRef.current; if (!el) return;
+    if (playing) { el.pause(); setPlaying(false); }
+    else { try { await el.play(); setPlaying(true); } catch { setPlaying(false); } }
+  };
+  const stop = () => {
+    const el = audioRef.current; if (!el) return;
+    el.pause(); el.currentTime = 0; setPlaying(false); setProgress(0);
+  };
+  return (
+    <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 mt-2 border border-border/40">
+      <audio ref={audioRef} src={proxyUrl}
+        onTimeUpdate={e => setProgress(e.currentTarget.currentTime)}
+        onDurationChange={e => setDuration(e.currentTarget.duration)}
+        onEnded={() => { setPlaying(false); setProgress(0); }} />
+      <button onClick={toggle}
+        className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground hover:bg-primary/80 transition-colors flex-shrink-0">
+        {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+      </button>
+      <button onClick={stop}
+        className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:bg-secondary/80 flex-shrink-0">
+        <Square className="w-2.5 h-2.5" />
+      </button>
+      <div className="flex-1 h-1.5 bg-border rounded-full cursor-pointer relative overflow-hidden"
+        onClick={e => {
+          if (!audioRef.current || !duration) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          audioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
+        }}>
+        <div className="absolute inset-y-0 left-0 bg-primary rounded-full transition-all"
+          style={{ width: duration > 0 ? `${(progress / duration) * 100}%` : "0%" }} />
+      </div>
+      <span className="text-[10px] text-muted-foreground tabular-nums flex-shrink-0 min-w-[32px]">
+        {duration > 0 ? fmtTime(duration) : "—"}
+      </span>
+    </div>
+  );
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUSES = ['new', 'contacted', 'qualified', 'negotiating', 'under_contract', 'closed'];
@@ -724,8 +771,9 @@ export default function LeadDetail() {
     if (!leadId) return;
     setOpLoadingMsgs(true);
     setOpError("");
-    const callsPromise = opSelectedId && lead?.phone
-      ? opFetch(`/twilio/calls?phoneNumberId=${encodeURIComponent(opSelectedId)}&contactPhone=${encodeURIComponent(lead.phone)}`)
+    // Use our DB (crmCallLogs) so we get recordingUrl, transcript, and proper field names
+    const callsPromise = leadId
+      ? opFetch(`/twilio/voice/calls?leadId=${encodeURIComponent(leadId)}`)
           .then(d => d?.calls || []).catch(() => [])
       : Promise.resolve([]);
     Promise.all([
@@ -1311,7 +1359,7 @@ export default function LeadDetail() {
 
                 {/* Calls tab */}
                 {opTab === "calls" && (
-                  <div className="max-h-72 overflow-y-auto p-4 space-y-2">
+                  <div className="max-h-[480px] overflow-y-auto p-4 space-y-2">
                     {opLoadingMsgs ? (
                       <div className="text-center py-6 text-muted-foreground text-xs">
                         <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1" /> Loading calls...
@@ -1322,28 +1370,61 @@ export default function LeadDetail() {
                       </div>
                     ) : (
                       opCalls.map((call: any, i: number) => {
-                        const isOut = call.direction === "outgoing";
+                        const isOut = call.direction === "outbound" || call.direction === "outgoing";
                         const dur = call.duration;
+                        const hasRecording = !!call.recordingUrl;
+                        const hasTranscript = !!call.transcript;
                         return (
-                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-secondary/30 border border-border/50">
-                            {isOut
-                              ? <PhoneCall className="w-4 h-4 text-green-400 shrink-0" />
-                              : <PhoneIncoming className="w-4 h-4 text-blue-400 shrink-0" />
-                            }
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium">{isOut ? "Outbound call" : "Inbound call"}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {call.createdAt ? format(new Date(call.createdAt), "MMM d, yyyy h:mm a") : ""}
-                                {dur ? ` · ${Math.floor(dur / 60)}m ${dur % 60}s` : ""}
-                              </p>
+                          <div key={call.callSid || call.id || i}
+                            className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                            {/* Top row: icon + info + badge */}
+                            <div className="flex items-start gap-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${isOut ? "bg-emerald-500/10" : "bg-blue-500/10"}`}>
+                                {isOut
+                                  ? <PhoneCall className="w-4 h-4 text-emerald-400" />
+                                  : <PhoneIncoming className="w-4 h-4 text-blue-400" />
+                                }
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm font-medium">{isOut ? "Outbound call" : "Inbound call"}</p>
+                                  {hasRecording && (
+                                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5">
+                                      Recorded
+                                    </span>
+                                  )}
+                                  {hasTranscript && (
+                                    <span className="text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded px-1.5 py-0.5 flex items-center gap-1">
+                                      <Mic className="w-2.5 h-2.5" /> Transcript
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {call.createdAt ? format(new Date(call.createdAt), "MMM d, yyyy h:mm a") : ""}
+                                  {dur ? ` · ${Math.floor(dur / 60)}m ${dur % 60}s` : ""}
+                                </p>
+                              </div>
+                              <Badge className={`text-[10px] shrink-0 ${
+                                call.status === "completed" ? "bg-green-500/20 text-green-400 border-green-500/30" :
+                                call.status === "no-answer" || call.status === "missed" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                                call.status === "busy" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                                "bg-secondary text-muted-foreground border-border"
+                              } border`}>
+                                {call.status || "unknown"}
+                              </Badge>
                             </div>
-                            <Badge className={`text-[10px] ${
-                              call.status === "completed" ? "bg-green-500/20 text-green-400 border-green-500/30" :
-                              call.status === "missed" ? "bg-red-500/20 text-red-400 border-red-500/30" :
-                              "bg-secondary text-muted-foreground"
-                            } border`}>
-                              {call.status || "unknown"}
-                            </Badge>
+
+                            {/* Recording player */}
+                            {hasRecording && (
+                              <MiniPlayer url={call.recordingUrl} />
+                            )}
+
+                            {/* Transcript snippet */}
+                            {hasTranscript && (
+                              <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3 pl-11 pt-1">
+                                "{call.transcript.slice(0, 200)}{call.transcript.length > 200 ? "…" : ""}"
+                              </p>
+                            )}
                           </div>
                         );
                       })
