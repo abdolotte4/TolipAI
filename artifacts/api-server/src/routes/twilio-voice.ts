@@ -435,25 +435,51 @@ router.post("/twilio/voice/recording", async (req, res) => {
     const recordingUrl = req.body?.RecordingUrl as string | undefined;
     const recordingStatus = req.body?.RecordingStatus as string | undefined;
 
-    // Conference recordings don't send CallSid — extract it from ConferenceName ("conf-{agentCallSid}")
-    if (!callSid) {
-      const conferenceName = req.body?.ConferenceName as string | undefined;
-      if (conferenceName?.startsWith("conf-")) {
-        callSid = conferenceName.slice(5);
-      }
+    // Conference recordings don't send CallSid — extract from ConferenceName ("conf-{agentCallSid}").
+    // If CallSid IS present it may be the caller's SID, not the agent's; we still try ConferenceName as
+    // a secondary key when the direct callSid update finds zero rows.
+    const conferenceName = req.body?.ConferenceName as string | undefined;
+    const conferenceSid  = req.body?.ConferenceSid  as string | undefined;
+    if (!callSid && conferenceName?.startsWith("conf-")) {
+      callSid = conferenceName.slice(5);
     }
 
     if (!callSid || recordingStatus !== "completed") return;
 
-    const [updated] = await db
+    const recordSet = {
+      recordingSid: recordingSid ?? null,
+      recordingUrl: recordingUrl ? `${recordingUrl}.mp3` : null,
+      updatedAt: new Date(),
+    };
+
+    let [updated] = await db
       .update(crmCallLogs)
-      .set({
-        recordingSid: recordingSid ?? null,
-        recordingUrl: recordingUrl ? `${recordingUrl}.mp3` : null,
-        updatedAt: new Date(),
-      })
+      .set(recordSet)
       .where(eq(crmCallLogs.callSid, callSid))
       .returning({ id: crmCallLogs.id });
+
+    // Fallback 1: CallSid in body might be caller's SID — try agent SID from ConferenceName
+    if (!updated && conferenceName?.startsWith("conf-")) {
+      const agentSid = conferenceName.slice(5);
+      if (agentSid !== callSid) {
+        [updated] = await db
+          .update(crmCallLogs)
+          .set(recordSet)
+          .where(eq(crmCallLogs.callSid, agentSid))
+          .returning({ id: crmCallLogs.id });
+        if (updated) callSid = agentSid;
+      }
+    }
+
+    // Fallback 2: look up by ConferenceSid stored in call log (future-proofing)
+    if (!updated && conferenceSid) {
+      [updated] = await db
+        .update(crmCallLogs)
+        .set(recordSet)
+        .where(eq((crmCallLogs as any).conferenceSid ?? sql`'__never__'`, conferenceSid))
+        .returning({ id: crmCallLogs.id })
+        .catch(() => [undefined] as const);
+    }
 
     // If no call log row exists yet (race condition or log-creation failure), insert a minimal one.
     // Try to resolve campaignId via the AccountSid Twilio sends with every recording callback.
@@ -754,6 +780,7 @@ router.get("/twilio/voice/calls", crmAuth, async (req, res) => {
 // Body: { callSid: string, hold: boolean }
 router.post("/twilio/voice/hold", crmAuth, async (req, res) => {
   const { callSid, hold } = req.body as { callSid?: string; hold?: boolean };
+  const crmUser = req.crmUser!;
   const isHold = hold ?? false;
 
   if (!callSid) {
@@ -762,16 +789,80 @@ router.post("/twilio/voice/hold", crmAuth, async (req, res) => {
   }
 
   const confName = `conf-${callSid}`;
-  const conf = activeConferences.get(confName);
+  let conf = activeConferences.get(confName);
+
+  // ── If conference state not in memory (server restart / different server handled the call) ──
+  // Look up the active conference via Twilio REST API using the agent callSid as FriendlyName.
+  if (!conf?.conferenceSid || !conf?.callerCallSid) {
+    try {
+      const [callLog] = await db
+        .select({ campaignId: crmCallLogs.campaignId })
+        .from(crmCallLogs)
+        .where(eq(crmCallLogs.callSid, callSid))
+        .limit(1);
+      const smsCreds = callLog?.campaignId
+        ? await getSmsCreds(callLog.campaignId)
+        : getGlobalSmsCreds();
+      if (smsCreds) {
+        const basicAuth = Buffer.from(`${smsCreds.accountSid}:${smsCreds.authToken}`).toString("base64");
+
+        // Find the active conference whose FriendlyName is conf-{agentCallSid}
+        const confListResp = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${smsCreds.accountSid}/Conferences.json?` +
+          new URLSearchParams({ FriendlyName: confName, Status: "in-progress" }).toString(),
+          { headers: { Authorization: `Basic ${basicAuth}` } }
+        );
+        const confList = await confListResp.json() as any;
+        const conference = confList?.conferences?.[0];
+
+        if (conference?.sid) {
+          // List participants and find the caller (not the agent)
+          const partsResp = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${smsCreds.accountSid}/Conferences/${conference.sid}/Participants.json`,
+            { headers: { Authorization: `Basic ${basicAuth}` } }
+          );
+          const partsData = await partsResp.json() as any;
+          const callerPart = (partsData?.participants ?? []).find((p: any) => p.call_sid !== callSid);
+
+          if (callerPart?.call_sid) {
+            // Resolve API key creds for the Participant API (preferred over account creds)
+            const voiceCfg = callLog?.campaignId
+              ? await resolveVoiceConfig(callLog.campaignId, false).catch(() => null)
+              : getGlobalVoiceConfig();
+
+            conf = {
+              conferenceName: confName,
+              agentCallSid: callSid,
+              callerCallSid: callerPart.call_sid,
+              conferenceSid: conference.sid,
+              accountSid: smsCreds.accountSid,
+              apiKeySid: voiceCfg?.apiKeySid ?? "",
+              apiKeySecret: voiceCfg?.apiKeySecret ?? "",
+            };
+            activeConferences.set(confName, conf);
+            logger.info({ confName, conferenceSid: conference.sid }, "[twilio/voice/hold] conference state recovered via REST API");
+          }
+        }
+      }
+    } catch (lookupErr) {
+      logger.warn({ lookupErr, callSid }, "[twilio/voice/hold] REST API conference lookup failed");
+    }
+  }
 
   if (!conf?.conferenceSid || !conf?.callerCallSid) {
-    // Conference not yet established — client-side mute handles audio
     res.json({ success: true, held: isHold, mode: "mute-only" });
     return;
   }
 
   try {
-    const auth = Buffer.from(`${conf.apiKeySid}:${conf.apiKeySecret}`).toString("base64");
+    // Prefer API key auth; fall back to account SID + auth token basic auth
+    const authStr = conf.apiKeySid && conf.apiKeySecret
+      ? Buffer.from(`${conf.apiKeySid}:${conf.apiKeySecret}`).toString("base64")
+      : (() => {
+          const g = getGlobalSmsCreds();
+          return g ? Buffer.from(`${g.accountSid}:${g.authToken}`).toString("base64") : "";
+        })();
+
     const holdBody = new URLSearchParams({ Hold: isHold ? "true" : "false" });
     if (isHold) {
       holdBody.set("HoldUrl", "https://twimlets.com/holdmusic?Bucket=com.twilio.music.classical");
@@ -781,7 +872,7 @@ router.post("/twilio/voice/hold", crmAuth, async (req, res) => {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${conf.accountSid}/Conferences/${conf.conferenceSid}/Participants/${conf.callerCallSid}.json`;
     const resp = await fetch(url, {
       method: "POST",
-      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { Authorization: `Basic ${authStr}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: holdBody.toString(),
     });
 

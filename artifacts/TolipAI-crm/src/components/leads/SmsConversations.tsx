@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiRawFetch } from "@/lib/api";
 import { format } from "date-fns";
 import { Send, RefreshCw, MessageSquare, Bot, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,7 @@ export default function SmsConversations({ leadId, leadPhone, campaignId }: Prop
   const { data: phoneNumbers = [] } = useQuery<PhoneNumber[]>({
     queryKey: ["/api/twilio/phone-numbers"],
     queryFn: async () => {
-      const d = await apiFetch("/twilio/phone-numbers");
+      const d = await apiRawFetch("/twilio/phone-numbers");
       return d?.phoneNumbers ?? d ?? [];
     },
     staleTime: 60_000,

@@ -280,6 +280,19 @@ export default function TwilioConnect() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                {isVoiceConfigured && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`h-8 text-xs gap-1.5 ${reconfiguring ? "" : "border-violet-500/40 text-violet-300 hover:bg-violet-500/10"}`}
+                    disabled={reconfiguring}
+                    onClick={handleReconfigureTwimlApp}
+                    title="Updates the TwiML App VoiceURL to this server. Required when switching between Railway and Replit so hold music and recordings route correctly."
+                  >
+                    {reconfiguring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    Sync Voice URLs
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -312,6 +325,25 @@ export default function TwilioConnect() {
               ))}
             </div>
           </Card>
+        </motion.div>
+      )}
+
+      {/* ── "Sync Voice URLs" explainer — shown when voice is configured ── */}
+      {isConfigured && isVoiceConfigured && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-violet-500/8 border border-violet-500/20 text-violet-200">
+            <Info className="w-4 h-4 shrink-0 mt-0.5 text-violet-400" />
+            <div className="text-xs space-y-1">
+              <p className="font-semibold text-violet-300">Hold music &amp; call recordings require matching server URLs</p>
+              <p className="text-violet-300/80">
+                Twilio sends recording callbacks and conference events to the server URL saved in the TwiML App.
+                If you switched environments (e.g. from Railway to Replit), click{" "}
+                <span className="font-semibold text-violet-200">Sync Voice URLs</span> in the status card above
+                so Twilio routes those callbacks to <em>this</em> server.
+                You only need to do this once per environment switch.
+              </p>
+            </div>
+          </div>
         </motion.div>
       )}
 

@@ -7,7 +7,7 @@ import {
   Hash, RefreshCw, User, Search, Play, Pause, Square, ExternalLink,
   Delete, Plus, Send, Keyboard, X, ChevronLeft,
 } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { apiRawFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -359,14 +359,14 @@ export default function ManualDialerPage() {
   const { data: numbersData, isLoading: numbersLoading, isError: numbersError, error: numbersErr, refetch: refetchNumbers } =
     useQuery<{ phoneNumbers: PhoneNumber[] }>({
       queryKey: ["twilio-phone-numbers"],
-      queryFn: () => apiFetch("/twilio/phone-numbers"),
+      queryFn: () => apiRawFetch("/twilio/phone-numbers"),
       staleTime: 60_000,
     });
 
   const { data: convsData, isLoading: convsLoading, refetch: refetchConvs } =
     useQuery<{ conversations: Conversation[]; total: number }>({
       queryKey: ["phone-number-convs", selectedNumber?.number],
-      queryFn: () => apiFetch(`/twilio/phone-numbers/${encodeURIComponent(selectedNumber!.number)}/conversations`),
+      queryFn: () => apiRawFetch(`/twilio/phone-numbers/${encodeURIComponent(selectedNumber!.number)}/conversations`),
       enabled: !!selectedNumber,
       staleTime: 30_000,
       refetchInterval: 30_000,
@@ -375,7 +375,7 @@ export default function ManualDialerPage() {
   const { data: historyData, isLoading: historyLoading } =
     useQuery<ContactHistory>({
       queryKey: ["phone-number-history", selectedNumber?.number, selectedContact],
-      queryFn: () => apiFetch(`/twilio/phone-numbers/${encodeURIComponent(selectedNumber!.number)}/conversations/${encodeURIComponent(selectedContact!)}`),
+      queryFn: () => apiRawFetch(`/twilio/phone-numbers/${encodeURIComponent(selectedNumber!.number)}/conversations/${encodeURIComponent(selectedContact!)}`),
       enabled: !!selectedNumber && !!selectedContact,
       staleTime: 15_000,
       refetchInterval: 20_000,
@@ -383,7 +383,7 @@ export default function ManualDialerPage() {
 
   const sendSmsMutation = useMutation({
     mutationFn: ({ to, content }: { to: string; content: string }) =>
-      apiFetch("/twilio/messages", {
+      apiRawFetch("/twilio/messages", {
         method: "POST",
         body: JSON.stringify({
           phoneNumberId: selectedNumber!.number,

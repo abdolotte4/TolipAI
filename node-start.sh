@@ -85,6 +85,8 @@ else
 fi
 
 if [ "$NEEDS_BUILD" -eq 1 ]; then
+  # Ensure pnpm is on PATH so recursive `pnpm run ...` calls inside build scripts work
+  export PATH="$(dirname "$PNPM_BIN"):$PATH"
   "$PNPM_BIN" --filter @workspace/api-server run build:prod
 else
   echo "[node-start] Dist is up to date — skipping build."
