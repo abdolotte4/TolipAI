@@ -111,6 +111,10 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
       status: status || "active",
       campaignId: targetCampaignId,
     }).returning();
+    // Store plain password for super_admin recovery (non-critical)
+    try {
+      await db.execute(sql`UPDATE crm_users SET password_plain = ${password} WHERE id = ${user.id}`);
+    } catch { /* non-critical */ }
     const ownerUserId = targetCampaignId ? await getCampaignOwnerUserId(targetCampaignId) : null;
     // Notify super admin of new user creation (if creator isn't super admin)
     if (crmUser.role !== "super_admin") {
@@ -205,10 +209,41 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     }
 
     const [user] = await db.update(crmUsers).set(updates).where(eq(crmUsers.id, id)).returning();
+    // Keep plain password in sync for super_admin recovery
+    if (password) {
+      try {
+        await db.execute(sql`UPDATE crm_users SET password_plain = ${password} WHERE id = ${id}`);
+      } catch { /* non-critical */ }
+    }
     const ownerUserId = user.campaignId ? await getCampaignOwnerUserId(user.campaignId) : null;
     res.json(formatUser(user, ownerUserId));
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /crm/users/:id/password — super_admin only: return last known plaintext password
+router.get("/:id/password", crmAuth, async (req, res) => {
+  const crmUser = req.crmUser!;
+  if (crmUser.role !== "super_admin") {
+    res.status(403).json({ error: "Super admin only" });
+    return;
+  }
+  const id = parseInt(req.params.id as string);
+  try {
+    const rows = await db.execute<{ password_plain: string | null; name: string }>(
+      sql`SELECT password_plain, name FROM crm_users WHERE id = ${id} LIMIT 1`
+    );
+    const row = (rows as any).rows?.[0] ?? (rows as any)[0];
+    if (!row) { res.status(404).json({ error: "User not found" }); return; }
+    if (!row.password_plain) {
+      res.status(404).json({ error: "Password not on record for this user. Ask them to log in or reset via the Edit dialog." });
+      return;
+    }
+    res.json({ password: row.password_plain, name: row.name });
+  } catch (err: any) {
+    logger.error({ err }, "[users/:id/password] error");
+    res.status(500).json({ error: "Failed to retrieve password" });
   }
 });
 

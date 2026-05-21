@@ -52,6 +52,7 @@ interface PhoneContextValue {
   activeLeadName: string | null;
   liveTranscript: TranscriptSegment[];
   aiSuggestion: string | null;
+  clearAiSuggestion: () => void;
 
   initDevice: () => Promise<boolean>;
   startCall: (phone: string, leadId: number | null, leadName: string, record: boolean) => Promise<void>;
@@ -637,6 +638,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     activeLeadName,
     liveTranscript,
     aiSuggestion,
+    clearAiSuggestion: () => setAiSuggestion(null),
     initDevice,
     startCall,
     hangUp,
