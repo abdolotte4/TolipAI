@@ -811,6 +811,73 @@ Return ONLY the JSON object — no markdown, no explanation.`,
   }
 });
 
+// ── POST /api/twilio/voice/call-summary ──────────────────────────────────────
+// Post-call AI summary: key talking points, seller motivation score, next step.
+// Accepts `transcript` (text) and/or `callSid` (reads DB transcript as fallback).
+router.post("/twilio/voice/call-summary", crmAuth, async (req, res) => {
+  const { callSid, transcript: directTranscript } = req.body;
+
+  let transcript: string | null = directTranscript ?? null;
+
+  if (callSid && !transcript) {
+    try {
+      const [log] = await db
+        .select({ transcript: crmCallLogs.transcript })
+        .from(crmCallLogs)
+        .where(eq(crmCallLogs.callSid, callSid as string))
+        .limit(1);
+      transcript = log?.transcript ?? null;
+    } catch { /* fall through */ }
+  }
+
+  if (!transcript) {
+    res.status(400).json({ error: "No transcript available yet." });
+    return;
+  }
+
+  if (!hasAI()) {
+    res.status(503).json({ error: "AI summary requires OPENAI_API_KEY or GROQ_API_KEY." });
+    return;
+  }
+
+  try {
+    const raw = await callAI(
+      [
+        {
+          role: "system",
+          content: `You are a real estate wholesaling call analyst. Analyze the call and return ONLY valid JSON with these exact keys:
+{
+  "keyPoints": ["<point 1>", "<point 2>", "<point 3>"],
+  "motivationScore": <integer 1-10>,
+  "motivationLabel": "<Hot|Warm|Moderate|Cold>",
+  "sellerSituation": "<one sentence: seller's situation and main pain point>",
+  "nextStep": "<specific recommended next action for the agent>"
+}
+motivationScore guide: 9-10=Hot (urgent, flexible price), 7-8=Warm (motivated), 5-6=Moderate (exploring), 1-4=Cold (not motivated).
+Return ONLY the JSON — no markdown, no explanation.`,
+        },
+        {
+          role: "user",
+          content: `Analyze this real estate wholesaling call:\n\n${transcript.slice(0, 3000)}`,
+        },
+      ],
+      { maxTokens: 400, timeoutMs: 20_000, jsonMode: true }
+    );
+
+    let summary: any;
+    try {
+      summary = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim());
+    } catch {
+      summary = { keyPoints: [], motivationScore: null, motivationLabel: null, sellerSituation: raw, nextStep: null };
+    }
+
+    res.json({ summary });
+  } catch (err: any) {
+    logger.error(err, "[twilio/voice/call-summary] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/twilio/voice/calls ───────────────────────────────────────────────
 // List call logs for a campaign (optionally filtered by leadId).
 router.get("/twilio/voice/calls", crmAuth, async (req, res) => {

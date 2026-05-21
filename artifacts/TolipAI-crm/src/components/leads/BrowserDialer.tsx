@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import {
   PhoneOff, PhoneCall, Mic, MicOff, Loader2,
   Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles, Voicemail, PauseCircle,
-  PhoneForwarded, X, Hash,
+  PhoneForwarded, X, Hash, ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,6 +82,8 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [showCoaching, setShowCoaching] = useState(false);
   const [coachingCountdown, setCoachingCountdown] = useState<number | null>(null);
+  const [summary, setSummary] = useState<any | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [droppingVoicemail, setDroppingVoicemail] = useState(false);
   const [showDTMF, setShowDTMF] = useState(false);
 
@@ -133,6 +135,8 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     setCoachingCountdown(null);
     setTransferActive(false);
     setLastCallSid(null);
+    setSummary(null);
+    setSummaryLoading(false);
 
     try {
       await phone.startCall(leadPhone, leadId ?? null, leadName || "Unknown", record);
@@ -241,13 +245,34 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     setTransferActive(false);
   }, [phone, toast]);
 
-  // ── Track when call ends for coaching ──────────────────────────────────────
+  // ── Fetch post-call AI summary ──────────────────────────────────────────────
+  const fetchSummary = useCallback(async (liveText: string, sid?: string | null) => {
+    if (!liveText.trim() && !sid) return;
+    setSummaryLoading(true);
+    setSummary(null);
+    try {
+      const data = await authFetch("/twilio/voice/call-summary", {
+        method: "POST",
+        body: JSON.stringify({
+          callSid: sid ?? undefined,
+          transcript: liveText.trim() || undefined,
+        }),
+      });
+      setSummary(data.summary);
+    } catch { }
+    finally { setSummaryLoading(false); }
+  }, []);
+
+  // ── Track when call ends for coaching + summary ─────────────────────────────
   const prevStatus = useRef(status);
   if (prevStatus.current !== status) {
     if (prevStatus.current === "in-progress" && status === "idle") {
       if (lastCallRecorded && lastCallSid) {
         autoFetchCoaching(lastCallSid);
       }
+      // Fetch summary from live transcript immediately (no wait)
+      const liveText = phone.liveTranscript.map(s => s.text).join(" ");
+      fetchSummary(liveText, lastCallSid);
     }
     prevStatus.current = status;
   }
@@ -450,6 +475,60 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Post-call AI Summary */}
+        {status === "idle" && lastCallSid && summaryLoading && (
+          <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/15 p-3 flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+            <p className="text-xs text-emerald-400">Generating call summary…</p>
+          </div>
+        )}
+
+        {status === "idle" && lastCallSid && summary && (
+          <div className="rounded-xl bg-gradient-to-br from-emerald-500/5 to-cyan-500/5 border border-emerald-500/20 p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                <ClipboardList className="w-3 h-3" /> Call Summary
+              </p>
+              {summary.motivationScore != null && (
+                <Badge className={`text-[10px] border ${
+                  summary.motivationScore >= 9 ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                  summary.motivationScore >= 7 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                  summary.motivationScore >= 5 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                  "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                }`}>
+                  {summary.motivationScore >= 9 ? "🔥" : summary.motivationScore >= 7 ? "✅" : summary.motivationScore >= 5 ? "⚡" : "❄️"}
+                  {" "}{summary.motivationLabel ?? `${summary.motivationScore}/10`}
+                </Badge>
+              )}
+            </div>
+
+            {summary.sellerSituation && (
+              <p className="text-xs text-muted-foreground leading-relaxed">{summary.sellerSituation}</p>
+            )}
+
+            {Array.isArray(summary.keyPoints) && summary.keyPoints.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Key Points</p>
+                <ul className="space-y-0.5">
+                  {(summary.keyPoints as string[]).map((pt, i) => (
+                    <li key={i} className="text-xs flex gap-1.5">
+                      <span className="text-emerald-400 shrink-0">·</span>
+                      <span className="text-foreground/80">{pt}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {summary.nextStep && (
+              <div className="p-2 rounded-lg bg-background/50 border border-white/5">
+                <p className="text-[10px] text-muted-foreground mb-0.5">Recommended next step</p>
+                <p className="text-xs font-medium text-cyan-300">{summary.nextStep}</p>
+              </div>
+            )}
           </div>
         )}
 

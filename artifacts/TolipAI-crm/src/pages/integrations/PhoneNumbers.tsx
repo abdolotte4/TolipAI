@@ -406,7 +406,8 @@ function NumberItem({
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ManualDialerPage() {
-  const { startCall } = usePhone();
+  const phone = usePhone();
+  const { startCall } = phone;
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -416,6 +417,21 @@ export default function ManualDialerPage() {
   const [composeText, setComposeText] = useState("");
   const [showDialPad, setShowDialPad] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // ── Auto-refresh conversation list when a call ends ────────────────────────
+  const prevPhoneStatus = useRef(phone.status);
+  if (prevPhoneStatus.current !== phone.status) {
+    const wasActive = prevPhoneStatus.current === "in-progress" || prevPhoneStatus.current === "calling";
+    prevPhoneStatus.current = phone.status;
+    if (wasActive && phone.status === "idle" && selectedNumber?.number) {
+      const num = selectedNumber.number;
+      const contact = selectedContact;
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["phone-number-convs", num] });
+        if (contact) qc.invalidateQueries({ queryKey: ["phone-number-history", num, contact] });
+      }, 3000);
+    }
+  }
 
   const { data: numbersData, isLoading: numbersLoading, isError: numbersError, error: numbersErr, refetch: refetchNumbers } =
     useQuery<{ phoneNumbers: PhoneNumber[] }>({
