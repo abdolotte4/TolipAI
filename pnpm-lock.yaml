@@ -157,6 +157,9 @@ importers:
 
   .:
     dependencies:
+      '@types/papaparse':
+        specifier: ^5.5.2
+        version: 5.5.2
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -218,6 +221,9 @@ importers:
       '@twilio/voice-sdk':
         specifier: ^2.18.3
         version: 2.18.3
+      papaparse:
+        specifier: ^5.5.3
+        version: 5.5.3
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0

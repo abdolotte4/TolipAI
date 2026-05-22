@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import Papa from "papaparse";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -168,9 +169,24 @@ function ListDialer() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { setCsvText(ev.target?.result as string || ""); };
-    reader.readAsText(file);
+    Papa.parse<string[]>(file, {
+      skipEmptyLines: true,
+      complete: (results) => {
+        const rows = results.data as string[][];
+        if (rows.length === 0) return;
+        const text = rows.map(row =>
+          row.map(cell =>
+            (cell.includes(",") || cell.includes('"') || cell.includes("\n"))
+              ? `"${cell.replace(/"/g, '""')}"`
+              : cell
+          ).join(",")
+        ).join("\n");
+        setCsvText(text);
+      },
+      error: (err: Papa.ParseError) => {
+        toast({ title: "Failed to parse file", description: err.message, variant: "destructive" });
+      },
+    });
   };
 
   const handleStart = () => {
@@ -190,8 +206,14 @@ function ListDialer() {
 
   const handleCall = async () => {
     if (!current || isCalling) return;
-    const phone = current.phones[currentPhoneIdx];
-    if (!phone) return;
+    const rawPhone = current.phones[currentPhoneIdx];
+    if (!rawPhone) return;
+    // Normalize to E.164 before dialing
+    const digits = rawPhone.replace(/\D/g, "");
+    const phone =
+      digits.length === 10 ? `+1${digits}` :
+      digits.length === 11 && digits.startsWith("1") ? `+${digits}` :
+      rawPhone;
     setIsCalling(true);
     try {
       await startCall(phone, null, current.name, true);

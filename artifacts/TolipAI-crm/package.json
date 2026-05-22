@@ -79,6 +79,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@sentry/react": "^10.53.1",
-    "@twilio/voice-sdk": "^2.18.3"
+    "@twilio/voice-sdk": "^2.18.3",
+    "papaparse": "^5.5.3"
   }
 }

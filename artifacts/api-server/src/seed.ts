@@ -71,6 +71,8 @@ async function ensureColumns() {
     ["crm_campaigns.stripe_customer_id",   "ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS stripe_customer_id text"],
     ["crm_campaigns.twilio_forward_phone", "ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS twilio_forward_phone text"],
     ["crm_users.password_plain",           "ALTER TABLE crm_users ADD COLUMN IF NOT EXISTS password_plain text"],
+    ["crm_leads.last_motivation_score",    "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_score integer"],
+    ["crm_leads.last_motivation_label",    "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_label text"],
   ];
   for (const [name, ddl] of columns) {
     try {

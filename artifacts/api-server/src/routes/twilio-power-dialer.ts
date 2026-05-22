@@ -22,6 +22,7 @@ import {
   crmLeads,
   crmCallLogs,
   crmCampaigns,
+  crmBackgroundJobs,
 } from "@workspace/db/schema";
 import { eq, and, inArray, asc, sql } from "drizzle-orm";
 import { crmAuth } from "./crm/middleware";
@@ -73,6 +74,7 @@ interface PowerDialPayload {
   dispositions: DispositionRecord[];
   currentCallSid: string | null;
   currentBatchLeadIds: number[];
+  activeCalls: Record<string, number>;
 }
 
 
@@ -268,11 +270,15 @@ router.get("/twilio/voice/power-dial/session/:id", crmAuth, async (req, res) => 
 });
 
 // ── POST /twilio/voice/power-dial/session/:id/call ────────────────────────────
-// Initiate click-to-call: Twilio calls agent first, then bridges to lead.
+// Parallel predictive dial: fires outbound calls directly to each lead's phone
+// with AMD enabled. The AMD handler bridges a human answer to the agent and
+// cancels all other lines in the batch. Row-level locking prevents double-dial.
 
 router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, res) => {
   try {
-    const job = await getBackgroundJob(req.params.id as string);
+    const sessionId = req.params.id as string;
+
+    const job = await getBackgroundJob(sessionId);
     if (!job || job.type !== "power_dial") {
       res.status(404).json({ error: "Session not found" }); return;
     }
@@ -295,47 +301,73 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       res.status(422).json({ error: "No leads in this batch have a phone number — use Skip to advance" }); return;
     }
 
-    const currentLead = batchLeads.find(l => l.id === batchIds[0]) ?? dialableLeads[0]!;
-
     const creds = await getSmsCreds(p.campaignId);
     if (!creds) {
       res.status(422).json({ error: "Twilio credentials not configured for this campaign" }); return;
     }
 
     const apiBase = getWebhookBase(req);
-    const phones = dialableLeads.map(l => l.phone!).filter(Boolean);
+    const client = twilio(creds.accountSid, creds.authToken);
 
-    let twimlUrl: string;
-    if (phones.length === 1) {
-      twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(phones[0]!)}&callerId=${encodeURIComponent(p.callerIdPhone)}`;
-    } else {
-      twimlUrl = `${apiBase}/twilio/twiml/multi-call?numbers=${encodeURIComponent(phones.join(","))}&callerId=${encodeURIComponent(p.callerIdPhone)}`;
+    // ── Parallel predictive dial — call each lead directly with AMD ────────
+    // machineDetection fires the amd-handler webhook per call.
+    // On human answer: AMD handler bridges to agent and cancels sister lines.
+    const callResults = await Promise.all(
+      dialableLeads.map(lead =>
+        client.calls.create({
+          from: p.callerIdPhone,
+          to: lead.phone!,
+          url: `${apiBase}/twilio/voice/power-dial/amd-handler?sessionId=${encodeURIComponent(sessionId)}&leadId=${lead.id}&agentPhone=${encodeURIComponent(p.agentPhone)}`,
+          method: "POST",
+          machineDetection: "Enable",
+          machineDetectionTimeout: 30,
+          statusCallback: `${apiBase}/twilio/voice/power-dial/call-status?sessionId=${encodeURIComponent(sessionId)}`,
+          statusCallbackMethod: "POST",
+          statusCallbackEvent: ["completed"],
+        }).catch(err => {
+          logger.warn({ leadId: lead.id, err: err.message }, "[powerDial] call creation failed for lead");
+          return null;
+        })
+      )
+    );
+
+    const successCalls = callResults.filter(Boolean) as Awaited<ReturnType<typeof client.calls.create>>[];
+    if (successCalls.length === 0) {
+      res.status(422).json({ error: "All call creation attempts failed — check Twilio credentials and lead phone numbers" }); return;
     }
 
-    const statusCallbackUrl = `${apiBase}/twilio/voice/power-dial/call-status?sessionId=${encodeURIComponent(job.id)}`;
+    // ── Update session with activeCalls map under row-level lock ───────────
+    await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ id: crmBackgroundJobs.id, payload: crmBackgroundJobs.payload })
+        .from(crmBackgroundJobs)
+        .where(eq(crmBackgroundJobs.id, sessionId))
+        .for("update")
+        .limit(1);
+      if (!locked) return;
 
-    const client = twilio(creds.accountSid, creds.authToken);
-    const call = await client.calls.create({
-      from: p.callerIdPhone,
-      to: p.agentPhone,
-      url: twimlUrl,
-      method: "GET",
-      statusCallback: statusCallbackUrl,
-      statusCallbackMethod: "POST",
-      statusCallbackEvent: ["completed"],
+      const lp = (locked.payload ?? {}) as PowerDialPayload;
+      lp.activeCalls = lp.activeCalls ?? {};
+      for (let i = 0; i < successCalls.length; i++) {
+        const call = successCalls[i]!;
+        const lead = dialableLeads[i]!;
+        lp.activeCalls[call.sid] = lead.id;
+      }
+      lp.currentCallSid = successCalls[0]!.sid;
+      lp.currentBatchLeadIds = dialableLeads.map(l => l.id);
+      lp.stats.called += successCalls.length;
+
+      await tx.update(crmBackgroundJobs)
+        .set({ payload: lp as unknown as any, updatedAt: new Date() })
+        .where(eq(crmBackgroundJobs.id, sessionId));
     });
 
-    // Track call SID and batch in session
-    p.currentCallSid = call.sid;
-    p.currentBatchLeadIds = dialableLeads.map(l => l.id);
-    p.stats.called += dialableLeads.length;
-
-    await updateBackgroundJob(job.id, { payload: p as unknown as Record<string, unknown> });
-
-    // Log to call_logs for all leads in the batch
-    for (const lead of dialableLeads) {
+    // ── Log all initiated calls ────────────────────────────────────────────
+    for (let i = 0; i < successCalls.length; i++) {
+      const call = successCalls[i]!;
+      const lead = dialableLeads[i]!;
       await db.insert(crmCallLogs).values({
-        callSid: lead.id === currentLead.id ? call.sid : `${call.sid}_batch_${lead.id}`,
+        callSid: call.sid,
         campaignId: p.campaignId,
         leadId: lead.id,
         direction: "outbound",
@@ -346,15 +378,15 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
       }).onConflictDoNothing();
     }
 
-    logger.info({ sessionId: job.id, callSid: call.sid, batchSize: dialableLeads.length }, "[powerDial] Call initiated (multi-line)");
+    logger.info({ sessionId, batchSize: successCalls.length, lines }, "[powerDial] Parallel AMD calls initiated");
 
     res.json({
-      callSid: call.sid,
-      status: call.status,
-      leadId: currentLead.id,
-      leadPhone: currentLead.phone,
+      callSid: successCalls[0]!.sid,
+      status: successCalls[0]!.status,
+      leadId: dialableLeads[0]!.id,
+      leadPhone: dialableLeads[0]!.phone,
       agentPhone: p.agentPhone,
-      batchSize: dialableLeads.length,
+      batchSize: successCalls.length,
       lines,
     });
   } catch (err: any) {
@@ -609,6 +641,142 @@ router.post("/twilio/voice/power-dial/call-status", async (req, res) => {
     );
   } catch (err) {
     logger.error(err, "[powerDial/call-status] auto-advance error");
+  }
+});
+
+// ── POST /twilio/voice/power-dial/amd-handler ─────────────────────────────────
+// Public Twilio AMD (Answering Machine Detection) webhook — fires per outbound
+// call once Twilio determines human vs. machine.
+//
+// Query params: sessionId, leadId, agentPhone
+// Body (Twilio): AnsweredBy, CallSid
+//
+// Human  → cancel all sister calls in batch, bridge this call to agent.
+// Machine/fax → hangup, decrement activeCalls, increment voicemail counter.
+
+router.post("/twilio/voice/power-dial/amd-handler", async (req, res) => {
+  const twiml = (xml: string) =>
+    res.set("Content-Type", "text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response>${xml}</Response>`);
+
+  try {
+    const sessionId  = (req.query.sessionId  as string | undefined) ?? "";
+    const leadId     = parseInt((req.query.leadId as string | undefined) ?? "0", 10) || 0;
+    const agentPhone = (req.query.agentPhone as string | undefined) ?? "";
+    const answeredBy = (req.body?.AnsweredBy  as string | undefined) ?? "";
+    const callSid    = (req.body?.CallSid     as string | undefined) ?? "";
+
+    if (!sessionId || !callSid) return twiml("<Hangup/>");
+
+    // ── Machine / fax — hang up and track ──────────────────────────────────
+    if (
+      answeredBy === "machine_start" ||
+      answeredBy === "machine_end_beep" ||
+      answeredBy === "machine_end_silence" ||
+      answeredBy === "fax"
+    ) {
+      await db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ id: crmBackgroundJobs.id, payload: crmBackgroundJobs.payload })
+          .from(crmBackgroundJobs)
+          .where(eq(crmBackgroundJobs.id, sessionId))
+          .for("update")
+          .limit(1);
+        if (!locked) return;
+
+        const lp = (locked.payload ?? {}) as PowerDialPayload;
+        lp.activeCalls = lp.activeCalls ?? {};
+        delete lp.activeCalls[callSid];
+        lp.stats.voicemail = (lp.stats.voicemail ?? 0) + 1;
+
+        await tx.update(crmBackgroundJobs)
+          .set({ payload: lp as unknown as any, updatedAt: new Date() })
+          .where(eq(crmBackgroundJobs.id, sessionId));
+      });
+
+      logger.info({ sessionId, callSid, answeredBy }, "[powerDial/amd] Machine detected — hanging up");
+      return twiml("<Hangup/>");
+    }
+
+    // ── Human answered — cancel sister lines and bridge to agent ───────────
+    if (answeredBy === "human") {
+      let sisterCallSids: string[] = [];
+      let campaignId: number | null = null;
+      let callerIdPhone = "";
+
+      await db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ id: crmBackgroundJobs.id, payload: crmBackgroundJobs.payload })
+          .from(crmBackgroundJobs)
+          .where(eq(crmBackgroundJobs.id, sessionId))
+          .for("update")
+          .limit(1);
+        if (!locked) return;
+
+        const lp = (locked.payload ?? {}) as PowerDialPayload;
+        campaignId    = lp.campaignId;
+        callerIdPhone = lp.callerIdPhone;
+        lp.activeCalls = lp.activeCalls ?? {};
+
+        // Collect and clear all other calls in this batch
+        sisterCallSids = Object.keys(lp.activeCalls).filter(sid => sid !== callSid);
+        delete lp.activeCalls[callSid];
+        for (const s of sisterCallSids) delete lp.activeCalls[s];
+        lp.stats.answered = (lp.stats.answered ?? 0) + 1;
+
+        await tx.update(crmBackgroundJobs)
+          .set({ payload: lp as unknown as any, updatedAt: new Date() })
+          .where(eq(crmBackgroundJobs.id, sessionId));
+      });
+
+      // Cancel sister lines asynchronously (non-blocking)
+      if (sisterCallSids.length > 0) {
+        let cancelCreds: { accountSid: string; authToken: string } | null = null;
+        try {
+          if (campaignId != null) {
+            const c = await getSmsCreds(campaignId);
+            if (c) cancelCreds = c;
+          }
+        } catch { /* fall through */ }
+
+        if (!cancelCreds) {
+          const sid   = process.env.TWILIO_ACCOUNT_SID;
+          const token = process.env.TWILIO_AUTH_TOKEN;
+          if (sid && token) cancelCreds = { accountSid: sid, authToken: token };
+        }
+
+        if (cancelCreds) {
+          const cancelClient = twilio(cancelCreds.accountSid, cancelCreds.authToken);
+          Promise.allSettled(
+            sisterCallSids.map(sid =>
+              cancelClient.calls(sid).update({ status: "completed" }).catch(e =>
+                logger.warn({ sid, err: e.message }, "[powerDial/amd] Failed to cancel sister call")
+              )
+            )
+          );
+        }
+      }
+
+      // Emit SSE so the frontend can update immediately
+      emitCrmActivity("power_dial_human_answered", {
+        sessionId, callSid, leadId, agentPhone, campaignId,
+      });
+
+      logger.info({ sessionId, callSid, leadId, agentPhone }, "[powerDial/amd] Human answered — bridging to agent");
+
+      // Bridge the live seller call to the agent
+      return twiml(
+        `<Dial callerId="${callerIdPhone}" timeout="30">` +
+        `<Number>${agentPhone}</Number>` +
+        `</Dial>`
+      );
+    }
+
+    // Unknown AnsweredBy value — hang up
+    logger.info({ sessionId, callSid, answeredBy }, "[powerDial/amd] Unknown AnsweredBy — hanging up");
+    return twiml("<Hangup/>");
+  } catch (err) {
+    logger.error(err, "[powerDial/amd] handler error");
+    return twiml("<Hangup/>");
   }
 });
 

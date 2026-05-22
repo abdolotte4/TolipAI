@@ -332,6 +332,19 @@ export default function LeadList() {
                                 <Clock className="w-3 h-3" />{daysSinceUpdate}d
                               </span>
                             )}
+                            {(lead as any).lastMotivationLabel && (() => {
+                              const label = (lead as any).lastMotivationLabel as string;
+                              const score = (lead as any).lastMotivationScore as number | null;
+                              const emoji = label === "Hot" ? "🔥" : label === "Warm" ? "✅" : label === "Moderate" ? "⚡" : label === "Cold" ? "❄️" : null;
+                              return emoji ? (
+                                <span
+                                  title={`Call score: ${label}${score != null ? ` (${score}/10)` : ""}`}
+                                  className="text-base leading-none select-none"
+                                >
+                                  {emoji}
+                                </span>
+                              ) : null;
+                            })()}
                             <Badge variant="outline" className={`capitalize px-3 py-1 ${statusClass}`}>
                               {lead.status.replace("_", " ")}
                             </Badge>

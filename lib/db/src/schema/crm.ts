@@ -105,6 +105,8 @@ export const crmLeads = pgTable("crm_leads", {
   archived: boolean("archived").notNull().default(false),
   archivedAt: timestamp("archived_at"),
   assignedTo: integer("assigned_to").references(() => crmUsers.id),
+  lastMotivationScore: integer("last_motivation_score"),
+  lastMotivationLabel: text("last_motivation_label"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

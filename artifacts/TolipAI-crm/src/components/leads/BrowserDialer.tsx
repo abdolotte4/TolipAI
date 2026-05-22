@@ -281,12 +281,13 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
         body: JSON.stringify({
           callSid: sid ?? undefined,
           transcript: liveText.trim() || undefined,
+          leadId: leadId ?? undefined,
         }),
       });
       setSummary(data.summary);
     } catch { }
     finally { setSummaryLoading(false); }
-  }, []);
+  }, [leadId]);
 
   // ── Track when call ends for coaching + summary ─────────────────────────────
   const prevStatus = useRef(status);

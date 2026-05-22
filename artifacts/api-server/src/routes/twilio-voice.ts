@@ -814,8 +814,9 @@ Return ONLY the JSON object — no markdown, no explanation.`,
 // ── POST /api/twilio/voice/call-summary ──────────────────────────────────────
 // Post-call AI summary: key talking points, seller motivation score, next step.
 // Accepts `transcript` (text) and/or `callSid` (reads DB transcript as fallback).
+// Optional `leadId` — when provided, persists motivationScore + motivationLabel to the lead.
 router.post("/twilio/voice/call-summary", crmAuth, async (req, res) => {
-  const { callSid, transcript: directTranscript } = req.body;
+  const { callSid, transcript: directTranscript, leadId } = req.body;
 
   let transcript: string | null = directTranscript ?? null;
 
@@ -869,6 +870,18 @@ Return ONLY the JSON — no markdown, no explanation.`,
       summary = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim());
     } catch {
       summary = { keyPoints: [], motivationScore: null, motivationLabel: null, sellerSituation: raw, nextStep: null };
+    }
+
+    // Persist motivation score to lead record (non-fatal — don't block response)
+    if (leadId && summary.motivationScore != null) {
+      db.update(crmLeads)
+        .set({
+          lastMotivationScore: summary.motivationScore,
+          lastMotivationLabel: summary.motivationLabel ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(crmLeads.id, Number(leadId)))
+        .catch(e => logger.warn({ leadId, err: e?.message }, "[call-summary] Failed to persist motivation score to lead"));
     }
 
     res.json({ summary });
