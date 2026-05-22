@@ -1,0 +1,107 @@
+# ── TolipAI Scraper Engine — Railway Dockerfile ──────────────────────────────
+#
+# Platform: linux/amd64 (Railway default — NOT AWS Graviton/ARM64)
+# Dockerfile.fargate is for AWS Fargate Spot (ARM64 only).
+# Use this file for Railway deployments.
+#
+# railway.json points here via build.dockerfilePath.
+
+FROM python:3.11-slim-bookworm AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libpq-dev \
+    libffi-dev \
+    libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+COPY requirements.txt .
+
+# Install all base requirements first (excluding crawl4ai so we control Pillow).
+# Then install crawl4ai with --no-deps to avoid its strict pillow~=10.4 pin
+# fighting with any other package that pulls a different Pillow range.
+RUN pip install --no-cache-dir --upgrade pip && \
+    grep -v "^crawl4ai" requirements.txt > /tmp/base-reqs.txt && \
+    pip install --no-cache-dir -r /tmp/base-reqs.txt && \
+    pip install --no-cache-dir --no-deps crawl4ai==0.6.3
+
+# Install Playwright Chromium browser for amd64
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+RUN playwright install chromium --with-deps 2>/dev/null || \
+    playwright install chromium 2>/dev/null || true
+
+
+# ── Final image ───────────────────────────────────────────────────────────────
+FROM python:3.11-slim-bookworm
+
+LABEL org.opencontainers.image.title="TolipAI-scraper-engine"
+LABEL org.opencontainers.image.description="TolipAI scraper engine — Railway (amd64)"
+LABEL org.opencontainers.image.source="https://github.com/Agawish24/TolipAI"
+
+WORKDIR /app
+
+# Runtime system deps for Playwright Chromium on amd64
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libexpat1 \
+    libxkbcommon0 \
+    libx11-6 \
+    libxcomposite1 \
+    libxext6 \
+    libxcb1 \
+    tesseract-ocr \
+    poppler-utils \
+    libgomp1 \
+    libgl1 \
+    libglib2.0-0 \
+    libpq5 \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /venv /venv
+COPY --from=builder /app/.cache /app/.cache
+
+ENV PATH="/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+
+COPY workers/ ./workers/
+COPY start.fargate.sh ./start.sh
+RUN chmod +x ./start.sh
+
+# Railway injects $PORT automatically; healthcheck uses it
+HEALTHCHECK \
+    --interval=30s \
+    --timeout=10s \
+    --start-period=90s \
+    --retries=3 \
+    CMD curl -sf http://localhost:${PORT:-8000}/health || exit 1
+
+EXPOSE 8000
+
+RUN useradd -r -s /bin/false scraper && \
+    chown -R scraper:scraper /app
+USER scraper
+
+CMD ["bash", "./start.sh"]

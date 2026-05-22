@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, memo, useMemo, lazy, Suspense } from "react";
 import BrowserDialer from "@/components/leads/BrowserDialer";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { apiFetch } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -1348,12 +1349,14 @@ export default function LeadDetail() {
                 {/* Browser Dialer tab */}
                 {opTab === "browser" && (
                   <div className="p-4">
-                    <BrowserDialer
-                      leadPhone={lead?.phone}
-                      leadId={lead?.id}
-                      leadName={lead?.sellerName || undefined}
-                      onCallLogged={() => { /* refresh calls list */ refreshOpMessages(); }}
-                    />
+                    <ErrorBoundary>
+                      <BrowserDialer
+                        leadPhone={lead?.phone}
+                        leadId={lead?.id}
+                        leadName={lead?.sellerName || undefined}
+                        onCallLogged={() => { /* refresh calls list */ refreshOpMessages(); }}
+                      />
+                    </ErrorBoundary>
                   </div>
                 )}
 
@@ -1572,9 +1575,11 @@ export default function LeadDetail() {
           </Card>
 
           {/* Comps — lazy loaded */}
-          <Suspense fallback={<div className="h-32 animate-pulse bg-secondary/30 rounded-2xl" />}>
-            <CompsSection leadId={leadId} lead={lead} />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<div className="h-32 animate-pulse bg-secondary/30 rounded-2xl" />}>
+              <CompsSection leadId={leadId} lead={lead} />
+            </Suspense>
+          </ErrorBoundary>
 
           {/* Unsaved changes indicator + Archive / Delete */}
           <div className="flex gap-3 flex-wrap items-center">

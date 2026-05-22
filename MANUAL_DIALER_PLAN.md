@@ -17,7 +17,7 @@
 | Outbound call from thread | ✅ Fixed (`startCall` signature corrected) |
 | Real-time transcript during active call | ✅ Fixed — dual-speaker bubbles with auto-scroll |
 | Contact name resolution (CRM leads) | ⚠️ Shows only if `leadId` already linked |
-| Inbound SMS notification | ✅ Real-time SSE push (Phase 2.1 complete) |
+| Inbound SMS notification | ✅ Real-time SSE push (Phase 2.1 complete); TDZ crash fixed |
 | Unread badge counts | ❌ Not implemented |
 | Active call overlay inside thread | ❌ Not implemented |
 | Sound notifications (ring, new message) | ❌ Not implemented |

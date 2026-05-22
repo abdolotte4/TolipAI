@@ -446,6 +446,17 @@ export default function ManualDialerPage() {
   const [composeText, setComposeText] = useState("");
   const [showDialPad, setShowDialPad] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const prevPhoneStatus = useRef(phone.status);
+
+  // ── Data queries — must be declared BEFORE effects that reference them ─────
+  // (Declaring after a useEffect that lists them in its dep array causes a
+  //  "Cannot access '…' before initialization" TDZ crash in the built bundle.)
+  const { data: numbersData, isLoading: numbersLoading, isError: numbersError, error: numbersErr, refetch: refetchNumbers } =
+    useQuery<{ phoneNumbers: PhoneNumber[] }>({
+      queryKey: ["twilio-phone-numbers"],
+      queryFn: () => apiRawFetch("/twilio/phone-numbers"),
+      staleTime: 60_000,
+    });
 
   // ── SSE-driven real-time conversation refresh (Phase 2.1) ─────────────────
   // Listens for new_inbound_sms and call_logged events pushed from the server
@@ -510,7 +521,6 @@ export default function ManualDialerPage() {
   }, [qc, selectedNumber?.number, selectedContact, numbersData?.phoneNumbers]);
 
   // ── Auto-refresh conversation list when a call ends ────────────────────────
-  const prevPhoneStatus = useRef(phone.status);
   if (prevPhoneStatus.current !== phone.status) {
     const wasActive = prevPhoneStatus.current === "in-progress" || prevPhoneStatus.current === "calling";
     prevPhoneStatus.current = phone.status;
@@ -523,13 +533,6 @@ export default function ManualDialerPage() {
       }, 3000);
     }
   }
-
-  const { data: numbersData, isLoading: numbersLoading, isError: numbersError, error: numbersErr, refetch: refetchNumbers } =
-    useQuery<{ phoneNumbers: PhoneNumber[] }>({
-      queryKey: ["twilio-phone-numbers"],
-      queryFn: () => apiRawFetch("/twilio/phone-numbers"),
-      staleTime: 60_000,
-    });
 
   const { data: convsData, isLoading: convsLoading, refetch: refetchConvs } =
     useQuery<{ conversations: Conversation[]; total: number }>({

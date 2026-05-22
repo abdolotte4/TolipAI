@@ -385,7 +385,7 @@
 | PERF-01 | **HIGH** | `services/propertyApi.ts` | 4 global `Map`s grow indefinitely — linear memory leak | ✅ **FIXED** — `cappedMapSet()` evicts oldest entry when size > 50,000 |
 | PERF-02 | **HIGH** | `routes/twilio.ts:521` | Full `crmLeads` table scan for phone reverse-lookup (no index on `phone_number`) | ✅ **FIXED** — `crm_leads_phone_idx` created in startup |
 | PERF-03 | **MEDIUM** | `routes/crm/leads.ts:474` | `bulk-import` inserts one row at a time instead of batched | ✅ **FIXED** — single `db.insert().values([...])` batch (1 round-trip) |
-| PERF-04 | **MEDIUM** | `routes/crm/campaigns.ts:59` | Per-campaign `count(*)` in list endpoint — N+1 | **OPEN** |
+| PERF-04 | **MEDIUM** | `routes/crm/campaigns.ts:59` | Per-campaign `count(*)` in list endpoint — N+1 | ✅ **FIXED** — two grouped `count(*) GROUP BY campaignId` queries replace N+1 loop |
 | PERF-05 | **MEDIUM** | `routes/crm/analytics.ts` | Multiple `db.execute(sql...)` not consolidated | **OPEN** |
 | PERF-06 | **LOW** | `routes/twilio-power-dialer.ts:366` | Individual `db.insert(crmCallLogs)` inside batch-dial loop | ✅ **FIXED** — single batch insert via `.values([...map...])` |
 
@@ -406,6 +406,8 @@
 | BUG-BD-01 | `BrowserDialer.tsx` | `coachingTimerRef` not cleared on unmount | ✅ **FIXED** — unmount `useEffect` clears `coachingTimerRef` |
 | BUG-BD-02 | `BrowserDialer.tsx` | `checkSid` interval not cleared on unmount | ✅ **FIXED** — `checkSidRef` stored and cleared on unmount |
 | BUG-SCRAP-01 | `routes/scraperEngine.ts` | `inArray` with >32k leads exceeds Postgres param limit | ✅ **FIXED** — `chunkedInArray()` splits at 10k per chunk using `or()` |
+| BUG-TDZ-01 | `pages/integrations/PhoneNumbers.tsx` | `numbersData` referenced in `useEffect` dep array before `useQuery` declaration — TDZ crash "Cannot access 'w' before initialization" in minified build | ✅ **FIXED** — `useQuery` declaration moved above `useEffect` |
+| BUG-SCRAPER-DOCKER | `TolipAI-scraper-engine/Dockerfile.fargate` | AWS Fargate ARM64 Dockerfile used on Railway (amd64) — Pillow/crawl4ai version conflict causes build failure | ✅ **FIXED** — `Dockerfile.railway` created for x86_64; `railway.json` updated to use it |
 
 ### 8.5 Type Safety
 - Widespread `as any` in: API response handling (OpenAI, ATTOM, Twilio, Drizzle `execute` results), `formatTask`/`formatComp` helpers, scraper result rows
@@ -461,7 +463,7 @@ Several pages access APIs without the `/api` prefix or use different conventions
 | B3 | ✅ **Fix `onboardingQueue` splice-during-iteration** — atomic queue rebuild via `filter()` | `services/automation.ts` |
 | B4 | ✅ **Batch `bulk-import` inserts** — single `db.insert().values([...])` call | `crm/leads.ts` |
 | B5 | **Move SSE JWT to `Authorization` header** via short-lived token exchange endpoint | `sse.ts`, `AppLayout.tsx` |
-| B6 | **Add local `<ErrorBoundary>`** wrappers on `BrowserDialer`, `CompsSection`, `LeadDetail` | CRM components |
+| B6 | ✅ **Add local `<ErrorBoundary>`** wrappers on `BrowserDialer`, `CompsSection` in `LeadDetail` | CRM components |
 | B7 | **Migrate date `text` columns to `date`/`timestamp`** in schema | `lib/db/src/schema/crm.ts` |
 | B8 | ✅ **Fix `MiniPlayer` unmount** — `useEffect` cleanup pauses audio and clears `src` | `PhoneNumbers.tsx` |
 

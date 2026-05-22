@@ -55,12 +55,19 @@ router.get("/", crmAuth, async (req, res) => {
   try {
     if (crmUser.role === "super_admin") {
       const campaigns = await db.select().from(crmCampaigns).orderBy(crmCampaigns.createdAt);
-      const enriched = await Promise.all(campaigns.map(async (c) => {
-        const [[{ userCount }], [{ leadCount }]] = await Promise.all([
-          db.select({ userCount: sql<number>`count(*)::int` }).from(crmUsers).where(eq(crmUsers.campaignId, c.id)),
-          db.select({ leadCount: sql<number>`count(*)::int` }).from(crmLeads).where(eq(crmLeads.campaignId, c.id)),
-        ]);
-        return { ...c, userCount, leadCount };
+      // PERF-04: single grouped query instead of N+1 per-campaign counts
+      const [userCounts, leadCounts] = await Promise.all([
+        db.select({ campaignId: crmUsers.campaignId, count: sql<number>`count(*)::int` })
+          .from(crmUsers).groupBy(crmUsers.campaignId),
+        db.select({ campaignId: crmLeads.campaignId, count: sql<number>`count(*)::int` })
+          .from(crmLeads).groupBy(crmLeads.campaignId),
+      ]);
+      const userMap = new Map(userCounts.map(r => [r.campaignId, r.count]));
+      const leadMap = new Map(leadCounts.map(r => [r.campaignId, r.count]));
+      const enriched = campaigns.map(c => ({
+        ...c,
+        userCount: userMap.get(c.id) ?? 0,
+        leadCount: leadMap.get(c.id) ?? 0,
       }));
       res.json(enriched.map(formatCampaign));
     } else if (crmUser.campaignId) {

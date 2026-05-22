@@ -508,8 +508,8 @@ Extensive use of `references()` with appropriate `onDelete`:
 | Category | Score | Notes |
 |---|---|---|
 | **Security** | 8/10 | ✅ SEC-01/02/03/05 all fixed. SEC-04 (SSE JWT in URL) + SEC-06 (localStorage admin JWT) remain. |
-| **Performance** | 8/10 | ✅ PERF-01/02/03/06 fixed. PERF-04 (N+1 campaigns list) + PERF-05 (analytics consolidation) remain. |
-| **Reliability** | 9/10 | ✅ BUG-BOOT-01 startup race eliminated. ✅ BUG-AUTO-01 onboarding queue fixed. BUG-BD fixed. MEM-01/02 fixed. |
+| **Performance** | 9/10 | ✅ PERF-01/02/03/04/06 fixed. PERF-05 (analytics consolidation) remains. |
+| **Reliability** | 9/10 | ✅ BUG-BOOT-01 startup race eliminated. ✅ BUG-AUTO-01 onboarding queue fixed. BUG-BD fixed. MEM-01/02 fixed. ✅ TDZ crash in manual dialer fixed. ✅ Railway Dockerfile corrected. |
 | **Observability** | 8/10 | Pino structured logging, Sentry wired, audit log in DB. Missing: distributed tracing, custom Sentry alerts per SEC issue type. |
 | **Scalability** | 8/10 | ✅ In-memory Maps now capped at 50k entries. Stateless API correct. No durable job queue. |
 | **Type Safety** | 6/10 | Widespread `as any`. `typecheck` script is a no-op in CI. No actual compile-time guarantee. |
@@ -518,7 +518,7 @@ Extensive use of `references()` with appropriate `onDelete`:
 | **Documentation** | 9/10 | `CODEBASE_AUDIT.md`, `ENTERPRISE_AUDIT.md`, `MANUAL_DIALER_PLAN.md`, `Twiliofix.md`, `README.md`, `env.example`. All updated with fix status. |
 | **Feature Completeness** | 10/10 | Exceeds all listed competitors in AI-augmented features. |
 
-**Overall Enterprise Readiness: 8.1/10** (up from 7.2/10 on May 22 — Sprint 1 + Sprint 2 complete)
+**Overall Enterprise Readiness: 8.4/10** (up from 8.1/10 on May 22 — Session 2: TDZ crash fixed, Railway Dockerfile, PERF-04 N+1, ErrorBoundary wrappers)
 
 ### 10.2 Blockers for Enterprise Sales
 
@@ -552,7 +552,7 @@ The following issues would cause enterprise procurement teams to reject or defer
 | 2.2 | Replace unbounded Maps in `propertyApi.ts` with LRU cache | HIGH | S | ✅ Done — `cappedMapSet()` |
 | 2.3 | Fix `onboardingQueue` splice-during-iteration bug | HIGH | XS | ✅ Done |
 | 2.4 | Batch `bulk-import` inserts — single `db.insert().values([...])` | MEDIUM | XS | ✅ Done |
-| 2.5 | Add local `<ErrorBoundary>` on `BrowserDialer`, `CompsSection`, `LeadDetail` | MEDIUM | S | OPEN |
+| 2.5 | Add local `<ErrorBoundary>` on `BrowserDialer`, `CompsSection`, `LeadDetail` | MEDIUM | S | ✅ Done |
 | 2.6 | Fix `MiniPlayer` audio element unmount leak | MEDIUM | XS | ✅ Done |
 | 2.7 | Fix `BrowserDialer` `coachingTimerRef`/`checkSid` interval cleanup | MEDIUM | XS | ✅ Done |
 | 2.8 | Migrate date `text` columns to `date`/`timestamp` in schema | MEDIUM | S | OPEN |
