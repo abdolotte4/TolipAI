@@ -40,6 +40,7 @@ import { generateAiSmsReply, isOptOutMessage, isHumanHandoffRequest, AI_SMS_COST
 import { sendSms } from "../services/smsService";
 import { validateBody } from "../lib/validate";
 import { z } from "zod";
+import { emitCrmActivity } from "./sse";
 
 const router: IRouter = Router();
 
@@ -790,6 +791,15 @@ router.post("/twilio/webhook", async (req, res) => {
       content,
       status: "received",
     }).onConflictDoNothing();
+
+    emitCrmActivity("new_inbound_sms", {
+      from: fromNumber,
+      to: toNumber,
+      body: content.slice(0, 200),
+      leadId: lead?.id ?? null,
+      campaignId: lead?.campaignId ?? null,
+      ts: Date.now(),
+    });
 
     if (lead?.campaignId) {
       const users = await db.select({ id: crmUsers.id }).from(crmUsers)

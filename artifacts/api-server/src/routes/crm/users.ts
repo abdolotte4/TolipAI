@@ -222,29 +222,10 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
   }
 });
 
-// GET /crm/users/:id/password — super_admin only: return last known plaintext password
-router.get("/:id/password", crmAuth, async (req, res) => {
-  const crmUser = req.crmUser!;
-  if (crmUser.role !== "super_admin") {
-    res.status(403).json({ error: "Super admin only" });
-    return;
-  }
-  const id = parseInt(req.params.id as string);
-  try {
-    const rows = await db.execute<{ password_plain: string | null; name: string }>(
-      sql`SELECT password_plain, name FROM crm_users WHERE id = ${id} LIMIT 1`
-    );
-    const row = (rows as any).rows?.[0] ?? (rows as any)[0];
-    if (!row) { res.status(404).json({ error: "User not found" }); return; }
-    if (!row.password_plain) {
-      res.status(404).json({ error: "Password not on record for this user. Ask them to log in or reset via the Edit dialog." });
-      return;
-    }
-    res.json({ password: row.password_plain, name: row.name });
-  } catch (err: any) {
-    logger.error({ err }, "[users/:id/password] error");
-    res.status(500).json({ error: "Failed to retrieve password" });
-  }
+// GET /crm/users/:id/password — REMOVED (SEC-01: plaintext password retrieval)
+// This endpoint was removed for security compliance. Use the password reset flow instead.
+router.get("/:id/password", crmAuth, (_req, res) => {
+  res.status(410).json({ error: "This endpoint has been removed. Use the password reset flow to issue new credentials." });
 });
 
 // DELETE /crm/users/:id — delete user (scoped to campaign)

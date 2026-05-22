@@ -17,8 +17,8 @@ export function twilioWebhookMiddleware(authToken?: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const token = authToken ?? process.env.TWILIO_AUTH_TOKEN;
     if (!token) {
-      logger.warn("[twilioWebhook] TWILIO_AUTH_TOKEN not set — skipping signature validation");
-      next();
+      logger.error("[twilioWebhook] TWILIO_AUTH_TOKEN not set — refusing request (hard-fail)");
+      res.status(500).json({ error: "Server misconfiguration: webhook validation unavailable" });
       return;
     }
 

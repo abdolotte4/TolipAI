@@ -437,14 +437,33 @@ router.post("/twilio/voice/call-status", async (req, res) => {
 
     if (!callSid) return;
 
-    await db
+    const [updated] = await db
       .update(crmCallLogs)
       .set({
         status: status || "completed",
         duration: duration ?? null,
         updatedAt: new Date(),
       })
-      .where(eq(crmCallLogs.callSid, callSid));
+      .where(eq(crmCallLogs.callSid, callSid))
+      .returning({
+        campaignId: crmCallLogs.campaignId,
+        fromNumber: crmCallLogs.fromNumber,
+        toNumber: crmCallLogs.toNumber,
+        leadId: crmCallLogs.leadId,
+      });
+
+    if (updated) {
+      emitCrmActivity("call_logged", {
+        callSid,
+        status: status || "completed",
+        from: updated.fromNumber,
+        to: updated.toNumber,
+        direction: req.body?.Direction ?? "outbound",
+        leadId: updated.leadId ?? null,
+        campaignId: updated.campaignId ?? null,
+        ts: Date.now(),
+      });
+    }
 
     logger.info({ callSid, status, duration }, "[twilio/voice/call-status] updated");
   } catch (err) {

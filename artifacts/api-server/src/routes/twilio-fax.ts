@@ -6,12 +6,13 @@ import { crmAuth } from "./crm/middleware";
 import { logger } from "../lib/logger";
 import { getSmsCreds } from "../services/twilioCredentials";
 import { getWebhookBase } from "../lib/webhookBase";
+import { twilioWebhookMiddleware } from "../lib/twilioWebhookMiddleware";
 
 const router = Router();
 
 // ── POST /api/twilio/fax/inbound ─────────────────────────────────────────────
 // Twilio Programmable Fax webhook — called when a fax is received.
-router.post("/twilio/fax/inbound", async (req, res) => {
+router.post("/twilio/fax/inbound", twilioWebhookMiddleware(), async (req, res) => {
   res.set("Content-Type", "text/xml");
   try {
     const { FaxSid, From, To, Status, NumPages, MediaUrl } = req.body;

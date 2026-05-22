@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -438,6 +438,68 @@ export default function ManualDialerPage() {
   const [composeText, setComposeText] = useState("");
   const [showDialPad, setShowDialPad] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // ── SSE-driven real-time conversation refresh (Phase 2.1) ─────────────────
+  // Listens for new_inbound_sms and call_logged events pushed from the server
+  // and immediately invalidates the conversation list — no 30s wait.
+  useEffect(() => {
+    const token = localStorage.getItem("crm_token");
+    if (!token) return;
+
+    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+
+    const handleSms = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as { to?: string; from?: string };
+        const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
+        const affectedNumber = ownedNumbers.find(num => {
+          const d = num.replace(/\D/g, "");
+          return (
+            (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
+            (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
+          );
+        }) ?? selectedNumber?.number;
+        if (affectedNumber) {
+          qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
+          if (selectedContact) {
+            qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
+          }
+        } else {
+          qc.invalidateQueries({ queryKey: ["phone-number-convs"] });
+        }
+      } catch { /* ignore malformed */ }
+    };
+
+    const handleCallLogged = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as { to?: string; from?: string };
+        const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
+        const affectedNumber = ownedNumbers.find(num => {
+          const d = num.replace(/\D/g, "");
+          return (
+            (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
+            (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
+          );
+        }) ?? selectedNumber?.number;
+        if (affectedNumber) {
+          qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
+          if (selectedContact) {
+            qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
+          }
+        }
+      } catch { /* ignore malformed */ }
+    };
+
+    es.addEventListener("new_inbound_sms", handleSms);
+    es.addEventListener("call_logged", handleCallLogged);
+    es.onerror = () => { /* SSE will auto-reconnect */ };
+
+    return () => {
+      es.removeEventListener("new_inbound_sms", handleSms);
+      es.removeEventListener("call_logged", handleCallLogged);
+      es.close();
+    };
+  }, [qc, selectedNumber?.number, selectedContact, numbersData?.phoneNumbers]);
 
   // ── Auto-refresh conversation list when a call ends ────────────────────────
   const prevPhoneStatus = useRef(phone.status);
