@@ -24,7 +24,96 @@ if (missingVars.length > 0) {
 
 let server: ReturnType<typeof app.listen>;
 
-seedDatabase().then(() => {
+// ── DB startup tasks (run BEFORE accepting connections — BUG-BOOT-01) ────────
+// Awaiting these ensures indexes and sequences are in place before the first
+// request is served, eliminating the startup race condition.
+async function runDbStartupTasks(): Promise<void> {
+  // Idempotent migration: ensure crm_waitlist table exists
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_waitlist (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        email       TEXT        NOT NULL UNIQUE,
+        name        TEXT,
+        phone       TEXT,
+        source      TEXT        NOT NULL DEFAULT 'landing_hero',
+        status      TEXT        NOT NULL DEFAULT 'pending',
+        notes       TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch (err: unknown) {
+    logger.error({ err }, "[startup] crm_waitlist migration failed");
+  }
+
+  // ── DB indexes (CONCURRENTLY — no table lock, safe to run before listen) ──
+  const ensureIndexes: Array<{ name: string; sql: string }> = [
+    {
+      name: "crm_leads_phone_idx",
+      sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_phone_idx ON crm_leads (phone)`,
+    },
+    {
+      name: "crm_notes_lead_date_idx",
+      sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_notes_lead_date_idx ON crm_notes (lead_id, created_at DESC)`,
+    },
+    {
+      name: "crm_notifications_user_unread_idx",
+      sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_notifications_user_unread_idx ON crm_notifications (user_id, read, created_at DESC)`,
+    },
+    {
+      name: "crm_sequence_logs_dedup_idx",
+      sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_sequence_logs_dedup_idx ON crm_sequence_logs (lead_id, sequence_id, step_id)`,
+    },
+    {
+      name: "crm_call_logs_call_sid_unique_idx",
+      sql: `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS crm_call_logs_call_sid_unique_idx ON crm_call_logs (call_sid) WHERE call_sid IS NOT NULL`,
+    },
+    {
+      name: "crm_leads_fts_idx",
+      sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx ON crm_leads USING gin(to_tsvector('english', coalesce(address,'') || ' ' || coalesce(city,'') || ' ' || coalesce(state,'') || ' ' || coalesce(seller_name,'')))`,
+    },
+  ];
+  for (const idx of ensureIndexes) {
+    try {
+      await pool.query(idx.sql);
+    } catch (err: any) {
+      if (!err?.message?.includes("already exists")) {
+        logger.warn({ index: idx.name, err: err?.message }, "[startup] index creation warning");
+      }
+    }
+  }
+  logger.info("DB indexes verified.");
+
+  // ── Sequence / identity health-check ──────────────────────────────────────
+  const seqTables = ["crm_call_logs", "crm_users", "crm_leads"];
+  for (const table of seqTables) {
+    try {
+      const seqRes = await pool.query(
+        `SELECT pg_get_serial_sequence($1, 'id') AS seq`, [table]
+      );
+      const seq: string | null = seqRes.rows[0]?.seq ?? null;
+      if (!seq) {
+        await pool.query(
+          `DO $$ DECLARE v INT; BEGIN SELECT COALESCE(MAX(id),0)+1 INTO v FROM ${table}; EXECUTE 'ALTER TABLE ${table} ALTER COLUMN id RESTART WITH '||v; END $$`
+        );
+      } else {
+        await pool.query(
+          `SELECT setval($1, GREATEST(COALESCE((SELECT MAX(id) FROM ${table}),0), 1), true)`, [seq]
+        );
+      }
+    } catch (e: any) {
+      logger.warn({ table, err: e?.message }, "[startup] sequence reset warning");
+    }
+  }
+  logger.info("DB sequences verified.");
+}
+
+seedDatabase().then(async () => {
+  // Run all DB startup tasks (indexes + sequence repair) BEFORE the server
+  // starts accepting requests — eliminates the BUG-BOOT-01 startup race.
+  await runDbStartupTasks();
+
   server = app.listen(port, "0.0.0.0", (err?: Error) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
@@ -38,91 +127,6 @@ seedDatabase().then(() => {
       for (let i = 0; i < 6; i++) pool.query("SELECT 1").catch(() => {});
     }, 8000);
 
-    // Idempotent startup migration: ensure crm_waitlist table exists
-    pool.query(`
-      CREATE TABLE IF NOT EXISTS crm_waitlist (
-        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        email       TEXT        NOT NULL UNIQUE,
-        name        TEXT,
-        phone       TEXT,
-        source      TEXT        NOT NULL DEFAULT 'landing_hero',
-        status      TEXT        NOT NULL DEFAULT 'pending',
-        notes       TEXT,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `).catch((err: unknown) => logger.error({ err }, "[startup] crm_waitlist migration failed"));
-
-    // ── DB indexes ────────────────────────────────────────────────────────────
-    // Run each index creation separately (CONCURRENTLY cannot run in a transaction)
-    const ensureIndexes: Array<{ name: string; sql: string }> = [
-      {
-        name: "crm_leads_phone_idx",
-        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_phone_idx ON crm_leads (phone)`,
-      },
-      {
-        name: "crm_notes_lead_date_idx",
-        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_notes_lead_date_idx ON crm_notes (lead_id, created_at DESC)`,
-      },
-      {
-        name: "crm_notifications_user_unread_idx",
-        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_notifications_user_unread_idx ON crm_notifications (user_id, read, created_at DESC)`,
-      },
-      {
-        name: "crm_sequence_logs_dedup_idx",
-        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_sequence_logs_dedup_idx ON crm_sequence_logs (lead_id, sequence_id, step_id)`,
-      },
-      {
-        name: "crm_call_logs_call_sid_unique_idx",
-        sql: `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS crm_call_logs_call_sid_unique_idx ON crm_call_logs (call_sid) WHERE call_sid IS NOT NULL`,
-      },
-      {
-        name: "crm_leads_fts_idx",
-        sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS crm_leads_fts_idx ON crm_leads USING gin(to_tsvector('english', coalesce(address,'') || ' ' || coalesce(city,'') || ' ' || coalesce(state,'') || ' ' || coalesce(seller_name,'')))`,
-      },
-    ];
-    (async () => {
-      for (const idx of ensureIndexes) {
-        try {
-          await pool.query(idx.sql);
-        } catch (err: any) {
-          // "already exists" or concurrent-build races are non-fatal
-          if (!err?.message?.includes("already exists")) {
-            logger.warn({ index: idx.name, err: err?.message }, "[startup] index creation warning");
-          }
-        }
-      }
-      logger.info("DB indexes verified.");
-
-      // ── Sequence / identity health-check ──────────────────────────────────
-      // Neon DB id sequences can drift (last_value=0 or NULL) causing INSERT failures.
-      // Works for both SERIAL (uses setval) and GENERATED ... AS IDENTITY (uses ALTER TABLE).
-      const seqTables = ["crm_call_logs", "crm_users", "crm_leads"];
-      for (const table of seqTables) {
-        try {
-          // Step 1: find the actual sequence backing the id column (works for serial & identity)
-          const seqRes = await pool.query(
-            `SELECT pg_get_serial_sequence($1, 'id') AS seq`, [table]
-          );
-          const seq: string | null = seqRes.rows[0]?.seq ?? null;
-          if (!seq) {
-            // identity column — restart the identity directly
-            await pool.query(
-              `DO $$ DECLARE v INT; BEGIN SELECT COALESCE(MAX(id),0)+1 INTO v FROM ${table}; EXECUTE 'ALTER TABLE ${table} ALTER COLUMN id RESTART WITH '||v; END $$`
-            );
-          } else {
-            // serial column — reset the sequence
-            await pool.query(
-              `SELECT setval($1, GREATEST(COALESCE((SELECT MAX(id) FROM ${table}),0), 1), true)`, [seq]
-            );
-          }
-        } catch (e: any) {
-          logger.warn({ table, err: e?.message }, "[startup] sequence reset warning");
-        }
-      }
-      logger.info("DB sequences verified.");
-    })();
-
     runEmailSequenceJob();
     setInterval(runEmailSequenceJob, 60 * 60 * 1000);
 
@@ -133,8 +137,6 @@ seedDatabase().then(() => {
     setInterval(runOnboardingEmailCron, 30 * 60 * 1000);
 
     // ── AI Voice Agent WebSocket server ───────────────────────────────────────
-    // Twilio Media Streams connects here to stream audio for the AI agent.
-    // Path: /api/twilio/voice/agent-stream
     const agentWss = new WebSocketServer({ noServer: true });
     server.on("upgrade", (req, socket, head) => {
       if (req.url?.includes("/twilio/voice/agent-stream")) {

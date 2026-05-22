@@ -47,10 +47,12 @@ export async function runOnboardingEmailCron() {
   const due = onboardingQueue.filter(e => e.sendAt <= now);
   if (!due.length) return;
 
-  for (const entry of due) {
-    const idx = onboardingQueue.indexOf(entry);
-    if (idx !== -1) onboardingQueue.splice(idx, 1);
+  // Atomically rebuild queue without due items — avoids any splice-during-iteration risk
+  const notDue = onboardingQueue.filter(e => e.sendAt > now);
+  onboardingQueue.length = 0;
+  onboardingQueue.push(...notDue);
 
+  for (const entry of due) {
     try {
       let html = "";
       let subject = "";

@@ -72,6 +72,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const phone = usePhone();
 
   const coachingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkSidRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const [record, setRecord] = useState(true);
@@ -97,6 +98,14 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const status = phone.status;
   const isActive = status === "calling" || status === "in-progress" || status === "disconnecting";
   const canCall = !!leadPhone && (status === "idle" || status === "ready" || status === "error");
+
+  // ── Unmount cleanup — clear all timers to prevent memory/state leaks ────────
+  useEffect(() => {
+    return () => {
+      if (coachingTimerRef.current) { clearTimeout(coachingTimerRef.current); coachingTimerRef.current = null; }
+      if (checkSidRef.current) { clearInterval(checkSidRef.current); checkSidRef.current = null; }
+    };
+  }, []);
 
   // ── Auto-scroll transcript to bottom on new segments ──────────────────────
   useEffect(() => {
@@ -151,16 +160,17 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     try {
       await phone.startCall(leadPhone, leadId ?? null, leadName || "Unknown", record);
       // Track last call sid once available
-      const checkSid = setInterval(() => {
+      checkSidRef.current = setInterval(() => {
         if (phone.currentCallSid) {
           setLastCallSid(phone.currentCallSid);
           setLastCallRecorded(record);
           if (onCallLogged) onCallLogged(phone.currentCallSid);
-          clearInterval(checkSid);
+          clearInterval(checkSidRef.current!);
+          checkSidRef.current = null;
         }
       }, 200);
       // Clear interval after 10s regardless
-      setTimeout(() => clearInterval(checkSid), 10000);
+      setTimeout(() => { clearInterval(checkSidRef.current!); checkSidRef.current = null; }, 10000);
     } catch (err: any) {
       toast({ title: "Failed to start call", description: err.message, variant: "destructive" });
     }

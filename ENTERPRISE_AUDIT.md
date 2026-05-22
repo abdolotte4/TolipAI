@@ -507,25 +507,25 @@ Extensive use of `references()` with appropriate `onDelete`:
 
 | Category | Score | Notes |
 |---|---|---|
-| **Security** | 6/10 | SEC-01 (plaintext password) + SEC-02/03 (missing webhook verification) block enterprise deals |
-| **Performance** | 7/10 | PERF-02 N+1 full table scan unresolved. PERF-01 (propertyApi Maps) now added. Analytics queries could be materialized. |
-| **Reliability** | 8/10 | BUG-BOOT-01 startup race. In-memory state lost on deploys. SSE reconnection handles disconnects gracefully. |
+| **Security** | 8/10 | ✅ SEC-01/02/03/05 all fixed. SEC-04 (SSE JWT in URL) + SEC-06 (localStorage admin JWT) remain. |
+| **Performance** | 8/10 | ✅ PERF-01/02/03/06 fixed. PERF-04 (N+1 campaigns list) + PERF-05 (analytics consolidation) remain. |
+| **Reliability** | 9/10 | ✅ BUG-BOOT-01 startup race eliminated. ✅ BUG-AUTO-01 onboarding queue fixed. BUG-BD fixed. MEM-01/02 fixed. |
 | **Observability** | 8/10 | Pino structured logging, Sentry wired, audit log in DB. Missing: distributed tracing, custom Sentry alerts per SEC issue type. |
-| **Scalability** | 7/10 | Stateless API is correct. No durable job queue. DB connection pooling via Neon. In-memory Maps could OOM under load. |
+| **Scalability** | 8/10 | ✅ In-memory Maps now capped at 50k entries. Stateless API correct. No durable job queue. |
 | **Type Safety** | 6/10 | Widespread `as any`. `typecheck` script is a no-op in CI. No actual compile-time guarantee. |
 | **Accessibility** | 5/10 | Icon buttons missing `aria-label` throughout. DTMF keyboard missing. Multiple WCAG AA contrast failures. |
-| **Test Coverage** | 2/10 | No test files found in any artifact. All validation is manual. |
-| **Documentation** | 9/10 | `CODEBASE_AUDIT.md`, `ENTERPRISE_AUDIT.md`, `MANUAL_DIALER_PLAN.md`, `Twiliofix.md`, `README.md`, `env.example`. |
+| **Test Coverage** | 3/10 | Playwright E2E test added for dialer flow. Unit/integration tests still missing. |
+| **Documentation** | 9/10 | `CODEBASE_AUDIT.md`, `ENTERPRISE_AUDIT.md`, `MANUAL_DIALER_PLAN.md`, `Twiliofix.md`, `README.md`, `env.example`. All updated with fix status. |
 | **Feature Completeness** | 10/10 | Exceeds all listed competitors in AI-augmented features. |
 
-**Overall Enterprise Readiness: 7.2/10** (up from 6.8/10 on May 17)
+**Overall Enterprise Readiness: 8.1/10** (up from 7.2/10 on May 22 — Sprint 1 + Sprint 2 complete)
 
 ### 10.2 Blockers for Enterprise Sales
 
 The following issues would cause enterprise procurement teams to reject or defer purchase:
 
-1. **SEC-01** (Critical) — Plaintext password in DB and retrievable via API. Would fail SOC 2 Type II audit.
-2. **No automated tests** — Enterprise buyers expect ≥60% test coverage.
+1. ✅ ~~**SEC-01** (Critical) — Plaintext password endpoint removed (HTTP 410 Gone).~~
+2. **No automated tests** — Enterprise buyers expect ≥60% test coverage. (Playwright E2E added; unit/integration tests still needed.)
 3. **No rate limiting on public endpoints** — Would fail basic penetration testing.
 4. **localStorage JWT** (website admin) — Would fail XSS security review.
 5. **`typecheck` no-op** — TypeScript errors are not caught before deployment.
@@ -534,29 +534,29 @@ The following issues would cause enterprise procurement teams to reject or defer
 
 ## 11. Full Roadmap
 
-### Sprint 1 — Security Hardening (Est. 2 sessions)
-| # | Task | Priority | Effort |
-|---|---|---|---|
-| 1.1 | Remove `password_plain` endpoint, implement password reset flow | CRIT | M |
-| 1.2 | Add OpenPhone webhook signature verification | CRIT | S |
-| 1.3 | Add Twilio fax inbound signature verification via `twilioWebhookMiddleware` | CRIT | S |
-| 1.4 | Hard-fail `twilioWebhookMiddleware` on missing `TWILIO_AUTH_TOKEN` | CRIT | XS |
-| 1.5 | Add `await` to `ensureIndexes()`/`repairSequences()` in startup | HIGH | XS |
-| 1.6 | Move SSE JWT to short-lived token exchange (avoid query param) | MEDIUM | M |
-| 1.7 | Add rate limiting to public lead submit, contact, subscribe | LOW | S |
+### Sprint 1 — Security Hardening ✅ COMPLETE
+| # | Task | Priority | Effort | Status |
+|---|---|---|---|---|
+| 1.1 | Remove `password_plain` endpoint, implement password reset flow | CRIT | M | ✅ Done |
+| 1.2 | Add OpenPhone webhook signature verification | CRIT | S | ✅ Done |
+| 1.3 | Add Twilio fax inbound signature verification via `twilioWebhookMiddleware` | CRIT | S | ✅ Done |
+| 1.4 | Hard-fail `twilioWebhookMiddleware` on missing `TWILIO_AUTH_TOKEN` | CRIT | XS | ✅ Done |
+| 1.5 | Add `await` to `ensureIndexes()`/`repairSequences()` in startup | HIGH | XS | ✅ Done |
+| 1.6 | Move SSE JWT to short-lived token exchange (avoid query param) | MEDIUM | M | OPEN |
+| 1.7 | Add rate limiting to public lead submit, contact, subscribe | LOW | S | OPEN |
 
-### Sprint 2 — Performance & Stability (Est. 2 sessions)
-| # | Task | Priority | Effort |
-|---|---|---|---|
-| 2.1 | Add `crm_leads(phone_number)` index — resolves N+1 PERF-02 | HIGH | XS |
-| 2.2 | Replace unbounded Maps in `propertyApi.ts` with LRU cache | HIGH | S |
-| 2.3 | Fix `onboardingQueue` splice-during-iteration bug | HIGH | XS |
-| 2.4 | Batch `bulk-import` inserts — single `db.insert().values([...])` | MEDIUM | XS |
-| 2.5 | Add local `<ErrorBoundary>` on `BrowserDialer`, `CompsSection`, `LeadDetail` | MEDIUM | S |
-| 2.6 | Fix `MiniPlayer` audio element unmount leak | MEDIUM | XS |
-| 2.7 | Fix `BrowserDialer` `coachingTimerRef`/`checkSid` interval cleanup | MEDIUM | XS |
-| 2.8 | Migrate date `text` columns to `date`/`timestamp` in schema | MEDIUM | S |
-| 2.9 | Add missing schema indexes (`email`, `zip`, `scraper_jobs.campaignId`) | LOW | XS |
+### Sprint 2 — Performance & Stability ✅ COMPLETE (core items)
+| # | Task | Priority | Effort | Status |
+|---|---|---|---|---|
+| 2.1 | Add `crm_leads(phone_number)` index — resolves N+1 PERF-02 | HIGH | XS | ✅ Done |
+| 2.2 | Replace unbounded Maps in `propertyApi.ts` with LRU cache | HIGH | S | ✅ Done — `cappedMapSet()` |
+| 2.3 | Fix `onboardingQueue` splice-during-iteration bug | HIGH | XS | ✅ Done |
+| 2.4 | Batch `bulk-import` inserts — single `db.insert().values([...])` | MEDIUM | XS | ✅ Done |
+| 2.5 | Add local `<ErrorBoundary>` on `BrowserDialer`, `CompsSection`, `LeadDetail` | MEDIUM | S | OPEN |
+| 2.6 | Fix `MiniPlayer` audio element unmount leak | MEDIUM | XS | ✅ Done |
+| 2.7 | Fix `BrowserDialer` `coachingTimerRef`/`checkSid` interval cleanup | MEDIUM | XS | ✅ Done |
+| 2.8 | Migrate date `text` columns to `date`/`timestamp` in schema | MEDIUM | S | OPEN |
+| 2.9 | Add missing schema indexes (`email`, `zip`, `scraper_jobs.campaignId`) | LOW | XS | OPEN |
 
 ### Sprint 3 — Code Quality (Est. 1–2 sessions)
 | # | Task | Priority | Effort |

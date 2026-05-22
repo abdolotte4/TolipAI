@@ -85,6 +85,18 @@ export interface SkipTraceCooldownResult {
   retryAfterMs?: number;
 }
 
+// ─── Bounded rate-limit Maps ──────────────────────────────────────────────────
+// Maps are pruned on every access for staleness; this hard cap prevents unbounded
+// growth when there are thousands of unique campaigns/leads in production (MEM-01).
+const MAX_RATE_MAP_SIZE = 50_000;
+function cappedMapSet<K, V>(map: Map<K, V>, key: K, val: V): void {
+  map.set(key, val);
+  if (map.size > MAX_RATE_MAP_SIZE) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) map.delete(firstKey as K);
+  }
+}
+
 // ─── Skip Trace ───────────────────────────────────────────────────────────────
 
 const skipTraceMap = new Map<number, number[]>(); // campaignId → timestamps in last 24h
@@ -97,7 +109,7 @@ export function checkSkipTraceCooldown(
   if (isSuperAdmin) return { allowed: true };
   const raw = skipTraceMap.get(campaignId) ?? [];
   const recent = pruneOld(raw);
-  skipTraceMap.set(campaignId, recent);
+  cappedMapSet(skipTraceMap, campaignId, recent);
   if (recent.length >= dailyLimit) {
     // Oldest timestamp + 24h = when the first slot opens up again
     const oldestTs = Math.min(...recent);
@@ -115,7 +127,7 @@ export function checkSkipTraceCooldown(
 export function recordSkipTrace(campaignId: number) {
   const existing = pruneOld(skipTraceMap.get(campaignId) ?? []);
   existing.push(Date.now());
-  skipTraceMap.set(campaignId, existing);
+  cappedMapSet(skipTraceMap, campaignId, existing);
 }
 
 // ─── Fetch Comps ──────────────────────────────────────────────────────────────
@@ -130,7 +142,7 @@ export function checkFetchCompsCooldown(
   if (isSuperAdmin) return { allowed: true };
   const raw = fetchCompsMap.get(campaignId) ?? [];
   const recent = pruneOld(raw);
-  fetchCompsMap.set(campaignId, recent);
+  cappedMapSet(fetchCompsMap, campaignId, recent);
   if (recent.length >= dailyLimit) {
     const oldestTs = Math.min(...recent);
     const retryAfterMs = oldestTs + DAILY_MS - Date.now();
@@ -147,7 +159,7 @@ export function checkFetchCompsCooldown(
 export function recordFetchComps(campaignId: number) {
   const existing = pruneOld(fetchCompsMap.get(campaignId) ?? []);
   existing.push(Date.now());
-  fetchCompsMap.set(campaignId, existing);
+  cappedMapSet(fetchCompsMap, campaignId, existing);
 }
 
 // ─── Skip Trace Types & Call ──────────────────────────────────────────────────
@@ -399,7 +411,7 @@ export function checkCooldown(
         };
       }
       // Reset window after cooldown passes
-      leadFetchMap.set(leadId, { count: 0, firstAt: now, lastAt: now });
+      cappedMapSet(leadFetchMap, leadId, { count: 0, firstAt: now, lastAt: now });
     }
 
     const elapsed = now - rec.lastAt;
@@ -421,11 +433,11 @@ export function recordFetch(leadId: number, campaignId: number) {
   const now = Date.now();
   const rec = leadFetchMap.get(leadId);
   if (rec) {
-    leadFetchMap.set(leadId, { ...rec, count: rec.count + 1, lastAt: now });
+    cappedMapSet(leadFetchMap, leadId, { ...rec, count: rec.count + 1, lastAt: now });
   } else {
-    leadFetchMap.set(leadId, { count: 1, firstAt: now, lastAt: now });
+    cappedMapSet(leadFetchMap, leadId, { count: 1, firstAt: now, lastAt: now });
   }
-  campaignFetchMap.set(campaignId, now);
+  cappedMapSet(campaignFetchMap, campaignId, now);
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────

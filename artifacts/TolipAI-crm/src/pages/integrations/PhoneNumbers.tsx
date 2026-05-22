@@ -88,6 +88,14 @@ function MiniPlayer({ url }: { url: string }) {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const proxyUrl = `/api/twilio/voice/recording-proxy?url=${encodeURIComponent(url)}`;
+
+  // ── Cleanup: pause + release audio resources on unmount (MEM-02) ───────────
+  useEffect(() => {
+    const el = audioRef.current;
+    return () => {
+      if (el) { el.pause(); el.src = ""; }
+    };
+  }, []);
   const toggle = async () => {
     const el = audioRef.current; if (!el) return;
     if (playing) { el.pause(); setPlaying(false); }

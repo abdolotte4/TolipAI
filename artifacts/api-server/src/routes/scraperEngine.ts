@@ -251,6 +251,17 @@ async function _buyerLeadIds(user: CrmTokenPayload): Promise<number[] | null> {
   return rows.map((r) => r.id);
 }
 
+// Postgres parameter limit is ~32,767 — chunk large inArray calls to avoid it (BUG-SCRAP-01)
+function chunkedInArray(col: Parameters<typeof inArray>[0], ids: number[]): SQL {
+  const CHUNK = 10_000;
+  if (ids.length <= CHUNK) return inArray(col, ids);
+  const chunks: SQL[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    chunks.push(inArray(col, ids.slice(i, i + CHUNK)));
+  }
+  return or(...chunks) as SQL;
+}
+
 function _buyerWhere(
   scopeIds: number[] | null,
   q: Record<string, string>,
@@ -258,7 +269,7 @@ function _buyerWhere(
   const conds: SQL[] = [];
   if (scopeIds !== null) {
     if (scopeIds.length === 0) return sql`false`;
-    conds.push(inArray(cashBuyerMatches.leadId, scopeIds));
+    conds.push(chunkedInArray(cashBuyerMatches.leadId, scopeIds));
   }
   const search = q["search"]?.trim();
   if (search) {

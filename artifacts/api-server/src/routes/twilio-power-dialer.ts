@@ -362,20 +362,20 @@ router.post("/twilio/voice/power-dial/session/:id/call", crmAuth, async (req, re
         .where(eq(crmBackgroundJobs.id, sessionId));
     });
 
-    // ── Log all initiated calls ────────────────────────────────────────────
-    for (let i = 0; i < successCalls.length; i++) {
-      const call = successCalls[i]!;
-      const lead = dialableLeads[i]!;
-      await db.insert(crmCallLogs).values({
-        callSid: call.sid,
-        campaignId: p.campaignId,
-        leadId: lead.id,
-        direction: "outbound",
-        status: "initiated",
-        fromNumber: p.callerIdPhone,
-        toNumber: lead.phone!,
-        disposition: "power_dial",
-      }).onConflictDoNothing();
+    // ── Log all initiated calls — single batch INSERT (PERF-06) ──────────────
+    if (successCalls.length > 0) {
+      await db.insert(crmCallLogs).values(
+        successCalls.map((call, i) => ({
+          callSid: call.sid,
+          campaignId: p.campaignId,
+          leadId: dialableLeads[i]!.id,
+          direction: "outbound" as const,
+          status: "initiated",
+          fromNumber: p.callerIdPhone,
+          toNumber: dialableLeads[i]!.phone!,
+          disposition: "power_dial",
+        }))
+      ).onConflictDoNothing();
     }
 
     logger.info({ sessionId, batchSize: successCalls.length, lines }, "[powerDial] Parallel AMD calls initiated");

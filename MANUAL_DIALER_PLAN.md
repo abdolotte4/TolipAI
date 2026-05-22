@@ -17,7 +17,7 @@
 | Outbound call from thread | ✅ Fixed (`startCall` signature corrected) |
 | Real-time transcript during active call | ✅ Fixed — dual-speaker bubbles with auto-scroll |
 | Contact name resolution (CRM leads) | ⚠️ Shows only if `leadId` already linked |
-| Inbound SMS notification | ❌ No real-time push |
+| Inbound SMS notification | ✅ Real-time SSE push (Phase 2.1 complete) |
 | Unread badge counts | ❌ Not implemented |
 | Active call overlay inside thread | ❌ Not implemented |
 | Sound notifications (ring, new message) | ❌ Not implemented |
@@ -40,7 +40,7 @@
 
 ## Phase 2 — Real-Time Updates & Active Call Overlay
 
-### 2.1 SSE-driven conversation refresh
+### 2.1 SSE-driven conversation refresh ✅ DONE
 **Problem:** Conversation list only refreshes on a 30s polling interval. Inbound calls and texts appear stale.
 
 **Solution:**

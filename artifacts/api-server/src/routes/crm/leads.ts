@@ -464,54 +464,75 @@ router.post("/bulk-import", crmAuth, async (req, res) => {
   let created = 0;
   const errors: { row: number; message: string }[] = [];
 
+  // ── Phase 1: validate & build all row values in memory (PERF-03) ──────────
+  type InsertRow = typeof crmLeads.$inferInsert;
+  const toInsert: Array<{ rowIdx: number; values: InsertRow }> = [];
+
   for (let i = 0; i < rows.length; i++) {
     const data = rows[i];
     try {
       const erc = parseMoney(data.estimatedRepairCost);
       const arv = parseMoney(data.arv);
       const mao = arv != null && erc != null ? calculateMao(arv, erc, getMaoDiscount(campaignId)) : null;
-
-      const [lead] = await db.insert(crmLeads).values({
-        campaignId: campaignId ?? (data.campaignId ? parseInt(data.campaignId) : null),
-        sellerName: data.sellerName || data.name || "Unknown",
-        phone: data.phone || null,
-        email: data.email || null,
-        leadSource: data.leadSource || data.source || "csv_import",
-        address: data.address || null,
-        city: data.city || null,
-        state: data.state || null,
-        zip: data.zip || null,
-        propertyType: data.propertyType || null,
-        beds: data.beds ? parseInt(data.beds) : null,
-        baths: data.baths ? data.baths.toString() : null,
-        sqft: data.sqft ? parseInt(data.sqft) : null,
-        condition: data.condition ? parseInt(data.condition) : null,
-        occupancy: data.occupancy || null,
-        isRental: data.isRental === true || data.isRental === "true" || false,
-        reasonForSelling: data.reasonForSelling || null,
-        howSoon: data.howSoon || null,
-        askingPrice: parseMoney(data.askingPrice)?.toString() || null,
-        currentValue: parseMoney(data.currentValue)?.toString() || null,
-        estimatedRepairCost: erc?.toString() || null,
-        arv: arv?.toString() || null,
-        mao: mao?.toString() || null,
-        notes: data.notes || null,
-        status: data.status || "new",
-        assignedTo: data.assignedTo ? parseInt(data.assignedTo) : null,
-      }).returning();
-      created++;
-      setImmediate(() => {
-        emitCrmActivity("lead_created", {
-          campaignId: lead.campaignId ?? null,
-          leadId: lead.id,
-          leadName: lead.sellerName || "Unknown",
-          address: lead.address ?? "",
-          source: "csv_import",
-          ts: Date.now(),
-        });
+      toInsert.push({
+        rowIdx: i,
+        values: {
+          campaignId: campaignId ?? (data.campaignId ? parseInt(data.campaignId) : null),
+          sellerName: data.sellerName || data.name || "Unknown",
+          phone: data.phone || null,
+          email: data.email || null,
+          leadSource: data.leadSource || data.source || "csv_import",
+          address: data.address || null,
+          city: data.city || null,
+          state: data.state || null,
+          zip: data.zip || null,
+          propertyType: data.propertyType || null,
+          beds: data.beds ? parseInt(data.beds) : null,
+          baths: data.baths ? data.baths.toString() : null,
+          sqft: data.sqft ? parseInt(data.sqft) : null,
+          condition: data.condition ? parseInt(data.condition) : null,
+          occupancy: data.occupancy || null,
+          isRental: data.isRental === true || data.isRental === "true" || false,
+          reasonForSelling: data.reasonForSelling || null,
+          howSoon: data.howSoon || null,
+          askingPrice: parseMoney(data.askingPrice)?.toString() || null,
+          currentValue: parseMoney(data.currentValue)?.toString() || null,
+          estimatedRepairCost: erc?.toString() || null,
+          arv: arv?.toString() || null,
+          mao: mao?.toString() || null,
+          notes: data.notes || null,
+          status: data.status || "new",
+          assignedTo: data.assignedTo ? parseInt(data.assignedTo) : null,
+        },
       });
     } catch (err: any) {
       errors.push({ row: i + 1, message: err?.message || "Unknown error" });
+    }
+  }
+
+  // ── Phase 2: single batched INSERT (1 round-trip instead of N) ────────────
+  if (toInsert.length > 0) {
+    try {
+      const inserted = await db.insert(crmLeads)
+        .values(toInsert.map(r => r.values))
+        .returning();
+      created = inserted.length;
+      setImmediate(() => {
+        for (const lead of inserted) {
+          emitCrmActivity("lead_created", {
+            campaignId: lead.campaignId ?? null,
+            leadId: lead.id,
+            leadName: lead.sellerName || "Unknown",
+            address: lead.address ?? "",
+            source: "csv_import",
+            ts: Date.now(),
+          });
+        }
+      });
+    } catch (err: any) {
+      for (const r of toInsert) {
+        errors.push({ row: r.rowIdx + 1, message: err?.message || "Database insert failed" });
+      }
     }
   }
 

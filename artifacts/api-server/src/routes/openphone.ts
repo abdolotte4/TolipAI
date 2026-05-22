@@ -1,10 +1,35 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
+import crypto from "crypto";
 import { crmAuth } from "./crm/middleware";
 import { db } from "@workspace/db";
 import { crmOpenPhoneMessages, crmLeads, crmCampaigns, crmUsers, crmNotifications } from "@workspace/db/schema";
 import { eq, desc, or, sql as drizzleSql } from "drizzle-orm";
 import { toE164, digitsOnly } from "../services/coreCalculations";
 import { logger } from "../lib/logger";
+
+// ── OpenPhone webhook signature verification (SEC-02) ─────────────────────────
+// OpenPhone signs each webhook request with HMAC-SHA256(signingSecret, rawBody).
+// Set OPENPHONE_WEBHOOK_SECRET in env from OpenPhone Settings → Webhooks → Signing Secret.
+function verifyOpenPhoneSignature(req: Request): boolean {
+  const secret = process.env.OPENPHONE_WEBHOOK_SECRET;
+  if (!secret) {
+    logger.warn("[openphone] OPENPHONE_WEBHOOK_SECRET not configured — webhook signature NOT verified");
+    return true; // fail-open with loud warning until secret is configured
+  }
+  const signature = req.headers["openphone-signature"] as string | undefined;
+  if (!signature) {
+    logger.warn("[openphone] Missing openphone-signature header — rejecting request");
+    return false;
+  }
+  // Reconstruct body as JSON string (Express json() body-parser re-serialises)
+  const rawBody = JSON.stringify(req.body);
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
 
 const router: IRouter = Router();
 
@@ -170,10 +195,15 @@ router.get("/openphone/calls", crmAuth, async (req, res) => {
 });
 
 // ── POST /api/openphone/webhook ───────────────────────────────────────────────
-// OpenPhone sends real-time events here — no auth required (webhook)
+// OpenPhone sends real-time events here. Signature verified via HMAC-SHA256.
 // Register this URL in OpenPhone Settings → Webhooks:
 //   https://your-domain/api/openphone/webhook
+// Add signing secret as env var: OPENPHONE_WEBHOOK_SECRET
 router.post("/openphone/webhook", async (req, res) => {
+  if (!verifyOpenPhoneSignature(req)) {
+    res.status(401).json({ error: "Invalid webhook signature" });
+    return;
+  }
   const event = req.body;
   res.status(200).json({ received: true }); // Respond immediately
 

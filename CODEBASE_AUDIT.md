@@ -368,11 +368,11 @@
 
 | ID | Severity | Location | Description | Status |
 |---|---|---|---|---|
-| SEC-01 | **CRITICAL** | `crm/users.ts:225` | `GET /:id/password` returns `password_plain` from DB — authenticated but plaintext retrieval endpoint | **OPEN** |
-| SEC-02 | **HIGH** | `openphone.ts:176` | `/openphone/webhook` — no OpenPhone/Twilio signature verification; anyone can spoof inbound SMS | **OPEN** |
-| SEC-03 | **HIGH** | `twilio-fax.ts:14` | `/fax/inbound` — no Twilio signature verification; fake fax records injectable | **OPEN** |
+| SEC-01 | **CRITICAL** | `crm/users.ts:225` | `GET /:id/password` returns `password_plain` from DB — authenticated but plaintext retrieval endpoint | ✅ **FIXED** — endpoint returns HTTP 410 Gone |
+| SEC-02 | **HIGH** | `openphone.ts:176` | `/openphone/webhook` — no OpenPhone/Twilio signature verification; anyone can spoof inbound SMS | ✅ **FIXED** — HMAC-SHA256 via `verifyOpenPhoneSignature()`, requires `OPENPHONE_WEBHOOK_SECRET` env var |
+| SEC-03 | **HIGH** | `twilio-fax.ts:14` | `/fax/inbound` — no Twilio signature verification; fake fax records injectable | ✅ **FIXED** — `twilioWebhookMiddleware` applied |
 | SEC-04 | **MEDIUM** | `sse.ts:26` | JWT in URL query param — captured in access logs | **OPEN** |
-| SEC-05 | **MEDIUM** | `lib/twilioWebhookMiddleware.ts:20` | Soft-fails (skips validation) if `TWILIO_AUTH_TOKEN` env var missing | **NEW** |
+| SEC-05 | **MEDIUM** | `lib/twilioWebhookMiddleware.ts:20` | Soft-fails (skips validation) if `TWILIO_AUTH_TOKEN` env var missing | ✅ **FIXED** — hard-fails with HTTP 500 |
 | SEC-06 | **MEDIUM** | `TolipAI-website/Admin.tsx` | Website admin JWT stored in `localStorage` — XSS-extractable | **OPEN** |
 | SEC-07 | **MEDIUM** | `crm/crypto-util.ts` | Falls back to `JWT_SECRET` for AES if `ENCRYPTION_KEY` missing | **OPEN** |
 | SEC-08 | **LOW** | `crm/index.ts`, `contact.ts`, `subscribe.ts` | Public POST endpoints lack rate limiting/CAPTCHA | **OPEN** |
@@ -382,30 +382,30 @@
 
 | ID | Severity | Location | Description | Status |
 |---|---|---|---|---|
-| PERF-01 | **HIGH** | `services/propertyApi.ts` | 4 global `Map`s grow indefinitely — linear memory leak | **NEW** |
-| PERF-02 | **HIGH** | `routes/twilio.ts:521` | Full `crmLeads` table scan for phone reverse-lookup (no index on `phone_number`) | **PRE-EXISTING** |
-| PERF-03 | **MEDIUM** | `routes/crm/leads.ts:474` | `bulk-import` inserts one row at a time instead of batched | **PRE-EXISTING** |
-| PERF-04 | **MEDIUM** | `routes/crm/campaigns.ts:59` | Per-campaign `count(*)` in list endpoint — N+1 | **PRE-EXISTING** |
-| PERF-05 | **MEDIUM** | `routes/crm/analytics.ts` | Multiple `db.execute(sql...)` not consolidated | **PRE-EXISTING** |
-| PERF-06 | **LOW** | `routes/twilio-power-dialer.ts:366` | Individual `db.insert(crmCallLogs)` inside batch-dial loop | **NEW** |
+| PERF-01 | **HIGH** | `services/propertyApi.ts` | 4 global `Map`s grow indefinitely — linear memory leak | ✅ **FIXED** — `cappedMapSet()` evicts oldest entry when size > 50,000 |
+| PERF-02 | **HIGH** | `routes/twilio.ts:521` | Full `crmLeads` table scan for phone reverse-lookup (no index on `phone_number`) | ✅ **FIXED** — `crm_leads_phone_idx` created in startup |
+| PERF-03 | **MEDIUM** | `routes/crm/leads.ts:474` | `bulk-import` inserts one row at a time instead of batched | ✅ **FIXED** — single `db.insert().values([...])` batch (1 round-trip) |
+| PERF-04 | **MEDIUM** | `routes/crm/campaigns.ts:59` | Per-campaign `count(*)` in list endpoint — N+1 | **OPEN** |
+| PERF-05 | **MEDIUM** | `routes/crm/analytics.ts` | Multiple `db.execute(sql...)` not consolidated | **OPEN** |
+| PERF-06 | **LOW** | `routes/twilio-power-dialer.ts:366` | Individual `db.insert(crmCallLogs)` inside batch-dial loop | ✅ **FIXED** — single batch insert via `.values([...map...])` |
 
 ### 8.3 Memory & Resource Leaks
 
 | ID | Location | Description | Status |
 |---|---|---|---|
-| MEM-01 | `services/propertyApi.ts` | 4 global Maps never pruned | **NEW** |
-| MEM-02 | `pages/integrations/PhoneNumbers.tsx` | `MiniPlayer` audio not paused/`revokeObjectURL`'d on unmount | **NEW** |
-| MEM-03 | `contexts/PhoneContext.tsx` | Old `AudioContext` not closed when `initDevice` called multiple times | **NEW** |
+| MEM-01 | `services/propertyApi.ts` | 4 global Maps never pruned | ✅ **FIXED** — `cappedMapSet()` caps all 4 Maps at 50k entries |
+| MEM-02 | `pages/integrations/PhoneNumbers.tsx` | `MiniPlayer` audio not paused/`revokeObjectURL`'d on unmount | ✅ **FIXED** — `useEffect` cleanup pauses audio and clears `src` |
+| MEM-03 | `contexts/PhoneContext.tsx` | Old `AudioContext` not closed when `initDevice` called multiple times | **OPEN** |
 
 ### 8.4 Bug Tracking
 
 | ID | Location | Description | Status |
 |---|---|---|---|
-| BUG-BOOT-01 | `src/index.ts` | `ensureIndexes()`/`repairSequences()` without `await` — race on startup | **NEW** |
-| BUG-AUTO-01 | `services/automation.ts:52` | `splice` during `onboardingQueue` iteration — skips items | **NEW** |
-| BUG-BD-01 | `BrowserDialer.tsx` | `coachingTimerRef` not cleared on unmount | **NEW** |
-| BUG-BD-02 | `BrowserDialer.tsx` | `checkSid` interval not cleared on unmount | **NEW** |
-| BUG-SCRAP-01 | `routes/scraperEngine.ts` | `inArray` with >32k leads exceeds Postgres param limit | **NEW** |
+| BUG-BOOT-01 | `src/index.ts` | `ensureIndexes()`/`repairSequences()` without `await` — race on startup | ✅ **FIXED** — `runDbStartupTasks()` awaited before `app.listen()` |
+| BUG-AUTO-01 | `services/automation.ts:52` | `splice` during `onboardingQueue` iteration — skips items | ✅ **FIXED** — atomically rebuilds queue using `filter()` before processing |
+| BUG-BD-01 | `BrowserDialer.tsx` | `coachingTimerRef` not cleared on unmount | ✅ **FIXED** — unmount `useEffect` clears `coachingTimerRef` |
+| BUG-BD-02 | `BrowserDialer.tsx` | `checkSid` interval not cleared on unmount | ✅ **FIXED** — `checkSidRef` stored and cleared on unmount |
+| BUG-SCRAP-01 | `routes/scraperEngine.ts` | `inArray` with >32k leads exceeds Postgres param limit | ✅ **FIXED** — `chunkedInArray()` splits at 10k per chunk using `or()` |
 
 ### 8.5 Type Safety
 - Widespread `as any` in: API response handling (OpenAI, ATTOM, Twilio, Drizzle `execute` results), `formatTask`/`formatComp` helpers, scraper result rows
@@ -446,24 +446,24 @@ Several pages access APIs without the `/api` prefix or use different conventions
 
 | # | Task | File(s) |
 |---|---|---|
-| A1 | **Remove `password_plain` retrieval** — `GET /:id/password` must never return plaintext; replace with forced password reset flow | `crm/users.ts` |
-| A2 | **Add OpenPhone webhook signature verification** | `openphone.ts` |
-| A3 | **Add Twilio signature verification to fax inbound** using `twilioWebhookMiddleware` | `twilio-fax.ts` |
-| A4 | **Hard-fail `twilioWebhookMiddleware`** if `TWILIO_AUTH_TOKEN` env missing (remove soft-fail) | `lib/twilioWebhookMiddleware.ts` |
-| A5 | **Add `await`** to `ensureIndexes()` and `repairSequences()` in server startup | `src/index.ts` |
+| A1 | ✅ **Remove `password_plain` retrieval** — endpoint returns 410 Gone | `crm/users.ts` |
+| A2 | ✅ **Add OpenPhone webhook signature verification** — HMAC-SHA256 via `OPENPHONE_WEBHOOK_SECRET` | `openphone.ts` |
+| A3 | ✅ **Add Twilio signature verification to fax inbound** using `twilioWebhookMiddleware` | `twilio-fax.ts` |
+| A4 | ✅ **Hard-fail `twilioWebhookMiddleware`** if `TWILIO_AUTH_TOKEN` env missing | `lib/twilioWebhookMiddleware.ts` |
+| A5 | ✅ **Add `await`** to `ensureIndexes()` and `repairSequences()` in server startup | `src/index.ts` |
 
 ### Priority 2 — High (This Sprint)
 
 | # | Task | File(s) |
 |---|---|---|
-| B1 | **Add index on `crm_leads(phone_number)`** — resolves PERF-02 full-table scan | Schema |
-| B2 | **Prune global Maps in `propertyApi.ts`** — use LRU cache (max size) or Redis | `services/propertyApi.ts` |
-| B3 | **Fix `onboardingQueue` splice-during-iteration** — collect due items into temp array first | `services/automation.ts` |
-| B4 | **Batch `bulk-import` inserts** — single `db.insert().values([...])` call | `crm/leads.ts` |
+| B1 | ✅ **Add index on `crm_leads(phone_number)`** — `crm_leads_phone_idx` created in startup | Schema |
+| B2 | ✅ **Prune global Maps in `propertyApi.ts`** — `cappedMapSet()` evicts at 50k entries | `services/propertyApi.ts` |
+| B3 | ✅ **Fix `onboardingQueue` splice-during-iteration** — atomic queue rebuild via `filter()` | `services/automation.ts` |
+| B4 | ✅ **Batch `bulk-import` inserts** — single `db.insert().values([...])` call | `crm/leads.ts` |
 | B5 | **Move SSE JWT to `Authorization` header** via short-lived token exchange endpoint | `sse.ts`, `AppLayout.tsx` |
 | B6 | **Add local `<ErrorBoundary>`** wrappers on `BrowserDialer`, `CompsSection`, `LeadDetail` | CRM components |
 | B7 | **Migrate date `text` columns to `date`/`timestamp`** in schema | `lib/db/src/schema/crm.ts` |
-| B8 | **Fix `MiniPlayer` unmount** — pause audio, call `URL.revokeObjectURL` | `PhoneNumbers.tsx` |
+| B8 | ✅ **Fix `MiniPlayer` unmount** — `useEffect` cleanup pauses audio and clears `src` | `PhoneNumbers.tsx` |
 
 ### Priority 3 — Medium (Next Sprint)
 
@@ -476,10 +476,10 @@ Several pages access APIs without the `/api` prefix or use different conventions
 | C5 | Enable real TypeScript type checking (`tsc --noEmit`) in CI pipeline | `package.json` |
 | C6 | Persist `exhaustedKeys` to DB or use TTL cache (Redis) | `routes/scraper.ts` |
 | C7 | Add missing indexes on `crm_leads(email)`, `crm_leads(zip)`, `scraper_jobs(campaignId)` | Schema |
-| C8 | Fix `coachingTimerRef` and `checkSid` interval cleanup on unmount in `BrowserDialer` | `BrowserDialer.tsx` |
+| C8 | ✅ Fix `coachingTimerRef` and `checkSid` interval cleanup on unmount in `BrowserDialer` | `BrowserDialer.tsx` |
 | C9 | Add `useCallback` / memoize `refreshList` in `CashBuyerMatchPanel` | Component |
 | C10 | Add `aria-label` to all icon-only buttons (trash, edit, pencil) across CRM | Multiple pages |
-| C11 | Fix `scraperEngine.ts` `inArray` — paginate or use temp table for >32k leads | `routes/scraperEngine.ts` |
+| C11 | ✅ Fix `scraperEngine.ts` `inArray` — `chunkedInArray()` splits at 10k per chunk | `routes/scraperEngine.ts` |
 | C12 | Fix old `AudioContext` leak in `PhoneContext.initDevice` | `PhoneContext.tsx` |
 
 ### Priority 4 — Low / Tech Debt

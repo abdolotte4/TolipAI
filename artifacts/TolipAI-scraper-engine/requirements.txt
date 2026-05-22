@@ -39,7 +39,7 @@ lxml==5.3.1
 PyMuPDF==1.25.5
 pdfplumber==0.11.5
 pytesseract==0.3.13
-Pillow==11.2.1  # CVE-2024-28219 patched in >=10.3.0; 11.2.1 is safe
+Pillow==10.4.0   # CVE-2024-28219 patched in >=10.3.0; 11.2.1 is safe
 
 # ── Geo / maps ────────────────────────────────────────────────────────────────
 geopy==2.4.1
