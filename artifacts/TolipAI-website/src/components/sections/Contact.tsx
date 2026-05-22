@@ -232,7 +232,7 @@ export function Contact() {
                     <span className="text-xs text-muted-foreground leading-relaxed">
                       I agree that <span className="text-foreground font-medium">TolipAI</span> may send me SMS/text messages for marketing updates and promotions. Message and data rates may apply. Reply <span className="font-medium text-foreground">STOP</span> to unsubscribe. Reply <span className="font-medium text-foreground">HELP</span> for assistance.{" "}
                       <a
-                        href="https://tolipai.com/privacy-policy"
+                        href="/privacy-policy"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline underline-offset-2 hover:text-primary/80"
@@ -242,7 +242,7 @@ export function Contact() {
                       </a>{" "}
                       and{" "}
                       <a
-                        href="https://tolipai.com/terms-of-service"
+                        href="/terms-of-service"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline underline-offset-2 hover:text-primary/80"

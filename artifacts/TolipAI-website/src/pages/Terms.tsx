@@ -71,8 +71,8 @@ export default function Terms() {
 
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">4. Non-Refundable Policy</h2>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-5">
-              <p className="font-semibold text-red-600 mb-2">⚠ All payments are non-refundable.</p>
+            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-xl p-5">
+              <p className="font-semibold text-red-600 dark:text-red-400 mb-2">⚠ All payments are non-refundable.</p>
               <p>
                 Due to the immediate deployment of managed services, dedicated resources, and proprietary data infrastructure
                 upon subscription activation, <strong className="text-foreground">all subscription fees are non-refundable</strong> once a billing period has commenced.
@@ -111,8 +111,8 @@ export default function Terms() {
               until that date. No further charges will be made after a confirmed cancellation.
             </p>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-6">
-              <p className="font-semibold text-amber-700 mb-2">3-Day Billing Inquiry Window</p>
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-5 mt-6">
+              <p className="font-semibold text-amber-700 dark:text-amber-400 mb-2">3-Day Billing Inquiry Window</p>
               <p>
                 Service is non-refundable. For billing inquiries or technical support, please contact us{" "}
                 <strong className="text-foreground">by email only</strong> at{" "}
@@ -125,7 +125,7 @@ export default function Terms() {
                 After this window, no reversal of that period's charge will be considered under any circumstances,
                 regardless of cancellation method used.
               </p>
-              <p className="mt-3 text-sm text-amber-600/80">
+              <p className="mt-3 text-sm text-amber-600/80 dark:text-amber-500/80">
                 Note: Cancelling your subscription through Stripe stops future billing but does not entitle you to a refund
                 for the current billing period. All billing inquiries must be submitted via email within the 3-day window.
               </p>

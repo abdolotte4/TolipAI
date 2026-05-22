@@ -833,6 +833,20 @@ router.post("/twilio/webhook", async (req, res) => {
 
           if (!campaign?.aiSmsEnabled || !campaign.twilioEnabled) return;
 
+          // HELP keyword → send carrier-compliant support reply and stop (no AI)
+          if (/^HELP\b/i.test(content.trim())) {
+            const helpMsg =
+              `TolipAI: For help, email info@tolipai.com or call (555) 201-4892. ` +
+              `Reply STOP to unsubscribe. Msg & data rates may apply.`;
+            try {
+              await sendSms({ to: fromNumber, body: helpMsg, campaignId: lead.campaignId! });
+              logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] HELP auto-reply sent");
+            } catch (helpErr) {
+              logger.warn(helpErr, "[twilio webhook] HELP auto-reply send failed");
+            }
+            return;
+          }
+
           // Opt-out keyword → record and stop
           if (isOptOutMessage(content)) {
             await db.insert(crmSmsOptOuts).values({

@@ -9,6 +9,7 @@ import { SubscribeModal } from "@/components/SubscribeModal";
 const Home               = lazy(() => import("@/pages/Home"));
 const Admin              = lazy(() => import("@/pages/Admin"));
 const Terms              = lazy(() => import("@/pages/Terms"));
+const PrivacyPolicy      = lazy(() => import("@/pages/PrivacyPolicy"));
 const CheckoutSuccess    = lazy(() => import("@/pages/CheckoutSuccess"));
 const MissionVisionValues = lazy(() => import("@/pages/MissionVisionValues"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
@@ -50,6 +51,7 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/admin" component={Admin} />
         <Route path="/terms-of-service" component={Terms} />
+        <Route path="/privacy-policy" component={PrivacyPolicy} />
         <Route path="/checkout-success" component={CheckoutSuccess} />
         <Route path="/mission-vision-values" component={MissionVisionValues} />
         <Route component={NotFound} />

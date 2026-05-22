@@ -62,6 +62,16 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      "/crm": {
+        target: `http://localhost:${process.env.CRM_PORT || "3001"}`,
+        changeOrigin: true,
+        secure: false,
+      },
+      "/tools": {
+        target: `http://localhost:${process.env.TOOLS_PORT || "3002"}`,
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   preview: {
