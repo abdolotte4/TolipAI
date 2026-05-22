@@ -100,6 +100,12 @@
 | S23-a | **Phase 2.2 Unread badges** — `crm_phone_read_receipts` table (schema + startup migration), `unreadCount` in conversations API, `POST .../read` endpoint, amber badge + bold contact name in `ConversationItem` |
 | S23-b | **requirements.txt** — relaxed `openai` and `httpx` pins to semver ranges so `crawl4ai` transitive deps can resolve |
 | S23-c | **infrastructure/FARGATE_MIGRATION.md** — complete step-by-step AWS Fargate Spot deployment guide for scraper engine |
+| S23-d | **SMS/TCPA consent checkbox** — mandatory `literal(true)` Zod guard on website contact form; consent text references Privacy Policy and Terms |
+| S23-e | **Privacy Policy page** — new `/privacy-policy` route (`PrivacyPolicy.tsx`) with full TCPA/data-collection/retention disclosure; linked from Footer and Contact form |
+| S23-f | **Terms of Service dark theme** — `bg-red-50` / `bg-amber-50` callout boxes get `dark:bg-red-950/40 dark:border-red-800/60` and `dark:bg-amber-950/40 dark:border-amber-800/60` variants |
+| S23-g | **Dev proxy setup** — `artifacts/TolipAI-website/vite.config.ts` adds `/crm → 3001` and `/tools → 3002` server proxies; `start-dev.sh` starts all three Vite dev servers; workflow updated to `bash start-dev.sh` |
+| S23-h | **Twilio HELP auto-reply** — TCPA-compliant keyword handler added to `POST /twilio/sms` webhook (before opt-out check): detects `/^HELP\b/i`, sends carrier-compliant support info via `sendSms`, returns early |
+| S23-i | **Website dark theme audit** — `MissionVisionValues.tsx` and `not-found.tsx` hardcoded `text-white`, `text-gray-400`, `text-gray-900`, `bg-gray-50` replaced with semantic Tailwind tokens (`text-foreground`, `text-muted-foreground`, `bg-background`) |
 
 ---
 

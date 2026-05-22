@@ -177,10 +177,25 @@
 - `artifacts/TolipAI-crm/src/pages/integrations/PhoneNumbers.tsx` (config panel)
 
 ### 4.2 Inbound SMS auto-reply
-**Problem:** Inbound SMS has no automation.
+
+#### 4.2.1 Carrier-compliance keywords ✅ DONE (S23-h)
+**STOP / HELP keyword handling implemented in `POST /twilio/sms`:**
+
+- **STOP** — Already handled pre-S23 via the opt-out check that inserts into `crm_sms_opt_outs` and returns `<Response/>`.
+- **HELP** — New handler (S23-h) added before the opt-out check:
+  ```typescript
+  if (/^HELP\b/i.test(body.trim())) {
+    await sendSms(to, from, "TolipAI: For support email support@tolipai.com. Reply STOP to opt out. Msg&Data rates may apply.");
+    return res.type("text/xml").send("<Response/>");
+  }
+  ```
+  This satisfies CTIA/carrier HELP compliance requirements (10DLC, short codes).
+
+#### 4.2.2 Template-based auto-reply (planned)
+**Problem:** No campaign-specific automatic responses for common inbound patterns.
 
 **Solution:**
-- In the `POST /twilio/sms` webhook, if an existing campaign auto-reply template matches, immediately respond with `<Response><Message>...</Message></Response>`.
+- In the `POST /twilio/sms` webhook, after keyword checks, if a campaign auto-reply template matches the inbound body, immediately respond with `<Response><Message>...</Message></Response>`.
 - Store templates in a new `crm_sms_templates` table per campaign.
 - Optionally, trigger the Groq-based AI to draft a reply (async — separate SSE event).
 

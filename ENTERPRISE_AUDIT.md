@@ -36,6 +36,7 @@ TolipAI is a **feature-rich real estate wholesaling platform** that now ships AM
 | May 10, 2026 | 85/100 | S18–S19: Sentry wired, call logs fixed, DB sequences repaired |
 | May 17, 2026 | 93/100 | S20–S21: Billing/Stripe portal, smart inbound routing, security fixes |
 | **May 22, 2026** | **93/100** | S22: AMD power dialer, live transcript, call scoring, conversations union — new features shipped but 9 new issues identified that hold score steady |
+| **May 22, 2026 (S23)** | **93/100** | S23: SMS/TCPA consent checkbox, Privacy Policy page, HELP auto-reply, Terms dark theme, dev proxy setup, website dark theme audit — compliance and UX polish; no new score deductions |
 
 ### Current Score: 93/100
 
@@ -49,6 +50,8 @@ TolipAI is a **feature-rich real estate wholesaling platform** that now ships AM
 **Target: 96/100** — achievable after Priority 1 + 2 fixes from Action Plan.
 
 > **Infrastructure note (S23):** Monorepo (api-server + SPAs) stays on Railway. Scraper engine migrates to AWS Fargate Spot (ARM64/Graviton3) — full deployment guide at `infrastructure/FARGATE_MIGRATION.md`. `API_SCRAPER_URL` env var on Railway points api-server at the Fargate ALB; no api-server code changes required.
+>
+> **Compliance additions (S23):** Website now has mandatory SMS/TCPA consent checkbox (Zod `literal(true)` guard), full Privacy Policy page at `/privacy-policy`, and Twilio HELP keyword auto-reply in the SMS webhook. Dev environment unified via `start-dev.sh` + Vite proxy so all three SPAs share a single origin during development.
 
 ---
 
