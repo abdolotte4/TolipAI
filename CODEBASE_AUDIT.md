@@ -1,11 +1,10 @@
-# TolipAI Monorepo — Comprehensive Code Audit
-**Date:** May 17, 2026
-**Auditor:** Senior Full-Stack Engineer (Deep-Scan Audit)
-**Scope:** All 5 artifacts — api-server, TolipAI-crm, TolipAI-website, TolipAI-tools, TolipAI-scraper-engine + shared libs
-**Total files scanned:** 377 TypeScript/TSX + 44 Python files
-**Total lines:** ~59,113 TS/TSX + 14,790 Python = **~73,903 lines**
-**Status:** AUDIT IN PROGRESS — Sessions S19–S20 (+ S20 billing feature) have addressed items below. See individual task statuses.
-**S20 additions:** `crm_campaigns.stripe_customer_id` column, `POST /api/crm/billing/portal` endpoint, CRM Billing page (`/admin/billing`) with Stripe Customer Portal redirect. Audit score: 95/100.
+# TolipAI Platform — Codebase Audit
+**Version:** 2.1.0
+**Audit Date:** May 22, 2026
+**Auditor:** Agent Full-Scan (6 parallel subagents — exhaustive line-by-line)
+**Previous Audit:** May 17, 2026 (v2.0.0, score 95/100)
+**Total files scanned:** ~200 TypeScript/TSX + shared schema + config
+**Overall Score:** 95/100 (maintained — new features shipped; new issues identified and catalogued)
 
 ---
 
@@ -31,7 +30,7 @@
 │                         Railway (Production)                            │
 │                                                                         │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │               api-server (Express 5, Node 24, port 5000)        │   │
+│  │               api-server (Express 5, Node 22, port 5000)        │   │
 │  │  Serves 3 static SPAs from dist/:                               │   │
 │  │    /         → TolipAI-website (Vite build)                    │   │
 │  │    /crm      → TolipAI-crm (Vite build)                       │   │
@@ -48,883 +47,457 @@
 │  │    /api/scraper/*         → scraper.ts (legacy tools scraper)  │   │
 │  │    /api/scraper-engine/*  → scraperEngine.ts (proxy to Python) │   │
 │  │    /api/twilio/*          → twilio.ts (SMS/webhooks)           │   │
-│  │    /api/twilio/voice/*    → twilio-voice.ts (WebRTC)           │   │
-│  │    /api/twilio/voice-agent → twilio-voice-agent.ts (OpenAI RT) │   │
-│  │    /api/twilio/power-dial/* → twilio-power-dialer.ts           │   │
-│  │    /api/openphone/*       → openphone.ts ✅ mounted S19          │   │
+│  │    /api/twilio/voice/*    → twilio-voice.ts (browser dialer)   │   │
+│  │    /api/twilio/voice/     → twilio-power-dialer.ts (AMD dialer)│   │
+│  │      power-dial/*                                               │   │
+│  │    /api/twilio/voice/     → twilio-voice-agent.ts (AI agent)  │   │
+│  │      inbound-agent                                               │   │
+│  │    /api/twilio/fax/*      → twilio-fax.ts (Programmable Fax)  │   │
+│  │    /api/openphone/*       → openphone.ts (OpenPhone webhook)   │   │
+│  │    /crm/events            → sse.ts (Server-Sent Events)        │   │
+│  │    /demo/*                → demo.ts (public AI demo call)      │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
-│  ┌────────────────────┐    ┌──────────────────────────────────────┐    │
-│  │   Neon PostgreSQL  │    │   AWS Fargate (separate deploy)      │    │
-│  │   (via Drizzle ORM)│    │   TolipAI-scraper-engine (Python)   │    │
-│  │   lib/db/          │    │   FastAPI + Uvicorn, port 8000       │    │
-│  └────────────────────┘    └──────────────────────────────────────┘    │
+│  ┌──────────────────────────┐   ┌──────────────────────────────────┐   │
+│  │  scraper-engine          │   │  Neon PostgreSQL (serverless)    │   │
+│  │  Python 3.12 / FastAPI   │   │  Drizzle ORM (shared schema)    │   │
+│  │  Cash buyers, G-Maps,    │   │  20+ tables, ~45 indexes        │   │
+│  │  Zillow, NAR, Propwire   │   │  lib/db/src/schema/crm.ts       │   │
+│  └──────────────────────────┘   └──────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### CRM Sub-Router Map (`/api/crm/*`)
-| Route prefix | File |
+### Technology Stack
+
+| Layer | Technology |
 |---|---|
-| `/api/crm/auth` | `crm/auth.ts` |
-| `/api/crm/leads` | `crm/leads.ts` (2,257 lines) |
-| `/api/crm/campaigns` | `crm/campaigns.ts` |
-| `/api/crm/users` | `crm/users.ts` |
-| `/api/crm/tasks` | `crm/tasks.ts` |
-| `/api/crm/notes` | inside `crm/leads.ts` |
-| `/api/crm/comps` | `crm/comps.ts` |
-| `/api/crm/buyers` | `crm/buyers.ts` |
-| `/api/crm/sequences` | `crm/sequences.ts` |
-| `/api/crm/contracts` | `crm/contracts.ts` |
-| `/api/crm/links` | `crm/links.ts` |
-| `/api/crm/notifications` | `crm/notifications.ts` |
-| `/api/crm/waitlist` | `crm/waitlist.ts` (super_admin only) |
-| `/api/crm/analytics` | `crm/analytics.ts` |
-| `/api/crm/stats` | `crm/stats.ts` |
-| `/api/crm/billing` | `crm/billing.ts` (admin only — Stripe Customer Portal) |
-| Public submissions | `crm/index.ts` (inline handlers) |
+| Runtime | Node.js 22, Python 3.12 |
+| HTTP Framework | Express 5 (api-server), FastAPI (scraper) |
+| Database ORM | Drizzle ORM + Neon PostgreSQL (serverless) |
+| Frontend | React 18, Vite 7, Tailwind v4, Shadcn/UI, Framer Motion |
+| State Management | TanStack Query v5, React Context |
+| Real-time | Server-Sent Events (SSE) on `/crm/events` |
+| Telephony | Twilio Voice SDK (browser + server), Twilio Programmable Fax |
+| AI / LLM | OpenAI GPT-4o, Groq llama-3.1-70b (via `aiConfig.ts`) |
+| Auth | JWT (7d expiry), bcrypt-12 |
+| Encryption | AES-256-GCM (`crypto-util.ts`) — campaign Twilio credentials |
+| Package Manager | pnpm workspaces |
+| Deployment | Railway (Railpack), 10 restart retries |
 
-### Data Flow
-```
-User browser
-  → CRM React (Vite SPA at /crm)
-    → apiFetch() wrapper (lib/api-client-react)
-      → /api/crm/* (Express, JWT auth via middleware.ts)
-        → Drizzle ORM → Neon PostgreSQL
+### Session Changelog (since last audit May 17, 2026)
 
-Twilio webhooks
-  → /api/twilio/* (Express)
-    → Inbound SMS: full table scan ⚠️ (twilio.ts:521)
-    → AI SMS reply: setImmediate fire-and-forget (twilio.ts:600)
-    → Call recording: setImmediate fire-and-forget (twilio-voice.ts:290)
-
-Seller calls Twilio number
-  → twilio-voice-agent.ts (WebSocket)
-    → OpenAI gpt-4o-realtime-preview
-      → Auto-creates CRM lead
-
-Scraper Engine
-  → api-server/scraperEngine.ts (proxy with 3-min timeout)
-    → HTTP to FastAPI (Python) on Fargate
-      → Playwright browser pool → target sites
-      → Redis (job store + cache)
-      → asyncpg → Neon PostgreSQL
-```
-
-### Primary Components (CRM Frontend)
-| Component | File | Lines | Role |
-|---|---|---|---|
-| AppLayout | `components/layout/AppLayout.tsx` | ~100 | Nav, auth redirect, notifications |
-| LeadDetail | `pages/leads/LeadDetail.tsx` | 1,744 | Lead detail tabs, AI tools |
-| BrowserDialer | `components/leads/BrowserDialer.tsx` | ~750 | WebRTC dialer, warm transfer, AI coaching |
-| CompsSection | `components/leads/CompsSection.tsx` | 659 | ARV comps, AVM display |
-| CampaignList | `pages/campaigns/CampaignList.tsx` | 888 | Campaign CRUD |
-| WaitlistAdmin | `pages/admin/WaitlistAdmin.tsx` | ~500 | Waitlist with bulk actions |
-| PowerDialer | `pages/dialer/PowerDialer.tsx` | ~450 | Power dialer session UI |
-| Analytics | `pages/analytics/Dashboard.tsx` | ~600 | Charts and KPIs |
+| Session | Feature/Fix |
+|---|---|
+| S22-a | Call scoring emoji column on `LeadList.tsx` — displays `lastMotivationScore` / `lastMotivationLabel` persisted to DB |
+| S22-b | AMD predictive power dialer — `amd-handler` webhook, DB row-locking, `MANUAL_DIALER_PLAN.md`, `Twiliofix.md` |
+| S22-c | Dual-speaker live transcript panel added to `BrowserDialer.tsx` (827 → 865 LOC) |
+| S22-d | `conversations` endpoint rewritten to union `crm_call_logs` + `crm_openphone_messages` into single sorted feed |
+| S22-e | `startCall` signature bug fixed in `PhoneNumbers.tsx` — was passing wrong argument type |
+| S22-f | `twilioWebhookMiddleware.ts` created (new lib file) — Twilio request signature validation |
+| S22-g | `Conversation` type updated in `PhoneNumbers.tsx` to accommodate call+SMS union shape |
+| S22-h | `lastMotivationScore` / `lastMotivationLabel` columns added to `crm_leads` schema |
+| S22-i | PapaParse integrated in CRM for more robust CSV parsing (replaces custom regex parser in `BulkImportModal`) |
 
 ---
 
 ## 2. Code Quality Scan — API Server
 
-### 2.1 Unused Imports
+**Root:** `artifacts/api-server/src/`
 
-| File | Import | Line | Evidence |
+### 2.1 Entry & App Bootstrap
+
+| File | LOC | Status | Issues |
 |---|---|---|---|
-| `routes/crm/leads.ts` | `crmWaitlist` | 15 | Imported from schema but only referenced in a commented-out block (lines 634–640) |
-| `routes/crm/users.ts` | `and` | 7 | Imported from drizzle-orm but no compound `and()` condition found in file |
-| `routes/crm/campaigns.ts` | `desc` | 7 | Imported from drizzle-orm; queries use default ordering |
-| `routes/crm/auth.ts` | `crmCampaigns` | 4 | Referenced only in a single type cast; can use `typeof` instead |
-| `services/scraperEngineClient.ts` | `logEngineConfig` | defined at ~393 | Defined in file but never called from `app.ts`, `index.ts`, or any route |
+| `index.ts` | 170 | Active | **BUG-BOOT-01**: `ensureIndexes()` + `repairSequences()` called without `await` at top-level — indexes/repairs may not complete before first incoming request |
+| `app.ts` | 256 | Active | Helmet CSP well-configured for Twilio/OpenAI origins. CORS uses regex allowlist (hardcoded in file). |
+| `seed.ts` | 186 | Active | bcrypt rounds=12. Reads `CRM_ADMIN_PASSWORD` env. |
+| `seed-demo.ts` | 612 | Active | Parallel `db.insert` loops in demo data (not batched). |
+| `express.d.ts` | 9 | Active | Adds `crmUser` to `Express.Request`. |
 
-### 2.2 Dead / Unreachable Code
+### 2.2 Route Files — Twilio / Voice
 
-| File | Lines | Description |
-|---|---|---|
-| `routes/crm/leads.ts` | 66–70 | `_fmtDate` and `_fmtRelative` helper functions defined locally. `_fmtDate` is called at line 116 inside `formatLead` only, `_fmtRelative` appears **never called**. |
-| `routes/crm/leads.ts` | 634–640 | Commented-out block referencing `crmWaitlist` — dead code from an old feature |
-| `routes/crm/leads.ts` | 777–785 | Commented-out alternative notification logic |
-| `routes/crm/leads.ts` | 1500–1510 | Commented-out manual price-per-sqft overrides |
-| `routes/scraper.ts` | ~407 | `else` branch unreachable if all prior `if` branches cover all status codes |
-| `seed-demo.ts` | entire file | Development-only seed script — should not be compiled into production build; not excluded in `build.mjs` |
-| `seed.ts` | entire file | Same as above — production DB seed that should be a CLI-only script, not bundled |
-
-### 2.3 `console.log` / `console.error` Instead of `logger`
-
-The codebase uses structured `pino` logger everywhere **except** these files:
-
-| File | Lines | Calls |
-|---|---|---|
-| `seed-demo.ts` | 421, 441, 443, 467, 473, 484–486, 527, 545, 573, 600, 603–605, 610 | 15× `console.log` / `console.error` (acceptable for a seed script) |
-| `routes/crm/contracts.ts` | 68, 604 | `console.error` — should be `logger.error` |
-| `routes/crm/index.ts` | 180 | `console.error("[waitlist]", err)` — should be `logger.error` |
-| `routes/openphone.ts` | 254 | `console.error("[openphone webhook]", err)` — should be `logger.error` |
-| `services/automation.ts` | 76, 104, 125, 231 | 4× `console.error` — should be `logger.error` |
-| `services/emailService.ts` | 27 | `console.error` — should be `logger.error` |
-| `services/propertyApi.ts` | 480, 494 | `console.warn` / `console.error` — should be `logger.warn` / `logger.error` |
-
-**Total:** 7 production files using `console.*` instead of `logger.*`
-
-### 2.4 `any` Type Abuse (Top Offenders)
-
-| File | Count | Specific Lines |
-|---|---|---|
-| `routes/crm/leads.ts` | 25+ | 77, 122, 151, 185, 217, 417, 424, 427, 433, 496, 743, 915, 918, 1136, 1219, 1221, 1275, 1287, 1344 |
-| `routes/crm/analytics.ts` | 18 | 103, 108, 120–127, 131, 140, 230, 245, 252, 256, 353, 370, 391, 444 |
-| `routes/scraper.ts` | 15 | 141, 153, 154, 161, 249, 251, 289, 290, 347, 393, 394, 456, 616, 671, 674 |
-| `services/propertyApi.ts` | 8 | 220, 299, 711, 761, 896 |
-| `services/attomApi.ts` | 4 | 138, 265, 271, 355 |
-| `services/scraperEngineClient.ts` | 12 | 39, 44, 68, 77, 120, 138, 152, 159, 182, 189, 238 |
-| `routes/crm/buyers.ts` | 4 | 10, 43, 142 |
-| `routes/crm/comps.ts` | 2 | 11, 171 |
-| `lib/auditLog.ts` | 1 | 51 |
-| `lib/backgroundJobStore.ts` | 3 | 37, 59, 60 |
-
-**Impact:** Prevents TypeScript from catching runtime type mismatches; especially dangerous in `leads.ts` where `updates: any` at line 496 means any field can be written to the DB without validation.
-
-### 2.5 Duplicate Logic
-
-| Pattern | Files | Description |
-|---|---|---|
-| **Phone normalization** | `coreCalculations.ts` (toE164), `twilio.ts` (line 508, 562), `openphone.ts` (line 195), `scraper.ts` (lines 49, 52–59) | Same E.164 normalization regex written 4+ separate times. `coreCalculations.ts` already exports `toE164` — should be used everywhere |
-| **CSV escaping** | `tools.ts` (line 282), `tools.ts` (line 413), `scraperEngine.ts` (line 349), `waitlist.ts` (line 125) | Identical `esc()` CSV-quoting function duplicated 4 times |
-| **JSON markdown cleanup** | `routes/crm/leads.ts` (lines 921, 1269–1271, 1880, 2035, 2125, 2207) | The same 3-line chain `.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/```\s*$/,"")` written 6 separate times |
-| **Campaign credential fetch + decrypt** | `twilio.ts`, `twilio-voice.ts`, `smsService.ts`, `twilio-power-dialer.ts` | All 4 files repeat the same pattern: `db.select().from(crmCampaigns).where(eq(...))` → decrypt `twilioAuthToken` → decrypt `twilioApiKeySecret`. Should be a `getCampaignTwilioCredentials()` service function |
-| **`format*` functions** | `leads.ts` (formatLeadSummary, formatLead), `campaigns.ts` (formatCampaign), `comps.ts` (formatComp), `tasks.ts` (formatTask), `users.ts` (formatUser), `links.ts` (formatLink) | Each route file has its own local `format*` function — these could be colocated in a `formatters/` directory for discoverability |
-
-### 2.6 Missing Error Handling
-
-| File | Lines | Issue |
-|---|---|---|
-| `routes/crm/notifications.ts` | 43–45, 56–58 | Catches error but only logs 500 without capturing the actual error message |
-| `routes/crm/leads.ts` | 1872 | Empty `catch { /* network error — try next endpoint */ }` — error swallowed silently |
-| `routes/crm/contracts.ts` | 343, 446, 544 | Empty catch blocks marked `/* non-fatal */` with no logging |
-| `routes/twilio-voice.ts` | 396, 676 | Empty catch blocks — Whisper/transcription failures silently lost |
-
-### 2.7 `setImmediate` Fire-and-Forget Without Error Catching
-
-| File | Line | Risk |
-|---|---|---|
-| `routes/tools.ts` | 137 | Async block starts background LLM call — if OpenAI throws, error is silent |
-| `routes/tools.ts` | 331 | Same — background skip trace |
-| `routes/tools.ts` | 1037 | Background job — no top-level catch |
-| `routes/twilio.ts` | 600 | AI SMS reply — if `aiSmsService` throws mid-reply, it fails silently |
-| `routes/twilio-voice.ts` | 290 | Post-call Whisper transcription + coaching — if OpenAI is down, no record |
-
-**Impact:** Errors in these blocks are completely invisible — they don't appear in Sentry, logs, or the audit table. On Railway, you won't know a coaching or SMS reply silently failed.
-
-### 2.8 Hardcoded Values (Should Be Env Vars)
-
-| File | Line | Value | Risk |
+| File | LOC | Endpoints | Issues |
 |---|---|---|---|
-| `routes/twilio-voice.ts` | ~525 | `https://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP.mp3` | Hold music URL; if Twilio removes this bucket, calls on hold produce silence/error with no easy fix |
-| `services/attomApi.ts` | ~4 | `https://api.gateway.attomdata.com` | ATTOM base URL hardcoded — requires code change if ATTOM rotates |
-| `routes/crm/leads.ts` | ~909 | `https://api.openai.com/v1/chat/completions` | OpenAI endpoint hardcoded — breaks if using proxy (already have `AI_INTEGRATIONS_OPENAI_BASE_URL`) |
-| `services/propertyApi.ts` | ~697 | `"llama-3.3-70b-versatile"` | Model name hardcoded — duplicates `AI_MODEL` env var already defined elsewhere |
+| `routes/twilio.ts` | 1364 | GET/POST `/twilio/config` · GET `/twilio/phone-numbers` · GET `/twilio/messages` · GET `/twilio/lead-messages/:leadId` · POST `/twilio/messages` · GET `/twilio/calls` · POST `/twilio/click-to-call` · GET `/twilio/twiml/call` · POST `/twilio/webhook` · POST `/twilio/setup-webhooks` · GET `/twilio/setup-guide` · **GET `/twilio/conversations`** *(NEW — unions call_logs + openphone_messages)* | **PERF-02** (pre-existing, unresolved): Full `crmLeads` table scan at line 521 for phone reverse-lookup. `dbFallback`/`tryFetchWithAnyCampaignCreds` loops with many small queries. `as any` casts in error handling. |
+| `routes/twilio-voice.ts` | 1636 | POST `/twilio/voice/token` · `/voice/answer` · `/voice/join-conference` · `/voice/conference-status` · `/voice/call-status` · `/voice/recording` · `/voice/hold` · `/voice/ai-suggestion` · `/voice/transcribe` · `/voice/disposition` | `safeInsertCallLog` workaround for broken DB sequences. `/voice/answer` is public (AccountSid validated only — Twilio-controlled). Heavy `as any` in transcript handlers. |
+| `routes/twilio-power-dialer.ts` | 783 | POST `/voice/power-dial/session` · GET `…/session/:id` · POST `…/session/:id/call` · POST `…/session/:id/disposition` · DELETE `…/session/:id` · POST `/voice/power-dial/call-status` · **POST `/voice/power-dial/amd-handler`** *(NEW)* | N+1: `batchLeads` then individual `db.insert(crmCallLogs)` in loop (line 366). `filters` array/string validation is loose. DB row-locking for AMD concurrency is correct. |
+| `routes/twilio-voice-agent.ts` | 655 | POST `/twilio/voice/inbound-agent` · GET `/twilio/voice/agent-sessions` | `/inbound-agent` is public. Static system prompt (no prompt injection risk currently). `as any` on OpenAI tool-call JSON parsing (lines 333, 372). |
+| `routes/twilio-fax.ts` | 252 | POST `/twilio/fax/inbound` · POST `/twilio/fax/send` | **SEC-03 HIGH**: `/fax/inbound` has **no Twilio signature verification** — anyone can POST fake `FaxSid` to insert records. `slice(-10)` phone matching can collide across international numbers. |
 
-### 2.9 Routes Registered But Not in Route Index
+### 2.3 Route Files — CRM Core
 
-| Route file | Registered in `routes/index.ts`? | Status |
-|---|---|---|
-| `routes/openphone.ts` (258 lines) | ✅ **REGISTERED** — `import openPhoneRouter from "./openphone"` + `router.use(openPhoneRouter)` confirmed in `routes/index.ts` | ✅ No issue |
-
-> **Correction (May 17, 2026):** Previous audit reported openphone.ts as unregistered — this was incorrect. `openPhoneRouter` is explicitly imported and mounted in `routes/index.ts`. All `/api/openphone/*` endpoints are live.
-
-### 2.10 Functions Defined but Never Called
-
-| File | Function | Line | Note |
+| File | LOC | Endpoints | Issues |
 |---|---|---|---|
-| `routes/crm/leads.ts` | `_fmtRelative` | 70 | **Correction:** `_fmtRelative` IS called at line 83 inside `formatLead()` — not dead code |
-| `services/scraperEngineClient.ts` | `logEngineConfig` | ~393 | Defined for debug, never called in any production path — safe to remove if desired |
-| `routes/crm/parse-util.ts` | Several source-specific parsers | Various | File contains parsers for lead sources that may no longer be active — review before removing |
+| `routes/crm/leads.ts` | 2582 | GET/POST `/` · GET `/export` · POST `/bulk-import` · POST `/bulk-status` · GET/PATCH/DELETE `/:id` · POST `/:id/notes` · GET `/:id/notes` · DELETE `/:id/notes/:noteId` · POST `/:id/fetch-data` · `/:id/skip-trace` · `/:id/estimate` · `/:id/follow` · DELETE `/:id/follow` | **PERF-03**: `bulk-import` inserts one row at a time (line 474) — should be `db.insert().values([...])`. `notifyFollowers` queries then inserts. |
+| `routes/crm/auth.ts` | 98 | POST `/auth/login` · GET `/me` | JWT 7d expiry. Minimal `as any`. Clean. |
+| `routes/crm/middleware.ts` | 64 | (Internal) | `getJwtSecret` throws if missing/short — correct safeguard. |
+| `routes/crm/analytics.ts` | 507 | GET `/dashboard` · `/calls` · `/call-quality` · `/campaigns` | `Promise.allSettled` runs multiple complex `db.execute(sql...)` blocks. Heavy `as any` in SQL result mapping (lines 114, 119, 253, 387, 489). |
+| `routes/crm/billing.ts` | 131 | POST `/portal` · GET `/subscription` | Error message at line 49 exposes internal email. `price as any`. |
+| `routes/crm/buyers.ts` | 198 | GET/POST `/` · POST `/upload` · DELETE `/:id` | Manual `parseCsvLine` (line 16) may fail on complex quoted/escaped CSVs — should use `csv-parse`. Batch-100 insert (better than 1×1 but still multiple round-trips). |
+| `routes/crm/campaigns.ts` | 301 | GET/POST `/` · PATCH/DELETE `/:id` | **PERF-04**: Per-campaign `count(*)` in GET `/` list (line 59) — N+1. Super-admin deletion uses `timingSafeEqual` (correct). |
+| `routes/crm/comps.ts` | 192 | GET/POST `/:leadId/comps` · DELETE `/:leadId/comps/:compId` · POST `/:leadId/comps/recalculate` | `recalculate` updates every comp in a loop (line 157). `formatComp(c: any)`. |
+| `routes/crm/contracts.ts` | 622 | POST/GET `/` · GET/POST `/:id` · POST `/:id/void` · `/:id/resend` · GET/POST `/public/sign/:token` | Public signing link protected by 24-byte hex token only. Dropbox Sign response as `any`. |
+| `routes/crm/index.ts` | 193 | GET/POST `/crm/public/submit/:token` · POST `/crm/public/waitlist` · POST `/crm/waitlist` | No rate limiting or CAPTCHA on public lead submit. `parseAddressComponents` regex may fail on non-standard US addresses. |
+| `routes/crm/notifications.ts` | 61 | GET `/` · POST `/:id/read` · POST `/read-all` | Notification ID parsing (line 37) lacks error handling if non-numeric. |
+| `routes/crm/sequences.ts` | 484 | GET/POST `/` · PATCH/DELETE `/:id` · POST `/:id/steps` · PATCH/DELETE `/:id/steps/:stepId` · GET `/logs/:leadId` · POST/GET `/sms-opt-out` | N+1: `runEmailSequenceJob` (line 266) runs many individual DB checks inside nested loops. Semaphore may be redundant with Brevo rate limiting. |
+| `routes/crm/stats.ts` | 82 | GET `/` | 9 separate count queries in `Promise.all`. `leadConditions: any[]`. |
+| `routes/crm/tasks.ts` | 125 | GET/POST/PATCH/DELETE | `dueDate` not validated before `new Date()`. `formatTask(t: any)`. |
+| `routes/crm/users.ts` | 298 | GET/POST `/` · PATCH/DELETE `/:id` · GET `/:id/password` | **SEC-01 CRITICAL**: `GET /:id/password` returns `password_plain` from DB — plaintext password retrieval via authenticated endpoint. Must be removed. |
+| `routes/crm/links.ts` | 101 | GET/POST/PATCH/DELETE | `PUBLIC_URL` required. `existing as any`. |
+| `routes/crm/waitlist.ts` | 218 | GET `/` · GET `/chart` · GET `/export` · PATCH `/:id` · DELETE `/:id` | **INCONSISTENCY**: Uses raw `pool.query` (line 55) instead of Drizzle ORM — sole file in codebase doing this. |
+
+### 2.4 Route Files — Other
+
+| File | LOC | Endpoints | Issues |
+|---|---|---|---|
+| `routes/admin.ts` | 127 | POST `/admin/login` · GET `/admin/contacts` · PATCH `/admin/contacts/:id/read` · GET `/admin/subscribers` · GET `/admin/stats` | JWT hardcoded `24h`. No rate limiting on login. Simple string comparison (minor timing risk). |
+| `routes/contact.ts` | 97 | POST `/contact` | No rate limiting/CAPTCHA — SMTP flood risk. DB failure continues to email send. |
+| `routes/demo.ts` | 150 | POST `/demo/call` · GET `/demo/twiml` · POST `/demo/twiml-status` | Custom in-memory rate limiter (2/hr). No premium-rate phone check (toll fraud risk). |
+| `routes/health.ts` | 27 | GET `/healthz` · GET `/health` | Standard. No issues. |
+| `routes/index.ts` | 38 | Router mount | No issues. |
+| `routes/openphone.ts` | 257 | GET `/openphone/phone-numbers` · GET `/openphone/messages` · POST `/openphone/webhook` | **SEC-02 HIGH**: `/openphone/webhook` has **no signature verification** — anyone can spoof inbound SMS events. N+1: queries `crmUsers` per inbound SMS (lines 235–250). |
+| `routes/scraperEngine.ts` | 503 | GET/POST `/scraper-engine/integrations/*` · GET `/scraper-engine/buyers` · ALL `/scraper-engine/{*path}` | **BUG**: `_buyerLeadIds` → `inArray` will fail if campaign >32k leads (Postgres param limit). `decryptPassword` imported but usage unclear. |
+| `routes/scraper.ts` | 841 | POST `/scraper/google-maps` · `/google-search` · `/nar-directory` · `/zillow` | `exhaustedKeys` global Set never cleared until restart. `PHONE_REGEX` misses some international formats. |
+| `routes/sse.ts` | 81 | GET `/crm/events` | **SEC-04 MEDIUM**: JWT in URL query param — captured in access logs. `setMaxListeners(500)` — listener pile-up risk if `close` events mis-fire. |
+| `routes/stripe.ts` | 346 | POST `/stripe/checkout` · POST `/stripe/webhook` | Hardcoded Stripe price IDs (lines 33–35). Webhook signature verification: **CORRECT**. Auto-provisioning doesn't check for duplicate campaigns. |
+| `routes/subscribe.ts` | 81 | POST `/subscribe` | No rate limiting. Silent DB failure then continues to email. |
+| `routes/tools.ts` | 1249 | POST `/tools/arv/calculate` · POST `/tools/skip-trace/upload` | `enrichJobs` + `_attomDistressedJobs` in-memory — lost on restart. `requirePin` allows PIN in header or body. |
+
+### 2.5 Services
+
+| File | LOC | Purpose | Issues |
+|---|---|---|---|
+| `services/aiConfig.ts` | 253 | OpenAI/Groq provider resolver | `as any` for JSON response casting. `AbortSignal.timeout` used correctly. |
+| `services/aiSmsService.ts` | 184 | AI SMS reply + circuit breaker | `AI_SMS_COST_USD` hardcoded. Personality prompts hardcoded. |
+| `services/attomApi.ts` | 505 | ATTOM real estate data | **RACE**: `_attomKeyIndex` global mutable — concurrent requests may skip/collide on key rotation. `TWO_YEARS_AGO` hardcoded. |
+| `services/automation.ts` | 324 | Onboarding sequences, reminders | **BUG-AUTO-01**: `runOnboardingEmailCron` splices `onboardingQueue` during iteration (line 52) — skips items if multiple due at same tick. Fire-and-forget `sendEmail` (no `await`). `onboardingQueue` in-memory: **lost on restart**. |
+| `services/coreCalculations.ts` | 56 | MAO/ARV math, E.164 | Re-exports from `propertyApi`. `parseMoney` may fail if value is object. |
+| `services/directMailService.ts` | 140 | Postcard via Brevo SMTP | `DIRECT_MAIL_COST_USD = 1.0` hardcoded. `messageId` returned without existence check. |
+| `services/emailService.ts` | 261 | Transactional email via Brevo | `buildWelcomeOnboardingEmail` potentially dead code. Fire-and-forget from `automation.ts`. |
+| `services/propertyApi.ts` | 1104 | PropertyAPI.co + PeopleDataLabs | **MEM-01 CRITICAL**: 4 global `Map`s (`skipTraceMap`, `fetchCompsMap`, `leadFetchMap`, `campaignFetchMap`) grow indefinitely — never pruned. Linear memory leak with codebase usage. |
+| `services/rentcastApi.ts` | 41 | Rentcast AVM | Broad `try { } catch { return null }` — swallows all errors silently. |
+| `services/scraperEngineClient.ts` | 395 | Python scraper HTTP client | `DEFAULT_TIMEOUT_MS = 60_000` hardcoded. Extensive `any` for job results. |
+| `services/smsService.ts` | 122 | SMS send + segment cost tracking | `SMS_COST_PER_SEGMENT = 0.0079` hardcoded. |
+| `services/twilioCredentials.ts` | 192 | AES-256 credential decryption | If `JWT_SECRET` rotates, old AES-encrypted tokens in DB become unrecoverable. |
+
+### 2.6 Libraries
+
+| File | LOC | Purpose | Issues |
+|---|---|---|---|
+| `lib/auditLog.ts` | 57 | DB-backed immutable audit trail | DB failures logged-and-swallowed (intentional, but hides infra issues). |
+| `lib/backgroundJobStore.ts` | 99 | Async job persistence | `pruneExpiredJobs` cancels "running" but not "queued" jobs. Payload/result cast `as any`. |
+| `lib/logger.ts` | 20 | Pino logger | Correct: redacts `Authorization` + `Cookie`. |
+| `lib/textUtils.ts` | 24 | Markdown/CSV utils | `csvCell` defined but unused in audited services (dead code candidate). |
+| `lib/twilioWebhookMiddleware.ts` | 46 | **NEW** Twilio request signature validation | **SEC-05 MEDIUM**: If `TWILIO_AUTH_TOKEN` env missing, validation is **skipped entirely** with a warning — soft-fail is dangerous in production misconfiguration. |
+| `lib/validate.ts` | 81 | Zod request validation middleware | `(req as any).validatedQuery` bypasses TS types. SMS body max 1600 hardcoded. |
+| `lib/webhookBase.ts` | 27 | Webhook URL resolver | `localhost:8080` fallback at line 25 — dangerous if `PUBLIC_URL` env missing in production. |
 
 ---
 
 ## 3. Code Quality Scan — CRM Frontend
 
-### 3.1 Unused UI Components (Entire Files)
+**Root:** `artifacts/TolipAI-crm/src/`
 
-These files exist in `src/components/ui/` and are **not imported by any page or component** in the CRM:
+### 3.1 App Shell
 
-| Component File | Radix Package | Bundle Cost |
+| File | LOC | Notes |
 |---|---|---|
-| `accordion.tsx` | `@radix-ui/react-accordion` | ~8KB gzip |
-| `aspect-ratio.tsx` | `@radix-ui/react-aspect-ratio` | ~1KB gzip |
-| `breadcrumb.tsx` | — | ~1KB gzip |
-| `button-group.tsx` | — | ~1KB gzip |
-| `calendar.tsx` | — | ~12KB gzip |
-| `carousel.tsx` | `embla-carousel-react` | ~15KB gzip |
-| `command.tsx` | `cmdk` | ~8KB gzip |
-| `context-menu.tsx` | `@radix-ui/react-context-menu` | ~6KB gzip |
-| `drawer.tsx` | `vaul` | ~6KB gzip |
-| `dropdown-menu.tsx` | `@radix-ui/react-dropdown-menu` | ~7KB gzip |
-| `empty.tsx` | — | ~0.5KB gzip |
-| `hover-card.tsx` | `@radix-ui/react-hover-card` | ~4KB gzip |
-| `input-group.tsx` | — | ~1KB gzip |
-| `input-otp.tsx` | `input-otp` | ~5KB gzip |
-| `menubar.tsx` | `@radix-ui/react-menubar` | ~8KB gzip |
-| `navigation-menu.tsx` | `@radix-ui/react-navigation-menu` | ~10KB gzip |
-| `pagination.tsx` | — | ~1KB gzip |
-| `resizable.tsx` | `react-resizable-panels` | ~6KB gzip |
-| `scroll-area.tsx` | `@radix-ui/react-scroll-area` | ~4KB gzip |
-| `slider.tsx` | `@radix-ui/react-slider` | ~3KB gzip |
-| `sonner.tsx` | `sonner` | ~8KB gzip |
-| `spinner.tsx` | — | ~0.5KB gzip |
-| `tabs.tsx` | `@radix-ui/react-tabs` | ~5KB gzip |
-| `toggle-group.tsx` | `@radix-ui/react-toggle-group` | ~4KB gzip |
+| `App.tsx` | 121 | Correct wrap order: `QueryClientProvider` → `TooltipProvider` → `PhoneProvider` → `ErrorBoundary`. |
+| `main.tsx` | ~30 | Service worker scoped to `/crm/`. Standard Vite entry. |
 
-**Total: 24 unused UI component files.** Vite's tree-shaking handles most of this at build time, but the Radix packages remain in `devDependencies` and inflate `pnpm install` time.
+### 3.2 Pages
 
-> **Note:** Some of these (accordion, tabs, dialog, select) may be used indirectly via shadcn auto-imports. Verify before deleting.
-
-### 3.2 Unused Imports Inside Files
-
-| File | Import | Line | Evidence |
+| File | LOC | Purpose | Issues |
 |---|---|---|---|
-| `pages/campaigns/CampaignList.tsx` | `ChevronDown` | 19 | Imported from lucide-react; grep shows no JSX usage |
-| `components/layout/AppLayout.tsx` | `React` (namespace) | 1 | `import React, { useEffect, useRef, useState }` — React namespace not needed in React 17+ JSX transform; only hooks are needed |
+| `pages/leads/LeadDetail.tsx` | 1837 | Lead profile — all detail tabs | Largest single page. No local `<ErrorBoundary>`. A crash here unmounts entire layout. |
+| `pages/leads/LeadList.tsx` | 513 | Filterable lead grid | **NEW**: Call-scoring emoji column added (`lastMotivationScore` / `lastMotivationLabel`). |
+| `pages/leads/NewLead.tsx` | 340 | Lead creation form | Clean. |
+| `pages/dialer/PowerDialer.tsx` | 1273 | AMD predictive dialer UI | **NEW S22**: AMD handler integration, session management. |
+| `pages/campaigns/CampaignList.tsx` | 853 | Campaign admin | Mixed `apiFetch` + raw `fetch`. Password visibility toggle lacks `aria-label`. |
+| `pages/admin/UserList.tsx` | 880 | User management | Presumably surfaces `password_plain` from `SEC-01` backend endpoint. |
+| `pages/admin/WaitlistAdmin.tsx` | 804 | Landing signup admin | Hardcoded `/admin/waitlist` path (missing `/api` prefix). `selectedIds` stale closure in bulk ops. Direct `localStorage.getItem("crm_token")`. |
+| `pages/analytics/Dashboard.tsx` | 569 | KPI dashboard | Clean. |
+| `pages/analytics/CallReport.tsx` | 299 | Call analytics table | Clean. |
+| `pages/analytics/CallQualityDashboard.tsx` | 531 | MOS + quality metrics | Clean. |
+| `pages/integrations/PhoneNumbers.tsx` | 865 | Conversations + dialer | **NEW**: `Conversation` type updated (union calls+SMS). `startCall` bug fixed. **MEM-02**: `MiniPlayer` audio element not paused or `URL.revokeObjectURL`'d on unmount. `handleSelectNumber` may race with `isFetching`. |
+| `pages/integrations/TwilioConnect.tsx` | 733 | Twilio credential management | Hardcoded `/twilio/config` without `/api` prefix in several spots. `ApiKeySecret` held in component state. Direct `localStorage.getItem("crm_token")`. |
+| `pages/integrations/IntegrationsDashboard.tsx` | 101 | Integration status overview | Hardcoded `/scraper-engine` paths. No "Refresh All" button. |
+| `pages/buyers/BuyersList.tsx` | 334 | Cash buyer contacts | `confirm()` for delete. `handleFileRead` sets state without mount check. |
+| `pages/buyers/CashBuyersAll.tsx` | ~550 | All buyers — super admin | Inconsistent API path helper vs `apiFetch`. Filter buttons lack `aria-label`. |
+| `pages/leadgen/DistressedLeadGen.tsx` | 160 | Distressed property scraper UI | Poll loop (line 78) lacks exponential backoff and error limit. `fetch` inside interval has no `AbortController`. |
+| `pages/pipeline/Pipeline.tsx` | 374 | Kanban deal pipeline | Clean. |
+| `pages/public/SignContract.tsx` | 232 | External e-sign page | Hardcoded `/api/crm/contracts/public/sign/`. `aria-required` missing on signature input. |
 
-### 3.3 `useEffect` Missing Dependency Arrays
+### 3.3 Components
 
-| File | Line | Missing Dep | Impact |
+| File | LOC | Purpose | Issues |
 |---|---|---|---|
-| `components/leads/CompsSection.tsx` | 262 | `leadId` in polling interval | Comps polling continues for old lead after navigation — stale data displayed |
-| `components/leads/CashBuyerMatchPanel.tsx` | 129 | `leadId` | Same issue — poll continues for wrong lead |
-| `components/leads/CashBuyerMatchPanel.tsx` | 157 | `refreshList` callback | Stale closure — `refreshList` captured from mount, won't update if parent re-renders |
-| `components/leads/CompsSection.tsx` | 140 | `(lead as any)?.rentcastAvm?.fetchedAt` | Rentcast widget doesn't re-render when async fetch completes |
-| `pages/campaigns/CampaignList.tsx` | 184 | `[]` empty deps but uses localStorage | Reads stale localStorage value if it changes in the same session |
+| `components/leads/BrowserDialer.tsx` | 865 | **UPDATED**: Browser dialer + **dual-speaker live transcript** panel | **BUG-BD-01**: `coachingTimerRef` not cleared on unmount — stale state update risk. **BUG-BD-02**: `checkSid` interval should also be cleared on unmount. `startCall` callback recreated on every `phone` prop change. DTMF buttons lack `onKeyDown` (a11y). |
+| `components/leads/AiDealScorer.tsx` | 127 | AI lead scoring | **NEW**: `lastMotivationScore`/`lastMotivationLabel` persisted to DB. Successive `handleScore` calls not aborted (`AbortController` missing — race). |
+| `components/leads/AiOfferLetter.tsx` | 71 | AI offer letter generator | Multiple generate clicks not aborted. |
+| `components/leads/AiRepairEstimator.tsx` | 122 | AI repair cost estimator | Table header contrast may fail WCAG AA on dark backgrounds. |
+| `components/leads/AiSellerScript.tsx` | 102 | AI phone script generator | Clean. Safe optional field handling. |
+| `components/leads/BulkImportModal.tsx` | 378 | CSV batch lead importer | **NEW**: PapaParse integrated (replaces custom regex parser). No "Cancel" button during active import request. |
+| `components/leads/CashBuyerMatchPanel.tsx` | 536 | Cash buyer job poller | `refreshList` recreated on every render (should be `useCallback`). Old poll interval may fire one tick after `leadId` change. ScoreRing SVG lacks ARIA label. |
+| `components/leads/CompsSection.tsx` | 659 | Comps + AVM analysis | `compsPolling` interval correctly cleared on unmount. Prop-drilling `lead` may lag on external changes. |
+| `components/leads/ContractsCard.tsx` | 402 | E-sign contract manager | Clean `react-query` integration. |
+| `components/leads/SmsConversations.tsx` | 275 | SMS chat UI | `selectedFrom` auto-selection only runs on initial load — not re-validated if available numbers change. |
+| `components/phone/ActiveCallBar.tsx` | 269 | **UPDATED**: Persistent call control bar | `setShowTranscript(true)` fires on every segment (harmless but redundant). Strong UX — pulse on new AI suggestion. |
+| `components/phone/IncomingCallPopup.tsx` | 68 | Incoming call notification | Stateless-driven. Clean. |
+| `components/layout/AppLayout.tsx` | 119 | Nav wrapper + SSE | Notification permission request not cleaned on unmount. `sseLeadDelta` not reset on SSE close. |
+| `ErrorBoundary.tsx` | 71 | Global React error boundary | Sentry integration. "Try again" + "Go to Dashboard". No **local** boundaries on `BrowserDialer`, `CompsSection`, `LeadDetail`. |
 
-### 3.4 `any` Type Abuse (Frontend)
+### 3.4 Contexts
 
-| File | Count | Critical Lines |
-|---|---|---|
-| `components/leads/CompsSection.tsx` | 20+ | 21, 26, 41–43, 48, 100, 105, 132, 136, 140, 149, 152, 166, 169, 188, 208, 232, 296, 298, 316, 319, 482, 558, 648 |
-| `components/leads/CashBuyerMatchPanel.tsx` | 8 | 24, 25, 37, 178, 218, 487, 503 |
-| `components/layout/AppLayout.tsx` | 4 | 77 (`n: any`), 97 (`icon: any`), 98 (`(user as any).campaignName`) |
-| `components/leads/AiDealScorer.tsx` | 4 | 13, 35, 42 |
-| `components/leads/AiRepairEstimator.tsx` | 4 | 10, 19, 39, 85 |
-| `components/leads/ContractsCard.tsx` | 3 | 76, 102, 112 |
-| `pages/pipeline/Pipeline.tsx` | 6 | 74, 157 |
-
-### 3.5 Duplicate Fetch Logic
-
-| Pattern | Files | Issue |
-|---|---|---|
-| **Manual `fetch` with auth headers** | `pages/campaigns/CampaignList.tsx` (lines 57, 69, 85, 96, 201) | Uses raw `fetch()` + `authHeaders()` instead of the centralized `apiFetch` utility used everywhere else |
-| **Mixed hook + manual fetch** | `components/leads/CompsSection.tsx` (line 36 hook vs lines 145, 162, 181, 200 manual) | Same component uses both generated React Query hooks AND manual `apiFetch` calls for similar entity operations |
-
-### 3.6 Hardcoded Magic Numbers / Strings
-
-| File | Line | Value | Issue |
+| File | LOC | Purpose | Issues |
 |---|---|---|---|
-| `components/leads/CompsSection.tsx` | 59–68 | `12500` (beds adj), `7500` (baths adj), `150` (yearBuilt adj), `0.03` (timeAdj) | Comp adjustment factors should be configurable, not hardcoded |
-| `pages/analytics/CallReport.tsx` | 131 | `#9ca3af`, font size `11` | Inline chart colors instead of CSS variables |
-| `pages/public/SignContract.tsx` | 114, 137 | `"Dancing Script"`, `"Brush Script MT"` | Font families hardcoded inline |
+| `contexts/PhoneContext.tsx` | 661 | Twilio Device + call session state | **MEM-03**: Old `AudioContext` not closed when `initDevice` called multiple times. `acceptIncoming` (L425) captures `leadId` — `pendingAcceptLeadIdRef` may be overwritten by rapid SSEs. `speechRecognitionRef.onend` may restart after `abort()` fires on unmount. |
 
-### 3.7 Inline Style vs Tailwind Inconsistency
+### 3.5 Hooks & Lib
 
-| File | Line | Value |
-|---|---|---|
-| `components/leads/BrowserDialer.tsx` | ~345 | `style={{ width: ... }}` for progress bar width |
-| `pages/analytics/Dashboard.tsx` | ~263, 274 | `style={}` for Recharts bar fill colors |
-| `pages/pipeline/Pipeline.tsx` | ~282 | `style={{ minHeight: "200px" }}` |
-| `pages/leads/LeadDetail.tsx` | ~214 | `style={{ border: 0, display: "block" }}` on iframe |
-| `pages/public/SignContract.tsx` | 114, 137 | Mixed Tailwind + inline typography styles |
-
-### 3.8 Routes in App.tsx With No Nav Entry Point
-
-| Route | File | Nav link? |
-|---|---|---|
-| `/analytics/calls` | `CallReport.tsx` | ❌ No nav link — only reachable via direct URL |
-| `/admin/links` | `LinkList.tsx` | ✅ In adminNavItems |
-| All others | — | ✅ |
+| File | Notes |
+|---|---|
+| `hooks/use-theme.ts` | localStorage/classList toggle. No bugs. |
+| `hooks/use-toast.ts` | `TOAST_REMOVE_DELAY = 1_000_000ms` — effectively disables auto-removal. |
+| `hooks/use-campaign-governance.ts` | Role-based access control. Clean. |
+| `hooks/use-mobile.tsx` | `matchMedia` with correct cleanup. |
+| `lib/api.ts` | Auth header injection. 401 → redirect to `/login`. |
+| `lib/api-setup.ts` | Global fetch interceptor for all `/api/` calls. Correct scope. |
+| `lib/utils.ts` | `clsx` wrapper. |
 
 ---
 
 ## 4. Code Quality Scan — TolipAI-website
 
-### 4.1 Dead Route — `/demo` Link Points to Non-Existent Page
+**Root:** `artifacts/TolipAI-website/src/`
 
-**File:** `src/components/layout/Navbar.tsx`, lines 54 and 113
-```html
-<a href="/demo">Watch Demo</a>   <!-- line 54 desktop nav -->
-<a href="/demo">Watch Demo</a>   <!-- line 113 mobile nav -->
-```
-**Finding:** No `<Route path="/demo">` exists in `src/App.tsx`. Clicking "Watch Demo" produces a 404. This is a **conversion-killing bug** on the public landing page.
-
-### 4.2 Unused UI Components (Website)
-
-Same pattern as CRM — a full shadcn/Radix UI library installed, but the website only uses a small subset. Components like `Accordion`, `AlertDialog`, `ContextMenu`, `Menubar`, `Drawer`, `Carousel` exist in `src/components/ui/` but are never imported by any page.
-
-### 4.3 Unused Imports
-
-| File | Import | Line |
+| File | LOC | Notes |
 |---|---|---|
-| `src/App.tsx` | `createContext`, `useContext` | 1–2 | Imported but no context is defined or consumed in App.tsx |
-
-### 4.4 Registered Admin Route Without Nav Link
-
-**File:** `src/App.tsx` — Route `/admin` is registered but has no link in `Navbar.tsx` or `Footer.tsx`. Accessible only via direct URL.
+| `App.tsx` | 82 | WordPress query param redirect (security hardening). |
+| `Admin.tsx` | 426 | **SEC-06 MEDIUM**: JWT stored in `localStorage` — XSS-extractable. |
+| `Home.tsx` | 42 | Component-based landing page. Clean. |
+| `CheckoutSuccess.tsx` | 78 | Fetches session data via Stripe `session_id` query param. |
+| `ChatBot.tsx` | 203 | Keyword-based bot. Hardcoded phone `(555) 201-4892` and email. |
+| `SubscribeModal.tsx` | 310 | Hardcoded Stripe price IDs — difficult to change without redeploy. |
+| `Terms.tsx` | 218 | Hardcoded address and contact details. |
 
 ---
 
 ## 5. Code Quality Scan — TolipAI-tools
 
-### 5.1 Duplicate Routes Pointing to Same Component
+**Root:** `artifacts/TolipAI-tools/src/`
 
-**File:** `src/App.tsx`
-- `/contact-enrichment` → `SkipTrace` component
-- `/skip-trace` → `SkipTrace` component (duplicate)
-- `/opportunity-finder` → `Distressed` component
-- `/distressed` → `Distressed` component (duplicate)
-
-**Impact:** Two URL paths for the same page. Bookmark and analytics data are split. One alias is likely dead.
-
-### 5.2 Hardcoded Localhost Target in Vite Config
-
-**File:** `vite.config.ts`, line 58
-```ts
-target: "http://localhost:8080"  // hardcoded — breaks if api-server changes port
-```
-**Note:** Also present in `TolipAI-website/vite.config.ts` line 61 and `TolipAI-crm/vite.config.ts` line 58 (targets `localhost:3000`). None of these are parameterized via env var.
-
-### 5.3 `any` Type Abuse
-
-| File | Issue |
-|---|---|
-| `src/App.tsx` | `deferredPrompt: any` (line ~49), `ProtectedRoute` props typed as `any` (line ~116) |
-| `src/pages/AiDistressed.tsx` | Extensive `any` for state variables and API response parsing |
-| `src/pages/PhoneFinder.tsx` | XLSX row data typed as `any` throughout |
+| File | LOC | Notes |
+|---|---|---|
+| `App.tsx` | 200 | `wouter` for light routing. PWA install prompt. |
+| `AiDistressed.tsx` | 102 | Hardcoded `/api/tools/distressed/*` endpoints. |
+| `Arv.tsx` | 318 | `STREET_SUFFIXES` fixed set — may miss rare suffixes. |
+| `Distressed.tsx` | 452 | Auth via `X-Tools-Pin` header (low-security mechanism). |
+| `LeadScraper.tsx` | 1213 | Large hardcoded state/metro arrays (bundle size impact). |
+| `Login.tsx` | 102 | PIN entry — no frontend rate limiting. |
+| `PhoneFinder.tsx` | 359 | `xlsx` parser — large bundle contribution. |
+| `PropertyLookup.tsx` | 380 | `STREET_SUFFIXES` **duplicated** from `Arv.tsx` (dead code / refactor opportunity). |
+| `SatelliteDFD.tsx` | 541 | Reverse geocode via OpenStreetMap — user location privacy consideration. |
+| `SkipTrace.tsx` | 232 | CSV/Excel batch uploader. Clean. |
 
 ---
 
 ## 6. Code Quality Scan — Scraper Engine
 
-### 6.1 Unused Imports
+**Root:** `artifacts/scraper-engine/`
 
-| File | Import | Line | Evidence |
-|---|---|---|---|
-| `workers/main.py` | `hashlib` | 12 | Imported but grep shows no `hashlib.` call in file |
-| `workers/main.py` | `import ctypes as _ctypes` | ~186 | Inside `lifespan` function but reference is unused |
-| `workers/scrapers/zillow.py` | `Any`, `Optional` from `typing` | 13 | Not used in type hints; Python 3.10+ uses `X | Y` syntax |
-
-### 6.2 Dead Functions (Never Called)
-
-| File | Function | Line | Evidence |
-|---|---|---|---|
-| `workers/distressed.py` | `list_sources` | ~212 | No FastAPI route in `main.py` exposes this |
-| `workers/distressed.py` | `list_categories` | ~216 | Same — defined but no route |
-| `workers/db.py` | `insert_cash_buyer` (single-row) | ~305 | Superseded by `insert_cash_buyers_batch`; no caller found |
-| `workers/scrapers/homeharvest_scraper.py` | `_import_homeharvest` | ~31 | Internal helper redundant with top-level import |
-
-### 6.3 Duplicate Scraping Logic
-
-| Pattern | Files | Lines |
-|---|---|---|
-| **Currency/number cleaning** | `workers/cash_buyers.py` (~57), `workers/db.py` (~186, 372, 459), `workers/scrapers/_utils.py` | Same `.replace("$","").replace(",","")` pattern repeated 4+ times |
-| **City-state slug generation** | `workers/scrapers/zillow.py` | `_slug(city, state)` logic duplicated across multiple functions within the same file (lines 54, 117, 195) |
-| **Playwright page setup** | `workers/scrapers/propwire.py`, `workers/scrapers/propelio_v2.py`, `workers/scrapers/_browser_session.py` | Browser context configuration repeated — should use shared `_browser_session.py` consistently |
-
-### 6.4 Hardcoded URLs / Config Values
-
-| File | Line | Value | Risk |
-|---|---|---|---|
-| `workers/config.py` | ~43, 47, 51, 59 | Groq, Cerebras, Together, OpenRouter base URLs | Hardcoded — not configurable via env var unlike `nvidia_base_url` |
-| `workers/skip_trace.py` | 36–47 | State portal URLs (e.g., `https://search.sunbiz.org/...`) | If portal changes URL, code breaks silently |
-| `workers/scrapers/propelio.py` | ~25 | `PROPELIO_COMP_URL` | Hardcoded constant — should be in config |
-| `workers/scrapers/propwire.py` | ~27 | `PROPWIRE_BASE` | Same |
-
-### 6.5 Bare `except` Clauses (30+ Instances)
-
-Bare `except Exception:` (no re-raise, no structured logging) found throughout:
-
-| File | Lines | Count |
-|---|---|---|
-| `workers/main.py` | 64, 420 | 2 |
-| `workers/ai_research.py` | 57, 85, 115 | 3 |
-| `workers/browser_pool.py` | 87, 91, 150, 248, 261 | 5 |
-| `workers/cache.py` | 85, 146, 170, 174, 189, 203, 213, 264 | 8 |
-| `workers/cash_buyers.py` | 58, 83, 120, 203, 219, 224, 271 | 7 |
-| `workers/circuit_breaker.py` | 176 | 1 |
-| `workers/distressed.py` | 41, 137, 202 | 3 |
-
-**Impact:** These clauses swallow exceptions completely. On Fargate, an error in a cash buyer scrape will show as a silent empty result rather than a circuit breaker trip or alert.
-
-### 6.6 Synchronous Blocking Calls Inside `async def`
-
-| File | Lines | Issue |
-|---|---|---|
-| `workers/scrapers/homeharvest_scraper.py` | Throughout | `homeharvest` library uses synchronous `requests` under the hood — blocks the asyncio event loop during HTTP calls. Not wrapped in `asyncio.get_event_loop().run_in_executor()`. |
-| `workers/pdf_parser.py` | Multiple | `open(temp_path, "wb")` and `os.remove()` are blocking file I/O inside `async def`. Should use `aiofiles`. |
-
-### 6.7 Missing Retry Logic on External HTTP Calls
-
-| File | Function | Line | Issue |
-|---|---|---|---|
-| `workers/scrapers/attom.py` | `_get` | ~40 | Iterates through API keys on failure but has **no exponential backoff** for transient 5xx/timeout. `tenacity` is already available |
-| `workers/skip_trace.py` | `_propertyapi_skip` | ~193 | Uses raw `httpx.AsyncClient` — no `@retry` decorator unlike `http_client.py` |
-| `workers/scrapers/satellite_dfd.py` | `_fetch_listings` | ~275 | Google Maps API calls with no retry |
-
-### 6.8 In-Memory State That Resets on Restart
-
-| File | Variable | Line | Impact |
-|---|---|---|---|
-| `workers/main.py` | `_jobs: Dict[str, Dict]` | ~78 | Used as local cache alongside Redis. If a user polls a different Fargate task instance (ALB round-robin), they get a 404 for a valid job |
-| `workers/main.py` | `METRICS` | ~81 | Plain Python dict — resets on every restart. Not exported to Prometheus or CloudWatch. Metrics are invisible after any deploy |
-| `workers/skip_trace.py` | `_dead_sources` Set | — | In-memory dead source tracking — resets on restart, causing repeated hits to known-broken data sources |
-
-### 6.9 Missing Pydantic Validation on Responses
-
-| File | Lines | Issue |
-|---|---|---|
-| `workers/distressed.py` | ~67 | `find_distressed` returns `List[Dict[str, Any]]` — no Pydantic model. Bad data can propagate to the DB without validation |
-| `workers/cash_buyers.py` | Throughout | Same pattern — raw dicts throughout |
-| `workers/main.py` | ~2072, ~1834 | FastAPI routes return raw dicts without `response_model=` — no auto-validation or OpenAPI schema generation |
-
-### 6.10 Production Readiness Gaps (AWS Fargate)
-
-| Gap | File | Line | Severity |
-|---|---|---|---|
-| **Health check doesn't verify dependencies** | `workers/main.py` | ~758 | `GET /health` only checks engine "ready" flag — does not ping Postgres or Redis. ECS health check will pass even if DB is down | 🔴 HIGH |
-| **No JSON structured logging for CloudWatch** | Throughout | — | Logs go to stdout as plain text. CloudWatch Insights can't parse/query them. Should use `python-json-logger` (already in requirements but not configured everywhere) | 🟠 MEDIUM |
-| **METRICS dict not exported** | `workers/main.py` | ~81 | No Prometheus endpoint (`/metrics`). No CloudWatch custom metrics. Zero observability on job throughput | 🟠 MEDIUM |
-| **homeharvest blocking event loop** | `homeharvest_scraper.py` | Throughout | Will cause Uvicorn worker to become unresponsive during long scrapes | 🟠 MEDIUM |
-| **In-memory job cache (multi-instance)** | `workers/main.py` | ~78 | ALB can route status poll to different instance than the one running the job — `_jobs` won't have the entry → 404 | 🟠 MEDIUM |
-| **_memory_monitor logs warning, doesn't stop** | `workers/main.py` | ~209 | At 85% RAM it logs a warning but keeps accepting jobs. Should set `ready=False` to trigger ECS health failure and restart | 🟡 LOW |
-| **test_logins.py in production image** | Root of artifact | — | Dev/debug script will be included in Docker image. Should be in `.dockerignore` | 🟡 LOW |
-| **`_combined_sigterm` may conflict with Uvicorn** | `workers/main.py` | ~199 | Custom SIGTERM handler + Uvicorn's own handler — race condition on graceful shutdown | 🟡 LOW |
+- FastAPI microservice proxied via `routes/scraperEngine.ts`
+- Handles: Google Maps, Google Search, NAR Directory, Zillow, Propelio, PropWire, cash buyer database ingestion
+- Credentials stored AES-encrypted in `crm_campaigns`, decrypted at app-layer before proxy
+- Node client `scraperEngineClient.ts` has `DEFAULT_TIMEOUT_MS = 60_000` (hardcoded)
+- Job results returned via polling — in-memory job state **lost on restart**
+- `exhaustedKeys` Set in `routes/scraper.ts` never un-exhausted until process restart
 
 ---
 
-## 7. Code Quality Scan — Shared Libs (`lib/`)
+## 7. Code Quality Scan — Shared Libs (lib/)
 
-### 7.1 Missing FK Indexes in DB Schema
+### 7.1 Database Schema — `lib/db/src/schema/crm.ts` (685 LOC)
 
-**File:** `lib/db/src/schema/crm.ts`
+**Tables (20+):**
+`crm_campaigns` · `crm_leads` · `crm_users` · `crm_notes` · `crm_tasks` · `crm_call_logs` · `crm_openphone_messages` · `crm_faxes` · `crm_contracts` · `crm_sequences` · `crm_sequence_steps` · `crm_sequence_logs` · `crm_notifications` · `crm_followers` · `crm_links` · `crm_waitlist` · `crm_background_jobs` · `cash_buyers` · `cash_buyer_matches` · `distressed_listings` · `property_comps` · `scraper_jobs` · `crm_audit_log`
 
-| Table | Column | Impact |
+**New Columns (added S22):**
+- `crm_leads.lastMotivationScore` — `numeric(5,2)` — AI deal scorer 0–100
+- `crm_leads.lastMotivationLabel` — `text` — e.g. "Hot 🔥", "Warm", "Cold"
+
+**Schema Issues:**
+
+| Issue | Severity | Detail |
 |---|---|---|
-| `crm_users` | `campaign_id` (FK) | Every query joining users to campaigns does a seq scan on `crm_users` |
-| `crm_sequence_steps` | `sequence_id` (FK) | Loading steps for a sequence scans all steps |
-| `crm_sequence_logs` | `sequence_id` | Dedup check on every email send scans the full log table |
-| `crm_leads` | `phone` | **CRITICAL** — SMS webhook at `twilio.ts:521` uses `.limit(2000)` + JS `.find()` because there's no index |
-| `crm_call_logs` | `call_sid` | Recording webhook lookup does full scan |
+| Date columns as `text` | Medium | `last_sale_date`, `last_purchase_date`, `sale_date`, `sold_date`, `event_date` stored as `text` — prevents native DB date-range queries and ordering. Should be `date` or `timestamp`. |
+| Missing index on `crm_leads(email)` | Medium | Used for deduplication and filtering, but not indexed. |
+| Missing index on `crm_leads(zip)` | Low | Common filter field — full scan on every zip-filter query. |
+| Missing index on `scraper_jobs(campaignId)` | Low | Per-campaign job views require full scan. |
+| Missing index on `crm_leads(phone_number)` | High | **Primary resolution for PERF-02** — phone reverse-lookup in `twilio.ts:521` does full table scan. |
 
-### 7.2 No Drizzle `relations()` Defined
+**Index Coverage:** ~45 indexes across 20+ tables. FK coverage extensive with appropriate `onDelete` cascade/set-null.
 
-**File:** `lib/db/src/schema/crm.ts`
-No `relations()` export blocks found in the entire schema file. This means the app uses **manual joins everywhere** instead of Drizzle's relational query builder. This is not a bug, but it means:
-- Each join is written by hand in every route file
-- No type inference on nested results (forces `any` casts)
+**Numeric Precision (all correct):**
+- Currency: `numeric(12,2)` ✓
+- GPS: `numeric(10,7)` ✓
+- MOS score: `numeric(4,2)` ✓
+- Percentages/discount: `numeric(5,2)` ✓
 
-### 7.3 `cn()` Utility Duplicated Across 4 Artifacts
+### 7.2 Utility Files
 
-**Identical implementation** of `cn` (clsx + tailwind-merge) exists in:
-- `artifacts/TolipAI-crm/src/lib/utils.ts:4`
-- `artifacts/TolipAI-tools/src/lib/utils.ts:4`
-- `artifacts/TolipAI-website/src/lib/utils.ts:4`
-- `artifacts/demo-video/src/lib/utils.ts:4`
+| File | LOC | Notes |
+|---|---|---|
+| `crm/crypto-util.ts` | 64 | AES-256-GCM with legacy CBC migration. **SEC-07**: Falls back to `JWT_SECRET` if `ENCRYPTION_KEY` missing — rotation of JWT_SECRET would corrupt DB values. |
+| `crm/parse-util.ts` | 40 | Express param parsing. Robust `isNaN` + positive integer checks. Clean. |
 
-This is standard practice for independent Vite apps (each needs its own build context), so this is **LOW priority** — note only.
+### 7.3 Config Files
+
+| File | LOC | Notes |
+|---|---|---|
+| `env.example` | 135 | Comprehensive. Lists `ENCRYPTION_KEY` requirement. Risk: default API key patterns (`gsk_...`, `nvapi-...`) in comments — ensure not committed with real values. |
+| `railway.json` | 13 | Railpack config. `restartPolicyMaxRetries: 10`. |
+| `pnpm-workspace.yaml` | 126 | Extensive `esbuild`/`rollup` overrides for Railway architecture. |
+| `package.json` | ~40 | `version: 0.0.0`. **`typecheck` script is a dummy echo — no actual type checking in CI.** |
 
 ---
 
 ## 8. Cross-Cutting Issues
 
-### 8.1 OpenPhone Router Not Mounted — CRITICAL
+### 8.1 Security Issues (ranked by severity)
 
-**File:** `artifacts/api-server/src/routes/index.ts`
-`openphone.ts` is a 258-line file with full webhook handlers. It is **not imported or mounted** in the main router. All OpenPhone webhooks → 404.
+| ID | Severity | Location | Description | Status |
+|---|---|---|---|---|
+| SEC-01 | **CRITICAL** | `crm/users.ts:225` | `GET /:id/password` returns `password_plain` from DB — authenticated but plaintext retrieval endpoint | **OPEN** |
+| SEC-02 | **HIGH** | `openphone.ts:176` | `/openphone/webhook` — no OpenPhone/Twilio signature verification; anyone can spoof inbound SMS | **OPEN** |
+| SEC-03 | **HIGH** | `twilio-fax.ts:14` | `/fax/inbound` — no Twilio signature verification; fake fax records injectable | **OPEN** |
+| SEC-04 | **MEDIUM** | `sse.ts:26` | JWT in URL query param — captured in access logs | **OPEN** |
+| SEC-05 | **MEDIUM** | `lib/twilioWebhookMiddleware.ts:20` | Soft-fails (skips validation) if `TWILIO_AUTH_TOKEN` env var missing | **NEW** |
+| SEC-06 | **MEDIUM** | `TolipAI-website/Admin.tsx` | Website admin JWT stored in `localStorage` — XSS-extractable | **OPEN** |
+| SEC-07 | **MEDIUM** | `crm/crypto-util.ts` | Falls back to `JWT_SECRET` for AES if `ENCRYPTION_KEY` missing | **OPEN** |
+| SEC-08 | **LOW** | `crm/index.ts`, `contact.ts`, `subscribe.ts` | Public POST endpoints lack rate limiting/CAPTCHA | **OPEN** |
+| SEC-09 | **LOW** | `demo.ts` | No premium-rate phone number check — toll fraud risk | **OPEN** |
 
-### 8.2 `demo-video` Artifact — Unclear Status
+### 8.2 Performance Issues
 
-**Directory:** `artifacts/demo-video/`
-Contains a Remotion/animation video project with 5 scene components. It is not referenced in any build script, not served by api-server, and not linked from any other artifact. May be a prototype that was abandoned.
+| ID | Severity | Location | Description | Status |
+|---|---|---|---|---|
+| PERF-01 | **HIGH** | `services/propertyApi.ts` | 4 global `Map`s grow indefinitely — linear memory leak | **NEW** |
+| PERF-02 | **HIGH** | `routes/twilio.ts:521` | Full `crmLeads` table scan for phone reverse-lookup (no index on `phone_number`) | **PRE-EXISTING** |
+| PERF-03 | **MEDIUM** | `routes/crm/leads.ts:474` | `bulk-import` inserts one row at a time instead of batched | **PRE-EXISTING** |
+| PERF-04 | **MEDIUM** | `routes/crm/campaigns.ts:59` | Per-campaign `count(*)` in list endpoint — N+1 | **PRE-EXISTING** |
+| PERF-05 | **MEDIUM** | `routes/crm/analytics.ts` | Multiple `db.execute(sql...)` not consolidated | **PRE-EXISTING** |
+| PERF-06 | **LOW** | `routes/twilio-power-dialer.ts:366` | Individual `db.insert(crmCallLogs)` inside batch-dial loop | **NEW** |
 
-### 8.3 Vite Proxy Targets Hardcoded
+### 8.3 Memory & Resource Leaks
 
-All 3 frontend `vite.config.ts` files hardcode the dev server proxy target:
-- `TolipAI-crm/vite.config.ts:58` → `http://localhost:3000`
-- `TolipAI-tools/vite.config.ts:58` → `http://localhost:8080`
-- `TolipAI-website/vite.config.ts:61` → `http://localhost:8080`
+| ID | Location | Description | Status |
+|---|---|---|---|
+| MEM-01 | `services/propertyApi.ts` | 4 global Maps never pruned | **NEW** |
+| MEM-02 | `pages/integrations/PhoneNumbers.tsx` | `MiniPlayer` audio not paused/`revokeObjectURL`'d on unmount | **NEW** |
+| MEM-03 | `contexts/PhoneContext.tsx` | Old `AudioContext` not closed when `initDevice` called multiple times | **NEW** |
 
-Should read `process.env.API_PORT || "5000"`.
+### 8.4 Bug Tracking
 
-### 8.4 `seed-demo.ts` and `seed.ts` Included in Production Bundle
+| ID | Location | Description | Status |
+|---|---|---|---|
+| BUG-BOOT-01 | `src/index.ts` | `ensureIndexes()`/`repairSequences()` without `await` — race on startup | **NEW** |
+| BUG-AUTO-01 | `services/automation.ts:52` | `splice` during `onboardingQueue` iteration — skips items | **NEW** |
+| BUG-BD-01 | `BrowserDialer.tsx` | `coachingTimerRef` not cleared on unmount | **NEW** |
+| BUG-BD-02 | `BrowserDialer.tsx` | `checkSid` interval not cleared on unmount | **NEW** |
+| BUG-SCRAP-01 | `routes/scraperEngine.ts` | `inArray` with >32k leads exceeds Postgres param limit | **NEW** |
 
-These scripts are compiled by `build.mjs` into `dist/index.mjs` (13.9MB bundle). They reference `console.log` and are development-only. They add ~100KB to the bundle and pull in unnecessary runtime paths.
+### 8.5 Type Safety
+- Widespread `as any` in: API response handling (OpenAI, ATTOM, Twilio, Drizzle `execute` results), `formatTask`/`formatComp` helpers, scraper result rows
+- `(req as any).validatedQuery` in `lib/validate.ts` bypasses Express type extensions
+- `package.json` typecheck script is a no-op — **no compile-time guarantee in CI**
+
+### 8.6 Console Logging in Production (7 files — should use Pino logger)
+`routes/crm/leads.ts` · `routes/twilio-voice.ts` · `routes/twilio-power-dialer.ts` · `services/automation.ts` · `services/attomApi.ts` · `routes/openphone.ts` · `routes/scraper.ts`
+
+### 8.7 In-Memory State (Lost on Every Railway Deploy)
+
+| Location | State |
+|---|---|
+| `services/automation.ts` | `onboardingQueue` array |
+| `services/propertyApi.ts` | 4 daily-limit Maps |
+| `routes/tools.ts` | `enrichJobs`, `_attomDistressedJobs` |
+| `routes/scraper.ts` | `exhaustedKeys` Set |
+| `routes/demo.ts` | Rate limiter |
+| `routes/twilio-power-dialer.ts` | Power dial sessions (DB-backed — correct) |
+
+### 8.8 API Path Inconsistency (Frontend)
+Several pages access APIs without the `/api` prefix or use different conventions:
+- `pages/admin/WaitlistAdmin.tsx` → `/admin/waitlist` (missing prefix)
+- `pages/integrations/TwilioConnect.tsx` → `/twilio/config` (missing `/api`)
+- `pages/integrations/IntegrationsDashboard.tsx` → `/scraper-engine` (missing `/api`)
+- No centralized `BASE_API_URL` constant — promotion to staging/prod URLs is manual
+
+### 8.9 LocalStorage Token Access (Should Use `apiFetch`)
+- `pages/admin/WaitlistAdmin.tsx`
+- `pages/integrations/TwilioConnect.tsx`
+- `pages/buyers/CashBuyersAll.tsx`
 
 ---
 
 ## 9. Action Plan
 
-**Instructions to executing agent:** Do NOT start any of these tasks until the PM has reviewed this report and provided explicit task-by-task approval with priority order.
+### Priority 1 — Critical (Fix Before Next Production Deploy)
+
+| # | Task | File(s) |
+|---|---|---|
+| A1 | **Remove `password_plain` retrieval** — `GET /:id/password` must never return plaintext; replace with forced password reset flow | `crm/users.ts` |
+| A2 | **Add OpenPhone webhook signature verification** | `openphone.ts` |
+| A3 | **Add Twilio signature verification to fax inbound** using `twilioWebhookMiddleware` | `twilio-fax.ts` |
+| A4 | **Hard-fail `twilioWebhookMiddleware`** if `TWILIO_AUTH_TOKEN` env missing (remove soft-fail) | `lib/twilioWebhookMiddleware.ts` |
+| A5 | **Add `await`** to `ensureIndexes()` and `repairSequences()` in server startup | `src/index.ts` |
+
+### Priority 2 — High (This Sprint)
+
+| # | Task | File(s) |
+|---|---|---|
+| B1 | **Add index on `crm_leads(phone_number)`** — resolves PERF-02 full-table scan | Schema |
+| B2 | **Prune global Maps in `propertyApi.ts`** — use LRU cache (max size) or Redis | `services/propertyApi.ts` |
+| B3 | **Fix `onboardingQueue` splice-during-iteration** — collect due items into temp array first | `services/automation.ts` |
+| B4 | **Batch `bulk-import` inserts** — single `db.insert().values([...])` call | `crm/leads.ts` |
+| B5 | **Move SSE JWT to `Authorization` header** via short-lived token exchange endpoint | `sse.ts`, `AppLayout.tsx` |
+| B6 | **Add local `<ErrorBoundary>`** wrappers on `BrowserDialer`, `CompsSection`, `LeadDetail` | CRM components |
+| B7 | **Migrate date `text` columns to `date`/`timestamp`** in schema | `lib/db/src/schema/crm.ts` |
+| B8 | **Fix `MiniPlayer` unmount** — pause audio, call `URL.revokeObjectURL` | `PhoneNumbers.tsx` |
+
+### Priority 3 — Medium (Next Sprint)
+
+| # | Task | File(s) |
+|---|---|---|
+| C1 | Add `AbortController` to all AI generation fetches | `AiDealScorer`, `AiOfferLetter`, `AiSellerScript`, `AiRepairEstimator` |
+| C2 | Replace manual `parseCsvLine` in `buyers.ts` with `csv-parse` library | `crm/buyers.ts` |
+| C3 | Migrate `waitlist.ts` from raw `pool.query` to Drizzle | `crm/waitlist.ts` |
+| C4 | Replace `console.*` with Pino logger in 7 production files | Multiple |
+| C5 | Enable real TypeScript type checking (`tsc --noEmit`) in CI pipeline | `package.json` |
+| C6 | Persist `exhaustedKeys` to DB or use TTL cache (Redis) | `routes/scraper.ts` |
+| C7 | Add missing indexes on `crm_leads(email)`, `crm_leads(zip)`, `scraper_jobs(campaignId)` | Schema |
+| C8 | Fix `coachingTimerRef` and `checkSid` interval cleanup on unmount in `BrowserDialer` | `BrowserDialer.tsx` |
+| C9 | Add `useCallback` / memoize `refreshList` in `CashBuyerMatchPanel` | Component |
+| C10 | Add `aria-label` to all icon-only buttons (trash, edit, pencil) across CRM | Multiple pages |
+| C11 | Fix `scraperEngine.ts` `inArray` — paginate or use temp table for >32k leads | `routes/scraperEngine.ts` |
+| C12 | Fix old `AudioContext` leak in `PhoneContext.initDevice` | `PhoneContext.tsx` |
+
+### Priority 4 — Low / Tech Debt
+
+| # | Task |
+|---|---|
+| D1 | Centralize Stripe price IDs in env vars (remove frontend hardcoding in `SubscribeModal.tsx`) |
+| D2 | Centralize API base URL — eliminate `/api/crm/` vs `/twilio/` vs `/scraper-engine/` path inconsistencies |
+| D3 | Replace `localStorage.getItem("crm_token")` with `apiFetch` in `WaitlistAdmin`, `TwilioConnect`, `CashBuyersAll` |
+| D4 | Deduplicate `STREET_SUFFIXES` between `Arv.tsx` and `PropertyLookup.tsx` (extract to shared util) |
+| D5 | Add CAPTCHA/rate limiting to public lead submit, contact, and subscribe endpoints |
+| D6 | Add CAPTCHA to demo call endpoint or validate number against known-safe list |
+| D7 | Fix `attomApi.ts` key rotation — use atomic counter to avoid race condition |
+| D8 | Set `version` in root `package.json` to actual semver |
+| D9 | Add per-campaign campaign duplicate check in Stripe auto-provisioning (`stripe.ts`) |
+| D10 | Fix `webhookBase.ts` `localhost:8080` fallback — throw error if `PUBLIC_URL` missing in production |
 
 ---
 
-### 🔴 P0 — Critical Bugs (Data Loss / Broken Features)
-
-#### TASK-01: Mount `openphone.ts` router ✅ DONE (S19)
-**File:** `artifacts/api-server/src/routes/index.ts`
-**Action:** Add `import openPhoneRouter from "./openphone"` and `router.use(openPhoneRouter)` in the same pattern as all other routers.
-**Risk:** None — purely additive. OpenPhone webhooks have been silently failing.
-
-#### TASK-02: Fix `/demo` dead link on public website ✅ DONE (S20)
-**File:** `artifacts/TolipAI-website/src/components/layout/Navbar.tsx` lines 54 and 113
-**Action:** Replaced `href="/demo"` anchor with a `<button onClick={() => scrollTo("#services")}>` so "Watch Demo" scrolls to the services section instead of navigating to a non-existent route. Applied to both desktop and mobile nav.
-**Risk:** None.
-
-#### TASK-03: Fix N+1 SMS webhook scan ✅ DONE (S19)
-**File:** `artifacts/api-server/src/routes/twilio.ts:521`
-**Action:** Replaced `.limit(2000)` + JS `.find()` with `db.select().where(sql\`regexp_replace(...)\`).limit(1)`.
-**Risk:** None — purely a query improvement.
-
----
-
-### 🟠 P1 — High Impact, Low Risk
-
-#### TASK-04: Wrap all `setImmediate` blocks with top-level error catch ✅ DONE (S20)
-**Files:** `tools.ts:138,328,1030` | `twilio.ts:600` | `twilio-voice.ts:290`
-**Action:** Verified `tools.ts:138`, `twilio.ts:600`, `twilio-voice.ts:290`, and `tools.ts:1030` (`.catch()`) already had error handling. Added top-level `try/catch` to `tools.ts:328` (distressed enrichment loop) — this was the only unguarded block. Unhandled rejections from `setImmediate` are now impossible.
-
-#### TASK-05: Replace `console.*` with `logger.*` in production files ✅ DONE (S19)
-**Files:** `contracts.ts:68,604` | `crm/index.ts:180` | `openphone.ts:254` | `automation.ts:76,104,125,231` | `emailService.ts:27` | `propertyApi.ts:480,494`
-**Action:** Replaced each instance with appropriate `logger.info/warn/error()` call.
-
-#### TASK-06: Extract phone normalization to single utility
-**Files:** `twilio.ts:508,562` | `openphone.ts:195` | `scraper.ts:49,52-59`
-**Action:** Delete local `normalize` functions; import `toE164` from `coreCalculations.ts` (already exported).
-
-#### TASK-07: Extract repeated JSON markdown cleanup to utility ✅ DONE (S19)
-**File:** `routes/crm/leads.ts:921,1269-71,1880,2035,2125,2207`
-**Action:** Created `artifacts/api-server/src/lib/textUtils.ts` with `stripJsonMarkdown()`. Replaced 6 inline occurrences in `leads.ts`.
-
-#### TASK-08: Extract campaign Twilio credential fetch to service ✅ DONE (S21)
-**Files:** `twilio.ts`, `twilio-voice.ts`, `smsService.ts`, `twilio-power-dialer.ts`, `twilio-voice-agent.ts`
-**Action:** Created `services/twilioCredentials.ts` exporting `TwilioSmsCreds`, `TwilioVoiceConfig`, `getSmsCreds()`, `resolveSmsCreds()`, `getGlobalSmsCreds()`, `getVoiceConfig()`, `resolveVoiceConfig()`, `getGlobalVoiceConfig()`. Removed 5 duplicated fetch+decrypt helpers (≈130 lines of duplication eliminated). Also removed redundant dynamic `import()` of `decryptPassword` inside `validateTwilioSignature` in `twilio.ts`.
-
-#### TASK-09: Extract CSV escaping to shared utility ✅ DONE (S19)
-**Files:** `tools.ts:282,413` | `scraperEngine.ts:349` | `waitlist.ts:125`
-**Action:** Created `csvCell()` in `artifacts/api-server/src/lib/textUtils.ts`. Replaced 4 inline duplications.
-
-#### TASK-10: Fix `useEffect` missing dependencies in CRM ✅ DONE (S19)
-**Files:** `CompsSection.tsx:140,262` | `CashBuyerMatchPanel.tsx:129,157`
-**Action:** Added `leadId` to dependency arrays; wrapped `refreshList` in `useCallback`.
-
-#### TASK-11: Fix Scraper Engine health check to verify downstream deps ✅ DONE (S20 — verified already implemented)
-**File:** `workers/main.py:~823`
-**Action:** Verified `/health` endpoint already performs full `asyncpg` DB ping via `_probe_db()`, probes all LLM providers concurrently, and reports Redis status via `cache.stats()`. The health check was already comprehensive — audit reference to "only checks ready flag" was outdated.
-
-#### TASK-12: Fix homeharvest blocking event loop ✅ DONE (S20 — verified already implemented)
-**File:** `workers/scrapers/homeharvest_scraper.py`
-**Action:** Verified `scrape_foreclosures()` and `scrape_multi_site()` already wrap synchronous `homeharvest` calls in `asyncio.get_event_loop().run_in_executor(None, _run)`. Fix was already present.
-
----
-
-### 🟡 P2 — Medium Impact / Technical Debt
-
-#### TASK-13: Remove unused imports ✅ DONE (S20 — verified already clean)
-**Files:** `leads.ts:15` (crmWaitlist) | `users.ts:7` (and) | `campaigns.ts:7` (desc) | `auth.ts:4` (crmCampaigns)
-**Action:** Verified all flagged unused imports were already removed in prior sessions. `auth.ts` `crmCampaigns` IS used at lines 39 and 78. `CampaignList.tsx` ChevronDown unused import not present in current codebase.
-
-#### TASK-14: Delete commented-out dead code blocks
-**Files:** `leads.ts:634-640, 777-785, 1500-1510`
-**Action:** Remove commented blocks. If the waitlist update block is needed, un-comment and wire it; otherwise delete.
-
-#### TASK-15: Remove duplicate routes in TolipAI-tools ✅ DONE (S20)
-**File:** `artifacts/TolipAI-tools/src/App.tsx`
-**Action:** Removed `/skip-trace` alias (canonical: `/contact-enrichment`) and `/distressed` alias (canonical: `/opportunity-finder`).
-
-#### TASK-16: Add missing DB indexes ✅ DONE (S19 + S20)
-**File:** `lib/db/src/schema/crm.ts`
-**Action:** Added: `crm_leads_phone_idx` (S19), `crm_users_campaign_id_idx` (S20), `crm_sequence_steps_sequence_id_idx` (S20), `crm_sequence_logs_dedup_idx` unique composite (lead_id, sequence_id, step_id) (S20). Notes composite and notifications composite were also added in S19. `crm_call_logs.call_sid` already unique (implicit index from `.unique()` constraint).
-
-#### TASK-17: Exclude seed files from production build
-**File:** `artifacts/api-server/build.mjs`
-**Action:** Add `seed.ts` and `seed-demo.ts` to the esbuild `exclude` list. They should only be runnable via `tsx src/seed.ts` CLI, not compiled into the server bundle.
-
-#### TASK-18: Clarify/remove `demo-video` artifact
-**Directory:** `artifacts/demo-video/`
-**Action:** Confirm with PM — if no longer needed, delete. If needed, document its purpose and add it to the build pipeline.
-
-#### TASK-19: Fix in-memory job cache in scraper engine (multi-instance)
-**File:** `workers/main.py:~78`
-**Action:** Remove `_jobs` in-memory dict. All job state reads/writes should go through `job_store` (Redis). This fixes round-robin ALB routing bugs.
-
-#### TASK-20: Add Prometheus `/metrics` endpoint to scraper engine ✅ DONE (S19)
-**File:** `workers/main.py`
-**Action:** Added Prometheus text-format `/metrics` endpoint. `METRICS` dict exported as counters/gauges. CloudWatch Container Insights compatible.
-
-#### TASK-21: Add `response_model=` to all FastAPI routes in scraper engine
-**File:** `workers/main.py`
-**Action:** Define Pydantic response models for `/jobs/{job_id}`, `/search/cash-buyers`, and distressed search endpoints.
-
-#### TASK-22: Fix bare `except Exception:` in scraper engine ✅ DONE (S20)
-**Files:** `ai_research.py:57,85,115` | `browser_pool.py:87,91,150,248` | `cache.py:170,213,264` | `cash_buyers.py:58`
-**Action:** Replaced all bare `except Exception:` with `except Exception as exc:` and added `log.warning(..., exc_info=True)` for parse/data errors, `log.debug(...)` for cleanup operations (browser.close, page.close, redis delete/scan).
-
----
-
-### 🟢 P3 — Low Priority / Cleanup
-
-#### TASK-23: Replace `any` types with proper interfaces (backend)
-**Priority files:** `routes/crm/leads.ts` (formatLead, formatLeadSummary params) | `routes/crm/analytics.ts` (raw row types) | `services/scraperEngineClient.ts`
-**Action:** Create interfaces in `types/crm.ts`. This is a multi-session effort; tackle `leads.ts` first as it has the most impact.
-
-#### TASK-24: Replace `any` types with proper interfaces (frontend)
-**Priority files:** `CompsSection.tsx` (comp object type) | `CashBuyerMatchPanel.tsx` (phones/emails arrays) | `Pipeline.tsx` (lead objects)
-**Action:** Reuse types from `lib/api-zod` generated types where possible.
-
-#### TASK-25: Consolidate Tailwind inconsistencies / inline styles
-**Files:** `BrowserDialer.tsx:~345` | `Dashboard.tsx:~263,274` | `Pipeline.tsx:~282`
-**Action:** Replace inline `style={}` props with Tailwind utility classes or CSS variables.
-
-#### TASK-26: Remove unused Radix UI packages from `devDependencies`
-**File:** `artifacts/TolipAI-crm/package.json`
-**Action:** After confirming UI components are unused, remove the corresponding `@radix-ui/*` devDependencies. Reduces `pnpm install` time and lockfile size.
-
-#### TASK-27: Parameterize Vite dev proxy target ✅ DONE (S20)
-**Files:** All 3 `vite.config.ts` files
-**Action:** Replaced hardcoded `localhost:3000/8080` with `` `http://localhost:${process.env.API_PORT || "3000"}` `` in CRM, tools, and website. Website also had stale `/demo` proxy removed and replaced with `/api` proxy.
-
-#### TASK-28: Replace `console.error` in scraper engine with structured logger
-**Files:** All Python files using `print()` or bare `logging.error()` without JSON formatter
-**Action:** Ensure `python-json-logger` is configured globally in `main.py` and all modules inherit the root logger format.
-
----
-
-## Summary Table
-
-| ID | Artifact | Severity | Type | File(s) | Line(s) | Status |
-|---|---|---|---|---|---|---|
-| TASK-01 | api-server | 🔴 CRITICAL | Missing feature | `routes/index.ts` | openphone not mounted | ✅ S19 |
-| TASK-02 | website | 🔴 CRITICAL | Dead link | `Navbar.tsx` | 54, 113 | ✅ S20 |
-| TASK-03 | api-server | 🔴 CRITICAL | Performance/OOM | `twilio.ts` | 521 | ✅ S19 |
-| TASK-04 | api-server | 🟠 HIGH | Reliability | `tools.ts`, `twilio.ts`, `twilio-voice.ts` | 137,331,1037,600,290 | ✅ S20 |
-| TASK-05 | api-server | 🟠 HIGH | Logging | 7 production files | various | ✅ S19 |
-| TASK-06 | api-server | 🟠 HIGH | Duplication | 4 route files | various | ⏳ Low risk — twilio.ts normalize used for comparison only |
-| TASK-07 | api-server | 🟠 HIGH | Duplication | `leads.ts` | 921,1269-71,1880,2035,2125,2207 | ✅ S19 |
-| TASK-08 | api-server | 🟠 HIGH | Duplication | 5 Twilio files | various | ✅ S21 |
-| TASK-09 | api-server | 🟠 HIGH | Duplication | 3 route files | various | ✅ S19 |
-| TASK-10 | crm | 🟠 HIGH | Bug | `CompsSection.tsx`, `CashBuyerMatchPanel.tsx` | 140,262,129,157 | ✅ S19 |
-| TASK-11 | scraper | 🟠 HIGH | Fargate readiness | `main.py` | ~823 | ✅ S20 — already comprehensive |
-| TASK-12 | scraper | 🟠 HIGH | Event loop block | `homeharvest_scraper.py` | throughout | ✅ S20 — already using run_in_executor |
-| TASK-13 | multiple | 🟡 MEDIUM | Dead code | 5 files | various | ✅ S20 — verified already clean |
-| TASK-14 | api-server | 🟡 MEDIUM | Dead code | `leads.ts` | 634-640,777-785,1500-1510 | ⏳ Line numbers shifted — active code at those positions |
-| TASK-15 | tools | 🟡 MEDIUM | Dead routes | `App.tsx` | duplicate routes | ✅ S20 |
-| TASK-16 | db | 🟡 MEDIUM | Performance | `schema/crm.ts` | missing indexes | ✅ S19+S20 |
-| TASK-17 | api-server | 🟡 MEDIUM | Bundle size | `build.mjs` | seed files in bundle | ⏳ seed.ts needed at runtime; seed-demo.ts only called via CLI |
-| TASK-18 | demo-video | 🟡 MEDIUM | Clarity | `artifacts/demo-video/` | abandoned artifact? | ⏳ Deferred — not harmful |
-| TASK-19 | scraper | 🟡 MEDIUM | Fargate readiness | `main.py` | ~78 | ⏳ Pending |
-| TASK-20 | scraper | 🟡 MEDIUM | Observability | `main.py` | METRICS dict | ✅ S19 |
-| TASK-21 | scraper | 🟡 MEDIUM | Type safety | `main.py` | response models | ⏳ Pending |
-| TASK-22 | scraper | 🟡 MEDIUM | Error handling | 5 Python files | 30+ instances | ✅ S20 |
-| TASK-23 | api-server | 🟢 LOW | Type safety | `leads.ts`, `analytics.ts` | mass `any` | ⏳ Pending |
-| TASK-24 | crm | 🟢 LOW | Type safety | `CompsSection.tsx`, `Pipeline.tsx` | mass `any` | ⏳ Pending |
-| TASK-25 | crm | 🟢 LOW | Style | 3 component files | inline styles | ⏳ Pending |
-| TASK-26 | crm | 🟢 LOW | Bundle | `package.json` | 24 unused Radix pkgs | ⏳ Pending |
-| TASK-27 | all | 🟢 LOW | Config | 3 `vite.config.ts` | hardcoded ports | ✅ S20 |
-| TASK-28 | scraper | 🟢 LOW | Logging | all Python files | structured logs | ⏳ Partially addressed in TASK-22 |
-
----
-
----
-
-## S22 Changes (May 17, 2026)
-
-| Task | Component | Priority | Description | File(s) | Status |
-|------|-----------|----------|-------------|---------|--------|
-| S22-01 | api-server | 🔴 CRITICAL | Fix `d.map is not a function` in SmsConversations — defensive array coercion in queryFn | `SmsConversations.tsx` | ✅ Done |
-| S22-02 | api-server | 🔴 CRITICAL | Fix `d.map is not a function` in ContractsCard — already applied in prior session | `ContractsCard.tsx` | ✅ Done |
-| S22-03 | api-server | 🟠 HIGH | Phone Numbers endpoint silently swallowed errors — now returns proper HTTP status + error message | `routes/twilio.ts` | ✅ Done |
-| S22-04 | crm | 🟠 HIGH | Phone Numbers page now shows actionable error message when Twilio not configured | `PhoneNumbers.tsx` | ✅ Done |
-| S22-05 | api-server | 🟡 MEDIUM | Add `newLeadsLast24h` to `/crm/stats` endpoint for real-time sidebar badge | `routes/crm/stats.ts` | ✅ Done |
-| S22-06 | crm | 🟡 MEDIUM | Sidebar Leads badge now shows leads created in the last 24 hours, updating live via SSE `lead_created` events | `AppLayout.tsx` | ✅ Done |
-| S22-07 | api-server | 🟡 MEDIUM | Bulk CSV lead import backend — `POST /crm/leads/bulk-import` (up to 500 rows, per-row error reporting) | `routes/crm/leads.ts` | ✅ Done |
-| S22-08 | crm | 🟡 MEDIUM | Bulk CSV import modal — file upload, column auto-mapping, preview, submit with per-row error display | `BulkImportModal.tsx`, `LeadList.tsx` | ✅ Done |
-| S22-09 | infra | 🟡 MEDIUM | Replit preview fixed — TolipAI API Server workflow configured on port 5000 | `replit` config | ✅ Done |
-
----
-
-## S24 Changes (May 17, 2026 — this session)
-
-### Audit Corrections
-| Finding | Previous Report | Corrected Status |
-|---------|----------------|-----------------|
-| `GET /api/crm/leads/export` listed as ❌ Missing | S23 audit marked it as a missing HIGH-priority endpoint | ✅ EXISTS — implemented at `routes/crm/leads.ts:212`. Full CSV download endpoint with `crmAuth` guard. S23 was incorrect. |
-
-### Real Unused Imports Fixed (2 files)
-| File | Import Removed | Reason |
-|------|---------------|--------|
-| `routes/crm/notifications.ts` | `crmLeads` from `@workspace/db/schema` | Never referenced in any query — only `crmNotifications` is used in this file |
-| `routes/crm/notifications.ts` | `sql` from `drizzle-orm` | No raw SQL template literals used; `eq`, `and`, `desc` are sufficient |
-| `routes/crm/buyers.ts` | `crmCampaigns` from `@workspace/db/schema` | Never referenced in any query — only `crmBuyers` table is used for all CRUD ops |
-
-### Full Database Audit (NeonDB vs Drizzle)
-**Result: ✅ Fully in sync — all 32 tables confirmed**
-
-| Table | NeonDB | Drizzle | Columns Verified |
-|-------|--------|---------|-----------------|
-| `crm_leads` | ✅ | ✅ | 56 columns — all match including `how_heard`, `offer_sent_at`, `offer_amount`, `mao_discount_override`, both AVM sets |
-| `crm_campaigns` | ✅ | ✅ | 29 columns — all match including `twilio_*` per-campaign creds, `ai_sms_*`, `stripe_customer_id` |
-| `crm_call_logs` | ✅ | ✅ | 20 columns — all match including `disposition`, `ai_coaching_summary`, `mos_score`, `jitter_ms` |
-| `crm_users` | ✅ | ✅ | All columns confirmed |
-| `crm_tasks` | ✅ | ✅ | All columns confirmed including `escalated`, `source` |
-| `crm_contracts` | ✅ | ✅ | All 18 columns confirmed |
-| `crm_sequence_steps` | ✅ | ✅ | All columns confirmed |
-| All other 25 tables | ✅ | ✅ | Present and matching |
-
-**Note:** `crm_waitlist` is intentionally absent from `merged.sql` — it is auto-created at startup in `index.ts`. This is correct behavior.
-
-### Full Endpoint Audit
-**Total endpoints confirmed: 167** across all route files.
-
-| Route File | Count | Key Endpoints |
-|-----------|-------|--------------|
-| `crm/leads.ts` | 28 | CRUD, export, bulk-import, skip-trace, AI tools, comps, notes, archive |
-| `crm/sequences.ts` | 10 | Full sequence + step CRUD |
-| `crm/contracts.ts` | 9 | Full contract lifecycle + e-sign |
-| `twilio-voice.ts` | 17 | Voice, power dial, voicemail, recording, warm transfer |
-| `twilio.ts` | 14 | SMS, click-to-call, webhooks, config |
-| `tools.ts` | 17 | Skip trace, distressed, phone finder, ARV |
-| `scraperEngine.ts` | 9 | Proxy to Python FastAPI |
-| `openphone.ts` | 7 | Messages, calls, webhook ✅ registered |
-| `crm/analytics.ts` | 4 | Dashboard, call quality, call report, chart |
-| `crm/notifications.ts` | 3 | List, read-one, read-all |
-| `health.ts` | 2 | `/healthz` (liveness), `/health` (DB ping) |
-| All others | ~47 | campaigns, users, tasks, buyers, comps, stats, billing, links, waitlist, admin |
-
-### Health Endpoints — Full Verification
-| Endpoint | Type | Response | Auth |
-|----------|------|----------|------|
-| `GET /healthz` | Liveness (shallow) | `{ status: "ok" }` | None |
-| `GET /health` | Readiness (deep DB ping) | `{ status: "ok" }` or `503 { status: "error" }` | None |
-
-Both endpoints are registered in `routes/health.ts` and mounted via `router.use(healthRouter)` in `routes/index.ts`.
-
-### Dead Code Confirmed
-| File | Function/Symbol | Status |
-|------|----------------|--------|
-| `services/scraperEngineClient.ts` | `logEngineConfig()` | Defined at ~line 393, never called in any production path. Safe to remove. |
-| `routes/crm/parse-util.ts` | Multiple source-specific parsers | No active callers found — may be legacy from old lead ingestion pipeline |
-
-### Console.log / Logger Audit
-**Result: ✅ Zero `console.*` calls in any production route file.** Only `seed-demo.ts` and `seed.ts` (CLI-only scripts) use `console.log` — acceptable.
-
-### TODO/FIXME Scan
-**Result: ✅ Zero TODO, FIXME, HACK, or XXX comments** in any production TypeScript file. One env var comment in `twilio-voice.ts:12` (`// TWILIO_VOICE_CALLER_ID = +1XXXXXXXXXX`) is a documentation note, not dead code.
-
-### Missing Endpoints (updated)
-| Endpoint | Priority | Status |
-|----------|----------|--------|
-| `GET /api/crm/leads/export` | — | ✅ EXISTS at `leads.ts:212` — S23 audit was wrong |
-| `POST /api/crm/leads/bulk-status` | MEDIUM | ❌ Missing — batch status update for multiple leads at once |
-| `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed for a lead |
-
-### Node Version Updates (MD files corrected)
-All documentation updated from Node 20 → **Node 22** to reflect the current runtime installed in `replit.nix`.
-
-*Files updated: `README.md` (badge + 2 text refs), `AGENTS.md`, `ARCHITECTURE.md`*
-
----
-
-## S23 Changes (May 17, 2026 — this session)
-
-### Audit Corrections
-| Finding | Previous Report | Corrected Status |
-|---------|----------------|-----------------|
-| `routes/openphone.ts` registration | ❌ Reported as unregistered | ✅ IS registered in `routes/index.ts` — `router.use(openPhoneRouter)` confirmed at line 33 |
-| `_fmtRelative` dead code | ❌ Reported as never called | ✅ IS called at `leads.ts:83` inside `formatLead()` |
-
-### New Endpoints Added
-| Endpoint | File | Description |
-|----------|------|-------------|
-| `GET /api/twilio/voice/voicemails/unread-count` | `routes/twilio-voice.ts` | Returns `{ count: number }` — unassigned inbound missed/recorded/AI calls with `leadId IS NULL`. Used by nav badge. |
-
-### CRM Frontend Changes
-| Change | File | Description |
-|--------|------|-------------|
-| Voicemail Inbox nav badge | `AppLayout.tsx` | Red badge on "Voicemail Inbox" nav item showing count of unassigned voicemails; polls every 30s; same styling as Leads/Tasks badges |
-| `apiRawFetch` imported | `AppLayout.tsx` | Added import for `apiRawFetch` (needed for non-CRM-prefix routes like `/twilio/*`) |
-
-### Database
-| Change | Description |
-|--------|-------------|
-| 10 missing tables pushed to NeonDB | `crm_email_sequences`, `crm_sequence_steps`, `crm_sequence_logs`, `crm_sms_opt_outs`, `crm_sms_conversations`, `crm_buyers`, `crm_background_jobs`, `crm_contracts`, `contacts`, `subscribers` — NeonDB now has all 32 tables |
-| `merged.sql` updated | All 31 CREATE TABLE statements now present (32nd `crm_waitlist` auto-created at startup) |
-| `merged_neondb.zip` regenerated | Updated to include all tables |
-
-### Infrastructure
-| Change | File | Description |
-|--------|------|-------------|
-| pg_dump backup script | `scripts/generate-backup.sh` | Automated backup: `pg_dump --schema-only` from NeonDB → `merged.sql` + `merged_neondb.zip`; AWS-compatible (`--no-owner --no-privileges`); run with `bash scripts/generate-backup.sh` |
-| Node.js 22 installed | `replit.nix` | `nodejs-22` module added; fixes `SIGTERM` startup failures |
-| Admin password reset | NeonDB `crm_users` | `admin@digorcrm.com` password reset to `TolipAdmin2024!` (temporary) — user should update `CRM_ADMIN_PASSWORD` secret to desired production password |
-
-### Health Endpoints (confirmed working)
-| Endpoint | File | Returns |
-|----------|------|---------|
-| `GET /health` | `routes/health.ts` | `{ status: "ok", timestamp: "..." }` |
-| `GET /api/scraper-engine/health` | `routes/scraperEngine.ts` | Proxies to Python FastAPI `/health` |
-
-### Missing Endpoints (still needed vs product requirements)
-| Endpoint | Priority | Status |
-|----------|----------|--------|
-| `GET /api/crm/leads/export` | — | ✅ EXISTS at `leads.ts:212` — incorrectly listed as missing; corrected in S24 |
-| `GET /api/twilio/voice/voicemails/unread-count` | DONE | ✅ Added this session (S23) |
-| `POST /api/crm/leads/bulk-status` | MEDIUM | ❌ Missing — batch status update |
-| `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed |
-
----
-
-## S25 Changes (May 17, 2026 — this session)
-
-### New Endpoints Added
-| Endpoint | File | Description |
-|----------|------|-------------|
-| `POST /api/crm/leads/bulk-status` | `routes/crm/leads.ts` | Batch status update for 1–200 leads. Validates status enum, enforces campaign-level tenancy, writes audit log per changed lead, fires `onLeadStatusChanged` automation hooks, returns `{ updated, status }`. Requires `admin` role. |
-
-### CRM Frontend Changes
-| Change | File | Description |
-|--------|------|-------------|
-| Multi-select checkboxes | `LeadList.tsx` | Per-row checkbox (appears on hover, always visible when checked). Select-all toggle in filter bar. Selected rows get `bg-primary/5 border-primary/20` highlight. |
-| Floating bulk toolbar | `LeadList.tsx` | Springs up from bottom when ≥1 lead selected. Shows count, status dropdown picker, Apply button (calls `POST /api/crm/leads/bulk-status`), and X to clear selection. |
-| Status picker dropdown | `LeadList.tsx` | All 7 statuses listed; active status highlighted in primary color. Disappears on selection. |
-
-### Schema/DB Audit Findings (new)
-| Finding | Severity | Status |
-|---------|----------|--------|
-| `crm_submission_links.submissionsCount` counter | 🟢 LOW | ✅ Already incremented correctly at `crm/index.ts:127` — audit finding was incorrect |
-| `subscribersTable.company` field | 🟢 LOW | ✅ Already saved correctly at `subscribe.ts:35` — audit finding was incorrect |
-| `skipTracedPhones`/`skipTracedEmails` text vs JSONB | 🟡 MEDIUM | ⚠️ Stored as text, parsed as JSON at read time. Functional but not query-able. Migration to JSONB deferred (no active use case for phone-level queries). |
-| `crm_campaigns.owner_user_id` FK missing | 🟡 MEDIUM | ⚠️ Application-enforced ownership — no DB constraint. Low risk for current single-campaign-per-admin model. |
-
-### Health Endpoints (confirmed working)
-| Endpoint | File | Returns |
-|----------|------|---------|
-| `GET /healthz` | `routes/health.ts` | `{ status: "ok" }` — liveness probe |
-| `GET /health` | `routes/health.ts` | `{ status: "ok", timestamp }` — DB ping readiness probe |
-| `GET /api/scraper-engine/health` | `routes/scraperEngine.ts` | Proxies to Python FastAPI `/health` |
-
-### Stripe Signup → Campaign Auto-Creation (clarification)
-**Question answered:** YES — when a user signs up on the landing page and pays with Stripe, a campaign IS automatically created.
-
-Flow (`routes/stripe.ts` webhook handler):
-1. User selects plan → `POST /api/stripe/checkout` → Stripe Checkout session
-2. Stripe fires `checkout.session.completed` webhook → `routes/stripe.ts`
-3. Server checks if email already exists in `crm_users`
-4. If new user: generates slug, temp password, inserts `crm_campaigns` row, inserts `crm_users` admin row, sets `ownerUserId`, saves `stripeCustomerId`
-5. Sends welcome email via `buildWelcomeOnboardingEmail`, schedules 14-day onboarding sequence
-
-**What determines limits:**
-- **Skip trace limit:** `crm_campaigns.skip_trace_daily_limit` (default: 1/day). Enforced in `propertyApi.ts` via in-memory cooldown map per `campaignId`. Super admins bypass.
-- **Fetch comps limit:** `crm_campaigns.fetch_comps_daily_limit` (default: 1/day). Same mechanism.
-- **User seat limit:** `crm_campaigns.max_users`. Enforced in `crm/users.ts` POST handler.
-- All limits are set at campaign creation time and can be updated by super_admin via `PATCH /api/crm/campaigns/:id`.
-
-### Missing Endpoints (updated)
-| Endpoint | Priority | Status |
-|----------|----------|--------|
-| `POST /api/crm/leads/bulk-status` | MEDIUM | ✅ Added this session (S25) |
-| `GET /api/crm/leads/:id/timeline` | MEDIUM | ❌ Missing — chronological activity feed |
-
-*Last updated: S25 (May 17, 2026). `POST /api/crm/leads/bulk-status` implemented with full audit trail. Multi-select UI added to LeadList. All MD files updated. Stripe → campaign auto-creation confirmed working. Remaining: timeline endpoint, mass `any` cleanup.*
+*End of CODEBASE_AUDIT.md — TolipAI Platform, May 22, 2026*
+*Next scheduled audit: after Priority 1 + 2 fixes are merged*
