@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import {
   PhoneOff, PhoneCall, Mic, MicOff, Loader2,
   Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles, Voicemail, PauseCircle,
-  PhoneForwarded, X, Hash, ClipboardList,
+  PhoneForwarded, X, Hash, ClipboardList, BookmarkPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +86,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [droppingVoicemail, setDroppingVoicemail] = useState(false);
   const [showDTMF, setShowDTMF] = useState(false);
+  const [summarySaved, setSummarySaved] = useState(false);
 
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferNumber, setTransferNumber] = useState("");
@@ -137,6 +138,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     setLastCallSid(null);
     setSummary(null);
     setSummaryLoading(false);
+    setSummarySaved(false);
 
     try {
       await phone.startCall(leadPhone, leadId ?? null, leadName || "Unknown", record);
@@ -244,6 +246,29 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
     }
     setTransferActive(false);
   }, [phone, toast]);
+
+  // ── Save call summary to lead notes ────────────────────────────────────────
+  const saveToLead = useCallback(async () => {
+    if (!summary || !leadId) return;
+    const parts: string[] = [];
+    if (summary.sellerSituation) parts.push(`**Situation:** ${summary.sellerSituation}`);
+    if (Array.isArray(summary.keyPoints) && summary.keyPoints.length > 0) {
+      parts.push(`**Key Points:**\n${(summary.keyPoints as string[]).map((p) => `• ${p}`).join("\n")}`);
+    }
+    if (summary.nextStep) parts.push(`**Recommended Next Step:** ${summary.nextStep}`);
+    if (summary.motivationLabel) parts.push(`**Motivation:** ${summary.motivationLabel} (${summary.motivationScore}/10)`);
+    const content = `📞 Call Summary\n\n${parts.join("\n\n")}`;
+    try {
+      await authFetch(`/crm/leads/${leadId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      });
+      setSummarySaved(true);
+      toast({ title: "Saved to lead notes" });
+    } catch (err: any) {
+      toast({ title: "Failed to save note", description: err.message, variant: "destructive" });
+    }
+  }, [summary, leadId, toast]);
 
   // ── Fetch post-call AI summary ──────────────────────────────────────────────
   const fetchSummary = useCallback(async (liveText: string, sid?: string | null) => {
@@ -398,6 +423,25 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
           </div>
         )}
 
+        {/* Live AI Coaching Suggestion Panel */}
+        {isActive && phone.aiSuggestion && (
+          <div className="rounded-xl bg-violet-500/5 border border-violet-500/20 p-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-violet-400 flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 animate-pulse" /> Live AI Coaching
+              </p>
+              <button
+                onClick={phone.clearAiSuggestion}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-foreground/90 leading-relaxed">{phone.aiSuggestion}</p>
+          </div>
+        )}
+
         {/* DTMF Keypad */}
         {isActive && showDTMF && (
           <div className="rounded-xl bg-secondary/20 border border-border p-3">
@@ -527,6 +571,23 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
               <div className="p-2 rounded-lg bg-background/50 border border-white/5">
                 <p className="text-[10px] text-muted-foreground mb-0.5">Recommended next step</p>
                 <p className="text-xs font-medium text-cyan-300">{summary.nextStep}</p>
+              </div>
+            )}
+
+            {/* Save to Lead Notes */}
+            {leadId && !summarySaved && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-1.5 text-xs border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:border-emerald-400/50 hover:bg-emerald-500/5 h-7"
+                onClick={saveToLead}
+              >
+                <BookmarkPlus className="w-3.5 h-3.5" /> Save to Lead Notes
+              </Button>
+            )}
+            {summarySaved && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-400 px-1">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Saved to lead notes
               </div>
             )}
           </div>

@@ -23,9 +23,9 @@ A full-stack real estate wholesaling platform built to solve real acquisition, c
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Applications](#applications)
-  - [TolipAI CRM](#TolipAI-crm)
-  - [TolipAI Tools](#TolipAI-tools)
-  - [TolipAI Website](#TolipAI-website)
+  - [TolipAI CRM](#tolipai-crm)
+  - [TolipAI Tools](#tolipai-tools)
+  - [TolipAI Website](#tolipai-website)
   - [API Server](#api-server)
 - [AI Integrations](#ai-integrations)
 - [Third-Party APIs & Integrations](#third-party-apis--integrations)
@@ -252,7 +252,7 @@ TolipAI is a unified platform that consolidates every step of the wholesaling wo
 2. **Property intelligence** — One click pulls property data (beds/baths/sqft/year/value), skip traces the owner for phone and email, and fetches recently-sold comps automatically
 3. **AI-assisted underwriting** — Llama 3.1 70B scores deals 1–10, estimates repair costs from free-text descriptions, generates seller scripts, and writes offer letters — all from within the deal record
 4. **ARV calculation** — ATTOM comp data filtered by property type and sqft ratio, adjusted for beds/baths/year/time, with ATTOM AVM as a secondary signal
-5. **Communication** — SignalWire and OpenPhone integrations log calls and SMS messages directly inside the lead record; no context switching
+5. **Communication** — Twilio Voice SDK browser dialer logs calls and SMS messages directly inside the lead record; live call transcription + real-time AI coaching during calls
 6. **Distressed list building** — ATTOM mortgage data used to find absentee owners and free-and-clear properties by ZIP or city; enriched with skip trace in one job
 7. **Automated follow-up** — Email sequences with per-day-offset scheduling run in the background without any manual trigger
 
@@ -333,9 +333,9 @@ and drafting an offer letter in Word. Typical elapsed time: 60–90 minutes.
 monorepo/
 ├── artifacts/
 │   ├── api-server/        Express 5 API — all business logic and integrations
-│   ├── tolipai-crm/         React + Vite CRM portal  (/crm/)
-│   ├── tolipai-tools/       React + Vite internal tools (/tools/)
-│   └── tolipai-website/     React + Vite public marketing site (/)
+│   ├── TolipAI-crm/       React + Vite CRM portal  (/crm/)
+│   ├── TolipAI-tools/     React + Vite internal tools (/tools/)
+│   └── TolipAI-website/   React + Vite public marketing site (/)
 ├── lib/
 │   ├── api-spec/          OpenAPI 3.1 spec + Orval codegen config
 │   ├── api-client-react/  Generated React Query hooks
@@ -346,6 +346,8 @@ monorepo/
 
 All four applications share a single PostgreSQL database and are served behind a single Railway deployment. The API server runs on a dedicated port; the three React apps are built as static assets and served at path-based routes.
 
+For a full deep-dive into request lifecycle, inbound call routing, JWT payload structure, comparable sales math, API key rotation, and data flow diagrams, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
 ---
 
 ## Tech Stack
@@ -353,22 +355,24 @@ All four applications share a single PostgreSQL database and are served behind a
 ### Backend
 | Technology | Version | Purpose |
 |---|---|---|
-| Node.js | 23 | Runtime |
-| TypeScript | 5.9 | Type safety across the entire monorepo |
+| Node.js | 22 | Runtime |
+| TypeScript | 5.x | Type safety across the entire monorepo |
 | Express | 5 | HTTP framework |
-| PostgreSQL | — | Primary database |
+| PostgreSQL | 17 (NeonDB) | Primary database |
 | Drizzle ORM | latest | Type-safe query builder + schema management |
-| drizzle-zod | latest | Zod schemas auto-generated from Drizzle tables |
 | Zod | v4 | Runtime validation |
 | esbuild | latest | Production bundler (CJS output) |
 | pnpm workspaces | 10 | Monorepo package management |
+| bcryptjs | latest | Password hashing |
+| jsonwebtoken | latest | JWT auth (HS256, 7-day TTL) |
+| Pino | latest | Structured JSON logging |
 
 ### Frontend (CRM + Tools + Website)
 | Technology | Version | Purpose |
 |---|---|---|
 | React | 18 | UI framework |
 | Vite | 7 | Dev server and build tool |
-| TypeScript | 5.9 | Type safety |
+| TypeScript | 5.x | Type safety |
 | TanStack Query | v5 | Server state, caching, mutations |
 | TanStack Router | latest | File-based routing |
 | Tailwind CSS | v4 | Utility-first styling |
@@ -380,23 +384,30 @@ All four applications share a single PostgreSQL database and are served behind a
 ### AI / LLM
 | Technology | Purpose |
 |---|---|
-| Groq API | Inference provider — sub-second responses via Llama 3.1 70B |
-| Meta Llama 3.1 70B Versatile | Deal scoring, repair estimation, seller scripts, offer letters |
-| Market price-per-sqft estimation | AI fallback when ATTOM comp data is insufficient |
+| Groq API | Primary inference — sub-second responses via Llama 3.3 70B |
+| OpenAI API | Whisper transcription (call recordings), GPT-4o-mini (post-call coaching), GPT-4o Realtime (AI voice agent) |
+| Meta Llama 3.3 70B Versatile | Deal scoring, repair estimation, seller scripts, offer letters, live coaching suggestions |
+
+### Telephony
+| Technology | Purpose |
+|---|---|
+| Twilio Voice SDK (`@twilio/voice-sdk`) | Browser-based WebRTC calling (outbound + inbound) |
+| Twilio Voice Intelligence | Real-time call transcription webhooks (`/twilio/voice/transcript`) |
+| Twilio REST API | Call control, recording, participant management, power dialer |
+| Twilio TwiML | Call routing, conference rooms, voicemail, inbound IVR |
+| OpenAI Realtime API (gpt-4o-realtime-preview) | AI voice agent for unanswered inbound calls |
 
 ### Communications
 | Technology | Purpose |
 |---|---|
-| SignalWire | VoIP call logging and SMS, stored per-lead |
 | OpenPhone | Alternative telephony integration with per-lead message threading |
 | SMTP (Nodemailer) | Outbound email for automated sequences and contact form |
 
 ### Data & Valuation APIs
 | API | Purpose |
 |---|---|
-| ATTOM Data | Comps (`sale/snapshot`), property snapshot, AVM (`/propertyapi/v1.0.0/avm/detail
-`), mortgage/owner detail (`detailmortgageowner`) |
-| PropertyAPI.co | Property data enrichment, skip trace (up to 7 key rotation), AVM |
+| ATTOM Data | Comps (`sale/snapshot`), property snapshot, AVM (`attomavm/detail`), mortgage/owner detail (`detailmortgageowner`) |
+| PropertyAPI.co | Property data enrichment, skip trace (up to 8 key rotation), AVM |
 | Rentcast | Rental valuation and AVM for CRM leads |
 | US Census Bureau | Free county FIPS resolution for geo-targeted distressed searches |
 | Zippopotam.us | Free ZIP code lookup by city/state for distressed search expansion |
@@ -405,9 +416,10 @@ All four applications share a single PostgreSQL database and are served behind a
 | Technology | Purpose |
 |---|---|
 | Railway | Deployment platform (Railpack builder) |
+| NeonDB | Serverless PostgreSQL 17 |
 | Stripe | Subscription management and checkout |
-| JWT + bcrypt | Authentication, password hashing |
-| Papa Parse | CSV parsing/generation for skip trace exports |
+| AWS Fargate Spot | Python scraper engine (Playwright + FastAPI) |
+| Sentry | Error tracking (optional — gated on `SENTRY_DSN`) |
 
 ---
 
@@ -421,7 +433,7 @@ Multi-tenant CRM built for real estate wholesaling teams. Each client organizati
 
 | Role | Access |
 |---|---|
-| `super_admin` | TolipAI staff; cross-campaign visibility; can create campaigns and campaign admins |
+| `super_admin` | TolipAI staff; cross-campaign visibility; can create campaigns and campaign admins; can view any user's stored plain-text password |
 | `admin` | Campaign admin; manages their campaign's users, leads, tasks, links |
 | `sales` | Full lead read/write within their campaign |
 | `va` | View/edit leads assigned to them only |
@@ -439,7 +451,7 @@ Multi-tenant CRM built for real estate wholesaling teams. Each client organizati
 | Buyers List | Buyer database for deal assignment and co-wholesaling |
 | Email Sequences | Automated follow-up sequences with day-offset steps and template variables |
 | Campaign Management | Super admin: create/manage client campaigns |
-| Team Users | Admin: invite and manage team members |
+| Team Users | Admin: invite and manage team members; super admin can view any user's stored password |
 | Submission Links | Tokenized public links for seller self-submission |
 | Billing | Admin: open Stripe Customer Portal to manage subscription, invoices, and payment method |
 
@@ -459,27 +471,43 @@ The lead detail page is the core of the CRM. Every feature below is accessible f
 - Deal quality flag: warns when `ARV / asking price < 1.7x`
 - **ATTOM comp fetch**: radius-based lat/lon query via `sale/snapshot`, property-type filter (excludes multi-family), sqft ratio filter (0.57–1.75×), time-appreciation adjustment (3%/year)
 - **Rentcast AVM**: on-demand rental/sale valuation with range
-- **ATTOM AVM**: secondary automated valuation from `/propertyapi/v1.0.0/avm/detail
-` with confidence score and low/high range
+- **ATTOM AVM**: secondary automated valuation from `attomavm/detail` with confidence score and low/high range
 
-**AI Features (Groq — Llama 3.1 70B)**
+**AI Features (Groq — Llama 3.3 70B)**
 - **AI Deal Scorer**: Scores the deal 1–10 with detailed reasoning; considers ARV, asking price, repair estimate, MAO, seller motivation, property condition, and timeline
 - **AI Repair Estimator**: Parses a free-text property description ("roof needs work, kitchen dated, HVAC is 15 years old") and returns a line-item cost breakdown with total; one-click apply to the deal record
 - **AI Seller Script**: Generates a structured call script with an opener, discovery questions, objection handling, and close — personalized to the seller's motivation and situation
 - **AI Offer Letter**: Generates a professional offer letter with deal terms, contingencies, and closing timeline; rendered as a printable HTML document
 
-**Communications**
-- **SignalWire**: In-lead call and SMS log with message history; polling-based refresh
-- **OpenPhone**: Alternative telephony panel with per-lead message threading
-- **Browser Dialer** (Twilio Voice SDK): In-browser WebRTC calling with live quality metrics (MOS, jitter, packet loss), call recording, automatic Whisper transcription, and post-call disposition picker
-- **AI Call Coaching**: Post-call GPT-4o-mini analysis of the call transcript — returns score (1–10), strengths, improvements, a suggested follow-up task, and an offer price recommendation
-- Call disposition logging (Answered / No Answer / Left Voicemail / Not Interested / Wrong Number / Callback Requested)
-- **Inbound Call Routing**: Calls ring all browser clients simultaneously + a configurable forward phone number; on no-answer, routes to AI voice agent (OpenAI Realtime) or voicemail depending on key availability
+**Communications — Browser Dialer (Twilio Voice SDK)**
+- WebRTC in-browser calling — no phone hardware required
+- Live call quality metrics: MOS score, jitter (ms), packet loss (%)
+- On-hold support with hold music via Twilio conference participant API
+- DTMF keypad for IVR navigation
+- **Voicemail drop**: pre-recorded voicemail plays to lead; agent hangs up and moves on
+- **Warm transfer**: bridges a third party into an existing call; agent can leave cleanly
+- Call recording with Twilio recording status callback
+- **Automatic Whisper transcription**: triggered by recording webhook, saves to `crm_call_logs`
+- **Post-call AI Summary** (Groq/OpenAI): key points, seller motivation score, recommended next step — auto-generated on hang-up from live transcript; "Save to Lead Notes" button writes the summary directly into the lead's activity log
+- **Post-call AI Call Coaching** (GPT-4o-mini): score 1–10, strengths, improvements, suggested follow-up task, and offer price recommendation — triggered 90s after call ends (recording must process)
+- **Live AI Coaching** (real-time during call): Twilio Voice Intelligence streams the call transcript; a debounced AI suggestion appears in the dialer panel every time the seller speaks, giving the agent a live rebuttal or talking point; dismiss button clears it
+- Call disposition picker: Answered / No Answer / Left Voicemail / Not Interested / Wrong Number / Callback Requested
+
+**Inbound Call Routing**
+- Inbound calls ring all browser clients simultaneously + a configurable forward phone number
+- On no-answer: routes to AI voice agent (OpenAI Realtime `gpt-4o-realtime-preview`) or voicemail depending on key availability
+- See [ARCHITECTURE.md — Inbound Call Routing](./ARCHITECTURE.md#inbound-call-routing) for the full resolution chain
+
+**Power Dialer** (`/dialer/power`)
+- Session-based dialing queue backed by `crm_background_jobs`
+- **Multi-line mode** (up to 5 simultaneous calls): Twilio dials all numbers at once; first to answer connects — rest are cancelled automatically
+- Disposition logging + session advance on each call
+- Session persists across deploys (DB-backed state)
 
 **Workflow**
 - Status pipeline: `new_lead → contacted → negotiating → under_contract → closed_won → closed_lost → on_hold`
 - Task assignment and due dates directly from the lead detail
-- Note history with `@username` mention support
+- Note history with `@username` mention support and follower notifications
 - Offer letter print (client-side HTML rendering, no server required)
 
 #### Email Sequences
@@ -502,7 +530,7 @@ PIN-gated internal tools portal for acquisition and research work. Separate from
 - Upload CSV or XLSX file (parsed client-side via SheetJS/Papa Parse)
 - Automatic column detection: street, city, state, ZIP, owner name — or detects combined address columns (e.g., `120 W 3RD ST, TULSA, OK 74103`)
 - Batches of 10 records; passes owner name when available to save credits (1 vs 2 credits/lookup)
-- Up to 7 PropertyAPI.co keys in round-robin rotation with automatic depletion detection
+- Up to 8 PropertyAPI.co keys in round-robin rotation with automatic depletion detection
 - Background job with real-time progress polling
 - CSV export with `_status`, `_phones`, `_emails`, `_owner` columns appended
 
@@ -564,25 +592,45 @@ Express 5 API server. All business logic lives here; the React apps are thin cli
 | `/api/crm/campaigns/` | Campaign CRUD (super admin) |
 | `/api/crm/leads/` | Lead CRUD + all AI, valuation, comps, and comms routes |
 | `/api/crm/tasks/` | Task CRUD |
-| `/api/crm/users/` | User management |
+| `/api/crm/users/` | User management; `GET /:id/password` (super admin only) |
 | `/api/crm/links/` | Submission link management + public submit endpoint |
 | `/api/crm/sequences/` | Email sequence + step CRUD |
 | `/api/crm/buyers/` | Buyer database |
 | `/api/crm/stats/` | Dashboard statistics |
+| `/api/crm/billing/` | Stripe Customer Portal session (admin self-service) |
+| `/api/crm/notifications/` | In-app notifications |
+| `/api/crm/analytics/` | Campaign analytics |
+| `/api/crm/contracts/` | Contract management |
+| `/api/crm/events` | Server-sent events (real-time push — incoming calls, live transcripts, AI suggestions) |
 | `/api/tools/` | Skip trace, distressed finder, ARV, property lookup |
-| `/api/signalwire/` | Call and SMS webhook + retrieval |
+| `/api/twilio/voice/token` | Twilio Access Token for browser dialer (Voice SDK) |
+| `/api/twilio/voice/answer` | TwiML App Voice URL — call whisper + conference or `<Dial>` |
+| `/api/twilio/voice/inbound` | Inbound call routing (campaign resolution → lead lookup → ring clients) |
+| `/api/twilio/voice/recording` | Recording status callback — saves SID/URL, triggers Whisper transcription |
+| `/api/twilio/voice/transcript` | Twilio Voice Intelligence real-time transcription webhook |
+| `/api/twilio/voice/coach` | Post-call AI coaching (GPT-4o-mini via transcript) |
+| `/api/twilio/voice/call-summary` | Post-call AI summary (key points, motivation score, next step) |
+| `/api/twilio/voice/log` | Create/update call log entries |
+| `/api/twilio/voice/hold` | Toggle hold on active conference participant |
+| `/api/twilio/voice/warm-transfer` | Bridge a third party into an active conference |
+| `/api/twilio/voice/voicemail-drop` | Drop a pre-recorded voicemail and disconnect |
+| `/api/twilio/voice/power-dial/*` | Power dialer session management |
+| `/api/twilio/voice/agent-stream` | WebSocket endpoint for AI voice agent (OpenAI Realtime) |
+| `/api/twilio/` | SMS webhooks + inbound SMS routing |
 | `/api/openphone/` | OpenPhone webhook + message retrieval |
 | `/api/stripe/` | Checkout session creation, webhook, subscriptions list |
-| `/api/crm/billing/` | Stripe Customer Portal session (admin self-service) |
 | `/api/contact/` | Public contact form (SMTP delivery) |
 | `/api/subscribe/` | Email subscription management |
-| `/api/health/` | Health check |
+| `/api/healthz` | Liveness probe (no deps) |
+| `/api/health` | Readiness probe (DB ping) |
 
 ---
 
 ## AI Integrations
 
-All LLM calls go through the **Groq API** using **Meta Llama 3.1 70B Versatile**. Groq's inference speed (typically 200–400 tokens/second) makes the AI features feel interactive rather than batch-processed.
+### Primary Inference — Groq (Llama 3.3 70B Versatile)
+
+All synchronous AI features use the Groq API for sub-second inference:
 
 ### AI Deal Scorer (`POST /api/crm/leads/:id/ai-deal-score`)
 
@@ -594,8 +642,6 @@ Returns:
 - `strengths` — array of positive signals
 - `risks` — array of risk factors
 - `recommendation` — actionable next step
-
-The model is explicitly prompted to apply the 70% Rule (MAO = ARV × 0.70 − repairs) as a baseline and penalize deals that don't meet it.
 
 ### AI Repair Estimator (`POST /api/crm/leads/:id/ai-repair-estimate`)
 
@@ -622,9 +668,22 @@ Generates a professional purchase offer letter in plain English with:
 
 Rendered as a printable HTML document the agent can hand to the seller or send by email.
 
+### Post-Call AI Summary (`POST /api/twilio/voice/call-summary`)
+
+Triggered automatically on call hang-up from the live browser transcript (no wait for recording). Also accepts a `callSid` to pull the Whisper-transcribed version from the DB.
+
+**Output:**
+- `keyPoints` — array of key talking points from the call
+- `motivationScore` (1–10) — seller urgency: 9–10 = Hot, 7–8 = Warm, 5–6 = Moderate, 1–4 = Cold
+- `motivationLabel` — `Hot | Warm | Moderate | Cold`
+- `sellerSituation` — one sentence on the seller's main pain point
+- `nextStep` — specific recommended next action
+
+After reviewing, the agent clicks **"Save to Lead Notes"** to write the summary directly into the lead's activity log as a structured note.
+
 ### AI Call Coach (`POST /api/twilio/voice/coach`)
 
-After a recorded call is transcribed (via Whisper, automatically triggered by the Twilio recording webhook), agents can request AI coaching feedback on the call.
+After a recorded call is transcribed (via Whisper, automatically triggered by the Twilio recording webhook ~30–120s after call ends), agents can request AI coaching feedback on the call.
 
 **Input:** `callSid` — the endpoint fetches the transcript from `crm_call_logs` automatically.
 
@@ -638,7 +697,34 @@ After a recorded call is transcribed (via Whisper, automatically triggered by th
 
 Results are persisted to `crm_call_logs.ai_coaching_summary` (JSON) and displayed in the BrowserDialer post-call panel.
 
-**Requirement:** `OPENAI_API_KEY` must be set. Returns HTTP 503 if missing.
+**Requirement:** `OPENAI_API_KEY` or `GROQ_API_KEY` must be set. Returns HTTP 503 if neither is configured.
+
+### Live AI Coaching (Real-Time During Calls)
+
+Powered by **Twilio Voice Intelligence** (real-time transcription webhook) + Groq inference.
+
+**How it works:**
+1. Twilio Voice Intelligence streams call audio and POSTs transcript segments to `POST /api/twilio/voice/transcript`
+2. Each inbound (seller) segment is stored in an in-memory transcript buffer per `callSid`
+3. 5 seconds after the last inbound segment, Groq generates a short rebuttal/talking point (under 40 words)
+4. The suggestion is pushed to the agent's browser via SSE (`call_suggestion` event)
+5. The BrowserDialer displays a purple "Live AI Coaching" panel with the suggestion and a dismiss button
+
+**Twilio Voice Intelligence webhook format** (`POST /api/twilio/voice/transcript`):
+
+| Field | Type | Description |
+|---|---|---|
+| `CallSid` | string | The call SID this transcript segment belongs to |
+| `AccountSid` | string | Twilio account SID |
+| `TranscriptionEvent` | string | `transcription-started`, `transcription-content`, or `transcription-stopped` |
+| `TranscriptionData` | string (JSON) | JSON string: `{"transcript": "...", "confidence": 0.95}` |
+| `Track` | string | `inbound_track` (seller) or `outbound_track` (agent) |
+
+To enable: configure the Twilio Voice Intelligence transcription service and point its webhook URL to `https://your-domain.com/api/twilio/voice/transcript`.
+
+### AI Voice Agent (Inbound — OpenAI Realtime)
+
+When an inbound call is not answered, the system automatically routes to the AI voice agent at `wss://<host>/api/twilio/voice/agent-stream`. Uses OpenAI `gpt-4o-realtime-preview` over Twilio Media Streams (G.711 μ-law audio). Gracefully falls back to voicemail if `OPENAI_API_KEY` is not set.
 
 ### Market Price-Per-Sqft Estimation (ARV Calculator fallback)
 
@@ -647,6 +733,22 @@ When the ATTOM comp data doesn't include enough sqft readings to derive a median
 ---
 
 ## Third-Party APIs & Integrations
+
+### Twilio
+
+Full telephony stack — browser dialer, inbound routing, recording, transcription, power dialer:
+
+| Capability | Mechanism |
+|---|---|
+| Browser calling (WebRTC) | Twilio Voice SDK + TwiML App (`/api/twilio/voice/answer`) |
+| Inbound routing | `POST /api/twilio/voice/inbound` — campaign lookup → lead lookup → `<Dial><Client>` |
+| Recording | `record-from-start` attribute → recording status callback (`/api/twilio/voice/recording`) |
+| Real-time transcription | Twilio Voice Intelligence → `POST /api/twilio/voice/transcript` |
+| Hold music | Conference Participant API (`hold=true`) |
+| Warm transfer | `POST /api/twilio/voice/warm-transfer` → REST API call adds participant |
+| Voicemail drop | TwiML `<Play>` on active call leg |
+| Power dialer | REST API multi-call via `<Dial><Number>` with multiple `To` numbers |
+| AI voice agent (inbound) | Twilio Media Stream → WebSocket → OpenAI Realtime |
 
 ### ATTOM Data Solutions
 
@@ -670,19 +772,15 @@ Used for skip trace, property enrichment, and AVM:
 | `parcels/search-by-address` | Property details: beds/baths/sqft/year/AVM/last-sale/owner/coordinates |
 | `skip-trace` (POST, batch) | Owner phones and emails; 1 credit with name, 2 without |
 
-Up to 7 API keys in round-robin rotation (`PROPERTY_API_KEY_1` through `PROPERTY_API_KEY_7` plus legacy `PROPERTY_API_KEY`). Depletion detection from both HTTP 402 status and response body inspection.
+Up to 8 API keys in round-robin rotation (`PROPERTY_API_KEY` plus `PROPERTY_API_KEY_1` through `PROPERTY_API_KEY_7`). Depletion detection from both HTTP 402 status and response body inspection.
 
 ### Rentcast
 
 On-demand rental and sale AVM for CRM leads. Called from the Lead Detail panel and returns a valuation with range.
 
-### SignalWire
-
-VoIP and SMS platform. Webhooks log inbound/outbound calls and messages to the `crm_openphone_messages` (or dedicated SignalWire table) keyed by lead. Messages are displayed in a threaded panel inside the lead detail. Polling interval: configurable (recommended 30–60s to avoid request storms).
-
 ### OpenPhone
 
-Alternative telephony provider. Same pattern as SignalWire: webhook ingestion + per-lead message display with a dedicated panel in Lead Detail.
+Alternative telephony provider. Webhook ingestion + per-lead message display with a dedicated panel in Lead Detail.
 
 ### Stripe
 
@@ -690,7 +788,7 @@ Subscription checkout for TolipAI's service tiers. Full lifecycle:
 
 - **Checkout** — Three-tier pricing (`Full Package $1,500/mo`, `Growth Infrastructure $1,000/mo`, `Half Package $750/mo`). TOS consent collection baked in.
 - **Webhook** — `checkout.session.completed` auto-provisions a new CRM campaign, hashes a temporary password, saves the Stripe `customer.id` on the campaign, and sends a welcome email with credentials.
-- **Customer Portal** — `POST /api/crm/billing/portal` (admin-only JWT) creates a Stripe Billing Portal session. Campaign admins click "Open Billing Portal" inside the CRM to manage their subscription, update payment method, view invoices, and cancel — all without contacting support. The `stripe_customer_id` is stored on `crm_campaigns` and linked at checkout time.
+- **Customer Portal** — `POST /api/crm/billing/portal` (admin-only JWT) creates a Stripe Billing Portal session. Campaign admins click "Open Billing Portal" inside the CRM to manage their subscription, update payment method, view invoices, and cancel — all without contacting support.
 
 ### US Census Bureau API
 
@@ -708,27 +806,49 @@ PostgreSQL via Drizzle ORM. All CRM tables are campaign-scoped.
 
 | Table | Description |
 |---|---|
-| `crm_campaigns` | Client organizations — id, name, slug, active, `stripe_customer_id` |
-| `crm_users` | Team members — role, email, bcrypt password, campaign FK |
+| `crm_campaigns` | Client organizations — id, name, slug, active, `stripe_customer_id`, `twilio_forward_phone`, `max_users` |
+| `crm_users` | Team members — role, email, bcrypt `password_hash`, `password_plain` (super admin recovery), campaign FK |
 | `crm_leads` | Core deal record — all property, seller, financial, and status fields |
-| `crm_notes` | Lead notes with @mention support |
+| `crm_notes` | Lead notes with `@mention` support |
 | `crm_tasks` | Tasks linked to leads and users with due dates |
 | `crm_submission_links` | Tokenized public intake URLs |
 | `crm_comps` | Comparable sales per lead with adjustment fields |
 | `crm_email_sequences` | Sequence definition with campaign scope |
 | `crm_sequence_steps` | Per-step day offset + email subject/body template |
 | `crm_sequence_logs` | Sent-email deduplication log |
-| `crm_openphone_messages` | Inbound/outbound messages from SignalWire/OpenPhone |
+| `crm_call_logs` | Twilio call records — `call_sid`, `recording_sid`, `recording_url`, `transcript`, `ai_coaching_summary`, `disposition`, MOS/jitter metrics |
+| `crm_openphone_messages` | Inbound/outbound messages from OpenPhone |
+| `crm_buyers` | Buyer database for deal assignment and co-wholesaling |
+| `crm_lead_followers` | Follow subscriptions for lead activity notifications |
+| `crm_notifications` | In-app notification queue per user |
+| `crm_background_jobs` | Power dialer sessions and other async jobs |
+| `crm_faxes` | Fax records (inbound/outbound) |
+| `crm_contracts` | Contract documents per lead |
+| `crm_waitlist` | Public waitlist signups |
 | `contacts` | Website contact form submissions |
 | `subscribers` | Email list subscribers |
+
+### Key Column Migrations (`seed.ts` — `ensureColumns`)
+
+New columns are added at startup via idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — no manual migration step needed:
+
+| Column | Description |
+|---|---|
+| `crm_call_logs.disposition` | Call outcome label (Answered, No Answer, etc.) |
+| `crm_call_logs.ai_coaching_summary` | JSON from GPT-4o-mini post-call coaching |
+| `crm_campaigns.stripe_customer_id` | Stripe customer for billing portal |
+| `crm_campaigns.twilio_forward_phone` | E.164 phone to ring simultaneously with browser clients |
+| `crm_users.password_plain` | Stored cleartext for super admin recovery (`GET /api/crm/users/:id/password`) |
 
 ---
 
 ## Key Engineering Decisions
 
-### Why Groq instead of OpenAI
+### Why Groq instead of OpenAI (for sync AI features)
 
-Groq's LPU hardware delivers token generation at 200–400 tokens/second versus OpenAI's 40–80 tokens/second on GPT-4. For interactive features like deal scoring and script generation that run inside a CRM workflow, latency matters. Llama 3.1 70B on Groq provides GPT-4-class reasoning at near-real-time speeds.
+Groq's LPU hardware delivers token generation at 200–400 tokens/second versus OpenAI's 40–80 tokens/second on GPT-4. For interactive features like deal scoring and script generation that run inside a CRM workflow, latency matters. Llama 3.3 70B on Groq provides GPT-4-class reasoning at near-real-time speeds.
+
+OpenAI is used for Whisper (audio transcription — no Groq equivalent), GPT-4o Realtime (AI voice agent — requires OpenAI's proprietary real-time protocol), and GPT-4o-mini (post-call coaching — better instruction following for structured JSON scoring).
 
 ### ARV comp quality filters
 
@@ -738,9 +858,13 @@ ATTOM's `sale/snapshot` returns all property sales within the radius regardless 
 
 ATTOM exposes two sqft fields: `universalsize` (heated living area, consistent across all property types) and `livingsize` (sometimes missing or unreliable for older records). The platform explicitly uses `universalsize` for both the subject property lookup and comp selection, ensuring the sqft adjustments are apples-to-apples.
 
+### Conference-based calling (vs. classic `<Dial><Number>`)
+
+The browser dialer uses Twilio conferences (`<Conference>`) rather than a simple `<Dial><Number>`. This enables proper hold music via the Participant API (`hold=true`), warm transfers (add a participant to an existing conference), and reliable recording attribution. Falls back to classic `<Dial>` when API key credentials are unavailable.
+
 ### PropertyAPI key rotation
 
-Single API keys for skip trace services deplete quickly on bulk jobs. The platform supports up to 7 keys with round-robin rotation and automatic depletion detection — both from HTTP 402 responses and from JSON error bodies that contain "Insufficient credits". This allows a single bulk job to seamlessly continue across multiple keys without manual intervention.
+Single API keys for skip trace services deplete quickly on bulk jobs. The platform supports up to 8 keys with round-robin rotation and automatic depletion detection — both from HTTP 402 responses and from JSON error bodies that contain "Insufficient credits". This allows a single bulk job to seamlessly continue across multiple keys without manual intervention.
 
 ### Multi-tenancy via JWT campaign isolation
 
@@ -750,34 +874,77 @@ Rather than separate databases or schemas per client, campaign isolation is enfo
 
 Rather than a separate worker process or queue system, the sequence sender runs as an in-process `setInterval` on the API server. This works because the job is idempotent (checked against `crm_sequence_logs`) and low-frequency (hourly). It avoids the operational overhead of Redis/BullMQ for a use case that doesn't require sub-minute precision.
 
+### Identity sequence self-healing (NeonDB)
+
+NeonDB's serverless PostgreSQL can let serial/identity sequences drift to 0 or NULL during inactivity, causing "null value in column id" INSERT failures. The server repairs sequences on every startup via `ALTER TABLE ... RESTART WITH MAX(id)+1`, and route handlers use a `safeInsertCallLog()` wrapper that retries with an explicit `MAX(id)+1` on this specific error class.
+
 ---
 
 ## Environment Variables
 
+### Core (required)
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string (e.g. `postgresql://user:pass@host:5432/db`) |
+| `JWT_SECRET` | JWT signing secret — minimum 32 characters |
+| `CRM_ADMIN_EMAIL` | Primary super admin email (seeded/synced on startup) |
+| `CRM_ADMIN_PASSWORD` | Primary super admin password |
+| `CRM_ADMIN_EMAIL2` | Secondary super admin email (optional) |
+| `CRM_ADMIN_PASSWORD2` | Secondary super admin password (optional) |
+| `TOOLS_PIN` | Numeric PIN to access the tools portal |
+
+### AI / LLM
+
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | JWT signing secret |
-| `CRM_ADMIN_EMAIL` | Yes | Super admin email (seeded on startup) |
-| `CRM_ADMIN_PASSWORD` | Yes | Super admin password (bcrypt hashed) |
-| `GROQ_API_KEY` | Yes (AI features) | Groq inference API key |
-| `AI_MODEL` | No | Override default model (default: `llama-3.3-70b-versatile`) |
+| `GROQ_API_KEY` | Yes (most AI features) | Groq inference key — deal scoring, scripts, comps fallback, live coaching |
+| `OPENAI_API_KEY` | Yes (voice features) | OpenAI key — Whisper transcription, GPT-4o Realtime AI agent, GPT-4o-mini coaching |
+| `AI_MODEL` | No | Override default Groq model (default: `llama-3.3-70b-versatile`) |
+
+### Twilio (Voice & SMS)
+
+| Variable | Required | Description |
+|---|---|---|
+| `TWILIO_ACCOUNT_SID` | Yes (global/super admin) | Global Twilio Account SID (`ACxxx`) |
+| `TWILIO_AUTH_TOKEN` | Yes (global/super admin) | Global Twilio Auth Token |
+| `TWILIO_API_KEY_SID` | Yes (browser dialer) | Global Twilio API Key SID (`SKxxx`) for Voice SDK token generation |
+| `TWILIO_API_KEY_SECRET` | Yes (browser dialer) | Global Twilio API Key Secret |
+| `TWILIO_VOICE_APP_SID` | Yes (browser dialer) | Global Twilio TwiML App SID (`APxxx`) — routes outbound calls |
+| `TWILIO_VOICE_CALLER_ID` | Yes (browser dialer) | Global outbound caller ID (E.164, e.g. `+15551234567`) |
+| `API_BASE_URL` | Yes (webhooks) | Public base URL of the API server (e.g. `https://your-app.railway.app/api`) — used in all Twilio webhook URLs |
+
+> Per-campaign Twilio credentials are stored encrypted in `crm_campaigns` and override the global env vars for all campaign-scoped calls. Global env vars serve as fallback for super admins with no campaign assigned.
+
+### Data APIs
+
+| Variable | Required | Description |
+|---|---|---|
 | `ATTOM_API_KEY` | Yes (comps/AVM) | Primary ATTOM Data API key |
-| `ATTOM_API_KEY_2` | No | Secondary ATTOM key for rotation |
-| `PROPERTY_API_KEY` | Yes (property/skip trace) | PropertyAPI.co key (legacy single-key) |
-| `PROPERTY_API_KEY_1`–`_7` | No | Additional PropertyAPI keys for rotation |
+| `ATTOM_API_KEY_2` | No | Secondary ATTOM key for automatic rotation on 401/403 |
+| `PROPERTY_API_KEY` | Yes (property/skip trace) | PropertyAPI.co key (legacy single-key slot) |
+| `PROPERTY_API_KEY_1`–`_7` | No | Additional PropertyAPI keys for round-robin rotation |
 | `RENTCAST_API_KEY` | No | Rentcast AVM key |
-| `SIGNALWIRE_PROJECT_ID` | No | SignalWire project ID |
-| `SIGNALWIRE_API_TOKEN` | No | SignalWire auth token |
-| `SIGNALWIRE_SPACE_URL` | No | SignalWire space domain |
-| `OPENPHONE_API_KEY` | No | OpenPhone API key |
-| `STRIPE_SECRET_KEY` | No | Stripe secret key |
-| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret |
-| `SMTP_HOST` | No | SMTP server for email sequences |
-| `SMTP_PORT` | No | SMTP port |
+
+### Communications
+
+| Variable | Required | Description |
+|---|---|---|
+| `OPENPHONE_API_KEY` | No | OpenPhone API key for message threading |
+| `SMTP_HOST` | No | SMTP server for email sequences and contact form |
+| `SMTP_PORT` | No | SMTP port (default: 587) |
 | `SMTP_USER` | No | SMTP username |
 | `SMTP_PASS` | No | SMTP password |
-| `TOOLS_PIN` | Yes (tools portal) | PIN to access the tools portal |
+| `SMTP_FROM` | No | From address for outbound email |
+
+### Payments & Infrastructure
+
+| Variable | Required | Description |
+|---|---|---|
+| `STRIPE_SECRET_KEY` | No | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret |
+| `ENCRYPTION_KEY` | Yes (campaign secrets) | AES-256 key for encrypting Twilio credentials stored in DB |
+| `SENTRY_DSN` | No | Sentry error tracking DSN |
 
 ---
 
@@ -815,9 +982,20 @@ depletion state in the database or Redis so restarts don't retry exhausted keys.
 ### Database Migrations
 
 This project uses **Drizzle Kit `push`** (schema push) rather than a migration file system.
-This is appropriate for early-stage development. Before going to production with real customer
-data, switch to `drizzle-kit generate` + `migrate` so schema changes are tracked and
-reversible.
+New columns added after initial schema deployment are applied automatically at startup via
+`ensureColumns()` in `seed.ts` (idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`).
+
+Before going to production with real customer data, consider switching to `drizzle-kit generate` + `migrate` so schema changes are tracked and reversible.
+
+### Twilio Voice Intelligence — Enabling Live Transcription
+
+To enable live AI coaching during calls:
+1. Enable Voice Intelligence on your Twilio account
+2. Create a Transcription Service in the Twilio console
+3. Set the transcription webhook URL to `https://your-domain.com/api/twilio/voice/transcript`
+4. Associate the service with your TwiML App or use `<Start><Transcription>` in your TwiML
+
+The webhook handler at `/api/twilio/voice/transcript` is already implemented and ready.
 
 ---
 
@@ -829,19 +1007,36 @@ artifacts/api-server/src/
 │   ├── crm/
 │   │   ├── leads.ts          # Core deal routes + all AI endpoints
 │   │   ├── comps.ts          # Comparable sales CRUD + adjustment math
-│   │   ├── sequences.ts      # Email sequence management
+│   │   ├── sequences.ts      # Email sequence management + background job
 │   │   ├── auth.ts           # JWT login/session
-│   │   └── ...               # campaigns, users, tasks, links, stats, buyers
-│   ├── tools.ts              # Tools portal: skip trace, distressed, ARV, lookup
-│   ├── signalwire.ts         # SignalWire webhook + message retrieval
+│   │   ├── users.ts          # User CRUD + super admin password recovery
+│   │   ├── campaigns.ts      # Campaign CRUD (super admin)
+│   │   ├── tasks.ts          # Task management
+│   │   ├── stats.ts          # Dashboard statistics
+│   │   ├── buyers.ts         # Buyer database
+│   │   └── middleware.ts     # crmAuth · crmAdminOnly · crmSuperAdminOnly
+│   ├── twilio-voice.ts       # Browser dialer · recording · coaching · power dialer
+│   ├── twilio-voice-agent.ts # AI inbound voice agent (OpenAI Realtime WebSocket)
+│   ├── twilio-power-dialer.ts# Power dialer session management
+│   ├── twilio.ts             # SMS webhooks + routing
 │   ├── openphone.ts          # OpenPhone webhook + message retrieval
-│   └── stripe.ts             # Stripe checkout + webhook
+│   ├── stripe.ts             # Stripe checkout + webhook + billing portal
+│   ├── sse.ts                # Server-sent events hub (real-time push)
+│   ├── tools.ts              # Tools portal: skip trace, distressed, ARV, lookup
+│   └── health.ts             # /healthz + /health (DB ping)
 ├── services/
+│   ├── twilioCredentials.ts  # resolveVoiceConfig · resolveSmsCreds · per-campaign AES decryption
 │   ├── attomApi.ts           # ATTOM client with key rotation + fetchAttomAvm
-│   ├── propertyApi.ts        # Adjustment math + AI price-per-sqft fallback
-│   └── emailService.ts       # Nodemailer SMTP wrapper
-└── lib/
-    └── logger.ts             # Pino structured logging
+│   ├── propertyApi.ts        # PropertyAPI client + skip trace
+│   ├── aiConfig.ts           # Unified AI client (OpenAI + Groq fallback)
+│   ├── emailService.ts       # Nodemailer SMTP + sequence sender
+│   └── automation.ts         # Task automation cron + onboarding emails
+├── lib/
+│   ├── logger.ts             # Pino structured logging
+│   ├── validate.ts           # Zod request body validation helpers
+│   ├── textUtils.ts          # stripJsonMarkdown · csvCell
+│   └── webhookBase.ts        # getWebhookBase — builds Twilio callback URLs
+└── seed.ts                   # ensureColumns · ensureIndexes · ensureTables · seedAdmin
 ```
 
 ---
@@ -886,81 +1081,6 @@ graceful spot interruption handling, Redis job persistence, and automatic retry.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Fargate Spot vs Lambda — Why We Migrated
-
-| Concern | Lambda | Fargate Spot |
-|---|---|---|
-| Max runtime | 15 minutes | Unlimited |
-| Browser support | No (no Playwright) | Full Chromium via Playwright |
-| Cold start | 2–8s | 60s (one-time per task) |
-| Memory | Max 10 GB | 4–30 GB configurable |
-| Cost | $0.0000166667/GB-s | ~70% less than on-demand |
-| Spot interruption | N/A | 2-min warning → graceful drain |
-| Redis Streams | Manual bridge | Native (same VPC) |
-
-### Week 1–4 Code Upgrade Roadmap
-
-#### Week 1: Core Infrastructure (Completed ✓)
-
-| Module | Description |
-|---|---|
-| `workers/spot_handler.py` | Catches SIGTERM, drains active jobs in 90s, closes browsers, exits cleanly |
-| `workers/retry_queue.py` | Redis Streams primary backend (survives restarts), asyncio.deque fallback |
-| `workers/circuit_breaker.py` | Per-service CLOSED/OPEN/HALF_OPEN state machine, configurable thresholds |
-| `workers/cache.py` | Dual-layer Redis + S3 cache, ETag/Last-Modified support |
-| `workers/job_store.py` | Redis-backed (already done), TTL=24h, memory warm-cache |
-| `Dockerfile.fargate` | ARM64 (Graviton3) multi-stage image — 20% cheaper than x86 |
-
-#### Week 2: Scraper Reliability (Planned)
-
-- Rewrite `propelio_v2.py` — session reuse, proxy rotation, CAPTCHA handling
-- Rewrite `propwire.py` — same patterns
-- Rewrite `distressed.py` — tiered strategy: API → HTML → Browser → AI fallback
-- Circuit breaker wired into every external HTTP call
-
-#### Week 3: Observability (Planned)
-
-- Structured JSON logging with correlation IDs via `python-json-logger`
-- Prometheus metrics endpoint (`/metrics`) — success rates, queue depth, LLM costs
-- Deep health checks for DB, Redis, browser pool, and all proxy tiers
-- CloudWatch alarms: error rate > 5%, queue depth > 50, memory > 80%
-
-#### Week 4: Performance (Planned)
-
-- Redis caching for scraped pages, LLM responses, and session tokens
-- Request batching for LLM calls and DB inserts
-- Connection pooling tuning for HTTPX and asyncpg
-- S3 + CloudFront for CSV exports
-
-### Fargate Spot Interruption Flow
-
-AWS gives a **2-minute SIGTERM warning** before terminating a Spot task.
-`spot_handler.py` handles this automatically:
-
-```
-t=0s    SIGTERM received
-         → _shutting_down = True (rejects new HTTP job requests with 503)
-         → Logs "Fargate Spot interruption detected"
-
-t=0–60s  Drain phase:
-         → Waits for active jobs to finish naturally (max 60s)
-         → Any jobs still running after 60s are logged and will be
-           recovered from Redis on the next container start
-
-t=60s   Shutdown callbacks:
-         → retry_queue.stop() (flushes Redis Streams)
-         → job_store.close() (all job state already in Redis)
-         → http_client.close_client()
-         → db.close_pool()
-
-t=90s   sys.exit(0)  ← well before AWS hard-kills at t=120s
-```
-
-In-flight jobs survive because their state is persisted to Redis via `job_store.py`
-(TTL=24h). On next container start, `recover_interrupted_jobs()` scans Postgres for
-`running`/`queued` jobs and marks them `interrupted` so the UI shows a clear error
-instead of spinning.
-
 ### Infrastructure Files
 
 ```
@@ -1000,46 +1120,3 @@ aws ecs create-cluster --cluster-name TolipAI-scraper-cluster \
 # 5. Tail logs
 aws logs tail /ecs/TolipAI-scraper --follow --region $AWS_REGION
 ```
-
-### New Admin Endpoints
-
-| Endpoint | Description |
-|---|---|
-| `GET /health` | Full health check — now includes circuit breakers, retry queue, cache, spot status |
-| `GET /admin/circuit-breakers` | Per-service circuit breaker states (CLOSED/OPEN/HALF_OPEN) |
-| `POST /admin/circuit-breakers/{service}/reset` | Manually reset a tripped circuit breaker |
-| `GET /admin/spot` | Current spot interruption status and active job list |
-| `GET /admin/retry-queue` | Pending retries (Redis Streams or in-memory) |
-| `GET /admin/cache` | Cache layer stats (Redis keys, S3 enabled, memory entries) |
-
-### Scraper Engine Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `REDIS_URL` | Yes (Fargate) | ElastiCache Redis URL — jobs, sessions, retry queue, cache |
-| `S3_CACHE_BUCKET` | No | S3 bucket for persistent page cache (cross-container) |
-| `PORT` | No | HTTP port (default: 8765) |
-| `LOG_LEVEL` | No | Log level: debug/info/warning/error (default: info) |
-| `BROWSER_MAX_CONCURRENT` | No | Max simultaneous Playwright sessions (default: 3 on Fargate) |
-| `SPOT_EXIT_DEADLINE_SECONDS` | No | Seconds before forced exit after SIGTERM (default: 90) |
-| `CIRCUIT_FAILURE_THRESHOLD` | No | Failures before opening a circuit (default: 5) |
-| `CIRCUIT_RECOVERY_TIMEOUT` | No | Seconds before probing a closed circuit (default: 120) |
-| `CACHE_DEFAULT_TTL` | No | Cache TTL in seconds (default: 3600) |
-| `GROQ_API_KEY` | Yes (LLM) | Groq inference key |
-| `OPENROUTER_API_KEY` | No | OpenRouter fallback LLM key |
-| `ATTOM_API_KEY` | Yes (comps) | ATTOM Data API key |
-| `BRIGHTDATA_USERNAME` | No | BrightData residential proxy username |
-| `BRIGHTDATA_PASSWORD` | No | BrightData residential proxy password |
-| `PROPELIO_EMAIL` | No | Propelio account email for browser session |
-| `PROPELIO_PASSWORD` | No | Propelio account password |
-| `PROPWIRE_EMAIL` | No | Propwire account email |
-| `PROPWIRE_PASSWORD` | No | Propwire account password |
-| `TWILIO_ACCOUNT_SID` | No | Global Twilio account SID — used by super admins with no campaign assigned, and as fallback for all Twilio SMS/call endpoints |
-| `TWILIO_AUTH_TOKEN` | No | Global Twilio auth token (paired with `TWILIO_ACCOUNT_SID`) |
-| `TWILIO_VOICE_CALLER_ID` | No | Global Twilio phone number (E.164, e.g. `+15551234567`) — used as caller ID for super admin browser dialer calls |
-| `TWILIO_API_KEY_SID` | No | Global Twilio API Key SID — required for super admin browser dialer (Voice SDK token generation) |
-| `TWILIO_API_KEY_SECRET` | No | Global Twilio API Key Secret (paired with `TWILIO_API_KEY_SID`) |
-| `TWILIO_VOICE_APP_SID` | No | Global Twilio TwiML App SID — routes outbound browser calls for super admins |
-| `API_BASE_URL` | No | Public base URL of the API server (e.g. `https://your-app.railway.app/api`) — required for Twilio webhook URLs and WebSocket connections |
-

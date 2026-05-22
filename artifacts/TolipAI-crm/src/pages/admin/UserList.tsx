@@ -97,7 +97,13 @@ async function fetchCampaigns(): Promise<Campaign[]> {
 
 async function fetchUserPassword(id: number): Promise<{ password: string; name: string }> {
   const r = await fetch(apiUrl(`/users/${id}/password`), { headers: authHeaders() });
-  const json = await r.json();
+  const text = await r.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error("Server returned an unexpected response. Ensure the API server is running and try again.");
+  }
   if (!r.ok) throw new Error(json.error || "Failed to fetch password");
   return json;
 }
