@@ -28,6 +28,26 @@ let server: ReturnType<typeof app.listen>;
 // Awaiting these ensures indexes and sequences are in place before the first
 // request is served, eliminating the startup race condition.
 async function runDbStartupTasks(): Promise<void> {
+  // Idempotent migration: ensure crm_phone_read_receipts table exists (Phase 2.2)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_phone_read_receipts (
+        id           SERIAL       PRIMARY KEY,
+        campaign_id  INTEGER      NOT NULL,
+        owned_number TEXT         NOT NULL,
+        contact      TEXT         NOT NULL,
+        last_read_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE (campaign_id, owned_number, contact)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS crm_phone_read_receipts_campaign_idx
+        ON crm_phone_read_receipts (campaign_id)
+    `);
+  } catch (err: unknown) {
+    logger.error({ err }, "[startup] crm_phone_read_receipts migration failed");
+  }
+
   // Idempotent migration: ensure crm_waitlist table exists
   try {
     await pool.query(`

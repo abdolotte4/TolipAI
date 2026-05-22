@@ -48,7 +48,7 @@ TolipAI is a **feature-rich real estate wholesaling platform** that now ships AM
 
 **Target: 96/100** — achievable after Priority 1 + 2 fixes from Action Plan.
 
-> **Infrastructure note (unchanged):** AWS Fargate migration deferred indefinitely. Railway (api-server) + Neon PostgreSQL is production-ready for current scale. Scraper Engine on its own isolated deployment.
+> **Infrastructure note (S23):** Monorepo (api-server + SPAs) stays on Railway. Scraper engine migrates to AWS Fargate Spot (ARM64/Graviton3) — full deployment guide at `infrastructure/FARGATE_MIGRATION.md`. `API_SCRAPER_URL` env var on Railway points api-server at the Fargate ALB; no api-server code changes required.
 
 ---
 
@@ -110,7 +110,7 @@ TolipAI is a **feature-rich real estate wholesaling platform** that now ships AM
 | `pages/leads/LeadDetail.tsx` | 1,837 | Active — largest page, no local ErrorBoundary |
 | `pages/dialer/PowerDialer.tsx` | 1,273 | **NEW S22** — AMD power dialer UI |
 | `pages/admin/UserList.tsx` | 880 | Active |
-| `pages/integrations/PhoneNumbers.tsx` | 865 | **UPDATED S22** — conversations union, startCall fix |
+| `pages/integrations/PhoneNumbers.tsx` | 960 | **UPDATED S23** — unread badge, markReadMutation, ConversationItem amber UI |
 | `components/leads/BrowserDialer.tsx` | 865 | **UPDATED S22** — dual-speaker live transcript panel |
 | `pages/campaigns/CampaignList.tsx` | 853 | Active |
 | `pages/admin/WaitlistAdmin.tsx` | 804 | Active |
@@ -138,8 +138,9 @@ TolipAI is a **feature-rich real estate wholesaling platform** that now ships AM
 | `App.tsx` | 121 | Active |
 
 ### Database Schema (`lib/db/src/schema/crm.ts`)
-- **685 lines** — 20+ tables, ~45 indexes
+- **700 lines** — 21+ tables, ~47 indexes
 - **NEW S22**: `crm_leads.lastMotivationScore` (numeric 5,2) + `crm_leads.lastMotivationLabel` (text)
+- **NEW S23**: `crm_phone_read_receipts` — unread badge receipts, UNIQUE(campaign_id, owned_number, contact)
 
 ### Tools Frontend (`artifacts/TolipAI-tools/src/`) — ~3,200 lines
 ### Website Frontend (`artifacts/TolipAI-website/src/`) — ~1,300 lines

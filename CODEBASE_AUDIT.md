@@ -97,6 +97,9 @@
 | S22-g | `Conversation` type updated in `PhoneNumbers.tsx` to accommodate call+SMS union shape |
 | S22-h | `lastMotivationScore` / `lastMotivationLabel` columns added to `crm_leads` schema |
 | S22-i | PapaParse integrated in CRM for more robust CSV parsing (replaces custom regex parser in `BulkImportModal`) |
+| S23-a | **Phase 2.2 Unread badges** — `crm_phone_read_receipts` table (schema + startup migration), `unreadCount` in conversations API, `POST .../read` endpoint, amber badge + bold contact name in `ConversationItem` |
+| S23-b | **requirements.txt** — relaxed `openai` and `httpx` pins to semver ranges so `crawl4ai` transitive deps can resolve |
+| S23-c | **infrastructure/FARGATE_MIGRATION.md** — complete step-by-step AWS Fargate Spot deployment guide for scraper engine |
 
 ---
 
@@ -108,7 +111,7 @@
 
 | File | LOC | Status | Issues |
 |---|---|---|---|
-| `index.ts` | 170 | Active | **BUG-BOOT-01**: `ensureIndexes()` + `repairSequences()` called without `await` at top-level — indexes/repairs may not complete before first incoming request |
+| `index.ts` | 191 | Active | ✅ BUG-BOOT-01 fixed. Now runs `crm_phone_read_receipts` + `crm_waitlist` idempotent migrations before listen. |
 | `app.ts` | 256 | Active | Helmet CSP well-configured for Twilio/OpenAI origins. CORS uses regex allowlist (hardcoded in file). |
 | `seed.ts` | 186 | Active | bcrypt rounds=12. Reads `CRM_ADMIN_PASSWORD` env. |
 | `seed-demo.ts` | 612 | Active | Parallel `db.insert` loops in demo data (not batched). |

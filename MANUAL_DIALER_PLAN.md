@@ -18,7 +18,7 @@
 | Real-time transcript during active call | ✅ Fixed — dual-speaker bubbles with auto-scroll |
 | Contact name resolution (CRM leads) | ⚠️ Shows only if `leadId` already linked |
 | Inbound SMS notification | ✅ Real-time SSE push (Phase 2.1 complete); TDZ crash fixed |
-| Unread badge counts | ❌ Not implemented |
+| Unread badge counts | ✅ Implemented — amber pill badge + mark-read (Phase 2.2 complete) |
 | Active call overlay inside thread | ❌ Not implemented |
 | Sound notifications (ring, new message) | ❌ Not implemented |
 | Search across all conversations | ⚠️ Digit-only filter, no name search |
@@ -56,11 +56,11 @@
 - `artifacts/api-server/src/lib/sse.ts` (broadcast helper)
 - `artifacts/TolipAI-crm/src/pages/integrations/PhoneNumbers.tsx` (subscribe and invalidate)
 
-### 2.2 Unread badge counts
+### 2.2 Unread badge counts ✅ DONE
 **Problem:** No visual indication of unread messages.
 
-**Solution:**
-- Add `lastReadAt: timestamp | null` per (ownedNumber, contactNumber) pair to a new lightweight `crm_phone_read_receipts` table.
+**Solution implemented:**
+- Added `crm_phone_read_receipts` table (schema + idempotent `CREATE TABLE IF NOT EXISTS` startup migration).
   ```sql
   CREATE TABLE crm_phone_read_receipts (
     id          SERIAL PRIMARY KEY,
@@ -71,15 +71,15 @@
     UNIQUE (campaign_id, owned_number, contact)
   );
   ```
-- The conversations API returns `unreadCount: number` per entry — count messages/calls with `createdAt > lastReadAt` (or `lastReadAt IS NULL`).
-- `POST /twilio/phone-numbers/:number/conversations/:contact/read` — upserts `lastReadAt = now()`.
-- Call it when a contact thread is opened.
-- Show an amber badge `(N)` on the `ConversationItem` when `unreadCount > 0`.
+- Conversations API now returns `unreadCount: number` per entry — counts inbound SMS with `createdAt > lastReadAt`. First-time viewers (no receipt) get `unreadCount = 0` to prevent history flooding.
+- `POST /twilio/phone-numbers/:number/conversations/:contact/read` — upserts `lastReadAt = now()`. Called automatically when a contact thread is opened.
+- `ConversationItem` shows an amber pill badge on the avatar when `unreadCount > 0`. The contact name and timestamp also turn amber+bold. Badge disappears immediately on click (optimistic via query invalidation).
 
-**Files:**
-- `lib/db/src/schema/crm.ts` (new table)
-- `artifacts/api-server/src/routes/twilio.ts` (conversations query, new read endpoint)
-- `artifacts/TolipAI-crm/src/pages/integrations/PhoneNumbers.tsx` (badge + mark-read call)
+**Files changed:**
+- `lib/db/src/schema/crm.ts` — `crmPhoneReadReceipts` table added
+- `artifacts/api-server/src/index.ts` — startup migration for `crm_phone_read_receipts`
+- `artifacts/api-server/src/routes/twilio.ts` — unread count computation in conversations endpoint + new mark-read endpoint
+- `artifacts/TolipAI-crm/src/pages/integrations/PhoneNumbers.tsx` — amber badge UI + `markReadMutation` called on contact select
 
 ### 2.3 Active call overlay inside the thread view
 **Problem:** When a call is in progress, the thread view shows no indication; the dialer is embedded in the lead detail page only.
@@ -253,7 +253,7 @@ Outbound Call (from thread)
 | 1 | 2.1 SSE-driven refresh | Small (1–2h) | High — removes 30s staleness |
 | 2 | 3.1 Lead name resolution | Small (1h) | High — huge UX improvement |
 | 3 | 2.3 Active call overlay | Medium (2–3h) | High — critical for dialer use |
-| 4 | 2.2 Unread badges | Medium (3–4h) | High — essential for inbox feel |
+| 4 | ✅ 2.2 Unread badges | Done | High — essential for inbox feel |
 | 5 | 4.1 Per-number routing config | Large (4–6h) | Medium — power feature |
 | 6 | 5.1/5.2 Notifications | Small (2h) | Medium — nice-to-have |
 | 7 | 3.2 Link-to-lead | Medium (2–3h) | Medium — ops quality |

@@ -23,7 +23,7 @@
 import { Router, type IRouter } from "express";
 import twilio from "twilio";
 import { crmAuth, crmAdminOnly } from "./crm/middleware";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations } from "@workspace/db/schema";
 import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { toE164, digitsOnly } from "../services/coreCalculations";
@@ -1146,6 +1146,7 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
       lastSnippet: string | null;
       leadId: number | null;
       hasRecording: boolean;
+      unreadCount: number;
     };
 
     const contactMap = new Map<string, ConvEntry>();
@@ -1168,6 +1169,7 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
           lastSnippet: patch.lastSnippet ?? null,
           leadId: patch.leadId ?? null,
           hasRecording: patch.hasRecording ?? false,
+          unreadCount: 0,
         });
       } else {
         if (patch.ts > existing.lastActivity) {
@@ -1217,6 +1219,45 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
         leadId: row.leadId ?? null,
         hasRecording: false,
       });
+    }
+
+    // ── Unread counts (Phase 2.2) ────────────────────────────────────────────
+    // Fetch all read receipts for this owned number + campaign in one query.
+    // First-time viewers have no receipt → unreadCount stays 0 (no spam flood).
+    // Once they open a thread we upsert a receipt and subsequent inbound SMS
+    // that arrive after lastReadAt are counted as unread.
+    if (crmUser.campaignId && contactMap.size > 0) {
+      try {
+        const receiptsResult = await pool.query<{ contact_digits: string; last_read_at: Date }>(
+          `SELECT RIGHT(REGEXP_REPLACE(contact, '[^0-9]', '', 'g'), 10) AS contact_digits,
+                  last_read_at
+           FROM crm_phone_read_receipts
+           WHERE campaign_id = $1
+             AND RIGHT(REGEXP_REPLACE(owned_number, '[^0-9]', '', 'g'), 10) = $2`,
+          [crmUser.campaignId, ownedDigits]
+        );
+        const receiptMap = new Map<string, Date>(
+          receiptsResult.rows.map((r) => [r.contact_digits, new Date(r.last_read_at)])
+        );
+
+        for (const [contactDigits, entry] of contactMap) {
+          const lastReadAt = receiptMap.get(contactDigits);
+          if (!lastReadAt) {
+            entry.unreadCount = 0;
+          } else {
+            entry.unreadCount = smsRows.filter((r) => {
+              const fromDigits = (r.fromNumber || "").replace(/\D/g, "").slice(-10);
+              const otherDigits = fromDigits === ownedDigits
+                ? (r.toNumber || "").replace(/\D/g, "").slice(-10)
+                : fromDigits;
+              const isInbound = fromDigits !== ownedDigits;
+              return otherDigits === contactDigits && isInbound && r.createdAt != null && new Date(r.createdAt) > lastReadAt;
+            }).length;
+          }
+        }
+      } catch (unreadErr) {
+        logger.warn({ err: unreadErr }, "[phone-numbers/conversations] unread count query failed — defaulting to 0");
+      }
     }
 
     const conversations = Array.from(contactMap.values())
@@ -1298,6 +1339,33 @@ router.get("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, asyn
     res.json({ thread, calls: callRows, total: thread.length, lead });
   } catch (err: any) {
     logger.error(err, "[phone-numbers/conversations/contact] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/phone-numbers/:number/conversations/:contact/read ────────
+// Upserts a read receipt for the (campaignId, ownedNumber, contact) triple.
+// Called by the frontend when a contact thread is opened. Subsequent inbound
+// SMS that arrive after this timestamp will be counted as unread in the
+// conversations list response.
+router.post("/twilio/phone-numbers/:number/conversations/:contact/read", crmAuth, async (req, res) => {
+  const { number, contact } = req.params;
+  const crmUser = req.crmUser!;
+  if (!crmUser.campaignId) {
+    res.status(400).json({ error: "No campaign assigned" });
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO crm_phone_read_receipts (campaign_id, owned_number, contact, last_read_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (campaign_id, owned_number, contact)
+       DO UPDATE SET last_read_at = NOW()`,
+      [crmUser.campaignId, number, contact]
+    );
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.error(err, "[phone-numbers/read] error");
     res.status(500).json({ error: err.message });
   }
 });

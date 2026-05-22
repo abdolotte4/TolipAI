@@ -665,6 +665,21 @@ export const crmFaxes = pgTable("crm_faxes", {
   index("crm_faxes_created_at_idx").on(t.createdAt),
 ]);
 
+// ── crm_phone_read_receipts ───────────────────────────────────────────────────
+// Tracks the last time a user viewed a specific (ownedNumber, contact) thread.
+// Used to compute per-conversation unread counts in the Phone Numbers inbox.
+// First-time viewers get no receipt → unreadCount = 0 until they open the thread.
+export const crmPhoneReadReceipts = pgTable("crm_phone_read_receipts", {
+  id:           serial("id").primaryKey(),
+  campaignId:   integer("campaign_id").notNull(),
+  ownedNumber:  text("owned_number").notNull(),
+  contact:      text("contact").notNull(),
+  lastReadAt:   timestamp("last_read_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("crm_phone_read_receipts_unique_idx").on(t.campaignId, t.ownedNumber, t.contact),
+  index("crm_phone_read_receipts_campaign_idx").on(t.campaignId),
+]);
+
 // ── crm_waitlist ─────────────────────────────────────────────────────────────
 // Dedicated table for landing-page waitlist signups.
 // Source values: landing_hero | landing_compare | landing_cta | referral | organic

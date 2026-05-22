@@ -38,6 +38,7 @@ interface Conversation {
   lastSnippet: string | null;
   leadId: number | null;
   hasRecording: boolean;
+  unreadCount?: number;
 }
 
 interface ThreadItem {
@@ -353,6 +354,7 @@ function ConversationItem({
   const isMixed = conv.totalCalls > 0 && conv.totalSms > 0;
   const lastTs = conv.lastActivity || conv.lastCall;
   const missedOrFailed = ["no-answer", "busy", "failed", "missed"].includes(conv.lastStatus);
+  const hasUnread = (conv.unreadCount ?? 0) > 0;
 
   let Icon = conv.lastDirection === "inbound" ? PhoneIncoming : PhoneOutgoing;
   if (isSmsOnly) Icon = MessageSquare as any;
@@ -374,28 +376,39 @@ function ConversationItem({
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-secondary/60 ${selected ? "bg-primary/5 border-r-2 border-primary" : ""}`}
     >
-      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary/20 to-accent/20 border border-border flex items-center justify-center flex-shrink-0">
-        <User className="w-5 h-5 text-muted-foreground" />
+      <div className="relative w-10 h-10 flex-shrink-0">
+        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary/20 to-accent/20 border border-border flex items-center justify-center">
+          <User className="w-5 h-5 text-muted-foreground" />
+        </div>
+        {hasUnread && !selected && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-[9px] font-bold text-white flex items-center justify-center leading-none">
+            {conv.unreadCount! > 99 ? "99+" : conv.unreadCount}
+          </span>
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm text-foreground truncate">{fmtPhone(conv.contact)}</span>
+          <span className={`font-medium text-sm truncate ${hasUnread && !selected ? "text-foreground font-semibold" : "text-foreground"}`}>
+            {fmtPhone(conv.contact)}
+          </span>
           {lastTs && (
-            <span className="text-[10px] text-muted-foreground flex-shrink-0">
+            <span className={`text-[10px] flex-shrink-0 ${hasUnread && !selected ? "text-amber-500 font-medium" : "text-muted-foreground"}`}>
               {formatDistanceToNow(new Date(lastTs), { addSuffix: true })}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           <Icon className={`w-3 h-3 flex-shrink-0 ${missedOrFailed ? "text-red-400" : isSmsOnly ? "text-sky-400" : "text-muted-foreground"}`} />
-          <span className={`text-xs truncate ${missedOrFailed ? "text-red-400" : "text-muted-foreground"}`}>
+          <span className={`text-xs truncate ${missedOrFailed ? "text-red-400" : hasUnread && !selected ? "text-foreground" : "text-muted-foreground"}`}>
             {subtext}
           </span>
         </div>
       </div>
-      {conv.leadId && (
-        <Badge className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20 flex-shrink-0">Lead</Badge>
-      )}
+      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+        {conv.leadId && (
+          <Badge className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20">Lead</Badge>
+        )}
+      </div>
     </button>
   );
 }
@@ -552,6 +565,17 @@ export default function ManualDialerPage() {
       refetchInterval: 20_000,
     });
 
+  const markReadMutation = useMutation({
+    mutationFn: ({ number, contact }: { number: string; contact: string }) =>
+      apiRawFetch(
+        `/twilio/phone-numbers/${encodeURIComponent(number)}/conversations/${encodeURIComponent(contact)}/read`,
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["phone-number-convs", selectedNumber?.number] });
+    },
+  });
+
   const sendSmsMutation = useMutation({
     mutationFn: ({ to, content }: { to: string; content: string }) =>
       apiRawFetch("/twilio/messages", {
@@ -589,7 +613,10 @@ export default function ManualDialerPage() {
   const handleSelectContact = useCallback((contact: string) => {
     setSelectedContact(contact);
     setShowDialPad(false);
-  }, []);
+    if (selectedNumber) {
+      markReadMutation.mutate({ number: selectedNumber.number, contact });
+    }
+  }, [selectedNumber, markReadMutation]);
 
   const handleCall = (number?: string) => {
     const target = number || selectedContact;
