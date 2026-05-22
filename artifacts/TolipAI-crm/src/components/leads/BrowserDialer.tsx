@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   PhoneOff, PhoneCall, Mic, MicOff, Loader2,
   Signal, AlertCircle, CheckCircle2, Activity, Wifi, Sparkles, Voicemail, PauseCircle,
@@ -72,6 +72,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const phone = usePhone();
 
   const coachingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
 
   const [record, setRecord] = useState(true);
   const [lastCallSid, setLastCallSid] = useState<string | null>(null);
@@ -96,6 +97,13 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
   const status = phone.status;
   const isActive = status === "calling" || status === "in-progress" || status === "disconnecting";
   const canCall = !!leadPhone && (status === "idle" || status === "ready" || status === "error");
+
+  // ── Auto-scroll transcript to bottom on new segments ──────────────────────
+  useEffect(() => {
+    if (transcriptRef.current) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    }
+  }, [phone.liveTranscript]);
 
   // ── Auto-fetch AI coaching ─────────────────────────────────────────────────
   const autoFetchCoaching = useCallback(async (sid: string) => {
@@ -440,6 +448,38 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
               </button>
             </div>
             <p className="text-xs text-foreground/90 leading-relaxed">{phone.aiSuggestion}</p>
+          </div>
+        )}
+
+        {/* Live Transcript — dual-speaker bubbles */}
+        {isActive && phone.liveTranscript.length > 0 && (
+          <div className="rounded-xl bg-secondary/20 border border-border overflow-hidden">
+            <div className="px-3 py-2 border-b border-border/50 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Live Transcript</p>
+            </div>
+            <div
+              ref={transcriptRef}
+              className="p-2.5 space-y-2 max-h-40 overflow-y-auto"
+            >
+              {phone.liveTranscript.map((seg, i) => {
+                const isAgent = seg.track === "outbound";
+                return (
+                  <div key={i} className={`flex gap-1.5 ${isAgent ? "flex-row-reverse" : "flex-row"}`}>
+                    <div className={`px-2.5 py-1.5 rounded-2xl text-xs max-w-[85%] leading-relaxed ${
+                      isAgent
+                        ? "bg-primary/15 text-foreground/90 rounded-tr-sm"
+                        : "bg-background/70 border border-border text-foreground/85 rounded-tl-sm"
+                    }`}>
+                      <span className={`block text-[9px] font-semibold mb-0.5 ${isAgent ? "text-primary/70" : "text-muted-foreground"}`}>
+                        {isAgent ? "You" : "Seller"}
+                      </span>
+                      {seg.text}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

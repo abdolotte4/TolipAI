@@ -29,10 +29,13 @@ interface PhoneNumber {
 interface Conversation {
   contact: string;
   totalCalls: number;
-  lastCall: string;
+  totalSms: number;
+  lastActivity: string;
+  lastCall?: string;
   lastDirection: string;
   lastStatus: string;
   lastDuration: number | null;
+  lastSnippet: string | null;
   leadId: number | null;
   hasRecording: boolean;
 }
@@ -338,8 +341,26 @@ function DialPad({
 function ConversationItem({
   conv, selected, onClick,
 }: { conv: Conversation; selected: boolean; onClick: () => void }) {
-  const Icon = conv.lastDirection === "inbound" ? PhoneIncoming : PhoneOutgoing;
+  const isSmsOnly = conv.totalCalls === 0 && conv.totalSms > 0;
+  const isMixed = conv.totalCalls > 0 && conv.totalSms > 0;
+  const lastTs = conv.lastActivity || conv.lastCall;
   const missedOrFailed = ["no-answer", "busy", "failed", "missed"].includes(conv.lastStatus);
+
+  let Icon = conv.lastDirection === "inbound" ? PhoneIncoming : PhoneOutgoing;
+  if (isSmsOnly) Icon = MessageSquare as any;
+
+  let subtext = "";
+  if (conv.lastSnippet && (isSmsOnly || (isMixed && conv.lastStatus === "sms"))) {
+    subtext = conv.lastSnippet;
+  } else {
+    const parts: string[] = [];
+    if (conv.totalCalls > 0) parts.push(`${conv.totalCalls} call${conv.totalCalls !== 1 ? "s" : ""}`);
+    if (conv.totalSms > 0) parts.push(`${conv.totalSms} SMS`);
+    if (conv.lastDuration) parts.push(fmtDuration(conv.lastDuration) ?? "");
+    if (conv.hasRecording) parts.push("🎙");
+    subtext = parts.filter(Boolean).join(" · ");
+  }
+
   return (
     <button
       onClick={onClick}
@@ -351,16 +372,16 @@ function ConversationItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <span className="font-medium text-sm text-foreground truncate">{fmtPhone(conv.contact)}</span>
-          <span className="text-[10px] text-muted-foreground flex-shrink-0">
-            {formatDistanceToNow(new Date(conv.lastCall), { addSuffix: true })}
-          </span>
+          {lastTs && (
+            <span className="text-[10px] text-muted-foreground flex-shrink-0">
+              {formatDistanceToNow(new Date(lastTs), { addSuffix: true })}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <Icon className={`w-3 h-3 flex-shrink-0 ${missedOrFailed ? "text-red-400" : "text-muted-foreground"}`} />
+          <Icon className={`w-3 h-3 flex-shrink-0 ${missedOrFailed ? "text-red-400" : isSmsOnly ? "text-sky-400" : "text-muted-foreground"}`} />
           <span className={`text-xs truncate ${missedOrFailed ? "text-red-400" : "text-muted-foreground"}`}>
-            {conv.totalCalls} call{conv.totalCalls !== 1 ? "s" : ""}
-            {conv.lastDuration ? ` · ${fmtDuration(conv.lastDuration)}` : ""}
-            {conv.hasRecording ? " · 🎙" : ""}
+            {subtext}
           </span>
         </div>
       </div>
@@ -500,7 +521,7 @@ export default function ManualDialerPage() {
   const handleCall = (number?: string) => {
     const target = number || selectedContact;
     if (!target || !selectedNumber) return;
-    startCall(target, selectedNumber.number);
+    startCall(target, null, fmtPhone(target), true);
     toast({ title: "Calling…", description: `Dialing ${fmtPhone(target)} from ${selectedNumber.number}` });
   };
 

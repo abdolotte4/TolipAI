@@ -443,13 +443,14 @@ Multi-tenant CRM built for real estate wholesaling teams. Each client organizati
 | Page | Description |
 |---|---|
 | Dashboard | Live deal stats: active leads, tasks due, pipeline value, ARV totals |
-| Lead List | Paginated lead table with aging badges (7-day orange, 14-day+ red) and quick filters |
+| Lead List | Paginated lead table with aging badges (7-day orange, 14-day+ red), quick filters, and call motivation emoji (🔥✅⚡❄️) from last AI call score |
 | New Lead | 6-section structured intake form: seller info, property details, motivation, financials, notes |
 | Lead Detail | Full deal workspace — see below |
 | Pipeline | Drag-and-drop Kanban board with all 7 status columns; visual aging indicators |
 | Tasks | Cross-lead task list with due dates and assignees |
 | Buyers List | Buyer database for deal assignment and co-wholesaling |
 | Email Sequences | Automated follow-up sequences with day-offset steps and template variables |
+| **Manual Dialer** (`/integrations/phone-numbers`) | OpenPhone-style 3-column inbox: owned Twilio numbers → unified call+SMS conversation list → full message thread with compose box and call button. See [MANUAL_DIALER_PLAN.md](./MANUAL_DIALER_PLAN.md) for the full roadmap. |
 | Campaign Management | Super admin: create/manage client campaigns |
 | Team Users | Admin: invite and manage team members; super admin can view any user's stored password |
 | Submission Links | Tokenized public links for seller self-submission |
@@ -489,8 +490,10 @@ The lead detail page is the core of the CRM. Every feature below is accessible f
 - Call recording with Twilio recording status callback
 - **Automatic Whisper transcription**: triggered by recording webhook, saves to `crm_call_logs`
 - **Post-call AI Summary** (Groq/OpenAI): key points, seller motivation score, recommended next step — auto-generated on hang-up from live transcript; "Save to Lead Notes" button writes the summary directly into the lead's activity log
+- **Call motivation scoring**: AI summary produces a 1–10 motivation score (🔥 Hot ≥9, ✅ Motivated ≥7, ⚡ Warm ≥5, ❄️ Cold <5); score is persisted to `crmLeads.lastMotivationScore` and displayed as an emoji badge on every lead list card
+- **Live Transcript** (real-time during call): Twilio Voice Intelligence streams the call transcript; dual-speaker bubble view inside the dialer — agent segments right-aligned (primary tint), seller segments left-aligned (secondary border) with auto-scroll
 - **Post-call AI Call Coaching** (GPT-4o-mini): score 1–10, strengths, improvements, suggested follow-up task, and offer price recommendation — triggered 90s after call ends (recording must process)
-- **Live AI Coaching** (real-time during call): Twilio Voice Intelligence streams the call transcript; a debounced AI suggestion appears in the dialer panel every time the seller speaks, giving the agent a live rebuttal or talking point; dismiss button clears it
+- **Live AI Coaching** (real-time during call): debounced AI suggestion appears in the dialer panel every time the seller speaks, giving the agent a live rebuttal or talking point; dismiss button clears it
 - Call disposition picker: Answered / No Answer / Left Voicemail / Not Interested / Wrong Number / Callback Requested
 
 **Inbound Call Routing**
@@ -500,9 +503,12 @@ The lead detail page is the core of the CRM. Every feature below is accessible f
 
 **Power Dialer** (`/dialer/power`)
 - Session-based dialing queue backed by `crm_background_jobs`
-- **Multi-line mode** (up to 5 simultaneous calls): Twilio dials all numbers at once; first to answer connects — rest are cancelled automatically
+- **True parallel AMD (Answering Machine Detection)**: all lines dialed simultaneously via `Promise.all`; Twilio AMD (`machineDetection: "Enable"`, 30s timeout) routes humans to agent conference and hangs up on machines; answered-call stats tracked in `activeCalls` map
+- **`/power-dial/amd-handler` webhook**: machine → immediate hangup + stats update; human → cancel sibling calls + bridge agent via `<Dial><Conference>`
+- DB row-locking via Drizzle `.for("update")` prevents race conditions when multiple AMD responses arrive simultaneously
 - Disposition logging + session advance on each call
 - Session persists across deploys (DB-backed state)
+- **List upload**: CSV/XLSX import via Papa Parse (browser-side parsing, no server roundtrip); E.164 normalization applied to all imported numbers
 
 **Workflow**
 - Status pipeline: `new_lead → contacted → negotiating → under_contract → closed_won → closed_lost → on_hold`

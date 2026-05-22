@@ -1069,22 +1069,25 @@ router.get("/twilio/campaign-health", crmAuth, async (req, res) => {
 });
 
 // ── GET /api/twilio/phone-numbers/:number/conversations ───────────────────────
-// Returns unique contacts (other numbers) that have had calls with this owned number,
-// sorted by most recent call. Used by the Phone Numbers inbox page.
+// Returns unique contacts that have had calls OR SMS with this owned number,
+// sorted by most recent interaction. Used by the Phone Numbers inbox page.
 router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, res) => {
   const { number } = req.params;
   const crmUser = req.crmUser!;
   try {
     const isSuperAdmin = crmUser.role === "super_admin";
     const { crmCallLogs } = await import("@workspace/db/schema").then(m => m);
-    const campaignFilter: any = isSuperAdmin || !crmUser.campaignId
+    const callCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
       ? sql`TRUE`
       : eq(crmCallLogs.campaignId, crmUser.campaignId);
+    const smsCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
+      ? sql`TRUE`
+      : eq(crmOpenPhoneMessages.campaignId, crmUser.campaignId);
 
     const ownedDigits = number.replace(/\D/g, "").slice(-10);
 
-    const rows = await db
-      .select({
+    const [callRows, smsRows] = await Promise.all([
+      db.select({
         id:           crmCallLogs.id,
         fromNumber:   crmCallLogs.fromNumber,
         toNumber:     crmCallLogs.toNumber,
@@ -1095,54 +1098,121 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
         leadId:       crmCallLogs.leadId,
         createdAt:    crmCallLogs.createdAt,
       })
-      .from(crmCallLogs)
-      .where(
-        and(
-          campaignFilter,
+        .from(crmCallLogs)
+        .where(and(
+          callCampaignFilter,
           sql`(RIGHT(REGEXP_REPLACE(${crmCallLogs.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits}
             OR RIGHT(REGEXP_REPLACE(${crmCallLogs.toNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`
-        )
-      )
-      .orderBy(desc(crmCallLogs.createdAt))
-      .limit(500);
+        ))
+        .orderBy(desc(crmCallLogs.createdAt))
+        .limit(500),
 
-    const contactMap = new Map<string, {
+      db.select({
+        id:         crmOpenPhoneMessages.id,
+        fromNumber: crmOpenPhoneMessages.fromNumber,
+        toNumber:   crmOpenPhoneMessages.toNumber,
+        body:       crmOpenPhoneMessages.body,
+        leadId:     crmOpenPhoneMessages.leadId,
+        createdAt:  crmOpenPhoneMessages.createdAt,
+      })
+        .from(crmOpenPhoneMessages)
+        .where(and(
+          smsCampaignFilter,
+          sql`(RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits}
+            OR RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.toNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`
+        ))
+        .orderBy(desc(crmOpenPhoneMessages.createdAt))
+        .limit(500),
+    ]);
+
+    type ConvEntry = {
       contact: string;
       totalCalls: number;
-      lastCall: string;
+      totalSms: number;
+      lastActivity: string;
       lastDirection: string;
       lastStatus: string;
       lastDuration: number | null;
+      lastSnippet: string | null;
       leadId: number | null;
       hasRecording: boolean;
-    }>();
+    };
 
-    for (const row of rows) {
-      const fromDigits = (row.fromNumber || "").replace(/\D/g, "").slice(-10);
-      const toDigits = (row.toNumber || "").replace(/\D/g, "").slice(-10);
-      const otherNumber = fromDigits === ownedDigits ? row.toNumber : row.fromNumber;
-      if (!otherNumber) continue;
-      const normalizedOther = otherNumber.replace(/\D/g, "").slice(-10);
-      const entry = contactMap.get(normalizedOther);
-      if (!entry) {
+    const contactMap = new Map<string, ConvEntry>();
+
+    const upsert = (
+      normalizedOther: string,
+      rawNumber: string,
+      patch: Partial<ConvEntry> & { ts: string },
+    ) => {
+      const existing = contactMap.get(normalizedOther);
+      if (!existing) {
         contactMap.set(normalizedOther, {
-          contact: otherNumber,
-          totalCalls: 1,
-          lastCall: row.createdAt?.toISOString() ?? new Date().toISOString(),
-          lastDirection: row.direction ?? "outbound",
-          lastStatus: row.status ?? "completed",
-          lastDuration: row.duration ?? null,
-          leadId: row.leadId ?? null,
-          hasRecording: !!row.recordingUrl,
+          contact: rawNumber,
+          totalCalls: patch.totalCalls ?? 0,
+          totalSms: patch.totalSms ?? 0,
+          lastActivity: patch.ts,
+          lastDirection: patch.lastDirection ?? "outbound",
+          lastStatus: patch.lastStatus ?? "completed",
+          lastDuration: patch.lastDuration ?? null,
+          lastSnippet: patch.lastSnippet ?? null,
+          leadId: patch.leadId ?? null,
+          hasRecording: patch.hasRecording ?? false,
         });
       } else {
-        entry.totalCalls += 1;
-        if (!entry.hasRecording && row.recordingUrl) entry.hasRecording = true;
-        if (!entry.leadId && row.leadId) entry.leadId = row.leadId;
+        if (patch.ts > existing.lastActivity) {
+          existing.lastActivity = patch.ts;
+          if (patch.lastDirection) existing.lastDirection = patch.lastDirection;
+          if (patch.lastStatus) existing.lastStatus = patch.lastStatus;
+          if (patch.lastDuration != null) existing.lastDuration = patch.lastDuration;
+          if (patch.lastSnippet != null) existing.lastSnippet = patch.lastSnippet;
+        }
+        if (!existing.hasRecording && patch.hasRecording) existing.hasRecording = true;
+        if (!existing.leadId && patch.leadId) existing.leadId = patch.leadId;
+        existing.totalCalls += patch.totalCalls ?? 0;
+        existing.totalSms += patch.totalSms ?? 0;
       }
+    };
+
+    for (const row of callRows) {
+      const fromDigits = (row.fromNumber || "").replace(/\D/g, "").slice(-10);
+      const otherRaw = fromDigits === ownedDigits ? row.toNumber : row.fromNumber;
+      if (!otherRaw) continue;
+      upsert(otherRaw.replace(/\D/g, "").slice(-10), otherRaw, {
+        ts: row.createdAt?.toISOString() ?? new Date().toISOString(),
+        totalCalls: 1,
+        totalSms: 0,
+        lastDirection: row.direction ?? "outbound",
+        lastStatus: row.status ?? "completed",
+        lastDuration: row.duration ?? null,
+        lastSnippet: null,
+        leadId: row.leadId ?? null,
+        hasRecording: !!row.recordingUrl,
+      });
     }
 
-    res.json({ conversations: Array.from(contactMap.values()), total: contactMap.size });
+    for (const row of smsRows) {
+      const fromDigits = (row.fromNumber || "").replace(/\D/g, "").slice(-10);
+      const otherRaw = fromDigits === ownedDigits ? row.toNumber : row.fromNumber;
+      if (!otherRaw) continue;
+      const direction = fromDigits === ownedDigits ? "outbound" : "inbound";
+      upsert(otherRaw.replace(/\D/g, "").slice(-10), otherRaw, {
+        ts: row.createdAt?.toISOString() ?? new Date().toISOString(),
+        totalCalls: 0,
+        totalSms: 1,
+        lastDirection: direction,
+        lastStatus: "sms",
+        lastDuration: null,
+        lastSnippet: row.body ? (row.body.length > 60 ? row.body.slice(0, 60) + "…" : row.body) : null,
+        leadId: row.leadId ?? null,
+        hasRecording: false,
+      });
+    }
+
+    const conversations = Array.from(contactMap.values())
+      .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
+
+    res.json({ conversations, total: conversations.length });
   } catch (err: any) {
     logger.error(err, "[phone-numbers/conversations] error");
     res.status(500).json({ error: err.message });
