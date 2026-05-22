@@ -17,6 +17,9 @@ const contactSchema = z.object({
   phone: z.string().optional(),
   service: z.string().optional(),
   message: z.string().min(1, "Message is required"),
+  smsConsent: z.literal(true, {
+    errorMap: () => ({ message: "You must agree to receive SMS messages to continue." }),
+  }),
 });
 
 type ContactFormValues = z.infer<typeof contactSchema>;
@@ -34,6 +37,7 @@ export function Contact() {
       phone: "",
       service: "",
       message: "",
+      smsConsent: undefined as any,
     },
   });
 
@@ -198,6 +202,61 @@ export function Contact() {
                   />
                   {form.formState.errors.message && (
                     <p className="text-xs text-destructive">{form.formState.errors.message.message}</p>
+                  )}
+                </div>
+
+                {/* SMS / Marketing consent — mandatory */}
+                <div className="space-y-1.5">
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <div className="relative flex-shrink-0 mt-0.5">
+                      <input
+                        type="checkbox"
+                        {...form.register("smsConsent")}
+                        className="peer sr-only"
+                      />
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
+                        ${form.watch("smsConsent")
+                          ? "bg-primary border-primary"
+                          : form.formState.errors.smsConsent
+                            ? "border-destructive bg-destructive/5"
+                            : "border-border bg-secondary group-hover:border-primary/60"
+                        }`}
+                      >
+                        {form.watch("smsConsent") && (
+                          <svg className="w-3 h-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground leading-relaxed">
+                      I agree that <span className="text-foreground font-medium">TolipAI</span> may send me SMS/text messages for marketing updates and promotions. Message and data rates may apply. Reply <span className="font-medium text-foreground">STOP</span> to unsubscribe. Reply <span className="font-medium text-foreground">HELP</span> for assistance.{" "}
+                      <a
+                        href="https://tolipai.com/privacy-policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline underline-offset-2 hover:text-primary/80"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        Privacy Policy
+                      </a>{" "}
+                      and{" "}
+                      <a
+                        href="https://tolipai.com/terms-of-service"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline underline-offset-2 hover:text-primary/80"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        Terms of Service
+                      </a>{" "}
+                      available at tolipai.com.
+                    </span>
+                  </label>
+                  {form.formState.errors.smsConsent && (
+                    <p className="text-xs text-destructive pl-8">
+                      {form.formState.errors.smsConsent.message}
+                    </p>
                   )}
                 </div>
 
