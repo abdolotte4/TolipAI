@@ -1,6 +1,6 @@
 # TolipAI Scraper Engine — AWS Fargate Deployment Guide
 
-**Target:** `artifacts/TolipAI-scraper-engine` (Python 3.12 / FastAPI)
+**Target:** `artifacts/TolipAI-scraper-engine` (Python 3.11 / FastAPI)
 **Platform:** AWS ECS on Fargate Spot (ARM64 / Graviton3)
 **Database:** Neon PostgreSQL (serverless — same as Railway monorepo)
 **Status:** Strategy document — Railway monorepo stays on Railway; only the scraper engine migrates to Fargate.
@@ -55,6 +55,32 @@
 
 ---
 
+---
+
+## Quick Deploy (Recommended)
+
+All manual steps below are automated in the provided scripts. Copy and fill in `infrastructure/.env.aws.example` → `infrastructure/.env.aws`, then:
+
+```bash
+# 1. One-time infrastructure setup (IAM, ECR, ECS cluster, ALB, scaling)
+#    — run each step once, then never again unless you tear down the stack.
+
+# 2. Every release: build image + update ECS service
+./infrastructure/deploy.sh
+
+# 3. Optional: configure Spot-first scaling + scheduled scale-in/out
+./infrastructure/scaling.sh --apply
+
+# 4. Optional: create S3 bucket for job artifacts / screenshots
+S3_BUCKET=TolipAI-scraper-storage ./infrastructure/s3-setup.sh --apply
+```
+
+> All scripts read `infrastructure/.env.aws` for credentials and resource names. See `infrastructure/.env.aws.example` for the full variable reference.
+
+The step-by-step instructions below document the one-time setup commands behind each script.
+
+---
+
 ## Prerequisites
 
 | Tool | Version | Install |
@@ -79,7 +105,7 @@ aws configure
 ```bash
 AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 AWS_REGION=us-east-1
-REPO_NAME=tolipai/scraper-engine
+REPO_NAME=TolipAI-scraper
 
 aws ecr create-repository \
   --repository-name $REPO_NAME \
@@ -94,7 +120,7 @@ echo "ECR URI: ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}"
 
 ## Step 2 — Build & Push the ARM64 Docker Image
 
-The scraper engine has a dedicated `Dockerfile.fargate` optimised for ARM64 (Graviton3).
+The scraper engine has a dedicated `Dockerfile.fargate` (Python 3.11-slim-bookworm, port **8765**).
 
 ```bash
 # Authenticate Docker to ECR
@@ -113,29 +139,62 @@ docker buildx build \
   .
 ```
 
-> **Note:** If you are building on an x86 Mac/Linux, Docker buildx will emulate ARM64 via QEMU. This is slow (~15 min). Use a Graviton EC2 build instance for production CI.
+> **Note:** If you are building on an x86 Mac/Linux, Docker buildx will emulate ARM64 via QEMU. This is slow (~15 min). Use `infrastructure/ecr-push.sh` which handles builder setup automatically.
+> **Shortcut:** `./infrastructure/ecr-push.sh` handles Docker login, buildx setup, and push in one command.
 
 ---
 
 ## Step 3 — Store Secrets in AWS Secrets Manager
 
+Secret paths use the prefix `TolipAI/scraper/` (case-sensitive — must match `infrastructure/ecs-task-definition.json`).
+
 ```bash
 # Store each secret individually (never in environment variables or Dockerfile)
-aws secretsmanager create-secret \
-  --name /tolipai/scraper/DATABASE_URL \
+# Core infrastructure
+aws secretsmanager create-secret --name TolipAI/scraper/database-url \
   --secret-string "postgres://user:pass@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require"
-
-aws secretsmanager create-secret \
-  --name /tolipai/scraper/OPENAI_API_KEY \
-  --secret-string "sk-..."
-
-aws secretsmanager create-secret \
-  --name /tolipai/scraper/REDIS_URL \
+aws secretsmanager create-secret --name TolipAI/scraper/redis-url \
   --secret-string "redis://your-elasticache-endpoint:6379"
+aws secretsmanager create-secret --name TolipAI/scraper/api-key \
+  --secret-string "your-internal-scraper-api-key"
+
+# AI providers
+aws secretsmanager create-secret --name TolipAI/scraper/openrouter-key \
+  --secret-string "sk-or-..."
+aws secretsmanager create-secret --name TolipAI/scraper/groq-key \
+  --secret-string "gsk_..."
+
+# Real estate data APIs
+aws secretsmanager create-secret --name TolipAI/scraper/attom-key \
+  --secret-string "your-attom-api-key"
+
+# Proxy (BrightData)
+aws secretsmanager create-secret --name TolipAI/scraper/brightdata-username \
+  --secret-string "your-brightdata-username"
+aws secretsmanager create-secret --name TolipAI/scraper/brightdata-password \
+  --secret-string "your-brightdata-password"
+
+# Scraper credentials (Propelio / PropWire)
+aws secretsmanager create-secret --name TolipAI/scraper/propelio-email \
+  --secret-string "scraper@yourdomain.com"
+aws secretsmanager create-secret --name TolipAI/scraper/propelio-password \
+  --secret-string "your-propelio-password"
+aws secretsmanager create-secret --name TolipAI/scraper/propwire-email \
+  --secret-string "scraper@yourdomain.com"
+aws secretsmanager create-secret --name TolipAI/scraper/propwire-password \
+  --secret-string "your-propwire-password"
+
+# S3 + Twilio (optional — used if S3_CACHE_BUCKET is configured)
+aws secretsmanager create-secret --name TolipAI/scraper/s3-cache-bucket \
+  --secret-string "TolipAI-scraper-storage"
+aws secretsmanager create-secret --name TolipAI/scraper/twilio-account-sid \
+  --secret-string "ACxxxxx"
+aws secretsmanager create-secret --name TolipAI/scraper/twilio-auth-token \
+  --secret-string "your-auth-token"
 
 # To update an existing secret:
 aws secretsmanager put-secret-value \
-  --secret-id /tolipai/scraper/DATABASE_URL \
+  --secret-id TolipAI/scraper/database-url \
   --secret-string "new-value"
 ```
 
@@ -145,7 +204,7 @@ aws secretsmanager put-secret-value \
 
 ```bash
 aws ecs create-cluster \
-  --cluster-name tolipai-scraper \
+  --cluster-name TolipAI-scraper-cluster \
   --capacity-providers FARGATE FARGATE_SPOT \
   --default-capacity-provider-strategy \
     capacityProvider=FARGATE_SPOT,weight=4,base=0 \
@@ -159,10 +218,12 @@ aws ecs create-cluster \
 
 ### 5a. Task Execution Role (pulls image + reads secrets)
 
+> Role names must match `infrastructure/ecs-task-definition.json`: `TolipAI-scraper-execution-role` and `TolipAI-scraper-task-role`.
+
 ```bash
 # Create the role
 aws iam create-role \
-  --role-name TolipaiScraperExecutionRole \
+  --role-name TolipAI-scraper-execution-role \
   --assume-role-policy-document '{
     "Version":"2012-10-17",
     "Statement":[{
@@ -174,28 +235,28 @@ aws iam create-role \
 
 # Attach managed policies
 aws iam attach-role-policy \
-  --role-name TolipaiScraperExecutionRole \
+  --role-name TolipAI-scraper-execution-role \
   --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
 # Add Secrets Manager read access (inline policy)
 aws iam put-role-policy \
-  --role-name TolipaiScraperExecutionRole \
+  --role-name TolipAI-scraper-execution-role \
   --policy-name ReadScraperSecrets \
   --policy-document '{
     "Version":"2012-10-17",
     "Statement":[{
       "Effect":"Allow",
       "Action":["secretsmanager:GetSecretValue"],
-      "Resource":"arn:aws:secretsmanager:'$AWS_REGION':'$AWS_ACCOUNT':secret:/tolipai/scraper/*"
+      "Resource":"arn:aws:secretsmanager:'$AWS_REGION':'$AWS_ACCOUNT':secret:TolipAI/scraper/*"
     }]
   }'
 ```
 
-### 5b. Task Role (runtime permissions — S3 cache, CloudWatch)
+### 5b. Task Role (runtime permissions — S3 cache, CloudWatch, ECS Exec)
 
 ```bash
 aws iam create-role \
-  --role-name TolipaiScraperTaskRole \
+  --role-name TolipAI-scraper-task-role \
   --assume-role-policy-document '{
     "Version":"2012-10-17",
     "Statement":[{
@@ -205,14 +266,9 @@ aws iam create-role \
     }]
   }'
 
-# CloudWatch Logs
-aws iam attach-role-policy \
-  --role-name TolipaiScraperTaskRole \
-  --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
-
-# Optional: S3 cache bucket (if S3_CACHE_BUCKET is set)
+# S3 cache + exports
 aws iam put-role-policy \
-  --role-name TolipaiScraperTaskRole \
+  --role-name TolipAI-scraper-task-role \
   --policy-name S3CacheAccess \
   --policy-document '{
     "Version":"2012-10-17",
@@ -220,75 +276,70 @@ aws iam put-role-policy \
       "Effect":"Allow",
       "Action":["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
       "Resource":[
-        "arn:aws:s3:::tolipai-scraper-cache",
-        "arn:aws:s3:::tolipai-scraper-cache/*"
+        "arn:aws:s3:::TolipAI-scraper-cache",
+        "arn:aws:s3:::TolipAI-scraper-cache/*",
+        "arn:aws:s3:::TolipAI-exports",
+        "arn:aws:s3:::TolipAI-exports/*"
       ]
     }]
   }'
+
+# CloudWatch Logs
+aws iam put-role-policy \
+  --role-name TolipAI-scraper-task-role \
+  --policy-name CloudWatchLogs \
+  --policy-document '{
+    "Version":"2012-10-17",
+    "Statement":[{
+      "Effect":"Allow",
+      "Action":["logs:CreateLogStream","logs:PutLogEvents","logs:CreateLogGroup"],
+      "Resource":"arn:aws:logs:'$AWS_REGION':'$AWS_ACCOUNT':log-group:/ecs/TolipAI-scraper:*"
+    }]
+  }'
+
+# ECS Exec (interactive debugging — enables `aws ecs execute-command`)
+aws iam put-role-policy \
+  --role-name TolipAI-scraper-task-role \
+  --policy-name ECSExec \
+  --policy-document '{
+    "Version":"2012-10-17",
+    "Statement":[{
+      "Effect":"Allow",
+      "Action":["ssmmessages:CreateControlChannel","ssmmessages:CreateDataChannel","ssmmessages:OpenControlChannel","ssmmessages:OpenDataChannel"],
+      "Resource":"*"
+    }]
+  }'
 ```
+
+> Full inline policies with all three permissions are in `infrastructure/iam-policies.json`.
 
 ---
 
 ## Step 6 — Register the Task Definition
 
-Save the following as `infrastructure/task-definition.json`, then register it:
+The task definition is pre-configured in `infrastructure/ecs-task-definition.json`. Key specs:
 
-```json
-{
-  "family": "tolipai-scraper-engine",
-  "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
-  "cpu": "1024",
-  "memory": "3072",
-  "runtimePlatform": {
-    "cpuArchitecture": "ARM64",
-    "operatingSystemFamily": "LINUX"
-  },
-  "executionRoleArn": "arn:aws:iam::ACCOUNT:role/TolipaiScraperExecutionRole",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT:role/TolipaiScraperTaskRole",
-  "containerDefinitions": [
-    {
-      "name": "scraper-engine",
-      "image": "ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/tolipai/scraper-engine:latest",
-      "portMappings": [
-        { "containerPort": 8000, "protocol": "tcp" }
-      ],
-      "secrets": [
-        { "name": "DATABASE_URL",   "valueFrom": "/tolipai/scraper/DATABASE_URL" },
-        { "name": "OPENAI_API_KEY", "valueFrom": "/tolipai/scraper/OPENAI_API_KEY" },
-        { "name": "REDIS_URL",      "valueFrom": "/tolipai/scraper/REDIS_URL" }
-      ],
-      "environment": [
-        { "name": "PORT",      "value": "8000" },
-        { "name": "LOG_LEVEL", "value": "INFO" }
-      ],
-      "logConfiguration": {
-        "logDriver": "awslogs",
-        "options": {
-          "awslogs-group": "/ecs/tolipai-scraper-engine",
-          "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "ecs",
-          "awslogs-create-group": "true"
-        }
-      },
-      "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
-        "interval": 30,
-        "timeout": 5,
-        "retries": 3,
-        "startPeriod": 60
-      },
-      "essential": true
-    }
-  ]
-}
-```
+| Setting | Value |
+|---|---|
+| Family | `TolipAI-scraper-engine` |
+| Container name | `scraper` |
+| Port | **8765** (matches `Dockerfile.fargate EXPOSE 8765`) |
+| CPU | 2048 (2 vCPU) — Playwright requires extra headroom |
+| Memory | 4096 MB |
+| Architecture | ARM64 (Graviton3) |
+| Log group | `/ecs/TolipAI-scraper` |
+| Execution role | `TolipAI-scraper-execution-role` |
+| Task role | `TolipAI-scraper-task-role` |
 
 ```bash
-# Replace ACCOUNT placeholder, then register
-sed "s/ACCOUNT/$AWS_ACCOUNT/g" infrastructure/task-definition.json \
-  | aws ecs register-task-definition --cli-input-json file:///dev/stdin
+# Replace ACCOUNT_ID placeholder, then register
+sed "s|ACCOUNT_ID|${AWS_ACCOUNT}|g" infrastructure/ecs-task-definition.json \
+  | aws ecs register-task-definition \
+      --cli-input-json file:///dev/stdin \
+      --region $AWS_REGION
 ```
+
+> The `deploy.sh` script does this step automatically on every release — you only need the manual command for the initial registration.
 
 ---
 
@@ -349,56 +400,60 @@ aws elbv2 create-listener \
 
 ## Step 8 — Create the ECS Service
 
+The service config is in `infrastructure/ecs-service.json`. It uses **private subnets** (`assignPublicIp=DISABLED`) so tasks are not directly reachable from the internet — all traffic flows through the ALB.
+
 ```bash
-# Task SG: allow traffic from ALB only
+# Task SG: allow traffic from ALB SG only (port 8765)
 TASK_SG=$(aws ec2 create-security-group \
-  --group-name tolipai-scraper-task-sg \
+  --group-name TolipAI-scraper-task-sg \
   --description "Scraper Engine Tasks" \
   --vpc-id $VPC_ID \
   --query GroupId --output text)
 
 aws ec2 authorize-security-group-ingress \
-  --group-id $TASK_SG --protocol tcp --port 8000 \
+  --group-id $TASK_SG --protocol tcp --port 8765 \
   --source-group $ALB_SG
 
-aws ecs create-service \
-  --cluster tolipai-scraper \
-  --service-name scraper-engine \
-  --task-definition tolipai-scraper-engine \
-  --desired-count 1 \
-  --launch-type FARGATE \
-  --capacity-provider-strategy \
-    capacityProvider=FARGATE_SPOT,weight=4 \
-    capacityProvider=FARGATE,weight=1 \
-  --network-configuration "awsvpcConfiguration={
-    subnets=[$SUBNET_IDS],
-    securityGroups=[$TASK_SG],
-    assignPublicIp=ENABLED
-  }" \
-  --load-balancers "targetGroupArn=$TG_ARN,containerName=scraper-engine,containerPort=8000" \
-  --health-check-grace-period-seconds 90 \
-  --region $AWS_REGION
+# Substitute placeholders in ecs-service.json, then create the service
+sed "s|ACCOUNT_ID|${AWS_ACCOUNT}|g; \
+     s|subnet-PRIVATE_SUBNET_1|${PRIVATE_SUBNET_1}|g; \
+     s|subnet-PRIVATE_SUBNET_2|${PRIVATE_SUBNET_2}|g; \
+     s|sg-SCRAPER_SG_ID|${TASK_SG}|g; \
+     s|targetgroup/TolipAI-scraper-tg/XXXX|$(echo $TG_ARN | cut -d: -f6)|g" \
+  infrastructure/ecs-service.json \
+  | aws ecs create-service \
+      --cli-input-json file:///dev/stdin \
+      --region $AWS_REGION
+
+# After initial create, use deploy.sh for all subsequent updates
 ```
+
+> **Private subnet requirement:** You need at least 2 private subnets in your VPC. If you only have public subnets (default VPC), either create private subnets with a NAT Gateway, or temporarily use `assignPublicIp=ENABLED` for testing.
+>
+> **Target group port:** Must be **8765** to match the container port in `ecs-task-definition.json`.
 
 ---
 
 ## Step 9 — Auto-Scaling
 
 ```bash
-# Register the scalable target
+# Use scaling.sh for full scheduled + step scaling setup (recommended):
+./infrastructure/scaling.sh --apply
+
+# Or register the scalable target manually:
 aws application-autoscaling register-scalable-target \
   --service-namespace ecs \
   --scalable-dimension ecs:service:DesiredCount \
-  --resource-id service/tolipai-scraper/scraper-engine \
+  --resource-id service/TolipAI-scraper-cluster/TolipAI-scraper-engine \
   --min-capacity 1 \
-  --max-capacity 4
+  --max-capacity 10
 
-# Scale out when CPU > 60% for 2 consecutive 60s periods
+# Target tracking: scale out when CPU > 60%
 aws application-autoscaling put-scaling-policy \
   --service-namespace ecs \
   --scalable-dimension ecs:service:DesiredCount \
-  --resource-id service/tolipai-scraper/scraper-engine \
-  --policy-name scraper-cpu-scaling \
+  --resource-id service/TolipAI-scraper-cluster/TolipAI-scraper-engine \
+  --policy-name TolipAI-cpu-step-scaling \
   --policy-type TargetTrackingScaling \
   --target-tracking-scaling-policy-configuration '{
     "TargetValue": 60.0,
@@ -409,6 +464,8 @@ aws application-autoscaling put-scaling-policy \
     "ScaleOutCooldown": 60
   }'
 ```
+
+> `scaling.sh` also sets up business-hours scheduled scaling (Mon-Fri 09:00-18:00 EST) and wires a CloudWatch step-scaling alarm. Run it once after the service is created.
 
 ---
 
@@ -440,10 +497,10 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: tolipai/scraper-engine
-  ECS_CLUSTER: tolipai-scraper
-  ECS_SERVICE: scraper-engine
-  TASK_DEFINITION: infrastructure/task-definition.json
+  ECR_REPOSITORY: TolipAI-scraper
+  ECS_CLUSTER: TolipAI-scraper-cluster
+  ECS_SERVICE: TolipAI-scraper-engine
+  TASK_DEFINITION: infrastructure/ecs-task-definition.json
 
 jobs:
   deploy:
@@ -503,6 +560,8 @@ jobs:
 
 **Required AWS IAM Role:** Create `GithubActionsECRPush` with OIDC trust for `token.actions.githubusercontent.com` and permissions: `ecr:*`, `ecs:UpdateService`, `ecs:RegisterTaskDefinition`, `iam:PassRole`.
 
+> **Shortcut:** `./infrastructure/deploy.sh` performs the same build → register → update-service flow and can be run from any machine with AWS credentials. The GitHub Actions workflow is the recommended path for automated releases from CI.
+
 ---
 
 ## Cost Estimate (us-east-1, Fargate Spot ARM64)
@@ -523,19 +582,25 @@ jobs:
 
 ```bash
 # View running tasks
-aws ecs list-tasks --cluster tolipai-scraper --service-name scraper-engine
+aws ecs list-tasks --cluster TolipAI-scraper-cluster --service-name TolipAI-scraper-engine
 
 # Describe a task (get IP, status, stopped reason)
-aws ecs describe-tasks --cluster tolipai-scraper \
-  --tasks $(aws ecs list-tasks --cluster tolipai-scraper \
-    --service-name scraper-engine --query taskArns[0] --output text)
+aws ecs describe-tasks --cluster TolipAI-scraper-cluster \
+  --tasks $(aws ecs list-tasks --cluster TolipAI-scraper-cluster \
+    --service-name TolipAI-scraper-engine --query taskArns[0] --output text)
 
 # Tail live logs
-aws logs tail /ecs/tolipai-scraper-engine --follow
+aws logs tail /ecs/TolipAI-scraper --follow
 
 # Force a new deployment (rolling update)
-aws ecs update-service --cluster tolipai-scraper \
-  --service scraper-engine --force-new-deployment
+aws ecs update-service --cluster TolipAI-scraper-cluster \
+  --service TolipAI-scraper-engine --force-new-deployment
+
+# Interactive shell into a running task (requires ECSExec policy on task role)
+TASK_ARN=$(aws ecs list-tasks --cluster TolipAI-scraper-cluster \
+  --service-name TolipAI-scraper-engine --query taskArns[0] --output text)
+aws ecs execute-command --cluster TolipAI-scraper-cluster \
+  --task $TASK_ARN --container scraper --interactive --command "/bin/bash"
 ```
 
 ---
@@ -544,13 +609,13 @@ aws ecs update-service --cluster tolipai-scraper \
 
 ```bash
 # List recent task definition revisions
-aws ecs list-task-definitions --family-prefix tolipai-scraper-engine \
+aws ecs list-task-definitions --family-prefix TolipAI-scraper-engine \
   --sort DESC --query taskDefinitionArns[:5] --output table
 
 # Roll back to a specific revision
-aws ecs update-service --cluster tolipai-scraper \
-  --service scraper-engine \
-  --task-definition tolipai-scraper-engine:42
+aws ecs update-service --cluster TolipAI-scraper-cluster \
+  --service TolipAI-scraper-engine \
+  --task-definition TolipAI-scraper-engine:42
 ```
 
 ---
@@ -563,6 +628,28 @@ aws ecs update-service --cluster tolipai-scraper \
 | Neon PostgreSQL | Neon (serverless) | Shared by both services |
 | scraper-engine | AWS Fargate Spot | ARM64, auto-scaling, isolated |
 | Redis job queue | AWS ElastiCache | Optional — required for distributed job retry |
+
+---
+
+## Resource Name Reference
+
+All resource names match the scripts and JSON files in `infrastructure/`. Use this table as the authoritative reference:
+
+| Resource | Name |
+|---|---|
+| ECR repository | `TolipAI-scraper` |
+| ECS cluster | `TolipAI-scraper-cluster` |
+| ECS service | `TolipAI-scraper-engine` |
+| Task definition family | `TolipAI-scraper-engine` |
+| Container name | `scraper` |
+| Container port | **8765** |
+| Execution IAM role | `TolipAI-scraper-execution-role` |
+| Task IAM role | `TolipAI-scraper-task-role` |
+| CloudWatch log group | `/ecs/TolipAI-scraper` |
+| Secrets Manager prefix | `TolipAI/scraper/` |
+| S3 bucket | `TolipAI-scraper-storage` |
+| CloudWatch namespace | `TolipAI/Scraper` |
+| Buildx builder name | `TolipAI-builder` |
 
 ---
 

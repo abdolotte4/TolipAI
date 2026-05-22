@@ -801,6 +801,57 @@ router.post("/twilio/webhook", async (req, res) => {
       ts: Date.now(),
     });
 
+    // ── Carrier-compliance keywords (unconditional — fire before notifications/AI) ──
+
+    // STOP → record opt-out in DB + send mandatory carrier acknowledgement
+    if (isOptOutMessage(content)) {
+      if (lead?.campaignId) {
+        try {
+          await db.insert(crmSmsOptOuts).values({
+            phone: fromNumber,
+            campaignId: lead.campaignId,
+          }).onConflictDoNothing();
+          logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] STOP opt-out recorded");
+        } catch (dbErr) {
+          logger.warn(dbErr, "[twilio webhook] STOP opt-out DB insert failed");
+        }
+        setImmediate(async () => {
+          try {
+            await sendSms({
+              to: fromNumber,
+              body: "You've been unsubscribed from TolipAI messages. No further texts will be sent. Reply START to resubscribe.",
+              campaignId: lead.campaignId!,
+            });
+            logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] STOP confirmation sent");
+          } catch (smsErr) {
+            logger.warn(smsErr, "[twilio webhook] STOP confirmation SMS failed — carrier may handle it natively");
+          }
+        });
+      } else {
+        logger.warn({ from: fromNumber, to: toNumber }, "[twilio webhook] STOP from unrecognised number — cannot record opt-out");
+      }
+      return;
+    }
+
+    // HELP → carrier-required support info (regardless of AI SMS setting)
+    if (/^HELP\b/i.test(content.trim())) {
+      if (lead?.campaignId) {
+        setImmediate(async () => {
+          try {
+            await sendSms({
+              to: fromNumber,
+              body: "TolipAI: For help, email info@tolipai.com or call (555) 201-4892. Reply STOP to unsubscribe. Msg & data rates may apply.",
+              campaignId: lead.campaignId!,
+            });
+            logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] HELP auto-reply sent");
+          } catch (helpErr) {
+            logger.warn(helpErr, "[twilio webhook] HELP auto-reply failed");
+          }
+        });
+      }
+      return;
+    }
+
     if (lead?.campaignId) {
       const users = await db.select({ id: crmUsers.id }).from(crmUsers)
         .where(eq(crmUsers.campaignId, lead.campaignId));
@@ -832,30 +883,6 @@ router.post("/twilio/webhook", async (req, res) => {
             .limit(1);
 
           if (!campaign?.aiSmsEnabled || !campaign.twilioEnabled) return;
-
-          // HELP keyword → send carrier-compliant support reply and stop (no AI)
-          if (/^HELP\b/i.test(content.trim())) {
-            const helpMsg =
-              `TolipAI: For help, email info@tolipai.com or call (555) 201-4892. ` +
-              `Reply STOP to unsubscribe. Msg & data rates may apply.`;
-            try {
-              await sendSms({ to: fromNumber, body: helpMsg, campaignId: lead.campaignId! });
-              logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] HELP auto-reply sent");
-            } catch (helpErr) {
-              logger.warn(helpErr, "[twilio webhook] HELP auto-reply send failed");
-            }
-            return;
-          }
-
-          // Opt-out keyword → record and stop
-          if (isOptOutMessage(content)) {
-            await db.insert(crmSmsOptOuts).values({
-              phone: fromNumber,
-              campaignId: lead.campaignId,
-            }).onConflictDoNothing();
-            logger.info({ leadId: lead.id, from: fromNumber }, "[aiSms] opt-out recorded");
-            return;
-          }
 
           // Check if already opted out
           const [optOut] = await db
