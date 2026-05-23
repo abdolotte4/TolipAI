@@ -749,28 +749,36 @@ function CRMDialer() {
     if (!sessionId) return;
     const token = localStorage.getItem("crm_token");
     if (!token) return;
-    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
-    es.addEventListener("power_dial_call_ended", (e: MessageEvent) => {
-      try {
-        const d = JSON.parse(e.data);
-        if (d.sessionId !== sessionId) return;
-        const durSec = d.callDuration ?? 0;
-        const mins = Math.floor(durSec / 60);
-        const secs = durSec % 60;
-        const durStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-        const disp = d.disposition === "answered" ? "Answered" : "No Answer";
-        if (d.done) {
-          toast({ title: "Session complete!", description: `All leads dialed.` });
-        } else {
-          toast({
-            title: `Call ended (${durStr}) · ${disp}`,
-            description: d.nextLeadName ? `Next: ${d.nextLeadName}` : "Moving to next lead…",
-          });
-        }
-        refetchSession();
-      } catch { }
-    });
-    return () => es.close();
+    let es: EventSource | null = null;
+    let cancelled = false;
+    fetch("/api/crm/auth/sse-token", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ token: sseToken }: { token: string }) => {
+        if (cancelled) return;
+        es = new EventSource(`/api/crm/events?token=${encodeURIComponent(sseToken)}`);
+        es.addEventListener("power_dial_call_ended", (e: MessageEvent) => {
+          try {
+            const d = JSON.parse(e.data);
+            if (d.sessionId !== sessionId) return;
+            const durSec = d.callDuration ?? 0;
+            const mins = Math.floor(durSec / 60);
+            const secs = durSec % 60;
+            const durStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+            const disp = d.disposition === "answered" ? "Answered" : "No Answer";
+            if (d.done) {
+              toast({ title: "Session complete!", description: `All leads dialed.` });
+            } else {
+              toast({
+                title: `Call ended (${durStr}) · ${disp}`,
+                description: d.nextLeadName ? `Next: ${d.nextLeadName}` : "Moving to next lead…",
+              });
+            }
+            refetchSession();
+          } catch { }
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; es?.close(); };
   }, [sessionId, refetchSession, toast]);
 
   const startMutation = useMutation({

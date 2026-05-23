@@ -93,11 +93,17 @@ export function AppLayout({ children }: AppLayoutProps) {
     const token = localStorage.getItem("crm_token");
     if (!token || !user) return;
     if (sseRef.current) return;
-    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
-    sseRef.current = es;
-    const handler = () => setSseLeadDelta(d => d + 1);
-    es.addEventListener("lead_created", handler);
-    return () => { es.close(); sseRef.current = null; };
+    let cancelled = false;
+    fetch("/api/crm/auth/sse-token", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ token: sseToken }: { token: string }) => {
+        if (cancelled || sseRef.current) return;
+        const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(sseToken)}`);
+        sseRef.current = es;
+        es.addEventListener("lead_created", () => setSseLeadDelta(d => d + 1));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; sseRef.current?.close(); sseRef.current = null; };
   }, [user]);
   const { data: newLeadsData } = useQuery<any>({ queryKey: ["crm-stats"], queryFn: () => apiFetch("/stats"), refetchInterval: 60_000, enabled: !!user });
   useEffect(() => { if (newLeadsData) setSseLeadDelta(0); }, [newLeadsData]);

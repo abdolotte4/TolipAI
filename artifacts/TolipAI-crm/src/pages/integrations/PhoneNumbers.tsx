@@ -477,59 +477,70 @@ export default function ManualDialerPage() {
   useEffect(() => {
     const token = localStorage.getItem("crm_token");
     if (!token) return;
+    let es: EventSource | null = null;
+    let cancelled = false;
+    let handleSms: ((e: MessageEvent) => void) | null = null;
+    let handleCallLogged: ((e: MessageEvent) => void) | null = null;
 
-    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+    fetch("/api/crm/auth/sse-token", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ token: sseToken }: { token: string }) => {
+        if (cancelled) return;
+        es = new EventSource(`/api/crm/events?token=${encodeURIComponent(sseToken)}`);
 
-    const handleSms = (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data) as { to?: string; from?: string };
-        const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
-        const affectedNumber = ownedNumbers.find(num => {
-          const d = num.replace(/\D/g, "");
-          return (
-            (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
-            (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
-          );
-        }) ?? selectedNumber?.number;
-        if (affectedNumber) {
-          qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
-          if (selectedContact) {
-            qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
-          }
-        } else {
-          qc.invalidateQueries({ queryKey: ["phone-number-convs"] });
-        }
-      } catch { /* ignore malformed */ }
-    };
+        handleSms = (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data) as { to?: string; from?: string };
+            const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
+            const affectedNumber = ownedNumbers.find(num => {
+              const d = num.replace(/\D/g, "");
+              return (
+                (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
+                (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
+              );
+            }) ?? selectedNumber?.number;
+            if (affectedNumber) {
+              qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
+              if (selectedContact) {
+                qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
+              }
+            } else {
+              qc.invalidateQueries({ queryKey: ["phone-number-convs"] });
+            }
+          } catch { /* ignore malformed */ }
+        };
 
-    const handleCallLogged = (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data) as { to?: string; from?: string };
-        const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
-        const affectedNumber = ownedNumbers.find(num => {
-          const d = num.replace(/\D/g, "");
-          return (
-            (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
-            (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
-          );
-        }) ?? selectedNumber?.number;
-        if (affectedNumber) {
-          qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
-          if (selectedContact) {
-            qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
-          }
-        }
-      } catch { /* ignore malformed */ }
-    };
+        handleCallLogged = (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data) as { to?: string; from?: string };
+            const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
+            const affectedNumber = ownedNumbers.find(num => {
+              const d = num.replace(/\D/g, "");
+              return (
+                (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
+                (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
+              );
+            }) ?? selectedNumber?.number;
+            if (affectedNumber) {
+              qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
+              if (selectedContact) {
+                qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
+              }
+            }
+          } catch { /* ignore malformed */ }
+        };
 
-    es.addEventListener("new_inbound_sms", handleSms);
-    es.addEventListener("call_logged", handleCallLogged);
-    es.onerror = () => { /* SSE will auto-reconnect */ };
+        es.addEventListener("new_inbound_sms", handleSms);
+        es.addEventListener("call_logged", handleCallLogged);
+        es.onerror = () => { /* SSE will auto-reconnect */ };
+      })
+      .catch(() => {});
 
     return () => {
-      es.removeEventListener("new_inbound_sms", handleSms);
-      es.removeEventListener("call_logged", handleCallLogged);
-      es.close();
+      cancelled = true;
+      if (es && handleSms) es.removeEventListener("new_inbound_sms", handleSms);
+      if (es && handleCallLogged) es.removeEventListener("call_logged", handleCallLogged);
+      es?.close();
     };
   }, [qc, selectedNumber?.number, selectedContact, numbersData?.phoneNumbers]);
 

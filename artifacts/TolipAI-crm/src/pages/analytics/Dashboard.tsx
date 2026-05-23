@@ -235,22 +235,29 @@ function ActivityFeed() {
   useEffect(() => {
     const token = localStorage.getItem("crm_token");
     if (!token) return;
-    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+    let es: EventSource | null = null;
+    let cancelled = false;
+    fetch("/api/crm/auth/sse-token", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ token: sseToken }: { token: string }) => {
+        if (cancelled) return;
+        es = new EventSource(`/api/crm/events?token=${encodeURIComponent(sseToken)}`);
 
-    es.addEventListener("connected", () => setConnected(true));
-    es.onerror = () => setConnected(false);
+        es.addEventListener("connected", () => setConnected(true));
+        es.onerror = () => setConnected(false);
 
-    const push = (type: string) => (e: MessageEvent) => {
-      try {
-        const d = JSON.parse(e.data);
-        setEvents(prev => [{ type, ...d, ts: d.ts ?? Date.now() }, ...prev].slice(0, 50));
-      } catch { }
-    };
+        const push = (type: string) => (e: MessageEvent) => {
+          try {
+            const d = JSON.parse(e.data);
+            setEvents(prev => [{ type, ...d, ts: d.ts ?? Date.now() }, ...prev].slice(0, 50));
+          } catch { }
+        };
 
-    (["lead_created", "incoming_call", "call_attempt", "email_open"] as const)
-      .forEach(t => es.addEventListener(t, push(t)));
-
-    return () => es.close();
+        (["lead_created", "incoming_call", "call_attempt", "email_open"] as const)
+          .forEach(t => es!.addEventListener(t, push(t)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; es?.close(); };
   }, []);
 
   const icon = (type: string) => {

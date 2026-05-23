@@ -8,14 +8,16 @@ What this script does:
   3. Replaces every secret's valueFrom with the correct full ARN (with suffix)
      — handles plain names, partial ARNs, and full ARNs with stale/wrong suffixes
   4. Ensures the ECS execution role has secretsmanager:GetSecretValue permission
-  5. Registers a new task definition revision
-  6. Updates the ECS service with --force-new-deployment
-  7. Waits for the service to reach a stable running state
+  5. Enforces ARM64 / Graviton3 on the runtimePlatform field
+  6. Registers a new task definition revision
+  7. Updates the ECS service with --force-new-deployment
+  8. Waits for the service to reach a stable running state
 
 Usage:
     python deploy_ecs.py
     python deploy_ecs.py --dry-run          # preview changes, do not deploy
     python deploy_ecs.py --skip-iam-check   # skip IAM policy verification
+    python deploy_ecs.py --rollback         # re-deploy the previous healthy revision
 """
 
 import argparse
@@ -31,7 +33,7 @@ AWS_REGION         = "us-east-1"
 SECRET_PREFIX      = "TolipAI/scraper/"
 TASK_FAMILY        = "tolipai-scraper-engine"
 ECS_CLUSTER        = "TolipAI-scraper-cluster"
-ECS_SERVICE        = "tolipai-scraper-engine-service-xop"
+ECS_SERVICE        = "tolipai-scraper-engine-service-xopdv4lb"
 EXECUTION_ROLE     = "TolipAI-scraper-execution-role"
 INLINE_POLICY_NAME = "SecretsManagerAccess"
 STABILITY_TIMEOUT  = 600   # seconds to wait for service stability
@@ -249,11 +251,33 @@ def ensure_iam_policy(iam_client, account_id: str, dry_run: bool) -> None:
     log("  IAM policy updated successfully.")
 
 
+# ── Step 4b: Enforce ARM64 / Graviton3 ────────────────────────────────────────
+
+def ensure_arm64(td: dict) -> dict:
+    """
+    Patch the task definition runtimePlatform to ARM64 / LINUX so the task
+    always runs on Graviton3.  This guards against the live ECS task def being
+    X86_64 (e.g. created via the console before the JSON was set up correctly).
+    """
+    current = td.get("runtimePlatform", {})
+    target = {"cpuArchitecture": "ARM64", "operatingSystemFamily": "LINUX"}
+    if current != target:
+        arch = current.get("cpuArchitecture", "not set")
+        log(f"  runtimePlatform was {arch} — patching to ARM64/LINUX")
+        td["runtimePlatform"] = target
+    else:
+        log("  runtimePlatform is already ARM64/LINUX — no change needed.")
+    return td
+
+
 # ── Step 5: Register new task definition revision ─────────────────────────────
 
 def register_task_definition(ecs_client, td: dict, tags: list) -> str:
-    """Strip read-only fields and register a new task definition revision."""
+    """Strip read-only fields, enforce ARM64, and register a new task definition revision."""
     log("\n[5/6] Registering new task definition revision …")
+
+    # Enforce ARM64 / Graviton3 before every registration
+    td = ensure_arm64(td)
 
     clean_td = {k: v for k, v in td.items() if k not in TASK_DEF_READONLY_FIELDS}
 
@@ -323,6 +347,49 @@ def update_service(ecs_client, new_task_def_arn: str) -> None:
     sys.exit(1)
 
 
+# ── Rollback helpers ──────────────────────────────────────────────────────────
+
+def get_current_task_def_arn(ecs_client) -> str:
+    """Return the task definition ARN currently deployed to the service."""
+    resp = ecs_client.describe_services(cluster=ECS_CLUSTER, services=[ECS_SERVICE])
+    if not resp["services"]:
+        log("  ERROR: Service not found.")
+        sys.exit(1)
+    return resp["services"][0]["taskDefinition"]
+
+
+def find_previous_revision(ecs_client) -> str:
+    """
+    Find the most recent ACTIVE task definition revision that is NOT currently
+    deployed.  This is the revision that will be used for rollback.
+
+    Strategy:
+      1. Describe the service to get the current task definition ARN.
+      2. List all ACTIVE revisions for the family (newest first).
+      3. Return the first ARN that differs from the currently deployed one.
+    """
+    log("\n=== ROLLBACK MODE ===")
+    current_arn = get_current_task_def_arn(ecs_client)
+    log(f"  Currently deployed: {current_arn}")
+
+    paginator = ecs_client.get_paginator("list_task_definitions")
+    pages = paginator.paginate(
+        familyPrefix=TASK_FAMILY,
+        sort="DESC",
+        status="ACTIVE",
+    )
+
+    for page in pages:
+        for arn in page["taskDefinitionArns"]:
+            if arn != current_arn:
+                log(f"  Previous revision:   {arn}")
+                return arn
+
+    log("  ERROR: No previous ACTIVE revision found to roll back to.")
+    log(f"  (Only one revision exists or all others are INACTIVE for family '{TASK_FAMILY}')")
+    sys.exit(1)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def parse_args():
@@ -337,6 +404,15 @@ def parse_args():
         action="store_true",
         help="Skip the IAM execution-role policy verification step",
     )
+    parser.add_argument(
+        "--rollback",
+        action="store_true",
+        help=(
+            "Roll back to the previous healthy task definition revision. "
+            "Skips the secrets-fix and build steps — just finds the previous "
+            "ACTIVE revision and deploys it."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -347,18 +423,28 @@ def get_account_id(sts_client) -> str:
 def main():
     args = parse_args()
 
+    ecs_client = boto3.client("ecs", region_name=AWS_REGION)
+    sts_client = boto3.client("sts", region_name=AWS_REGION)
+
+    account_id = get_account_id(sts_client)
+    log(f"\nAWS account: {account_id}  region: {AWS_REGION}")
+
+    # ── Rollback path ─────────────────────────────────────────────────────────
+    if args.rollback:
+        prev_arn = find_previous_revision(ecs_client)
+        log(f"\nRolling back service to: {prev_arn}")
+        update_service(ecs_client, prev_arn)
+        log("\n✓ Rollback complete.")
+        return
+
+    # ── Normal deploy path ────────────────────────────────────────────────────
     if args.dry_run:
         log("=" * 60)
         log("DRY-RUN MODE — no AWS resources will be modified")
         log("=" * 60)
 
     sm_client  = boto3.client("secretsmanager", region_name=AWS_REGION)
-    ecs_client = boto3.client("ecs",            region_name=AWS_REGION)
     iam_client = boto3.client("iam",            region_name=AWS_REGION)
-    sts_client = boto3.client("sts",            region_name=AWS_REGION)
-
-    account_id = get_account_id(sts_client)
-    log(f"\nAWS account: {account_id}  region: {AWS_REGION}")
 
     # 1. Fetch live ARN map
     arn_map = fetch_secret_arn_map(sm_client)
@@ -378,13 +464,16 @@ def main():
     if args.dry_run:
         log("\n[DRY-RUN] Skipping task definition registration and service update.")
         log(f"  {updated_count} secret(s) would be updated.")
+        # Show what the runtimePlatform would look like
+        current_platform = td.get("runtimePlatform", {})
+        log(f"  runtimePlatform: {current_platform} → ARM64/LINUX (would be patched)")
         return
 
     if updated_count == 0:
         log("\nAll secrets already reference correct live ARNs. "
             "Registering a new revision anyway to force a clean deploy …")
 
-    # 5. Register new revision
+    # 5. Register new revision (ARM64 enforcement happens inside)
     new_task_def_arn = register_task_definition(ecs_client, td, tags)
 
     # 6. Update service

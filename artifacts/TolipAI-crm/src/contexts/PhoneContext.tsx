@@ -573,53 +573,55 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = localStorage.getItem("crm_token");
     if (!token) return;
-    const es = new EventSource(`/api/crm/events?token=${encodeURIComponent(token)}`);
+    let es: EventSource | null = null;
+    let cancelled = false;
+    fetch("/api/crm/auth/sse-token", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ token: sseToken }: { token: string }) => {
+        if (cancelled) return;
+        es = new EventSource(`/api/crm/events?token=${encodeURIComponent(sseToken)}`);
 
-    es.addEventListener("incoming_call", (e: MessageEvent) => {
-      try {
-        const d = JSON.parse(e.data);
-        setIncomingCallInfo((prev) => ({
-          phone: prev?.phone ?? d.phone ?? "",
-          leadName: d.leadName ?? prev?.leadName ?? null,
-          leadId: d.leadId ?? prev?.leadId ?? null,
-        }));
-        // Enable the Accept button immediately — clicking it will queue the accept if
-        // the Device's `incoming` event hasn't fired yet (race handled by pendingAcceptLeadIdRef).
-        setHasPendingIncoming(true);
-        // Play ring right away (Device `incoming` plays it too, but the ref guard prevents double-ring).
-        if (!ringStopRef.current) {
-          const stopSignal = { stopped: false };
-          ringStopRef.current = playRing(stopSignal);
-        }
-        // Auto-initialize the Twilio Device so the `incoming` event can fire and the
-        // call can actually be answered in the browser.
-        if (!deviceRef.current) {
-          initDevice().catch(() => {});
-        }
-      } catch { }
-    });
+        es.addEventListener("incoming_call", (e: MessageEvent) => {
+          try {
+            const d = JSON.parse(e.data);
+            setIncomingCallInfo((prev) => ({
+              phone: prev?.phone ?? d.phone ?? "",
+              leadName: d.leadName ?? prev?.leadName ?? null,
+              leadId: d.leadId ?? prev?.leadId ?? null,
+            }));
+            setHasPendingIncoming(true);
+            if (!ringStopRef.current) {
+              const stopSignal = { stopped: false };
+              ringStopRef.current = playRing(stopSignal);
+            }
+            if (!deviceRef.current) {
+              initDevice().catch(() => {});
+            }
+          } catch { }
+        });
 
-    es.addEventListener("call_transcript", (e: MessageEvent) => {
-      try {
-        const d = JSON.parse(e.data);
-        const callSid = currentCallSidRef.current;
-        if (!callSid || d.callSid !== callSid) return;
-        const seg = d.segment as TranscriptSegment;
-        if (!seg?.text) return;
-        setLiveTranscript((prev) => [...prev.slice(-99), seg]);
-      } catch { }
-    });
+        es.addEventListener("call_transcript", (e: MessageEvent) => {
+          try {
+            const d = JSON.parse(e.data);
+            const callSid = currentCallSidRef.current;
+            if (!callSid || d.callSid !== callSid) return;
+            const seg = d.segment as TranscriptSegment;
+            if (!seg?.text) return;
+            setLiveTranscript((prev) => [...prev.slice(-99), seg]);
+          } catch { }
+        });
 
-    es.addEventListener("call_suggestion", (e: MessageEvent) => {
-      try {
-        const d = JSON.parse(e.data);
-        const callSid = currentCallSidRef.current;
-        if (!callSid || d.callSid !== callSid) return;
-        if (d.suggestion) setAiSuggestion(d.suggestion);
-      } catch { }
-    });
-
-    return () => es.close();
+        es.addEventListener("call_suggestion", (e: MessageEvent) => {
+          try {
+            const d = JSON.parse(e.data);
+            const callSid = currentCallSidRef.current;
+            if (!callSid || d.callSid !== callSid) return;
+            if (d.suggestion) setAiSuggestion(d.suggestion);
+          } catch { }
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; es?.close(); };
   }, []);
 
   const value: PhoneContextValue = {
