@@ -1,6 +1,6 @@
 {
   "cluster": "TolipAI-scraper-cluster",
-  "serviceName": "tolipai-scraper-engine-service-xopdv4lb",
+  "serviceName": "tolipai-scraper-engine-service-xop",
   "taskDefinition": "tolipai-scraper-engine",
   "launchType": "FARGATE",
   "capacityProviderStrategy": [

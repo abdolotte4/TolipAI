@@ -99,7 +99,7 @@
               "logs:PutLogEvents",
               "logs:CreateLogGroup"
             ],
-            "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/ecs/TolipAI-scraper:*"
+            "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/ecs/tolipai-scraper:*"
           }
         ]
       },

@@ -35,7 +35,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID must be set}"
 ECS_CLUSTER="${ECS_CLUSTER:-TolipAI-scraper-cluster}"
-ECS_SERVICE="${ECS_SERVICE:-TolipAI-scraper-engine}"
+ECS_SERVICE="${ECS_SERVICE:-tolipai-scraper-engine-service-xop}"
 TASK_DEFINITION="${TASK_DEFINITION:-TolipAI-scraper-engine}"
 
 # Scaling bounds

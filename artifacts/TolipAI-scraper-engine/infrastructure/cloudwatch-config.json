@@ -1,7 +1,7 @@
 {
   "_comment": "CloudWatch Logs Insights saved queries and alarm definitions for TolipAI Scraper Engine",
 
-  "log_group": "/ecs/TolipAI-scraper",
+  "log_group": "/ecs/tolipai-scraper",
   "retention_days": 7,
 
   "metric_filters": [
