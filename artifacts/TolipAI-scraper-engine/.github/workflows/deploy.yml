@@ -22,7 +22,7 @@ env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: tolipai-scraper
   ECS_CLUSTER: TolipAI-scraper-cluster
-  ECS_SERVICE: tolipai-scraper-engine-service-xopdv4lb
+  ECS_SERVICE: tolipai-scraper-engine-service-xop
   TASK_DEFINITION: infrastructure/ecs-task-definition.json
   CONTAINER_NAME: scraper
 

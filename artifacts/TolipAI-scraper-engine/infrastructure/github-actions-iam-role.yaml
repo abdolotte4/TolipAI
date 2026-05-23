@@ -1,24 +1,28 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Creates an IAM OIDC identity provider for GitHub Actions and the
-  GithubActionsECRPush IAM role used by the Python-Worker deploy workflow.
-  The role allows GitHub Actions to push ARM64 images to ECR and deploy
-  to ECS Fargate — no long-lived AWS credentials stored in GitHub Secrets.
+  Creates the GithubActionsECRPush IAM role used by the Python-Worker deploy
+  workflow. Allows GitHub Actions to push ARM64 images to ECR and deploy to
+  ECS Fargate using OIDC — no long-lived AWS credentials stored in GitHub.
 
-  One-command deploy:
+  PREREQUISITE: The GitHub OIDC identity provider
+  (token.actions.githubusercontent.com) must already exist in the account.
+  If it does not, create it first:
+    aws iam create-open-id-connect-provider \
+      --url https://token.actions.githubusercontent.com \
+      --client-id-list sts.amazonaws.com \
+      --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  One-command deploy (role already exists — use --no-fail-on-empty-changeset):
     aws cloudformation deploy \
       --template-file infrastructure/github-actions-iam-role.yaml \
       --stack-name TolipAI-GitHubActions-Role \
       --capabilities CAPABILITY_NAMED_IAM \
+      --no-fail-on-empty-changeset \
       --region us-east-1
 
-  After the stack is created, add the output RoleArn to GitHub Secrets as
-  AWS_ROLE_ARN (the deploy.yml already reads this via secrets.AWS_ROLE_ARN).
-  You only need AWS_ACCOUNT_ID in GitHub Secrets (already used by deploy.yml).
-
-  NOTE: If you already have a token.actions.githubusercontent.com OIDC
-  provider in this AWS account, delete the GitHubOidcProvider resource from
-  this template before deploying (AWS only allows one per account).
+  The deploy.yml workflow uses:
+    role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/GithubActionsECRPush
+  No extra GitHub Secret needed — only AWS_ACCOUNT_ID (already set).
 
 Parameters:
 
@@ -44,7 +48,7 @@ Parameters:
 
   EcsService:
     Type: String
-    Default: tolipai-scraper-engine-service-xopdv4lb
+    Default: tolipai-scraper-engine-service-xop
     Description: ECS service name.
 
   EcsTaskFamily:
@@ -61,24 +65,12 @@ Parameters:
 
 Resources:
 
-  # ── GitHub OIDC Identity Provider ───────────────────────────────────────────
-  # Allows AWS to verify tokens issued by GitHub Actions.
-  # Delete this resource if token.actions.githubusercontent.com already exists
-  # in your account (check: aws iam list-open-id-connect-providers).
-  GitHubOidcProvider:
-    Type: AWS::IAM::OIDCProvider
-    Properties:
-      Url: https://token.actions.githubusercontent.com
-      ClientIdList:
-        - sts.amazonaws.com
-      ThumbprintList:
-        # GitHub's current OIDC certificate thumbprint.
-        # AWS now validates against its own CA store for GitHub, so this value
-        # is largely a formality, but it must be present.
-        - 6938fd4d98bab03faadb97b34396831e3780aea1
-
   # ── GitHub Actions Deploy Role ───────────────────────────────────────────────
   # Name must match what deploy.yml passes to role-to-assume.
+  # The trust policy references the OIDC provider by its well-known ARN
+  # (arn:aws:iam::<account>:oidc-provider/token.actions.githubusercontent.com)
+  # rather than a CloudFormation Ref, so the provider does not need to be
+  # managed by this stack.
   GithubActionsECRPush:
     Type: AWS::IAM::Role
     Properties:
@@ -86,20 +78,19 @@ Resources:
       Description: >
         Assumed by GitHub Actions in Agawish24/Python-Worker to build ARM64
         images, push them to ECR, and deploy to ECS Fargate.
-      MaxSessionDuration: 3600   # seconds — enough for a full build+deploy
+      MaxSessionDuration: 3600
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Sid: GitHubActionsOIDC
             Effect: Allow
             Principal:
-              Federated: !GetAtt GitHubOidcProvider.Arn
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               StringEquals:
                 "token.actions.githubusercontent.com:aud": sts.amazonaws.com
               StringLike:
-                # Allow any branch/tag/PR in the repo (main, feature/*, refs/tags/*)
                 "token.actions.githubusercontent.com:sub":
                   !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
 
@@ -113,7 +104,7 @@ Resources:
               - Sid: ECRGetToken
                 Effect: Allow
                 Action: ecr:GetAuthorizationToken
-                Resource: "*"   # GetAuthorizationToken has no resource restriction
+                Resource: "*"
               - Sid: ECRImageOperations
                 Effect: Allow
                 Action:
@@ -149,7 +140,7 @@ Resources:
                 Action:
                   - ecs:RegisterTaskDefinition
                   - ecs:DeregisterTaskDefinition
-                Resource: "*"   # RegisterTaskDefinition does not support resource-level restrictions
+                Resource: "*"
               - Sid: ECSUpdateService
                 Effect: Allow
                 Action: ecs:UpdateService
@@ -190,26 +181,17 @@ Resources:
 Outputs:
 
   RoleArn:
-    Description: >
-      ARN of the GithubActionsECRPush role.
-      The deploy.yml already uses this via:
-        role-to-assume: arn:aws:iam::<ACCOUNT_ID>:role/GithubActionsECRPush
-      No extra GitHub Secret is needed — only AWS_ACCOUNT_ID (already set).
+    Description: ARN of the GithubActionsECRPush role.
     Value: !GetAtt GithubActionsECRPush.Arn
     Export:
       Name: TolipAI-GithubActionsECRPushRoleArn
 
-  OidcProviderArn:
-    Description: ARN of the GitHub OIDC identity provider.
-    Value: !GetAtt GitHubOidcProvider.Arn
-    Export:
-      Name: TolipAI-GitHubOidcProviderArn
-
   DeployCommand:
-    Description: One-liner to deploy this stack.
+    Description: One-liner to update this stack.
     Value: !Sub >-
       aws cloudformation deploy
       --template-file infrastructure/github-actions-iam-role.yaml
       --stack-name TolipAI-GitHubActions-Role
       --capabilities CAPABILITY_NAMED_IAM
+      --no-fail-on-empty-changeset
       --region ${AWS::Region}
