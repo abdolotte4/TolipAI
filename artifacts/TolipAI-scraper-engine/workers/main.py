@@ -981,6 +981,123 @@ async def health_keys() -> Dict[str, Any]:
     }
 
 
+@app.get("/health/providers")
+async def health_providers() -> Dict[str, Any]:
+    """
+    Lightweight provider status endpoint.
+
+    Reports configuration state and circuit-breaker health for every external
+    provider without making any live LLM or database calls.  Safe to poll
+    frequently from load balancers, dashboards, and alerting tools.
+    """
+    breakers: Dict[str, Any] = all_breaker_states()
+
+    def _cb(name: str) -> Dict[str, Any]:
+        """Return circuit-breaker state for a provider (or 'no_data' if unseen)."""
+        state = breakers.get(name)
+        if state is None:
+            return {"state": "closed", "note": "no_data_yet"}
+        return {
+            "state": state.get("state", "unknown"),
+            "failure_count": state.get("failure_count", 0),
+            "last_failure": state.get("last_failure_at"),
+        }
+
+    llm_providers = {
+        "groq": {
+            "configured": bool(settings.groq_api_key),
+            "model": settings.groq_model,
+            "circuit_breaker": _cb("groq"),
+        },
+        "cerebras": {
+            "configured": bool(settings.cerebras_api_key),
+            "model": settings.cerebras_model,
+            "circuit_breaker": _cb("cerebras"),
+        },
+        "together": {
+            "configured": bool(settings.together_api_key),
+            "model": settings.together_model,
+            "circuit_breaker": _cb("together"),
+        },
+        "nvidia": {
+            "configured": bool(settings.nvidia_api_key),
+            "model": settings.nvidia_model,
+            "circuit_breaker": _cb("nvidia"),
+        },
+        "openrouter": {
+            "configured": bool(settings.openrouter_api_key),
+            "model": settings.openrouter_model,
+            "circuit_breaker": _cb("openrouter"),
+        },
+        "moonshot": {
+            "configured": bool(settings.moonshot_api_key),
+            "model": settings.moonshot_model,
+            "circuit_breaker": _cb("moonshot"),
+        },
+    }
+
+    scraper_providers = {
+        "propelio": {
+            "configured": bool(
+                os.getenv("PROPELIO_EMAIL") and os.getenv("PROPELIO_PASSWORD")
+            ),
+            "circuit_breaker": _cb("propelio"),
+        },
+        "propwire": {
+            "configured": bool(
+                os.getenv("PROPWIRE_EMAIL") and os.getenv("PROPWIRE_PASSWORD")
+            ),
+            "circuit_breaker": _cb("propwire"),
+        },
+        "attom": {
+            "configured": bool(settings.attom_keys),
+            "key_count": len(settings.attom_keys),
+            "circuit_breaker": _cb("attom"),
+        },
+        "property_api": {
+            "configured": bool(settings.property_api_keys),
+            "key_count": len(settings.property_api_keys),
+            "circuit_breaker": _cb("property_api"),
+        },
+        "brightdata_proxy": {
+            "configured": settings.brightdata_configured(),
+            "circuit_breaker": _cb("brightdata"),
+        },
+    }
+
+    infra = {
+        "database": {
+            "configured": bool(os.getenv("DATABASE_URL")),
+            "circuit_breaker": _cb("database"),
+        },
+        "redis": {
+            "configured": bool(os.getenv("REDIS_URL")),
+            "backend": "redis_streams" if retry_queue._use_redis else "in_memory",
+        },
+        "s3_cache": {
+            "configured": bool(os.getenv("S3_CACHE_BUCKET")),
+            "bucket": os.getenv("S3_CACHE_BUCKET", ""),
+        },
+    }
+
+    llm_any_configured = any(p["configured"] for p in llm_providers.values())
+    llm_any_open = any(
+        p["circuit_breaker"].get("state") == "open" for p in llm_providers.values()
+    )
+
+    return {
+        "status": "ok",
+        "llm": llm_providers,
+        "llm_summary": {
+            "any_configured": llm_any_configured,
+            "any_open": llm_any_open,
+        },
+        "scrapers": scraper_providers,
+        "infra": infra,
+        "circuit_breakers_all": breakers,
+    }
+
+
 # ─── Circuit breaker admin endpoints ────────────────────────────────────────
 
 

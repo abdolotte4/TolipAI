@@ -111,10 +111,6 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
       status: status || "active",
       campaignId: targetCampaignId,
     }).returning();
-    // Store plain password for super_admin recovery (non-critical)
-    try {
-      await db.execute(sql`UPDATE crm_users SET password_plain = ${password} WHERE id = ${user.id}`);
-    } catch { /* non-critical */ }
     const ownerUserId = targetCampaignId ? await getCampaignOwnerUserId(targetCampaignId) : null;
     // Notify super admin of new user creation (if creator isn't super admin)
     if (crmUser.role !== "super_admin") {
@@ -209,12 +205,6 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     }
 
     const [user] = await db.update(crmUsers).set(updates).where(eq(crmUsers.id, id)).returning();
-    // Keep plain password in sync for super_admin recovery
-    if (password) {
-      try {
-        await db.execute(sql`UPDATE crm_users SET password_plain = ${password} WHERE id = ${id}`);
-      } catch { /* non-critical */ }
-    }
     const ownerUserId = user.campaignId ? await getCampaignOwnerUserId(user.campaignId) : null;
     res.json(formatUser(user, ownerUserId));
   } catch (err) {
