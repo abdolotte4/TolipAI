@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install lint/type-check tools
+        run: pip install ruff pyright
+
+      - name: Ruff lint
+        run: ruff check workers/
+
+      - name: Ruff format check
+        run: ruff format --check workers/
+
+      - name: Pyright type check
+        run: pyright workers/
+        continue-on-error: true
+
+  validate-infra:
+    name: Validate Infrastructure JSON
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate task definition JSON
+        run: python3 -c "import json; json.load(open('infrastructure/ecs-task-definition.json')); print('task def OK')"
+
+      - name: Validate ECS service JSON
+        run: python3 -c "import json; json.load(open('infrastructure/ecs-service.json')); print('service JSON OK')"
+
+      - name: Validate IAM policies JSON
+        run: python3 -c "import json; json.load(open('infrastructure/iam-policies.json')); print('IAM policies OK')"
+
+      - name: Check Dockerfile.fargate syntax
+        run: docker run --rm -i hadolint/hadolint < Dockerfile.fargate || true

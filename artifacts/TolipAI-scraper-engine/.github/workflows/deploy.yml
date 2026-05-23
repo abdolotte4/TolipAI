@@ -1,15 +1,15 @@
-name: Deploy Scraper Engine to ECS Fargate
+name: Deploy to ECS Fargate
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'artifacts/TolipAI-scraper-engine/workers/**'
-      - 'artifacts/TolipAI-scraper-engine/Dockerfile.fargate'
-      - 'artifacts/TolipAI-scraper-engine/requirements.txt'
-      - 'artifacts/TolipAI-scraper-engine/start.fargate.sh'
-      - 'artifacts/TolipAI-scraper-engine/infrastructure/ecs-task-definition.json'
+      - 'workers/**'
+      - 'Dockerfile.fargate'
+      - 'requirements.txt'
+      - 'infrastructure/ecs-task-definition.json'
+      - 'start.fargate.sh'
 
   workflow_dispatch:
     inputs:
@@ -23,7 +23,7 @@ env:
   ECR_REPOSITORY: tolipai-scraper
   ECS_CLUSTER: TolipAI-scraper-cluster
   ECS_SERVICE: tolipai-scraper-engine-service-xopdv4lb
-  TASK_DEFINITION: artifacts/TolipAI-scraper-engine/infrastructure/ecs-task-definition.json
+  TASK_DEFINITION: infrastructure/ecs-task-definition.json
   CONTAINER_NAME: scraper
 
 jobs:
@@ -66,8 +66,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: artifacts/TolipAI-scraper-engine
-          file: artifacts/TolipAI-scraper-engine/Dockerfile.fargate
+          context: .
+          file: Dockerfile.fargate
           platforms: linux/arm64
           push: true
           tags: |
