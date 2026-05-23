@@ -17,7 +17,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: TolipAI-scraper
+  ECR_REPOSITORY: tolipai-scraper
   ECS_CLUSTER: TolipAI-scraper-cluster
   ECS_SERVICE: TolipAI-scraper-engine
   TASK_DEFINITION: infrastructure/ecs-task-definition.json
