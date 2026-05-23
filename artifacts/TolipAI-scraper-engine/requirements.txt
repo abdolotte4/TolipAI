@@ -1,6 +1,16 @@
 # ── TolipAI Scraper Engine — Fargate Spot requirements ──────────────────────────
 # Optimised for ARM64 (Graviton3) Fargate tasks.
 # Install: pip install -r requirements.txt
+#
+# Compatibility contract (do not break these bounds):
+#   crawl4ai==0.6.3 requires:
+#     psutil>=6.1.1        — do NOT pin psutil < 6.1.1
+#     lxml~=5.3            — do NOT upgrade lxml to 6.x
+#     pillow~=10.4         — do NOT upgrade Pillow to 11.x; must stay >=10.4,<11
+#     pydantic>=2.10       — ✅ our pin satisfies this
+#     playwright>=1.49.0   — ✅ our pin satisfies this
+#     aiohttp>=3.11.11     — ✅ our pin satisfies this
+#     httpx>=0.27.2        — ✅ our pin satisfies this
 
 # ── Web framework ─────────────────────────────────────────────────────────────
 fastapi==0.115.12
@@ -13,7 +23,7 @@ asyncpg==0.30.0
 python-dotenv==1.0.1
 
 # ── HTTP clients ──────────────────────────────────────────────────────────────
-httpx[http2]>=0.27,<1          # relaxed — crawl4ai requires >=0.27; pin <1 for stability
+httpx[http2]>=0.27.2,<1      # crawl4ai requires >=0.27.2; pin <1 for stability
 tenacity==9.0.0
 aiohttp==3.11.18  # CVE-2024-23334, CVE-2024-52304 patched in >=3.10.11; 3.11.18 is safe
 
@@ -28,18 +38,18 @@ redis[hiredis]==5.2.1     # includes hiredis for speed on ARM64
 aioboto3==13.4.0
 
 # ── AI / LLM ──────────────────────────────────────────────────────────────────
-openai>=1.32,<2                 # relaxed — crawl4ai has its own openai transitive dep; <2 guards against major break
+openai>=1.32,<2                 # crawl4ai pulls litellm which needs openai; <2 guards major break
 
 # ── Data processing ───────────────────────────────────────────────────────────
 pydantic==2.11.3
-beautifulsoup4==4.13.3
-lxml==5.3.1
+beautifulsoup4==4.13.3          # crawl4ai requires ~=4.12 (>=4.12,<5); 4.13.x is within range
+lxml>=5.3.1,<6                  # crawl4ai requires ~=5.3 (>=5.3,<6); upper bound prevents silent breakage
 
 # ── PDF + OCR ─────────────────────────────────────────────────────────────────
 PyMuPDF==1.25.5
 pdfplumber==0.11.5
 pytesseract==0.3.13
-Pillow==10.4.0   # CVE-2024-28219 patched in >=10.3.0; 11.2.1 is safe
+Pillow>=10.4.0,<11              # crawl4ai requires ~=10.4 (>=10.4,<11); do NOT upgrade to Pillow 11.x
 
 # ── Geo / maps ────────────────────────────────────────────────────────────────
 geopy==2.4.1
@@ -55,4 +65,4 @@ cryptography==44.0.2
 cachetools==5.5.2
 python-multipart==0.0.20  # CVE-2024-53498 patched in >=0.0.12; 0.0.20 is safe
 orjson==3.10.16
-psutil==6.1.0
+psutil==6.1.1              # crawl4ai==0.6.3 requires >=6.1.1; do NOT downgrade below 6.1.1

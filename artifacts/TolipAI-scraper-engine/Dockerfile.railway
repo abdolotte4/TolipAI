@@ -24,13 +24,8 @@ ENV PATH="/venv/bin:$PATH"
 
 COPY requirements.txt .
 
-# Install all base requirements first (excluding crawl4ai so we control Pillow).
-# Then install crawl4ai with --no-deps to avoid its strict pillow~=10.4 pin
-# fighting with any other package that pulls a different Pillow range.
 RUN pip install --no-cache-dir --upgrade pip && \
-    grep -v "^crawl4ai" requirements.txt > /tmp/base-reqs.txt && \
-    pip install --no-cache-dir -r /tmp/base-reqs.txt && \
-    pip install --no-cache-dir --no-deps crawl4ai==0.6.3
+    pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright Chromium browser for amd64
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
