@@ -1,0 +1,215 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Creates an IAM OIDC identity provider for GitHub Actions and the
+  GithubActionsECRPush IAM role used by the Python-Worker deploy workflow.
+  The role allows GitHub Actions to push ARM64 images to ECR and deploy
+  to ECS Fargate — no long-lived AWS credentials stored in GitHub Secrets.
+
+  One-command deploy:
+    aws cloudformation deploy \
+      --template-file infrastructure/github-actions-iam-role.yaml \
+      --stack-name TolipAI-GitHubActions-Role \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --region us-east-1
+
+  After the stack is created, add the output RoleArn to GitHub Secrets as
+  AWS_ROLE_ARN (the deploy.yml already reads this via secrets.AWS_ROLE_ARN).
+  You only need AWS_ACCOUNT_ID in GitHub Secrets (already used by deploy.yml).
+
+  NOTE: If you already have a token.actions.githubusercontent.com OIDC
+  provider in this AWS account, delete the GitHubOidcProvider resource from
+  this template before deploying (AWS only allows one per account).
+
+Parameters:
+
+  GitHubOrg:
+    Type: String
+    Default: Agawish24
+    Description: GitHub organisation or username that owns the repository.
+
+  GitHubRepo:
+    Type: String
+    Default: Python-Worker
+    Description: Repository name (no org prefix). The role trusts any ref in this repo.
+
+  EcrRepositoryName:
+    Type: String
+    Default: tolipai-scraper
+    Description: ECR repository the workflow pushes images to.
+
+  EcsCluster:
+    Type: String
+    Default: TolipAI-scraper-cluster
+    Description: ECS cluster that hosts the scraper service.
+
+  EcsService:
+    Type: String
+    Default: tolipai-scraper-engine-service-xopdv4lb
+    Description: ECS service name.
+
+  EcsTaskFamily:
+    Type: String
+    Default: tolipai-scraper-engine
+    Description: ECS task definition family name.
+
+  EcsExecutionRoleName:
+    Type: String
+    Default: TolipAI-scraper-execution-role
+    Description: >
+      ECS task execution role. The GitHub Actions role needs iam:PassRole on
+      this so ECS can pull secrets and images on task startup.
+
+Resources:
+
+  # ── GitHub OIDC Identity Provider ───────────────────────────────────────────
+  # Allows AWS to verify tokens issued by GitHub Actions.
+  # Delete this resource if token.actions.githubusercontent.com already exists
+  # in your account (check: aws iam list-open-id-connect-providers).
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        # GitHub's current OIDC certificate thumbprint.
+        # AWS now validates against its own CA store for GitHub, so this value
+        # is largely a formality, but it must be present.
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # ── GitHub Actions Deploy Role ───────────────────────────────────────────────
+  # Name must match what deploy.yml passes to role-to-assume.
+  GithubActionsECRPush:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GithubActionsECRPush
+      Description: >
+        Assumed by GitHub Actions in Agawish24/Python-Worker to build ARM64
+        images, push them to ECR, and deploy to ECS Fargate.
+      MaxSessionDuration: 3600   # seconds — enough for a full build+deploy
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: GitHubActionsOIDC
+            Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubOidcProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+              StringLike:
+                # Allow any branch/tag/PR in the repo (main, feature/*, refs/tags/*)
+                "token.actions.githubusercontent.com:sub":
+                  !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
+
+      Policies:
+
+        # ── ECR: authenticate, pull, push ──────────────────────────────────────
+        - PolicyName: ECRPushPull
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ECRGetToken
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"   # GetAuthorizationToken has no resource restriction
+              - Sid: ECRImageOperations
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeRepositories
+                  - ecr:DescribeImages
+                  - ecr:ListImages
+                Resource:
+                  !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}"
+
+        # ── ECS: register task def, update service, describe (for rollback) ───
+        - PolicyName: ECSDeployAndRollback
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ECSReadOnly
+                Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:ListTaskDefinitions
+                  - ecs:DescribeClusters
+                  - ecs:ListClusters
+                Resource: "*"
+              - Sid: ECSRegisterTaskDef
+                Effect: Allow
+                Action:
+                  - ecs:RegisterTaskDefinition
+                  - ecs:DeregisterTaskDefinition
+                Resource: "*"   # RegisterTaskDefinition does not support resource-level restrictions
+              - Sid: ECSUpdateService
+                Effect: Allow
+                Action: ecs:UpdateService
+                Resource:
+                  - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${EcsCluster}"
+                  - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${EcsCluster}/${EcsService}"
+
+        # ── IAM: pass the ECS execution role to newly registered task defs ────
+        - PolicyName: IAMPassExecutionRole
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: PassECSExecutionRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  !Sub "arn:aws:iam::${AWS::AccountId}:role/${EcsExecutionRoleName}"
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService": ecs-tasks.amazonaws.com
+
+        # ── CloudWatch Logs: allow the CI job to read task logs for debugging ─
+        - PolicyName: CloudWatchLogsRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LogsRead
+                Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:DescribeLogStreams
+                  - logs:DescribeLogGroups
+                  - logs:FilterLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/${EcsTaskFamily}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/${EcsTaskFamily}*:*"
+
+Outputs:
+
+  RoleArn:
+    Description: >
+      ARN of the GithubActionsECRPush role.
+      The deploy.yml already uses this via:
+        role-to-assume: arn:aws:iam::<ACCOUNT_ID>:role/GithubActionsECRPush
+      No extra GitHub Secret is needed — only AWS_ACCOUNT_ID (already set).
+    Value: !GetAtt GithubActionsECRPush.Arn
+    Export:
+      Name: TolipAI-GithubActionsECRPushRoleArn
+
+  OidcProviderArn:
+    Description: ARN of the GitHub OIDC identity provider.
+    Value: !GetAtt GitHubOidcProvider.Arn
+    Export:
+      Name: TolipAI-GitHubOidcProviderArn
+
+  DeployCommand:
+    Description: One-liner to deploy this stack.
+    Value: !Sub >-
+      aws cloudformation deploy
+      --template-file infrastructure/github-actions-iam-role.yaml
+      --stack-name TolipAI-GitHubActions-Role
+      --capabilities CAPABILITY_NAMED_IAM
+      --region ${AWS::Region}
