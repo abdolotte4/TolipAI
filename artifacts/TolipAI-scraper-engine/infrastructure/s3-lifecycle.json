@@ -1,0 +1,45 @@
+{
+  "_comment": "S3 lifecycle policy for TolipAI Scraper Engine storage cost optimization. Apply with s3-setup.sh.",
+  "Rules": [
+    {
+      "ID": "expire-exports-30d",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "exports/" },
+      "Expiration": { "Days": 30 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 7 }
+    },
+    {
+      "ID": "glacier-exports-7d",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "exports/" },
+      "Transitions": [
+        { "Days": 7, "StorageClass": "STANDARD_IA" }
+      ]
+    },
+    {
+      "ID": "expire-screenshots-14d",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "screenshots/" },
+      "Expiration": { "Days": 14 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 3 }
+    },
+    {
+      "ID": "scraper-cache-ttl-24h",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "scraper-cache/" },
+      "Expiration": { "Days": 1 }
+    },
+    {
+      "ID": "spot-checkpoints-cleanup-7d",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "spot-checkpoints/" },
+      "Expiration": { "Days": 7 }
+    },
+    {
+      "ID": "abort-incomplete-multipart",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+    }
+  ]
+}

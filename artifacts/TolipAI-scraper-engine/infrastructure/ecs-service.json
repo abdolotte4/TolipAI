@@ -1,0 +1,59 @@
+{
+  "cluster": "TolipAI-scraper-cluster",
+  "serviceName": "tolipai-scraper-engine-service-xopdv4lb",
+  "taskDefinition": "tolipai-scraper-engine",
+  "launchType": "FARGATE",
+  "capacityProviderStrategy": [
+    {
+      "capacityProvider": "FARGATE_SPOT",
+      "weight": 4,
+      "base": 0
+    },
+    {
+      "capacityProvider": "FARGATE",
+      "weight": 1,
+      "base": 1
+    }
+  ],
+  "desiredCount": 2,
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "subnet-PRIVATE_SUBNET_1",
+        "subnet-PRIVATE_SUBNET_2"
+      ],
+      "securityGroups": [
+        "sg-SCRAPER_SG_ID"
+      ],
+      "assignPublicIp": "DISABLED"
+    }
+  },
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:ACCOUNT_ID:targetgroup/TolipAI-scraper-tg/XXXX",
+      "containerName": "scraper",
+      "containerPort": 8765
+    }
+  ],
+  "deploymentConfiguration": {
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    },
+    "minimumHealthyPercent": 50,
+    "maximumPercent": 200
+  },
+  "deploymentController": {
+    "type": "ECS"
+  },
+  "healthCheckGracePeriodSeconds": 120,
+  "enableExecuteCommand": true,
+  "tags": [
+    { "key": "Project",     "value": "TolipAI" },
+    { "key": "Service",     "value": "scraper-engine" },
+    { "key": "Environment", "value": "production" },
+    { "key": "ManagedBy",   "value": "deploy.sh" }
+  ],
+  "propagateTags": "SERVICE",
+  "schedulingStrategy": "REPLICA"
+}

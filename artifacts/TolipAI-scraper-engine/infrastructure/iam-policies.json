@@ -1,0 +1,123 @@
+{
+  "_comment": "IAM policies for TolipAI Scraper Engine on Fargate. Create these via AWS Console or CLI.",
+
+  "task_execution_role": {
+    "name": "TolipAI-scraper-execution-role",
+    "description": "Allows ECS to pull images from ECR and fetch secrets from Secrets Manager",
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": { "Service": "ecs-tasks.amazonaws.com" },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+    ],
+    "inline_policies": {
+      "SecretsManagerAccess": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/*"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/TolipAI/scraper/*"
+            ]
+          },
+          {
+            "_comment": "kms:Decrypt resource must be the KMS key ARN, NOT the Secrets Manager secret ARN. Replace with your actual CMK ARN or remove if using the AWS-managed default key (aws/secretsmanager), which ECS resolves automatically via the execution role.",
+            "Effect": "Allow",
+            "Action": [
+              "kms:Decrypt"
+            ],
+            "Resource": [
+              "arn:aws:kms:us-east-1:ACCOUNT_ID:key/YOUR_CMK_KEY_ID"
+            ]
+          }
+        ]
+      }
+    }
+  },
+
+  "task_role": {
+    "name": "TolipAI-scraper-task-role",
+    "description": "Permissions for the scraper container itself (S3, CloudWatch, ECS Exec)",
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": { "Service": "ecs-tasks.amazonaws.com" },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "inline_policies": {
+      "S3CacheAccess": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:PutObject",
+              "s3:DeleteObject",
+              "s3:ListBucket"
+            ],
+            "Resource": [
+              "arn:aws:s3:::TolipAI-scraper-cache",
+              "arn:aws:s3:::TolipAI-scraper-cache/*",
+              "arn:aws:s3:::TolipAI-exports",
+              "arn:aws:s3:::TolipAI-exports/*"
+            ]
+          }
+        ]
+      },
+      "CloudWatchLogsAccess": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogStream",
+              "logs:PutLogEvents",
+              "logs:CreateLogGroup"
+            ],
+            "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/ecs/TolipAI-scraper:*"
+          }
+        ]
+      },
+      "ECSExecAccess": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssmmessages:CreateControlChannel",
+              "ssmmessages:CreateDataChannel",
+              "ssmmessages:OpenControlChannel",
+              "ssmmessages:OpenDataChannel"
+            ],
+            "Resource": "*"
+          }
+        ]
+      }
+    }
+  }
+}

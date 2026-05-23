@@ -1,0 +1,179 @@
+{
+  "_comment": "CloudWatch Logs Insights saved queries and alarm definitions for TolipAI Scraper Engine",
+
+  "log_group": "/ecs/TolipAI-scraper",
+  "retention_days": 7,
+
+  "metric_filters": [
+    {
+      "filterName": "ScraperErrors",
+      "filterPattern": "{ $.level = \"error\" }",
+      "metricTransformations": [
+        {
+          "metricName": "ScraperErrors",
+          "metricNamespace": "TolipAI/Scraper",
+          "metricValue": "1",
+          "unit": "Count"
+        }
+      ]
+    },
+    {
+      "filterName": "SpotInterruptions",
+      "filterPattern": "{ $.msg = \"*Fargate Spot interruption detected*\" }",
+      "metricTransformations": [
+        {
+          "metricName": "SpotInterruptions",
+          "metricNamespace": "TolipAI/Scraper",
+          "metricValue": "1",
+          "unit": "Count"
+        }
+      ]
+    },
+    {
+      "filterName": "CircuitBreakerOpen",
+      "filterPattern": "{ $.msg = \"*OPENED*\" }",
+      "metricTransformations": [
+        {
+          "metricName": "CircuitBreakerOpenEvents",
+          "metricNamespace": "TolipAI/Scraper",
+          "metricValue": "1",
+          "unit": "Count"
+        }
+      ]
+    },
+    {
+      "filterName": "JobSuccess",
+      "filterPattern": "{ $.msg = \"Job completed\" && $.status = \"completed\" }",
+      "metricTransformations": [
+        {
+          "metricName": "JobsCompleted",
+          "metricNamespace": "TolipAI/Scraper",
+          "metricValue": "1",
+          "unit": "Count"
+        }
+      ]
+    },
+    {
+      "filterName": "JobFailed",
+      "filterPattern": "{ $.msg = \"Job failed\" }",
+      "metricTransformations": [
+        {
+          "metricName": "JobsFailed",
+          "metricNamespace": "TolipAI/Scraper",
+          "metricValue": "1",
+          "unit": "Count"
+        }
+      ]
+    },
+    {
+      "filterName": "RetryQueueDepth",
+      "filterPattern": "{ $.msg = \"RetryQueue\" && $.queue_depth EXISTS }",
+      "metricTransformations": [
+        {
+          "metricName": "RetryQueueDepth",
+          "metricNamespace": "TolipAI/Scraper",
+          "metricValue": "$.queue_depth",
+          "unit": "Count"
+        }
+      ]
+    }
+  ],
+
+  "alarms": [
+    {
+      "alarmName": "TolipAIScraper-HighErrorRate",
+      "alarmDescription": "Error rate > 5% over 5-minute window",
+      "namespace": "TolipAI/Scraper",
+      "metricName": "ScraperErrors",
+      "statistic": "Sum",
+      "period": 300,
+      "evaluationPeriods": 2,
+      "threshold": 10,
+      "comparisonOperator": "GreaterThanThreshold",
+      "treatMissingData": "notBreaching",
+      "actionsEnabled": true,
+      "alarmActions": [
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
+      ]
+    },
+    {
+      "alarmName": "TolipAIScraper-RetryQueueDepth",
+      "alarmDescription": "Retry queue depth > 50 — scrapers are struggling",
+      "namespace": "TolipAI/Scraper",
+      "metricName": "RetryQueueDepth",
+      "statistic": "Maximum",
+      "period": 300,
+      "evaluationPeriods": 3,
+      "threshold": 50,
+      "comparisonOperator": "GreaterThanThreshold",
+      "treatMissingData": "notBreaching",
+      "actionsEnabled": true,
+      "alarmActions": [
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
+      ]
+    },
+    {
+      "alarmName": "TolipAIScraper-HighMemoryUtilization",
+      "alarmDescription": "Fargate task memory > 80%",
+      "namespace": "AWS/ECS",
+      "metricName": "MemoryUtilization",
+      "dimensions": [
+        { "Name": "ClusterName", "Value": "TolipAI-scraper-cluster" },
+        { "Name": "ServiceName", "Value": "TolipAI-scraper-engine" }
+      ],
+      "statistic": "Average",
+      "period": 60,
+      "evaluationPeriods": 5,
+      "threshold": 80,
+      "comparisonOperator": "GreaterThanThreshold",
+      "treatMissingData": "notBreaching",
+      "actionsEnabled": true,
+      "alarmActions": [
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
+      ]
+    },
+    {
+      "alarmName": "TolipAIScraper-NoHealthyTasks",
+      "alarmDescription": "ECS service has zero healthy tasks",
+      "namespace": "AWS/ApplicationELB",
+      "metricName": "HealthyHostCount",
+      "dimensions": [
+        { "Name": "TargetGroup", "Value": "targetgroup/TolipAI-scraper-tg/XXXX" },
+        { "Name": "LoadBalancer", "Value": "app/TolipAI-internal-alb/XXXX" }
+      ],
+      "statistic": "Minimum",
+      "period": 60,
+      "evaluationPeriods": 3,
+      "threshold": 1,
+      "comparisonOperator": "LessThanThreshold",
+      "treatMissingData": "breaching",
+      "actionsEnabled": true,
+      "alarmActions": [
+        "arn:aws:sns:us-east-1:ACCOUNT_ID:TolipAI-alerts"
+      ]
+    }
+  ],
+
+  "insights_queries": [
+    {
+      "name": "Job success/failure last 24h",
+      "query": "fields @timestamp, job_id, job_type, status, duration_seconds\n| filter msg = \"Job completed\" or msg = \"Job failed\"\n| sort @timestamp desc\n| limit 200"
+    },
+    {
+      "name": "Circuit breaker events",
+      "query": "fields @timestamp, name, msg, failure_count\n| filter logger = \"circuit_breaker\"\n| sort @timestamp desc\n| limit 100"
+    },
+    {
+      "name": "Spot interruptions",
+      "query": "fields @timestamp, msg, active_jobs\n| filter msg like \"Fargate Spot\"\n| sort @timestamp desc\n| limit 50"
+    },
+    {
+      "name": "Error summary by source",
+      "query": "fields @timestamp, logger, msg, error\n| filter level = \"error\"\n| stats count(*) as error_count by logger\n| sort error_count desc"
+    },
+    {
+      "name": "Cache hit rate",
+      "query": "fields @timestamp, cache_hit, url\n| filter logger = \"cache\"\n| stats count(*) as total, sum(cache_hit) as hits\n| extend hit_rate = hits / total * 100"
+    }
+  ]
+}
