@@ -1,0 +1,69 @@
+# ── TolipAI Scraper Engine — direct dependencies (source of truth) ────────────
+# This file defines direct dependencies with intentional version constraints.
+# Run ./infrastructure/update-lockfile.sh to regenerate requirements.lock
+# after editing this file.
+#
+# Compatibility contract — do NOT relax these bounds without checking crawl4ai:
+#   crawl4ai==0.6.3 requires:
+#     psutil>=6.1.1        — do NOT pin psutil < 6.1.1
+#     lxml~=5.3            — do NOT upgrade lxml to 6.x
+#     pillow~=10.4         — must stay >=10.4,<11
+#     pydantic>=2.10       — ✅ satisfied
+#     playwright>=1.49.0   — ✅ satisfied
+#     aiohttp>=3.11.11     — ✅ satisfied
+#     httpx>=0.27.2        — ✅ satisfied
+
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+uvloop==0.21.0
+httptools==0.6.4
+
+# ── Database ──────────────────────────────────────────────────────────────────
+asyncpg==0.30.0
+python-dotenv==1.0.1
+
+# ── HTTP clients ──────────────────────────────────────────────────────────────
+httpx[http2]>=0.27.2,<1
+tenacity==9.0.0
+aiohttp==3.11.18
+
+# ── Browser automation ────────────────────────────────────────────────────────
+playwright==1.51.0
+crawl4ai==0.6.3
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+redis[hiredis]==5.2.1
+
+# ── S3 ────────────────────────────────────────────────────────────────────────
+aioboto3==13.4.0
+
+# ── AI / LLM ──────────────────────────────────────────────────────────────────
+openai>=1.32,<2
+
+# ── Data processing ───────────────────────────────────────────────────────────
+pydantic==2.11.3
+beautifulsoup4==4.13.3
+lxml>=5.3.1,<6
+
+# ── PDF + OCR ─────────────────────────────────────────────────────────────────
+PyMuPDF==1.25.5
+pdfplumber==0.11.5
+pytesseract==0.3.13
+Pillow>=10.4.0,<11
+
+# ── Geo / maps ────────────────────────────────────────────────────────────────
+geopy==2.4.1
+shapely==2.1.0
+
+# ── Structured logging ────────────────────────────────────────────────────────
+python-json-logger==3.3.0
+
+# ── Crypto ────────────────────────────────────────────────────────────────────
+cryptography==44.0.2
+
+# ── Misc utils ────────────────────────────────────────────────────────────────
+cachetools==5.5.2
+python-multipart==0.0.20
+orjson==3.10.16
+psutil==6.1.1

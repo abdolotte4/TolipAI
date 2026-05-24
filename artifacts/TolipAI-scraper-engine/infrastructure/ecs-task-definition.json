@@ -80,6 +80,10 @@
         {
           "name": "ENABLE_PROPERTYAPI",
           "value": "true"
+        },
+        {
+          "name": "S3_CACHE_BUCKET",
+          "value": ""
         }
       ],
       "secrets": [
@@ -198,10 +202,6 @@
         {
           "name": "PROPWIRE_PASSWORD",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/propwire-password"
-        },
-        {
-          "name": "S3_CACHE_BUCKET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/s3-cache-bucket"
         },
         {
           "name": "GOOGLE_MAPS_API_KEY",

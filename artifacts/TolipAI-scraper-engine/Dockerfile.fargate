@@ -5,12 +5,13 @@
 #  • Multi-stage build — small final image (no pip cache, no build deps)
 #  • Fargate Spot interruption handling via spot_handler.py
 #  • ECS health checks via /health endpoint
+#  • pip-compile lockfile — deterministic installs, conflicts caught at build time
 #
 # Build:
 #   docker build -f Dockerfile.fargate --platform linux/arm64 -t TolipAI-scraper:latest .
 #
-# Push to ECR (see infrastructure/ecr-push.sh):
-#   ./infrastructure/ecr-push.sh
+# Regenerate lockfile (run locally, then commit requirements.lock):
+#   ./infrastructure/update-lockfile.sh
 
 FROM python:3.11-slim-bookworm AS builder
 
@@ -30,9 +31,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# ── Dependency installation with pip-compile lockfile ─────────────────────────
+# requirements.in  = direct deps with intentional version constraints (editable)
+# requirements.lock = fully-resolved lockfile (all transitive deps pinned)
+#
+# Workflow:
+#  1. If requirements.lock is committed, install from it (fast + deterministic).
+#  2. If requirements.lock is missing, pip-compile generates it on the fly and
+#     installs from the result — this also catches any resolution conflicts so
+#     the build fails here rather than at ECS startup.
+#  3. A separate CI job (validate-lockfile) checks that requirements.lock is in
+#     sync with requirements.in so stale lockfiles are caught before merge.
+COPY requirements.in ./
+COPY requirements.lock* ./
+
+RUN pip install --no-cache-dir --upgrade pip pip-tools && \
+    if [ -f requirements.lock ]; then \
+        echo "==> Installing from committed requirements.lock …"; \
+        pip install --no-cache-dir -r requirements.lock; \
+    else \
+        echo "==> requirements.lock not found — generating from requirements.in …"; \
+        pip-compile requirements.in \
+            --output-file requirements.lock \
+            --no-header \
+            --quiet \
+            --resolver backtracking && \
+        pip install --no-cache-dir -r requirements.lock; \
+    fi
 
 # Install Playwright Chromium browser binary into /app/.cache so the non-root
 # scraper user can read it in the final stage (browsers in /root/.cache would

@@ -22,10 +22,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-COPY requirements.txt .
+# ── Dependency installation with pip-compile lockfile ─────────────────────────
+COPY requirements.in ./
+COPY requirements.lock* ./
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip pip-tools && \
+    if [ -f requirements.lock ]; then \
+        echo "==> Installing from committed requirements.lock …"; \
+        pip install --no-cache-dir -r requirements.lock; \
+    else \
+        echo "==> requirements.lock not found — generating from requirements.in …"; \
+        pip-compile requirements.in \
+            --output-file requirements.lock \
+            --no-header \
+            --quiet \
+            --resolver backtracking && \
+        pip install --no-cache-dir -r requirements.lock; \
+    fi
 
 # Install Playwright Chromium browser for amd64
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright

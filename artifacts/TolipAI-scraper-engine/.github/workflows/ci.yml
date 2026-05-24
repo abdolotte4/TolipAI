@@ -53,3 +53,49 @@ jobs:
 
       - name: Check Dockerfile.fargate syntax
         run: docker run --rm -i hadolint/hadolint < Dockerfile.fargate || true
+
+  validate-lockfile:
+    name: Validate Dependency Lockfile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-tools
+        run: pip install pip-tools
+
+      - name: Check requirements.in resolves without conflicts
+        run: |
+          pip-compile requirements.in \
+            --output-file /tmp/requirements.check \
+            --no-header \
+            --quiet \
+            --resolver backtracking
+          echo "requirements.in resolves cleanly — no dependency conflicts"
+
+      - name: Validate requirements.lock is in sync (if committed)
+        run: |
+          if [ -f requirements.lock ]; then
+            pip-compile requirements.in \
+              --output-file /tmp/requirements.fresh \
+              --no-header \
+              --quiet \
+              --resolver backtracking
+            # Compare ignoring comment lines
+            diff <(grep -v '^#' requirements.lock | sort) \
+                 <(grep -v '^#' /tmp/requirements.fresh | sort) && \
+              echo "requirements.lock is up to date" || \
+              (echo ""; \
+               echo "ERROR: requirements.lock is out of sync with requirements.in"; \
+               echo "Run ./infrastructure/update-lockfile.sh and commit the result."; \
+               exit 1)
+          else
+            echo "No requirements.lock committed — skipping sync check"
+            echo "Tip: run ./infrastructure/update-lockfile.sh to generate and commit it"
+          fi
