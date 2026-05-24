@@ -12,6 +12,7 @@ import { getRentcastValuation } from "../../services/rentcastApi";
 import { geocodeViaAttom, fetchCompsViaAttom, hasAttomKey, fetchAttomAvm, fetchPropertyDataViaAttom } from "../../services/attomApi";
 import { writeAuditLog } from "../../lib/auditLog";
 import { emitCrmActivity } from "../sse";
+import { callAI, hasAI } from "../../services/aiConfig";
 
 // ─── In-memory comps job store ────────────────────────────────────────────────
 interface CompsJob {
@@ -1141,9 +1142,7 @@ router.post("/:id/ai-repair-estimate", crmAuth, async (req, res) => {
     const state = lead.state || "OH";
     const propType = lead.propertyType || "Single Family";
 
-    const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-    const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    if (!aiBaseUrl || !aiApiKey) {
+    if (!hasAI()) {
       res.status(503).json({ error: "AI service not configured" }); return;
     }
 
@@ -1165,30 +1164,19 @@ Do not include markdown, only the raw JSON object.`;
 
     const userMessage = `Property: ${propType}, ~${sqft} sqft, ${state}\nRepairs needed:\n${description.trim()}`;
 
-    const aiRes = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${aiApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.AI_MODEL || "llama-3.3-70b-versatile",
-        max_tokens: 1200,
-        messages: [
+    let rawContent: string;
+    try {
+      rawContent = await callAI(
+        [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
         ],
-      }),
-    });
-
-    if (!aiRes.ok) {
-      const errText = await aiRes.text().catch(() => "");
-      logger.error({ errText }, "AI repair estimate error");
+        { maxTokens: 1200, jsonMode: true }
+      );
+    } catch (aiErr: any) {
+      logger.error({ aiErr }, "AI repair estimate error");
       res.status(502).json({ error: "AI service returned an error. Please try again." }); return;
     }
-
-    const aiJson = await aiRes.json() as any;
-    const rawContent = aiJson?.choices?.[0]?.message?.content || "";
 
     let parsed: any;
     try {
@@ -1519,9 +1507,7 @@ function filterCompsBySubject<T extends {
 async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
   beds: number | null; baths: number | null; sqft: number | null; yearBuilt: number | null;
 }): Promise<{ added: number; comps: any[]; arv: number | null; mao: number | null }> {
-  const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  const aiApiKey  = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!aiBaseUrl || !aiApiKey) return { added: 0, comps: [], arv: null, mao: null };
+  if (!hasAI()) return { added: 0, comps: [], arv: null, mao: null };
 
   const location = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
   const today = new Date().toISOString().split("T")[0];
@@ -1547,26 +1533,19 @@ async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
     `{ "comps": [ { "address": "...", "beds": 3, "baths": 2.0, "sqft": 1450, "yearBuilt": 1985, "salePrice": 185000, "soldDate": "2024-06-15" } ] }`;
 
   try {
-    const aiRes = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.AI_MODEL || "llama-3.3-70b-versatile",
-        max_tokens: 1200,
-        messages: [
+    let raw: string;
+    try {
+      raw = await callAI(
+        [
           { role: "system", content: systemPrompt },
-          { role: "user",   content: userPrompt },
+          { role: "user", content: userPrompt },
         ],
-      }),
-    });
-
-    if (!aiRes.ok) {
-      logger.error({ status: aiRes.status }, "[AI comps fallback] AI call failed");
+        { maxTokens: 1200, jsonMode: true }
+      );
+    } catch (aiErr) {
+      logger.error({ aiErr }, "[AI comps fallback] AI call failed");
       return { added: 0, comps: [], arv: null, mao: null };
     }
-
-    const json = await aiRes.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = json?.choices?.[0]?.message?.content ?? "";
 const content = stripJsonMarkdown(raw);
 
 const parsed = JSON.parse(content);
@@ -2106,9 +2085,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
 
-    const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-    const aiApiKey  = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    if (!aiBaseUrl || !aiApiKey) {
+    if (!hasAI()) {
       res.status(503).json({ error: "AI service not configured" });
       return;
     }
@@ -2142,44 +2119,17 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       `${propertyContext}\n\n` +
       `Reply with: {"condition": <integer 1-10>, "rationale": "<one short sentence>", "confidence": "low"|"medium"|"high"}`;
 
-    // Try primary AI, then fall back to Groq directly (up to 3 attempts total)
-    const model = process.env.AI_MODEL || "llama-3.3-70b-versatile";
-    const payload = JSON.stringify({
-      model,
-      max_tokens: 200,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    const endpoints = [
-      { url: `${aiBaseUrl}/chat/completions`, key: aiApiKey },
-      // Direct Groq fallback — works even if Replit AI integration is down
-      ...(process.env.GROQ_API_KEY
-        ? [{ url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY }]
-        : []),
-    ];
-
-    let raw = "";
-    let lastStatus = 0;
-    for (const ep of endpoints) {
-      try {
-        const aiRes = await fetch(ep.url, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${ep.key}`, "Content-Type": "application/json" },
-          body: payload,
-          signal: AbortSignal.timeout(20_000),
-        });
-        lastStatus = aiRes.status;
-        if (!aiRes.ok) continue;
-        const json = await aiRes.json() as any;
-        raw = json?.choices?.[0]?.message?.content ?? "";
-        if (raw) break;
-      } catch { /* network error — try next endpoint */ }
-    }
-
-    if (!raw) {
-      res.status(502).json({ error: `AI call failed after ${endpoints.length} attempts (last status: ${lastStatus})` });
+    let raw: string;
+    try {
+      raw = await callAI(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        { maxTokens: 200, timeoutMs: 20_000 }
+      );
+    } catch (aiErr: any) {
+      res.status(502).json({ error: `AI call failed: ${aiErr?.message ?? "unknown error"}` });
       return;
     }
 
@@ -2261,9 +2211,7 @@ router.post("/:id/ai-deal-score", crmAuth, async (req, res) => {
       : "No recent activity notes available.";
 
     // 3. Environment & Service Config
-    const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-    const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    if (!aiBaseUrl || !aiApiKey) { res.status(503).json({ error: "AI service not configured" }); return; }
+    if (!hasAI()) { res.status(503).json({ error: "AI service not configured" }); return; }
 
     // 4. Financial Calculations & Data Cleaning
     const arv = lead.arv ? parseFloat(lead.arv) : null;
@@ -2314,28 +2262,20 @@ Reply ONLY with this JSON:
   "positives": []
 }`;
 
-    const aiRes = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        max_tokens: 1200,
-        messages: [
+    let raw: string;
+    try {
+      raw = await callAI(
+        [
           { role: "system", content: "You are a Real Estate Wholesaling Coach. Your goal is to maximize buyer profit by keeping the purchase price below the MAO. Reply ONLY with valid JSON." },
           { role: "user", content: prompt },
         ],
-      }),
-    });
-
-    if (!aiRes.ok) { 
-      const e = await aiRes.text().catch(() => ""); 
-      logger.error({ response: e }, "AI deal score error"); 
-      res.status(502).json({ error: "AI service returned an error." }); 
-      return; 
+        { maxTokens: 1200, jsonMode: true }
+      );
+    } catch (aiErr: any) {
+      logger.error({ aiErr }, "AI deal score error");
+      res.status(502).json({ error: "AI service returned an error." });
+      return;
     }
-
-    const aiJson = await aiRes.json() as any;
-    const raw = aiJson?.choices?.[0]?.message?.content || "";
 
     // Clean potential markdown or extra characters
     const cleaned = stripJsonMarkdown(raw);
@@ -2368,9 +2308,7 @@ router.post("/:id/ai-seller-script", crmAuth, async (req, res) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
 
-    const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-    const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    if (!aiBaseUrl || !aiApiKey) { res.status(503).json({ error: "AI service not configured" }); return; }
+    if (!hasAI()) { res.status(503).json({ error: "AI service not configured" }); return; }
 
     // 3. DATA PREPARATION
     const mao = lead.mao ? parseFloat(lead.mao) : null;
@@ -2406,28 +2344,21 @@ Reply ONLY with this JSON structure:
 }`;
 
     // 4. AI CALL
-    const aiRes = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        max_tokens: 1200,
-        messages: [
+    let raw: string;
+    try {
+      raw = await callAI(
+        [
           { role: "system", content: "You are a real estate wholesaling coach. You must output valid JSON." },
           { role: "user", content: prompt },
         ],
-      }),
-    });
-
-    if (!aiRes.ok) {
-      const e = await aiRes.text();
-      logger.error({ response: e }, "AI Script Error");
+        { maxTokens: 1200, jsonMode: true }
+      );
+    } catch (aiErr: any) {
+      logger.error({ aiErr }, "AI Script Error");
       res.status(502).json({ error: "AI service returned an error." });
       return;
     }
 
-    const aiJson = await aiRes.json() as any;
-    const raw = aiJson?.choices?.[0]?.message?.content || "{}";
     const cleaned = stripJsonMarkdown(raw);
 
     res.json(JSON.parse(cleaned));
@@ -2458,9 +2389,7 @@ router.post("/:id/ai-offer-letter", crmAuth, async (req, res) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
 
-    const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-    const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    if (!aiBaseUrl || !aiApiKey) { res.status(503).json({ error: "AI service not configured" }); return; }
+    if (!hasAI()) { res.status(503).json({ error: "AI service not configured" }); return; }
 
     const mao = lead.mao ? parseFloat(lead.mao) : null;
     const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -2488,28 +2417,20 @@ Reply ONLY with this JSON structure:
   "letter": "Full letter text with double newlines (\\n\\n) for paragraphs. Must include greeting, the $${mao} price, as-is terms, and signature."
 }`;
 
-    const aiRes = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${aiApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        max_tokens: 1200,
-        messages: [
+    let raw: string;
+    try {
+      raw = await callAI(
+        [
           { role: "system", content: "You are a professional real estate acquisitions specialist. Reply ONLY with valid JSON." },
           { role: "user", content: prompt },
         ],
-      }),
-    });
-
-
-    if (!aiRes.ok) { 
-      const e = await aiRes.text().catch(() => ""); 
-      logger.error({ response: e }, "AI offer letter error"); 
-      res.status(502).json({ error: "AI service returned an error." }); 
-      return; 
+        { maxTokens: 1200, jsonMode: true }
+      );
+    } catch (aiErr: any) {
+      logger.error({ aiErr }, "AI offer letter error");
+      res.status(502).json({ error: "AI service returned an error." });
+      return;
     }
-    const aiJson = await aiRes.json() as any;
-    const raw = aiJson?.choices?.[0]?.message?.content || "";
     const cleaned = stripJsonMarkdown(raw);
 
     res.json(JSON.parse(cleaned));

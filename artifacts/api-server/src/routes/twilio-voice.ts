@@ -248,11 +248,13 @@ router.post("/twilio/voice/answer", async (req, res) => {
       // ── Conference-based TwiML (hold music capable via participant API) ───────────────────────
       // waitUrl="" → agent hears silence (not Twilio's default hold music) while waiting for
       // the destination leg to connect. Hold music can be toggled later via the Participant API.
-      // NOTE: <Transcription> is intentionally omitted — it requires Twilio Voice Intelligence
-      // service setup and causes Error 12200 XML validation warnings without it.
       const recordAttr = record
         ? `record="record-from-start" recordingStatusCallback="${apiBase}/twilio/voice/recording" recordingStatusCallbackMethod="POST"`
         : "";
+
+      // Real-time transcription — enabled when Twilio Voice Intelligence is configured in the account.
+      // Sends TranscriptionEvent webhooks to /twilio/voice/transcript for live AI coaching.
+      const transcribeAttr = `transcribe="true" transcribeCallback="${apiBase}/twilio/voice/transcript"`;
 
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>${whisperXml}
@@ -263,6 +265,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
                 waitUrl=""
                 waitMethod="GET"
                 ${recordAttr}
+                ${transcribeAttr}
                 statusCallback="${apiBase}/twilio/voice/conference-status?agentCallSid=${encodeURIComponent(agentCallSid)}"
                 statusCallbackMethod="POST"
                 statusCallbackEvent="join start end">
@@ -354,6 +357,7 @@ router.post("/twilio/voice/join-conference", async (req, res) => {
     res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
     return;
   }
+  const apiBase = getWebhookBase(req);
   res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>
@@ -361,7 +365,9 @@ router.post("/twilio/voice/join-conference", async (req, res) => {
                 endConferenceOnExit="true"
                 beep="false"
                 waitUrl=""
-                waitMethod="GET">
+                waitMethod="GET"
+                transcribe="true"
+                transcribeCallback="${apiBase}/twilio/voice/transcript">
       ${confName}
     </Conference>
   </Dial>

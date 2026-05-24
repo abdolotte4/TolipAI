@@ -24,7 +24,7 @@ import { Router, type IRouter } from "express";
 import twilio from "twilio";
 import { crmAuth, crmAdminOnly } from "./crm/middleware";
 import { db, pool } from "@workspace/db";
-import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations } from "@workspace/db/schema";
+import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations, crmCallLogs } from "@workspace/db/schema";
 import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { toE164, digitsOnly } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
@@ -1127,7 +1127,6 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
   const crmUser = req.crmUser!;
   try {
     const isSuperAdmin = crmUser.role === "super_admin";
-    const { crmCallLogs } = await import("@workspace/db/schema").then(m => m);
     const callCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
       ? sql`TRUE`
       : eq(crmCallLogs.campaignId, crmUser.campaignId);
@@ -1162,7 +1161,7 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
         id:         crmOpenPhoneMessages.id,
         fromNumber: crmOpenPhoneMessages.fromNumber,
         toNumber:   crmOpenPhoneMessages.toNumber,
-        body:       crmOpenPhoneMessages.body,
+        body:       crmOpenPhoneMessages.content,
         leadId:     crmOpenPhoneMessages.leadId,
         createdAt:  crmOpenPhoneMessages.createdAt,
       })
@@ -1318,7 +1317,7 @@ router.get("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, asyn
   const crmUser = req.crmUser!;
   try {
     const isSuperAdmin = crmUser.role === "super_admin";
-    const { crmCallLogs, crmLeads: crmLeadsTable } = await import("@workspace/db/schema").then(m => m);
+    const crmLeadsTable = crmLeads;
     const callCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
       ? sql`TRUE`
       : eq(crmCallLogs.campaignId, crmUser.campaignId);
