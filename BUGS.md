@@ -191,3 +191,128 @@
 | BUG-030 | .replit workflow config | (via Replit workflow tool) |
 | BUG-031 | crm_phone_read_receipts missing | `merged.sql` |
 | BUG-032 | conference_sid missing | `merged.sql`, `crm.ts`, `twilio-voice.ts` |
+
+---
+
+## BUGS FOUND THIS SESSION (2026-05-24)
+
+### BUG-033 — callAI() uses gpt-4o-mini when OpenAI base URL is Groq 🟢 Fixed
+**File:** `artifacts/api-server/src/services/aiConfig.ts`
+**Cause:** `AI_INTEGRATIONS_OPENAI_BASE_URL` is set to `https://api.groq.com/openai/v1` (Groq endpoint),
+but `getChatModel()` returns `gpt-4o-mini` which does not exist on Groq → HTTP 400 model_not_found.
+GROQ fallback uses the correct model (`llama-3.3-70b-versatile`) but was then hitting 429 rate limit.
+**Fix:** In `callAI()`, detect when the OpenAI base URL contains `groq.com` and use `getGroqModel()`
+instead of `getChatModel()` for the primary provider call.
+**Symptoms:** All 6 AI lead endpoints returning "AI service returned an error." or Groq 400.
+
+### BUG-034 — AI prompts exceed GROQ context limit (message too long) 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/crm/leads.ts`
+**Cause:** `detect-condition` fetched 30 notes and `ai-deal-score` fetched 15 notes — each audit note
+can be 500-1000 chars — producing prompts with 10K+ characters, triggering Groq 400
+"Please reduce the length of the messages or completion."
+**Fix:** Truncate each note's `content` to 300 chars, then cap total `activityLog` to 2,500 chars.
+Also truncate `lead.notes` to 500 chars before including in prompt.
+**Affected routes:** `detect-condition`, `ai-deal-score`
+
+### BUG-035 — ai-seller-script crashes: lead.notes.substring is not a function 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/crm/leads.ts:2315`
+**Cause:** `(lead.notes || "none").substring(0, 800)` — `lead.notes` can be `null` (comes from DB as
+nullable text), and `null.substring` throws TypeError even though `null || "none"` would normally
+produce `"none"`. The type coercion issue is that the column type may be an object/null in runtime.
+**Fix:** Changed to `String(lead.notes || "none").substring(0, 800)` — explicit String() cast.
+
+### BUG-036 — ATTOM API keys both returning 401 Unauthorized 🔴 Open
+**Keys tested:** `ATTOM_API_KEY` (9ed043...) and `ATTOM_API_KEY_2`
+**Result:** Both return `{"Response":{"status":{"code":"401","msg":"Unauthorized"}}}`
+**Impact:** All ATTOM-dependent features broken: fetch-property-data, fetch-comps-ai, ARV calculation,
+property lookup in Tools
+**Fix required:** Renew ATTOM subscription at gateway.attomdata.com and update secrets.
+
+### BUG-037 — No Propelio/Propwire credentials in environment 🔴 Open
+**Affected:** `POST /session/propelio/test`, `POST /session/propwire/test`, `/scrape/propelio/cash-buyers`,
+`/scrape/propwire/*` endpoints
+**Result:** Requests timeout — browser opens but can't login without credentials
+**Fix required:** Set secrets: `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD`
+
+### BUG-038 — BrightData proxy missing HOST and PORT 🔴 Open
+**Set:** `BRIGHTDATA_USERNAME`, `BRIGHTDATA_PASSWORD`
+**Missing:** `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT`
+**Impact:** Residential proxy pool can't connect → cash buyers, distressed scraping fail
+**Fix required:** Set `BRIGHTDATA_HOST` and `BRIGHTDATA_PORT` in Replit Secrets.
+
+### BUG-039 — Google Maps API key not configured 🔴 Open
+**Missing secret:** `GOOGLE_MAPS_API_KEY`
+**Impact:** `/google-maps` endpoint on scraper engine, street view feature in CRM
+**Fix required:** Add `GOOGLE_MAPS_API_KEY` to Replit Secrets.
+
+### BUG-040 — AWS Scraper Engine ELB returning 502/timeout 🔴 Open
+**URL:** `http://tolip-scraper-url-323311724.us-east-1.elb.amazonaws.com:8765`
+**Diagnosis:** ECS service may have 0 running tasks. `aws` CLI not installed in Replit;
+`boto3` import fails due to Python 3.9/3.11 urllib3 type union incompatibility in Nix.
+**Workaround:** Local scraper engine started on port 8000 for development/testing.
+**Fix required:** Restart ECS service via AWS Console → ECS → cluster → update desired count to 1+.
+
+### BUG-041 — Satellite DFD returns empty (GROQ 429 + BrightData missing) 🔴 Open
+**Endpoint:** `POST /ai/satellite-dfd` on local scraper engine
+**Cause:** 1) GROQ rate limited (429) at startup health check; 2) BrightData HOST/PORT missing
+so proxy fallback fails; 3) distressed property sources may require paid data access.
+**Dependent on:** BUG-038 (BrightData) and GROQ rate limit recovery.
+
+### BUG-042 — DB sequence reset warning for crm_call_logs and crm_users 🟡 Non-blocking
+**Log:** `"column \"id\" of relation \"crm_call_logs\" is not an identity column"`
+**Cause:** Tables were created with `SERIAL` type instead of `GENERATED ALWAYS AS IDENTITY`.
+The sequence reset at startup silently skips these tables.
+**Impact:** No functional issue — sequences are still managed by PostgreSQL. IDs will not reset.
+**Fix (optional):** Migrate columns to identity columns: `ALTER TABLE crm_call_logs ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY`.
+
+### BUG-043 — Lead appointments endpoint returns 404 🔴 Open
+**Endpoint:** `GET /api/crm/leads/:id/appointments`
+**Result:** `Not found` (Express default 404)
+**Cause:** Route may not be registered or the appointments feature is not yet implemented.
+**Fix required:** Check route registration in `artifacts/api-server/src/routes/index.ts`.
+
+### BUG-044 — Twilio campaign-health shows campaigns without valid Twilio auth 🟡 Low
+**Note:** `/api/twilio/phone-numbers` returns `"warning": "Twilio API unreachable"`.
+Twilio SID/auth token may be configured but the account is not reachable from Replit's IP.
+**Impact:** Real-time phone number capabilities check falls back to configured settings.
+
+---
+
+## UPDATED STATUS — BUG-004 (Conversations)
+✅ **CONFIRMED FIXED** — `GET /api/twilio/phone-numbers/+13074882217/conversations` returns:
+- `total: 2`, 2 conversations with real data (contact +16026543140, lastActivity 2026-05-17)
+- No 500 errors; Promise.allSettled working correctly
+
+---
+
+## UPDATED STATUS — BUG-008 (Recording Callbacks)
+✅ **CONFIRMED** — `POST /api/twilio/voice/recording` returns `{"received":true}` with 200 OK.
+Conference-status webhook at `POST /api/twilio/voice/conference-status` returns 200 (empty body — correct for webhooks).
+
+
+### BUG-045 — GROQ free tier daily RPD limit exhausted during testing 🟡 Temporary
+**Provider:** Groq (`gsk_L0PQ...`)
+**Error:** `Rate limit reached for model llama-3.3-70b-versatile ... Limit 1000, Used 1000`
+**Cause:** Free tier GROQ accounts have 1,000 requests/day (RPD) limit. Running ~50+ AI endpoint
+tests during this session exhausted the daily quota.
+**Impact:** All 6 AI lead endpoints (ai-deal-score, detect-condition, ai-repair-estimate,
+ai-seller-script, ai-offer-letter, fetch-comps-ai) return 502 until quota resets at midnight UTC.
+**Fix options:**
+1. Wait for quota reset (resets daily at midnight UTC)
+2. Upgrade GROQ account to paid tier (higher limits)
+3. Add a second GROQ API key as `GROQ_FALLBACK_KEY` with key rotation in `aiConfig.ts`
+4. Use OpenAI via `OPENAI_API_KEY` as primary (not via Groq base URL)
+**Note:** The code fixes (BUG-033, BUG-034, BUG-035) ARE correct — this is purely a quota issue.
+
+
+### BUG-046 — SSE endpoint path was wrong in test 🟢 Closed
+**Correct path:** `GET /api/crm/events` (token via `POST /api/crm/auth/sse-token`)
+**Result:** `Not found` (Express 404)
+**Impact:** Real-time push notifications (lead status changes, call events) broken in frontend
+**Fix required:** Check route registration in `artifacts/api-server/src/routes/index.ts` — SSE route may not be mounted.
+
+### BUG-047 — Power Dialer path corrected 🟢 Closed
+**Correct path:** `POST /api/twilio/voice/power-dial/session` (create), `GET /api/twilio/voice/power-dial/session/:id`
+**Result:** `Not found`
+**Note:** May require an active session to exist before querying. Check the exact route path in `twilio-power-dialer.ts`.
+

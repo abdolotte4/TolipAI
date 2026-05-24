@@ -2095,9 +2095,16 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       .orderBy(desc(crmNotes.createdAt))
       .limit(30);
 
+    // Truncate each note to 300 chars and cap total log at 2 500 chars to avoid
+    // exceeding model context limits (GROQ 400 "reduce message length").
     const activityLog = notes.length
-      ? notes.map(n => `[${n.createdAt?.toISOString().split("T")[0]}] ${n.content}`).join("\n")
+      ? notes
+          .map(n => `[${n.createdAt?.toISOString().split("T")[0]}] ${String(n.content ?? "").slice(0, 300)}`)
+          .join("\n")
+          .slice(0, 2500)
       : "";
+
+    const generalNotes = String(lead.notes ?? "(none)").slice(0, 500);
 
     const propertyContext =
       `Address: ${[lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ")}\n` +
@@ -2105,7 +2112,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       `Beds: ${lead.beds ?? "?"}, Baths: ${lead.baths ?? "?"}, Sqft: ${lead.sqft ?? "?"}\n` +
       `Reason for selling: ${lead.reasonForSelling ?? "?"}\n` +
       `How soon: ${lead.howSoon ?? "?"}\n` +
-      `General notes: ${lead.notes ?? "(none)"}\n` +
+      `General notes: ${generalNotes}\n` +
       `Recent activity:\n${activityLog || "(no activity logged)"}`;
 
     const systemPrompt =
@@ -2206,8 +2213,12 @@ router.post("/:id/ai-deal-score", crmAuth, async (req, res) => {
       .orderBy(desc(crmNotes.createdAt))
       .limit(15);
 
-    const activityLogSummary = notes.length > 0 
-      ? notes.map(n => `[${n.createdAt?.toLocaleDateString()}]: ${n.content}`).join("\n")
+    // Truncate each note and cap total to avoid GROQ 400 "reduce message length" errors.
+    const activityLogSummary = notes.length > 0
+      ? notes
+          .map(n => `[${n.createdAt?.toLocaleDateString()}]: ${String(n.content ?? "").slice(0, 300)}`)
+          .join("\n")
+          .slice(0, 2500)
       : "No recent activity notes available.";
 
     // 3. Environment & Service Config
@@ -2312,7 +2323,7 @@ router.post("/:id/ai-seller-script", crmAuth, async (req, res) => {
 
     // 3. DATA PREPARATION
     const mao = lead.mao ? parseFloat(lead.mao) : null;
-    const sanitizedNotes = (lead.notes || "none").substring(0, 800);
+    const sanitizedNotes = String(lead.notes || "none").substring(0, 800);
     const reason = lead.reasonForSelling || "Not provided";
 
     const prompt = `You are an expert real estate wholesaler coach. Generate a personalized phone call script.

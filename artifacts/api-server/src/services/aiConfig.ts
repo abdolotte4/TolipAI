@@ -123,8 +123,13 @@ export async function callAI(
   const openaiKey = getOpenAIKey();
   if (openaiKey) {
     try {
+      // If AI_INTEGRATIONS_OPENAI_BASE_URL points to Groq, gpt-4o-mini doesn't exist there.
+      // Detect Groq-compatible base URLs and use the Groq model name instead.
+      const openaiBaseUrl = getOpenAIBaseUrl();
+      const isGroqCompatibleUrl = openaiBaseUrl.includes("groq.com");
+      const resolvedModel = opts.model || (isGroqCompatibleUrl ? getGroqModel() : getChatModel());
       const body: Record<string, unknown> = {
-        model: opts.model || getChatModel(),
+        model: resolvedModel,
         max_tokens: maxTokens,
         temperature,
         messages,
