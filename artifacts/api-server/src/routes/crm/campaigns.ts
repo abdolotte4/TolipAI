@@ -206,7 +206,8 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     ]);
     res.json(formatCampaign({ ...campaign, userCount, leadCount }));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    logger.error(err, "Update campaign error");
+    res.status(500).json({ error: "Failed to update campaign" });
   }
 });
 

@@ -5,6 +5,7 @@ import { db } from "@workspace/db";
 import { crmUsers, crmCampaigns } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { crmAuth, getJwtSecret } from "./middleware";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -91,7 +92,8 @@ router.get("/me", crmAuth, async (req, res) => {
       createdAt: user.createdAt.toISOString(),
     });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    logger.error(err, "GET /me error");
+    res.status(500).json({ error: "Failed to load user profile" });
   }
 });
 

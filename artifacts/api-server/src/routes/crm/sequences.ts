@@ -51,7 +51,7 @@ router.get("/", crmAuth, async (req, res) => {
     res.json(withSteps);
   } catch (err) {
     logger.error(err, "List sequences error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -72,7 +72,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
     res.status(201).json({ ...seq, steps: [] });
   } catch (err) {
     logger.error(err, "Create sequence error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -97,7 +97,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     res.json({ ...seq, steps });
   } catch (err) {
     logger.error(err, "Update sequence error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -112,7 +112,7 @@ router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     await db.delete(crmEmailSequences).where(eq(crmEmailSequences.id, id));
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -134,7 +134,7 @@ router.post("/:id/steps", crmAuth, crmAdminOnly, async (req, res) => {
     res.status(201).json(step);
   } catch (err) {
     logger.error(err, "Create step error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -152,7 +152,7 @@ router.patch("/:id/steps/:stepId", crmAuth, crmAdminOnly, async (req, res) => {
     if (!step) { res.status(404).json({ error: "Step not found" }); return; }
     res.json(step);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -163,7 +163,7 @@ router.delete("/:id/steps/:stepId", crmAuth, crmAdminOnly, async (req, res) => {
     await db.delete(crmSequenceSteps).where(eq(crmSequenceSteps.id, stepId));
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -193,7 +193,7 @@ router.get("/logs/:leadId", crmAuth, async (req, res) => {
     })));
   } catch (err) {
     logger.error({ err }, "Sequence logs fetch error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -210,7 +210,7 @@ router.post("/sms-opt-out", crmAuth, async (req, res) => {
     res.json({ success: true, phone, campaignId });
   } catch (err) {
     logger.error(err, "SMS opt-out error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -230,7 +230,7 @@ router.get("/sms-opt-out/:campaignId", crmAuth, async (req, res) => {
     res.json(optOuts);
   } catch (err) {
     logger.error(err, "SMS opt-out list error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 

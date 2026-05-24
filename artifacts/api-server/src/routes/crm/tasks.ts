@@ -46,7 +46,7 @@ router.get("/", crmAuth, async (req, res) => {
 
     res.json(tasks.map(formatTask));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -81,7 +81,7 @@ router.post("/", crmAuth, async (req, res) => {
 
     res.status(201).json(formatTask(full));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -108,7 +108,7 @@ router.patch("/:id", crmAuth, async (req, res) => {
 
     res.json(formatTask(full));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -118,7 +118,7 @@ router.delete("/:id", crmAuth, async (req, res) => {
     await db.delete(crmTasks).where(eq(crmTasks.id, id));
     res.json({ success: true, message: "Task deleted" });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 

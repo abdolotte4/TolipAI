@@ -38,7 +38,7 @@ router.get("/", crmAuth, crmAdminOnly, async (req, res) => {
     const base = getBaseUrl();
     res.json(links.map(l => formatLink(l, base)));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -57,7 +57,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
     const base = getBaseUrl();
     res.status(201).json(formatLink(link, base));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -78,7 +78,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     const [link] = await db.update(crmSubmissionLinks).set(updates).where(eq(crmSubmissionLinks.id, id)).returning();
     res.json(formatLink(link, getBaseUrl()));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -94,7 +94,7 @@ router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     await db.delete(crmSubmissionLinks).where(eq(crmSubmissionLinks.id, id));
     res.json({ success: true, message: "Link deleted" });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 

@@ -282,7 +282,7 @@ router.get("/export", crmAuth, async (req, res) => {
     res.send(csvLines.join("\n"));
   } catch (err) {
     logger.error(err, "CRM export leads error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -362,7 +362,7 @@ router.get("/", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "CRM get leads error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -438,7 +438,7 @@ router.post("/", crmAuth, async (req, res) => {
     res.status(201).json(formatLead(lead));
   } catch (err) {
     logger.error(err, "CRM create lead error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -661,7 +661,7 @@ router.get("/:id", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "CRM get lead error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -733,7 +733,7 @@ router.get("/:id/full", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "CRM get lead full error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -876,7 +876,7 @@ router.patch("/:id", crmAuth, async (req, res) => {
     res.json(formatLead(lead));
   } catch (err) {
     logger.error(err, "CRM update lead error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -911,7 +911,7 @@ router.delete("/:id", crmAuth, async (req, res) => {
     await db.delete(crmLeads).where(eq(crmLeads.id, id));
     res.json({ success: true, message: "Lead deleted" });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -933,7 +933,7 @@ router.post("/:id/archive", crmAuth, async (req, res) => {
     await db.insert(crmNotes).values({ leadId: id, userId: crmUser.userId, content: "Lead archived.", noteType: "audit" });
     res.json({ success: true, message: "Lead archived" });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -955,7 +955,7 @@ router.post("/:id/unarchive", crmAuth, async (req, res) => {
     await db.insert(crmNotes).values({ leadId: id, userId: crmUser.userId, content: "Lead unarchived.", noteType: "audit" });
     res.json({ success: true, message: "Lead unarchived" });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -977,7 +977,7 @@ router.get("/:id/notes", crmAuth, async (req, res) => {
       content: n.content, noteType: n.noteType || "note", createdAt: n.createdAt.toISOString(),
     })));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1034,7 +1034,7 @@ router.post("/:id/notes", crmAuth, async (req, res) => {
       userName: user?.name || "Unknown", content: note.content, noteType: "note", createdAt: note.createdAt.toISOString(),
     });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1047,7 +1047,7 @@ router.get("/:id/followers", crmAuth, async (req, res) => {
     const isFollowing = followers.some(f => f.userId === crmUser.userId);
     res.json({ count: followers.length, isFollowing });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1063,7 +1063,7 @@ router.post("/:id/follow", crmAuth, async (req, res) => {
     }
     res.json({ following: true });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1076,7 +1076,7 @@ router.delete("/:id/follow", crmAuth, async (req, res) => {
     );
     res.json({ following: false });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1113,7 +1113,7 @@ router.post("/:id/estimate", crmAuth, async (req, res) => {
     res.json({ estimatedRepairCost: totalERC, breakdown, notes: `Estimate based on ${sqft} sqft ${propertyType} in condition ${condition}/10.`, arv: arvEstimate, mao });
   } catch (err) {
     logger.error(err, "CRM estimate error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1209,7 +1209,7 @@ Do not include markdown, only the raw JSON object.`;
   } catch (err) {
     aiBreaker.recordFailure();
     logger.error(err, "AI repair estimate error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1319,7 +1319,7 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "Fetch property data error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1430,7 +1430,7 @@ router.post("/:id/skip-trace", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "Skip trace error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1471,7 +1471,7 @@ router.post("/:id/comp-address-lookup", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "Comp address lookup error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -1879,7 +1879,7 @@ router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "Fetch comps start error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -2017,7 +2017,7 @@ router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "Fetch comps poll error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -2061,7 +2061,7 @@ router.post("/:id/fetch-comps-ai", crmAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "AI fetch comps error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -2177,7 +2177,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
   } catch (err) {
     aiBreaker.recordFailure();
     logger.error(err, "AI detect-condition error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -2284,7 +2284,7 @@ Reply ONLY with this JSON:
   } catch (err) {
     aiBreaker.recordFailure();
     logger.error(err, "AI deal score error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -2366,7 +2366,7 @@ Reply ONLY with this JSON structure:
   } catch (err) {
     aiBreaker.recordFailure();
     logger.error(err, "AI Seller Script error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -2437,7 +2437,7 @@ Reply ONLY with this JSON structure:
   } catch (err) {
     aiBreaker.recordFailure();
     logger.error(err, "AI offer letter error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 

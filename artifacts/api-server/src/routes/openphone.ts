@@ -201,7 +201,7 @@ router.get("/openphone/calls", crmAuth, async (req, res) => {
 // Add signing secret as env var: OPENPHONE_WEBHOOK_SECRET
 router.post("/openphone/webhook", async (req, res) => {
   if (!verifyOpenPhoneSignature(req)) {
-    res.status(401).json({ error: "Invalid webhook signature" });
+    res.status(403).json({ error: "Invalid webhook signature" });
     return;
   }
   const event = req.body;

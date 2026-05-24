@@ -75,7 +75,7 @@ router.get("/", crmAuth, async (req, res) => {
       })),
     });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 

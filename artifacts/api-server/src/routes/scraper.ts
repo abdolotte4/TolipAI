@@ -23,9 +23,11 @@ const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "").replace(/\/$/, "");
 
 function requirePin(req: Request, res: Response, next: NextFunction) {
   const toolsPin = process.env.TOOLS_PIN;
-  if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured" }); return; }
-  const provided = req.headers["x-tools-pin"] as string | undefined;
-  if (!provided || provided.trim() !== toolsPin.trim()) { res.status(401).json({ error: "Invalid PIN" }); return; }
+  if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured on server" }); return; }
+  const fromHeader = req.headers["x-tools-pin"] as string | undefined;
+  const fromBody   = (req.body as Record<string, unknown>)?.pin as string | undefined;
+  const provided   = fromHeader || fromBody;
+  if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN — send TOOLS_PIN in x-tools-pin header or request body as 'pin'" }); return; }
   next();
 }
 

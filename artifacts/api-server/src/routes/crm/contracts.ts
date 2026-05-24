@@ -348,7 +348,7 @@ router.post("/", crmAuth, async (req, res) => {
     res.status(201).json({ ...contract, signingUrl: signingUrl!, emailSent, provider: usedProvider });
   } catch (err: any) {
     req.log.error({ err }, "Create contract error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -376,7 +376,7 @@ router.get("/", crmAuth, async (req, res) => {
     res.json(enriched);
   } catch (err: any) {
     req.log.error({ err }, "List contracts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -394,7 +394,7 @@ router.get("/:id", crmAuth, async (req, res) => {
     res.json({ ...contract, signingUrl });
   } catch (err: any) {
     req.log.error({ err }, "Get contract error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -408,7 +408,7 @@ router.post("/:id/void", crmAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err: any) {
     req.log.error({ err }, "Void contract error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -450,7 +450,7 @@ router.post("/:id/resend", crmAuth, async (req, res) => {
     res.json({ signingUrl, emailSent });
   } catch (err: any) {
     req.log.error({ err }, "Resend contract error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -491,7 +491,7 @@ router.get("/public/sign/:token", async (req, res) => {
       createdAt: contract.createdAt,
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -546,7 +546,7 @@ router.post("/public/sign/:token", async (req, res) => {
 
     res.json({ success: true, message: "Contract signed successfully. Thank you!" });
   } catch (err: any) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 

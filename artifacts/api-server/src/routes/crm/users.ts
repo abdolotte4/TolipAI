@@ -49,7 +49,7 @@ router.get("/", crmAuth, async (req, res) => {
     }
     res.json(users.map(u => formatUser(u, ownerUserId)));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -96,7 +96,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
       }
     } catch (err) {
       logger.error({ err }, "User limit check error");
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
       return;
     }
   }
@@ -130,7 +130,7 @@ router.post("/", crmAuth, crmAdminOnly, async (req, res) => {
       res.status(400).json({ error: "Email already exists" });
       return;
     }
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -208,7 +208,7 @@ router.patch("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     const ownerUserId = user.campaignId ? await getCampaignOwnerUserId(user.campaignId) : null;
     res.json(formatUser(user, ownerUserId));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
@@ -262,7 +262,7 @@ router.delete("/:id", crmAuth, crmAdminOnly, async (req, res) => {
     await db.delete(crmUsers).where(eq(crmUsers.id, id));
     res.json({ success: true, message: "User deleted" });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
   }
 });
 
