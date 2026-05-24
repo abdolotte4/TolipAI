@@ -224,6 +224,13 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   }
 });
 
+// Return JSON 404 for any /api/* path not matched by the router above.
+// Without this, the catch-all static handler below would serve website HTML
+// for unregistered API routes, making errors very hard to debug.
+app.use("/api", (_req: Request, res: Response) => {
+  res.status(404).json({ error: "API endpoint not found" });
+});
+
 // Serve static frontend builds in production
 if (process.env.NODE_ENV === "production") {
   const cwd = process.cwd();
@@ -248,7 +255,7 @@ if (process.env.NODE_ENV === "production") {
     if (fs.existsSync(websiteIndex)) {
       res.sendFile(websiteIndex);
     } else {
-      res.status(404).send("Not found");
+      res.redirect("/crm");
     }
   });
 }

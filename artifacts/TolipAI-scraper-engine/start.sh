@@ -33,6 +33,16 @@ echo "[scraper] Using Python: $PYTHON ($($PYTHON --version))"
 [ -z "${GROQ_API_KEY:-}" ] && echo "[scraper] WARN: GROQ_API_KEY not set — AI features disabled"
 [ -z "${SCRAPER_API_KEY:-}" ] && echo "[scraper] WARN: SCRAPER_API_KEY not set — endpoints unprotected"
 
+# Install Playwright browser (Chromium) if not already present — needed for Propelio/Propwire/Zillow scrapers.
+# This is a no-op if the browser is already installed; takes ~30s on first run.
+PLAYWRIGHT_BIN="$($PYTHON -c 'import sys; print(sys.prefix)' 2>/dev/null)/bin/playwright"
+if [ -x "$PLAYWRIGHT_BIN" ]; then
+  echo "[scraper] Installing Playwright Chromium browser (first-time setup)..."
+  "$PLAYWRIGHT_BIN" install chromium --with-deps 2>&1 | tail -3 || echo "[scraper] WARN: Playwright browser install failed — browser scrapers will be disabled"
+else
+  echo "[scraper] WARN: playwright CLI not found — browser scrapers will be disabled"
+fi
+
 PORT="${PORT:-8000}"
 LOG_LEVEL="${LOG_LEVEL:-info}"
 

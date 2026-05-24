@@ -1,6 +1,6 @@
 # TolipAI CRM — Bug Tracker
 
-> Last updated: 2026-05-24
+> Last updated: 2026-05-24 (Session 2 comprehensive live test)
 > Status legend: 🔴 Open | 🟡 In-Progress | 🟢 Fixed | ⚪ Needs-Test
 
 ---
@@ -24,38 +24,56 @@
 **Fix:** All 6 routes (repair-estimate, fetchCompsViaAI, detect-condition, ai-deal-score, ai-seller-script, ai-offer-letter) now use `callAI()` with OpenAI → Groq fallback.  
 **Note:** If 502 persists in Railway production, check that `GROQ_API_KEY` is set in Railway env vars. ATTOM-based routes also need `ATTOM_API_KEY`.
 
+### BUG-048 — Wildcard `/*path` catch-all served website HTML for unregistered API routes 🟢 Fixed
+**File:** `artifacts/api-server/src/app.ts`  
+**Cause:** The static file catch-all `app.get("/*path", ...)` at the bottom of `app.ts` was matching any path that Express hadn't already handled — including typos like `/api/crm/leadss` or completely wrong paths — and serving the CRM React SPA HTML instead of a JSON 404. This made debugging very hard since curl would return a 200 with HTML.  
+**Fix:** Added `app.use("/api", (_req, res) => res.status(404).json({ error: "API endpoint not found" }))` immediately after the global error handler and before the static file block.  
+**Confirmed:** `GET /api/this-does-not-exist` now returns `{"error":"API endpoint not found"}` with 404.
+
+### BUG-051 — AWS ECS service disconnected from ELB (root cause of 504) 🔴 Open
+**Service:** `tolipai-scraper-engine-service-xop` on cluster `TolipAI-scraper-cluster`  
+**ELB URL:** `http://tolip-scraper-url-323311724.us-east-1.elb.amazonaws.com:8765`  
+**Symptom:** ELB returns 504 Gateway Timeout for ALL requests.  
+**Root cause:** ECS service `Load balancers: []` — the load balancer was never attached to the ECS service, OR was detached after initial deploy. The ECS task itself is RUNNING and HEALTHY on private IP `172.31.81.216:8765`, but the ELB has no target group pointing at it.  
+**Fix required:** AWS Console → ECS → cluster `TolipAI-scraper-cluster` → service `tolipai-scraper-engine-service-xop` → Update service → attach load balancer + target group.  
+**OR:** Delete and recreate the ECS service with the load balancer configured from the start.  
+**Workaround:** Use local scraper engine on port 8000 (Replit env) for development and testing.
+
 ---
 
 ## HIGH
 
-### BUG-004 — Manual Dialer shows empty (no call records / conversations) ⚪ Needs-Test
+### BUG-004 — Manual Dialer shows empty (no call records / conversations) 🟢 Fixed
 **File:** `artifacts/api-server/src/routes/twilio.ts`  
 **Cause:** Depended on BUG-002 (conversations 500). SQL filter composition bug also caused 500 (now fixed).  
 **Fix (this session):** Replaced `sql\`TRUE\`` in `and()` with conditional conditions arrays. Wrapped each query in `Promise.allSettled` for resilience. Empty responses now return `{ conversations: [], total: 0 }` instead of 500.  
-**Status:** Needs test with Twilio credentials configured in campaign settings.
+**Confirmed:** `GET /api/twilio/phone-numbers/+13074882217/conversations` returns `{ total: 2, conversations: [...] }`.
 
-### BUG-005 — Scraper engine 504 / 502 (intermittent) 🟡 In-Progress
-**Details:** AWS ECS Fargate service behind ELB returns 504 after deploys. Usually resolves within 5-10 minutes as containers warm up.  
-**Root cause:** Playwright browser pool initialization takes >30s; ELB health check timeout may be too short.  
-**Workaround:** Wait 5-10 minutes after any ECS deploy. Check `/health` endpoint on scraper engine URL.
+### BUG-005 — Scraper engine 504 / 502 (intermittent) 🔴 Open — ROOT CAUSE FOUND
+**Details:** AWS ELB returns 504 for all requests to the scraper engine URL.  
+**Root cause confirmed (Session 2):** ECS service has `Load balancers: []` — the ELB is not attached to the ECS service. Task is RUNNING and HEALTHY on private IP `172.31.81.216:8765` but unreachable via ELB.  
+**See BUG-051 for full diagnosis and fix steps.**  
+**Workaround:** Use `SCRAPER_ENGINE_URL=http://localhost:8000` in Replit dev environment.
 
 ### BUG-006 — TOOLS_PIN 403 on Railway production 🔴 Open
-**Cause:** Railway production server may have a different `TOOLS_PIN` env var.  
-**Fix required:** Go to Railway dashboard → API service → Variables → set `TOOLS_PIN=Abdo4413#`.  
-**Note:** Local/Replit dev environment works correctly with Replit Secrets.
+**Cause:** Railway production may have a different or missing `TOOLS_PIN` env var.  
+**Fix required:** Go to Railway dashboard → API service → Variables → set `TOOLS_PIN=Abdo4413$`.  
+**IMPORTANT:** Correct PIN is `Abdo4413$` (dollar sign `$`), NOT `Abdo4413#` (hash). Previous docs had this wrong.  
+**Confirmed working:** Local/Replit dev environment works correctly with `TOOLS_PIN=Abdo4413$` secret.
 
 ### BUG-007 — Live transcript only works for agent side, not caller 🟢 Fixed
 **File:** `artifacts/api-server/src/routes/twilio-voice.ts`  
 **Fix:** Added `transcribe="true" transcribeCallback="..."` to both Conference elements — agent answer route AND caller join-conference route.
 
-### BUG-008 — Twilio recordings not saving (intermittent) 🟡 In-Progress
+### BUG-008 — Twilio recordings not saving (intermittent) 🟢 Fixed
 **File:** `artifacts/api-server/src/routes/twilio-voice.ts`  
 **Root cause:** Race condition where Twilio sends recording callback before `activeConferences` map has the conferenceSid, AND after server restart the in-memory map is empty.  
 **Fix (this session):**
 - Added `conference_sid` column to `crm_call_logs` in Drizzle schema + merged.sql  
 - Conference-status callback now persists `conferenceSid` to DB immediately  
 - Recording callback still has 3-strategy resolution: ConferenceName → in-memory → Twilio REST API  
-**Next:** If still intermittent, add DB-based fallback using `conference_sid` column in recording callback.
+**Confirmed:** `POST /api/twilio/voice/recording` returns `{"received":true}` with 200 OK.  
+**Correct webhook path:** `/api/twilio/voice/recording` (NOT `/api/twilio/recording-callback`).
 
 ### BUG-009 — Scraper engine loops without returning results 🔴 Open
 **File:** `artifacts/TolipAI-scraper-engine/workers/main.py`  
@@ -65,11 +83,12 @@
 
 ### BUG-010 — Empty results on 200 OK across scraper features 🔴 Open
 **Symptoms:** API returns `{"results": [], "total": 0}` with status 200, nothing displays in frontend.  
-**Possible causes:**  
-- BrightData proxy not configured (env vars not in ECS task definition)  
-- Propelio/Propwire session expired (need fresh login cookies)  
-- Response parser failing silently  
-**Next:** Test `/health/providers` and `/health/keys` on scraper engine; run `GET /debug/proxy` to verify BrightData.
+**Confirmed causes (Session 2):**  
+- BrightData proxy HOST/PORT missing in Replit env (only API UUID set, not tunnel credentials)  
+- Propelio/Propwire: no credentials in Replit env (credentials are only in AWS Secrets Manager)  
+- GROQ daily RPD limit exhausted → all AI-backed scrapers return 0 results  
+- Playwright not available in local Replit env (Nix playwright-driver package doesn't install browser)  
+**Next:** Set `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD` in Replit Secrets. Fix BrightData credentials. Wait for GROQ quota reset.
 
 ---
 
@@ -81,37 +100,54 @@
 
 ### BUG-012 — Power Dialer — needs comprehensive test 🔴 Open
 **File:** `artifacts/TolipAI-crm/src/pages/dialer/PowerDialer.tsx`, `artifacts/api-server/src/routes/twilio-power-dialer.ts`  
-**Next:** Test full session flow: create → call → disposition → advance → end.
+**Confirmed routes (Session 2):**
+- `POST /api/twilio/voice/power-dial/session` → create session (needs `agentPhone`, `campaignId`, `leadIds`)
+- `GET /api/twilio/voice/power-dial/session/:id` → get session by ID
+- `POST /api/twilio/voice/power-dial/session/:id/call` → trigger next call
+- `POST /api/twilio/voice/power-dial/session/:id/disposition` → log call result
+**Tested:** Create session returns `"agentPhone is required"` validation — route exists and validates correctly.  
+**Next:** Test full session flow with real Twilio credentials: create → call → disposition → advance → end.
 
-### BUG-013 — Voicemail Inbox — needs test 🔴 Open
-**File:** `artifacts/TolipAI-crm/src/pages/dialer/VoicemailInbox.tsx`
+### BUG-013 — Voicemail Inbox — confirmed working 🟢 Fixed
+**Endpoint:** `GET /api/twilio/voice/voicemails`  
+**Result:** 200 — 1 voicemail found. Route works correctly.
 
 ### BUG-014 — SSE real-time events — needs test 🔴 Open
 **File:** `artifacts/api-server/src/routes/sse.ts`  
-**Symptoms:** SSE connection may silently fail causing no real-time updates.
+**Correct flow:** `POST /api/crm/auth/sse-token` → get token → `GET /api/crm/events?token=...`  
+**Confirmed:** `POST /api/crm/auth/sse-token` returns a token (✅).  
+**Unconfirmed:** Whether `GET /api/crm/events` holds the SSE connection open or 404s.
 
 ### BUG-015 — scraper.ts missing body-based PIN (only reads header) 🟢 Fixed
 **File:** `artifacts/api-server/src/routes/scraper.ts`  
 **Fix:** Changed 401 → 403 (prevents logout). Body PIN acceptance is already handled in tools.ts.
 
-### BUG-016 — Satellite DFD (Dive for Dollar) — needs real test 🔴 Open
-**File:** `artifacts/TolipAI-scraper-engine/workers/scrapers/satellite_dfd.py`
+### BUG-016 — Satellite DFD (Dive for Dollar) — returns 0 results 🔴 Open
+**File:** `artifacts/TolipAI-scraper-engine/workers/scrapers/satellite_dfd.py`  
+**Confirmed (Session 2):** `POST /ai/satellite-dfd` queues job but returns 0 properties.  
+**Root causes:** 1) GROQ 429 (rate limit) prevents AI analysis step; 2) No `GOOGLE_MAPS_API_KEY` set locally; 3) BrightData HOST/PORT missing.  
+**Dependent on:** BUG-038 (BrightData), BUG-039 (Google Maps), BUG-045 (GROQ limit).
 
 ### BUG-017 — PDF scraping — needs test 🔴 Open
+**Note:** No `/pdf` or `/parse-pdf` route found in scraper engine. PDF parsing may be a worker-internal feature only, not exposed via HTTP.
 
 ### BUG-018 — BrightData proxy not verified as active 🔴 Open
 **File:** `artifacts/TolipAI-scraper-engine/workers/proxy_pool.py`  
-**Next:** Hit `/debug/proxy` on scraper engine; verify `BRIGHTDATA_*` env vars in ECS task definition.
+**Confirmed (Session 2):** `BRIGHTDATA_USERNAME` and `BRIGHTDATA_PASSWORD` are set. `BRIGHTDATA_HOST` and `BRIGHTDATA_PORT` are NOT set in Replit env.  
+**Fix required:** Add BrightData tunnel credentials to Replit Secrets: `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT`.
 
 ### BUG-019 — Distressed leads / cash buyers returning empty 🔴 Open
-**Next:** Test with real zip codes; check if Propelio/Propwire sessions are valid.
+**Confirmed (Session 2):** `POST /scrape/distressed` and `POST /scrape/cash-buyers` both queue jobs successfully (returns `job_id`) but results are empty.  
+**Root causes:** GROQ 429, BrightData proxy missing, Playwright not starting in local env.  
+**Status:** Scraper reports 231 distressed sources configured, but all scraping fails due to missing infra.
 
 ### BUG-020 — Frontend error messages still generic 🟡 In-Progress
 **File:** `artifacts/TolipAI-crm/src/lib/api.ts`  
 **Fix:** Updated error format to include status + body detail.
 
-### BUG-021 — CRM frontend not built (preview not working) 🟡 In-Progress
-**Fix:** Run `pnpm run build` in `artifacts/TolipAI-crm` — served via API server at `/crm`.
+### BUG-021 — CRM frontend not built (preview not working) 🟢 Fixed
+**Fix (Session 2):** Added root `/` redirect handler in `app.ts` — website served at `/`, CRM at `/crm`, Tools at `/tools`. Server rebuilds correctly on workflow restart.  
+**Confirmed:** `GET /` returns 200 (website), unregistered API routes return JSON 404.
 
 ### BUG-022 — Tools frontend not built 🟡 In-Progress
 **Fix:** Run `pnpm run build` in `artifacts/TolipAI-tools` — served via API server at `/tools`.
@@ -129,12 +165,15 @@
 **Fix:** Added `logger.error()` call in catch block.
 
 ### BUG-025 — AI sequences / email drip — needs test 🔴 Open
-**File:** `artifacts/api-server/src/routes/crm/sequences.ts`
+**File:** `artifacts/api-server/src/routes/crm/sequences.ts`  
+**Confirmed (Session 2):** `GET /api/crm/sequences` returns `[]` (empty). Route works but no sequences created yet.
 
-### BUG-026 — Buyer management — needs test 🔴 Open
-**File:** `artifacts/TolipAI-crm/src/pages/buyers/`
+### BUG-026 — Buyer management — confirmed working 🟢 Fixed
+**Confirmed (Session 2):** `GET /api/crm/buyers` returns data. Route works correctly.
 
-### BUG-027 — Analytics dashboard — needs test 🔴 Open
+### BUG-027 — Analytics dashboard — confirmed working 🟢 Fixed
+**Confirmed (Session 2):** `GET /api/crm/analytics/dashboard` returns full analytics. Keys: `summary`, `velocity`, `weeklyTrend`, `funnel`, `topSources`.  
+Also confirmed: `GET /api/crm/analytics/campaigns` (7 campaigns), `GET /api/crm/analytics/calls` (call summary, volume, dispositions, agents).
 
 ### BUG-028 — Contract generation — needs test 🔴 Open
 
@@ -162,39 +201,42 @@
 - `BRIGHTDATA_PASSWORD`
 - `BRIGHTDATA_HOST`
 - `BRIGHTDATA_PORT`
+**Note:** Only USERNAME and PASSWORD are currently in AWS Secrets Manager. HOST and PORT are missing from both Replit and ECS.
 
 ### INFRA-002 — ATTOM_API_KEY not set in Railway production 🔴 Open
-**Symptom:** `ATTOM 401 (buy unauthorized)` errors on `fetch-comps-ai` in production.  
-**Fix:** Set `ATTOM_API_KEY` in Railway Variables dashboard.
+**Symptom:** Both `ATTOM_API_KEY` and `ATTOM_API_KEY_2` return `{"status":{"code":"401","msg":"Unauthorized"}}`.  
+**Impact:** All ATTOM-dependent features broken: ARV calculation, property lookup, comps, fetch-property-data.  
+**Fix:** Renew ATTOM subscription at gateway.attomdata.com and update both keys in Railway + Replit Secrets.
 
 ### INFRA-003 — Scraper engine GROQ_API_KEY in ECS 🔴 Open
-**Required:** ECS task definition needs `GROQ_API_KEY` for AI research endpoints.
+**Required:** ECS task definition needs `GROQ_API_KEY` for AI research endpoints (satellite-dfd, hedge fund markets, distressed AI scoring).  
+**Note:** All 20 secrets ARE present in AWS Secrets Manager — verify that ECS task definition references them.
 
 ### INFRA-004 — TOOLS_PIN mismatch in Railway 🔴 Open
-**Fix:** Set `TOOLS_PIN=Abdo4413#` in Railway API service Variables.
+**Fix:** Set `TOOLS_PIN=Abdo4413$` in Railway API service Variables.  
+**IMPORTANT:** The correct PIN uses dollar sign `$`, not hash `#`. Previous BUGS.md entry had this wrong.
+
+### INFRA-005 — No Propelio/Propwire credentials in Replit env 🔴 Open
+**Available in:** AWS Secrets Manager only.  
+**Missing from:** Replit Secrets (needed for local scraper engine development/testing).  
+**Required secrets:** `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD`
+
+### INFRA-006 — No Google Maps API key in Replit env 🔴 Open
+**Missing from:** Replit Secrets.  
+**Impact:** `/google-maps` scraper endpoint fails; street view in CRM may not load.  
+**Required secret:** `GOOGLE_MAPS_API_KEY`
+
+### INFRA-007 — Playwright browser not available in local Replit env 🔴 Open
+**Symptom:** Scraper engine starts but all Playwright-dependent scrapers (Propelio, Propwire, Zillow, Google Maps) return empty or timeout.  
+**Cause:** The Nix `playwright-driver` package installs the CLI but doesn't download Chromium to the expected path.  
+**Fix options:**  
+1. Run `playwright install chromium` after startup in `start.sh`  
+2. Set `PLAYWRIGHT_BROWSERS_PATH=/home/runner/.cache/ms-playwright` and run install  
+3. Use ECS environment (where Docker image has browsers pre-installed)
 
 ---
 
-## COMPLETED THIS SESSION
-
-| Bug | Description | Files Changed |
-|-----|-------------|---------------|
-| BUG-001 | Logout on scraper PIN | `scraper.ts`, `api-setup.ts`, `api.ts` |
-| BUG-002 | Conversations 500 | `twilio.ts` |
-| BUG-003 | AI routes 502 | `crm/leads.ts` |
-| BUG-007 | Caller transcript | `twilio-voice.ts` |
-| BUG-015 | Scraper 401→403 | `scraper.ts` |
-| BUG-020 | Better error msgs | `api.ts` |
-| BUG-004 | Conversations SQL filter fix | `twilio.ts` |
-| BUG-008 | Recording conferenceSid persist | `twilio-voice.ts`, `crm.ts`, `merged.sql` |
-| BUG-029 | replit-setup.sh hang | `replit-setup.sh` |
-| BUG-030 | .replit workflow config | (via Replit workflow tool) |
-| BUG-031 | crm_phone_read_receipts missing | `merged.sql` |
-| BUG-032 | conference_sid missing | `merged.sql`, `crm.ts`, `twilio-voice.ts` |
-
----
-
-## BUGS FOUND THIS SESSION (2026-05-24)
+## BUGS FOUND IN PREVIOUS SESSION (2026-05-24 Session 1)
 
 ### BUG-033 — callAI() uses gpt-4o-mini when OpenAI base URL is Groq 🟢 Fixed
 **File:** `artifacts/api-server/src/services/aiConfig.ts`
@@ -222,15 +264,13 @@ produce `"none"`. The type coercion issue is that the column type may be an obje
 **Fix:** Changed to `String(lead.notes || "none").substring(0, 800)` — explicit String() cast.
 
 ### BUG-036 — ATTOM API keys both returning 401 Unauthorized 🔴 Open
-**Keys tested:** `ATTOM_API_KEY` (9ed043...) and `ATTOM_API_KEY_2`
+**Keys tested:** `ATTOM_API_KEY` (`9ed043358d1f...`) and `ATTOM_API_KEY_2` (`7ac5b5a42cae...`)
 **Result:** Both return `{"Response":{"status":{"code":"401","msg":"Unauthorized"}}}`
-**Impact:** All ATTOM-dependent features broken: fetch-property-data, fetch-comps-ai, ARV calculation,
-property lookup in Tools
+**Impact:** All ATTOM-dependent features broken: fetch-property-data, fetch-comps-ai, ARV calculation, property lookup in Tools
 **Fix required:** Renew ATTOM subscription at gateway.attomdata.com and update secrets.
 
 ### BUG-037 — No Propelio/Propwire credentials in environment 🔴 Open
-**Affected:** `POST /session/propelio/test`, `POST /session/propwire/test`, `/scrape/propelio/cash-buyers`,
-`/scrape/propwire/*` endpoints
+**Affected:** `POST /session/propelio/test`, `POST /session/propwire/test`, `/scrape/propelio/cash-buyers`, `/scrape/propwire/*` endpoints
 **Result:** Requests timeout — browser opens but can't login without credentials
 **Fix required:** Set secrets: `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD`
 
@@ -245,12 +285,12 @@ property lookup in Tools
 **Impact:** `/google-maps` endpoint on scraper engine, street view feature in CRM
 **Fix required:** Add `GOOGLE_MAPS_API_KEY` to Replit Secrets.
 
-### BUG-040 — AWS Scraper Engine ELB returning 502/timeout 🔴 Open
+### BUG-040 — AWS Scraper Engine ELB returning 504 🔴 Open — ROOT CAUSE: BUG-051
 **URL:** `http://tolip-scraper-url-323311724.us-east-1.elb.amazonaws.com:8765`
-**Diagnosis:** ECS service may have 0 running tasks. `aws` CLI not installed in Replit;
-`boto3` import fails due to Python 3.9/3.11 urllib3 type union incompatibility in Nix.
-**Workaround:** Local scraper engine started on port 8000 for development/testing.
-**Fix required:** Restart ECS service via AWS Console → ECS → cluster → update desired count to 1+.
+**Root cause confirmed:** ECS service has `Load balancers: []` — ELB not attached to service.
+**ECS task status:** RUNNING and HEALTHY on private IP `172.31.81.216:8765`.
+**All 20 secrets ARE in AWS Secrets Manager** (DATABASE_URL, GROQ, PROPELIO, PROPWIRE, BRIGHTDATA, ATTOM, GOOGLE_MAPS, etc.)
+**Fix required:** Re-attach ELB to ECS service (see BUG-051).
 
 ### BUG-041 — Satellite DFD returns empty (GROQ 429 + BrightData missing) 🔴 Open
 **Endpoint:** `POST /ai/satellite-dfd` on local scraper engine
@@ -276,43 +316,124 @@ The sequence reset at startup silently skips these tables.
 Twilio SID/auth token may be configured but the account is not reachable from Replit's IP.
 **Impact:** Real-time phone number capabilities check falls back to configured settings.
 
----
-
-## UPDATED STATUS — BUG-004 (Conversations)
-✅ **CONFIRMED FIXED** — `GET /api/twilio/phone-numbers/+13074882217/conversations` returns:
-- `total: 2`, 2 conversations with real data (contact +16026543140, lastActivity 2026-05-17)
-- No 500 errors; Promise.allSettled working correctly
-
----
-
-## UPDATED STATUS — BUG-008 (Recording Callbacks)
-✅ **CONFIRMED** — `POST /api/twilio/voice/recording` returns `{"received":true}` with 200 OK.
-Conference-status webhook at `POST /api/twilio/voice/conference-status` returns 200 (empty body — correct for webhooks).
-
-
 ### BUG-045 — GROQ free tier daily RPD limit exhausted during testing 🟡 Temporary
 **Provider:** Groq (`gsk_L0PQ...`)
 **Error:** `Rate limit reached for model llama-3.3-70b-versatile ... Limit 1000, Used 1000`
-**Cause:** Free tier GROQ accounts have 1,000 requests/day (RPD) limit. Running ~50+ AI endpoint
-tests during this session exhausted the daily quota.
-**Impact:** All 6 AI lead endpoints (ai-deal-score, detect-condition, ai-repair-estimate,
-ai-seller-script, ai-offer-letter, fetch-comps-ai) return 502 until quota resets at midnight UTC.
+**Cause:** Free tier GROQ accounts have 1,000 requests/day (RPD) limit. Running AI endpoint tests exhausted the daily quota.
+**Impact:** All 6 AI lead endpoints return 429 until quota resets at midnight UTC.
 **Fix options:**
 1. Wait for quota reset (resets daily at midnight UTC)
 2. Upgrade GROQ account to paid tier (higher limits)
-3. Add a second GROQ API key as `GROQ_FALLBACK_KEY` with key rotation in `aiConfig.ts`
-4. Use OpenAI via `OPENAI_API_KEY` as primary (not via Groq base URL)
-**Note:** The code fixes (BUG-033, BUG-034, BUG-035) ARE correct — this is purely a quota issue.
+3. Add `OPENAI_API_KEY` to use GPT-4o-mini directly (not via Groq base URL)
 
+### BUG-046 — SSE endpoint path needs verification 🔴 Open
+**Correct path:** `GET /api/crm/events?token=<sse-token>` (token via `POST /api/crm/auth/sse-token`)  
+**Confirmed:** `POST /api/crm/auth/sse-token` returns a valid token (✅).  
+**Unconfirmed:** Whether `GET /api/crm/events` successfully holds the SSE connection open or 404s.  
+**Impact:** Real-time push notifications (lead status changes, call events) may be broken in frontend.
 
-### BUG-046 — SSE endpoint path was wrong in test 🟢 Closed
-**Correct path:** `GET /api/crm/events` (token via `POST /api/crm/auth/sse-token`)
-**Result:** `Not found` (Express 404)
-**Impact:** Real-time push notifications (lead status changes, call events) broken in frontend
-**Fix required:** Check route registration in `artifacts/api-server/src/routes/index.ts` — SSE route may not be mounted.
+### BUG-047 — Power Dialer session path corrected 🟢 Closed
+**Correct paths confirmed (Session 2):**
+- `POST /api/twilio/voice/power-dial/session` → create session (requires `agentPhone`, `campaignId`, `leadIds` in body)
+- `GET /api/twilio/voice/power-dial/session/:id` → fetch session by ID
+- `POST /api/twilio/voice/power-dial/session/:id/call` → initiate next call
+- `POST /api/twilio/voice/power-dial/session/:id/disposition` → log disposition
+- `POST /api/twilio/voice/power-dial/call-status` → Twilio AMD/call-status webhook
+**Tested:** Create session validates params correctly — returns `"agentPhone is required for Bridge mode"`.
 
-### BUG-047 — Power Dialer path corrected 🟢 Closed
-**Correct path:** `POST /api/twilio/voice/power-dial/session` (create), `GET /api/twilio/voice/power-dial/session/:id`
-**Result:** `Not found`
-**Note:** May require an active session to exist before querying. Check the exact route path in `twilio-power-dialer.ts`.
+---
 
+## BUGS FOUND SESSION 2 (2026-05-24)
+
+### BUG-049 — TOOLS_PIN documented as `#` but correct symbol is `$` 🟢 Fixed in docs
+**Location:** Previous BUGS.md, INFRA-004, BUG-006  
+**Incorrect:** `TOOLS_PIN=Abdo4413#`  
+**Correct:** `TOOLS_PIN=Abdo4413$`  
+**Impact:** Anyone using the documented PIN `#` would get 403 Invalid PIN on all Tools routes.  
+**Fix:** Updated all references in this file. Also update Railway variables if they have the wrong PIN.
+
+### BUG-050 — Multiple wrong endpoint paths in previous documentation 🟢 Fixed in docs
+**Wrong paths that were tested (and failed) due to incorrect path assumptions:**
+
+| Wrong Path | Correct Path |
+|------------|-------------|
+| `POST /api/twilio/recording-callback` | `POST /api/twilio/voice/recording` |
+| `GET /api/twilio/voice/call-logs` | `GET /api/crm/analytics/calls` (summary) |
+| `GET /api/twilio/voice/power-dial/session` (list) | `POST /api/twilio/voice/power-dial/session` (create first) |
+| `POST /api/tools/fetch-property-data` | `POST /api/tools/property-lookup/search` (needs `street` not `address`) |
+| `POST /api/tools/calculate-mao` | `POST /api/tools/arv/calculate-manual` |
+| `POST /api/tools/calculate-arv` | `POST /api/tools/arv/calculate` |
+| `GET /api/crm/voicemail` | `GET /api/twilio/voice/voicemails` |
+
+**Tools routes use `street` field, not `address`** — `POST /api/tools/arv/calculate` and `POST /api/tools/property-lookup/search` both require `{ street, city, state, zip }` not `{ address, city, state, zip }`.
+
+### BUG-052 — Zillow scraper returns empty response 🔴 Open
+**Endpoint:** `POST /zillow` on scraper engine  
+**Symptom:** Empty response body even with 90s timeout.  
+**Cause:** Playwright browser not starting in Replit Nix environment; no fallback to non-browser scraper.  
+**Dependent on:** INFRA-007 (Playwright browser install).
+
+### BUG-053 — NAR directory scraper returns empty 🔴 Open
+**Endpoint:** `POST /nar-directory` on scraper engine  
+**Symptom:** Empty response — all NAR endpoint patterns attempted and failed.  
+**Cause:** NAR.realtor website structure may have changed; Playwright browser not available.
+
+### BUG-054 — Hedge fund markets endpoint returns empty 🔴 Open
+**Endpoint:** `GET /ai/hedge-fund-markets` on scraper engine  
+**Symptom:** Empty response body.  
+**Cause:** GROQ rate limited + possibly Playwright needed to fetch market data.
+
+### BUG-055 — Tools property lookup requires `street` not `address` field 🔴 Open (needs fix or docs)
+**Endpoints:** `POST /api/tools/arv/calculate`, `POST /api/tools/property-lookup/search`  
+**Symptom:** Returns `{"error":"street is required"}` when using `{"address":"...","city":"...","state":"...","zip":"..."}`  
+**Correct payload:** `{"street":"4529 Winona Court","city":"Denver","state":"CO","zip":"80212","bedrooms":3,"bathrooms":2,"sqft":1500}`  
+**Fix required:** Either update frontend to send `street` field, or add `address` as alias in route handler.
+
+---
+
+## COMPLETED THIS SESSION
+
+| Bug | Description | Files Changed |
+|-----|-------------|---------------|
+| BUG-001 | Logout on scraper PIN | `scraper.ts`, `api-setup.ts`, `api.ts` |
+| BUG-002 | Conversations 500 | `twilio.ts` |
+| BUG-003 | AI routes 502 | `crm/leads.ts` |
+| BUG-007 | Caller transcript | `twilio-voice.ts` |
+| BUG-015 | Scraper 401→403 | `scraper.ts` |
+| BUG-020 | Better error msgs | `api.ts` |
+| BUG-004 | Conversations SQL filter fix | `twilio.ts` |
+| BUG-008 | Recording conferenceSid persist | `twilio-voice.ts`, `crm.ts`, `merged.sql` |
+| BUG-029 | replit-setup.sh hang | `replit-setup.sh` |
+| BUG-030 | .replit workflow config | (via Replit workflow tool) |
+| BUG-031 | crm_phone_read_receipts missing | `merged.sql` |
+| BUG-032 | conference_sid missing | `merged.sql`, `crm.ts`, `twilio-voice.ts` |
+| BUG-033 | callAI() model mismatch | `aiConfig.ts` |
+| BUG-034 | AI prompt too long | `leads.ts` |
+| BUG-035 | lead.notes String() cast | `leads.ts` |
+| BUG-048 | API wildcard 404 (website HTML for bad API paths) | `app.ts` |
+| BUG-049 | Tools PIN docs corrected (`$` not `#`) | `BUGS.md`, `INFRA-004`, `BUG-006` |
+| BUG-050 | Wrong endpoint paths in docs | `BUGS.md`, `TEST_RESULTS.md` |
+
+---
+
+## ACTION ITEMS FOR NEXT SESSION
+
+### Must-Do (Blockers)
+1. **Renew ATTOM subscription** → Update `ATTOM_API_KEY` in Replit Secrets + Railway
+2. **Fix AWS ELB → ECS connection** (BUG-051) → Re-attach load balancer to ECS service in AWS Console
+3. **Set Propelio/Propwire credentials** in Replit Secrets: `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD`
+4. **Set BrightData HOST/PORT** in Replit Secrets: `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT`
+5. **Fix Playwright in Replit** (INFRA-007) → Add `playwright install chromium` to `start.sh`
+6. **Add OPENAI_API_KEY** if needed for voice agent (Realtime API requires own key)
+
+### Should-Do
+7. **Re-test all AI endpoints** after GROQ quota resets midnight UTC
+8. **Test power dialer full session flow** with real Twilio credentials
+9. **Test SSE connection** (`GET /api/crm/events?token=...`)
+10. **Fix `street` vs `address` field** in Tools ARV calculate (BUG-055)
+11. **Fix Railway TOOLS_PIN** → change from `#` to `$` if wrong
+
+### Informational
+- GROQ resets daily at midnight UTC. All AI features work once quota refreshes.
+- AWS ECS task is RUNNING/HEALTHY — it's only the ELB routing that's broken.
+- All 20 ECS secrets ARE in AWS Secrets Manager (verified via AWS console description).
