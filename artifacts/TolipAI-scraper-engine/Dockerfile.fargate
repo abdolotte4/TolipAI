@@ -43,21 +43,14 @@ ENV PATH="/venv/bin:$PATH"
 #  3. A separate CI job (validate-lockfile) checks that requirements.lock is in
 #     sync with requirements.in so stale lockfiles are caught before merge.
 COPY requirements.in ./
-COPY requirements.lock* ./
 
 RUN pip install --no-cache-dir --upgrade pip pip-tools && \
-    if [ -f requirements.lock ]; then \
-        echo "==> Installing from committed requirements.lock …"; \
-        pip install --no-cache-dir -r requirements.lock; \
-    else \
-        echo "==> requirements.lock not found — generating from requirements.in …"; \
-        pip-compile requirements.in \
-            --output-file requirements.lock \
-            --no-header \
-            --quiet \
-            --resolver backtracking && \
-        pip install --no-cache-dir -r requirements.lock; \
-    fi
+    pip-compile requirements.in \
+        --output-file requirements.lock \
+        --no-header \
+        --quiet \
+        --resolver backtracking && \
+    pip install --no-cache-dir -r requirements.lock
 
 # Install Playwright Chromium browser binary into /app/.cache so the non-root
 # scraper user can read it in the final stage (browsers in /root/.cache would
