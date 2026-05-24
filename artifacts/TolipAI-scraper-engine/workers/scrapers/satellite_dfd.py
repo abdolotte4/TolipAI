@@ -389,6 +389,7 @@ async def scan_area(
 
     candidates: List[Dict[str, Any]] = []
     total_above: int = 0
+    _has_gcv: bool = bool(_get_gcv_key())
 
     for p in listings:
         try:
@@ -428,7 +429,6 @@ async def scan_area(
 
         # ── Visual distress detection via Google Cloud Vision ────────────────
         visual_sigs: Dict[str, bool] = {}
-        _has_gcv = bool(_get_gcv_key())
         _run_visual = (base_score >= 40) and _has_gcv
         if _run_visual and sat_url:
             visual_sigs = await _visual_signals(sat_url)

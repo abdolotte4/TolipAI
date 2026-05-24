@@ -2517,13 +2517,21 @@ async def debug_satellite() -> Dict[str, Any]:
     }
 
 
-# ─── Foreclosure Lead-Gen route ───────────────────────────────────────────────
+# ─── Phone Finder ─────────────────────────────────────────────────────────────
+
+
+class PhoneFinderLookupRequest(BaseModel):
+    name: str = Field(..., description="Company or person name")
+    address: str = Field(default="", description="Address for disambiguation")
 
 
 @app.post("/phone-finder/lookup")
-async def phone_finder_lookup(req: "PhoneFinderLookupRequest") -> Dict[str, Any]:
+async def phone_finder_lookup(req: PhoneFinderLookupRequest) -> Dict[str, Any]:
     """Find phone numbers for a company/LLC via Google Search and Google Maps Places API."""
     return await _phone_finder_lookup(req.name, req.address)
+
+
+# ─── Foreclosure Lead-Gen route ───────────────────────────────────────────────
 
 
 async def _phone_finder_lookup(name: str, address: str) -> Dict[str, Any]:
@@ -2591,11 +2599,6 @@ async def _phone_finder_lookup(name: str, address: str) -> Dict[str, Any]:
             log.debug("Google Search scrape error for '%s': %s", name, exc)
 
     return {"name": name, "address": address, "phones": phones[:5], "source": source}
-
-
-class PhoneFinderLookupRequest(BaseModel):
-    name: str = Field(..., description="Company or person name")
-    address: str = Field(default="", description="Address for disambiguation")
 
 
 @app.post("/lead-gen/foreclosure")
