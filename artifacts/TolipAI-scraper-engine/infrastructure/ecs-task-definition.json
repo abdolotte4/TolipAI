@@ -96,40 +96,8 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/redis-url"
         },
         {
-          "name": "SCRAPERAPI_KEY",
+          "name": "SCRAPER_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/api-key"
-        },
-        {
-          "name": "SCRAPERAPI_KEY_2",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/scraperapi-key-2"
-        },
-        {
-          "name": "SCRAPERAPI_KEY_3",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/scraperapi-key-3"
-        },
-        {
-          "name": "SCRAPERAPI_KEY_4",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/scraperapi-key-4"
-        },
-        {
-          "name": "SCRAPINGBEE_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/scrapingbee-key"
-        },
-        {
-          "name": "SCRAPINGBEE_API_KEY_2",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/scrapingbee-key-2"
-        },
-        {
-          "name": "SCRAPINGBEE_API_KEY_3",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/scrapingbee-key-3"
-        },
-        {
-          "name": "SCRAPINGBEE_API_KEY_4",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/scrapingbee-key-4"
-        },
-        {
-          "name": "WEBSCRAPER_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/webscraper-key"
         },
         {
           "name": "OPENROUTER_API_KEY",
@@ -140,20 +108,16 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/groq-key"
         },
         {
-          "name": "AI_INTEGRATIONS_OPENAI_BASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/openai-base-url"
-        },
-        {
-          "name": "AI_MODEL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ai-model"
-        },
-        {
           "name": "MOONSHOT_KIMI_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/moonshot-key"
         },
         {
           "name": "NVIDIA_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/nvidia-key"
+        },
+        {
+          "name": "CEREBRAS_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/cerebras-key"
         },
         {
           "name": "ATTOM_API_KEY",
@@ -174,10 +138,6 @@
         {
           "name": "BRIGHTDATA_API",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/brightdata-api"
-        },
-        {
-          "name": "PROXY_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/proxy-host"
         },
         {
           "name": "OXYLABS_USERNAME",
@@ -206,22 +166,6 @@
         {
           "name": "GOOGLE_MAPS_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/google-maps-key"
-        },
-        {
-          "name": "RENTCAST_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/rentcast-key"
-        },
-        {
-          "name": "CEREBRAS_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/cerebras-key"
-        },
-        {
-          "name": "GEMINI_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/gemini-key"
-        },
-        {
-          "name": "PEOPLEDATALABS_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/peopledatalabs-key"
         }
       ],
       "logConfiguration": {
