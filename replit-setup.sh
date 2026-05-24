@@ -1,16 +1,28 @@
 #!/usr/bin/env bash
 # ============================================================
 # TolipAI CRM — Replit Setup Script
-# Run this once on a fresh Replit account after cloning the repo.
+# Run once on a fresh Replit project after cloning the repo.
 # Usage: bash replit-setup.sh
+#
+# What it does:
+#   1. Verifies Node.js ≥18
+#   2. Installs pnpm@9
+#   3. Installs all workspace dependencies (pnpm install)
+#   4. Builds lib/db → api-server → CRM frontend → Tools frontend
+#   5. Installs Python packages for the scraper engine (via uv)
+#   6. Checks required environment variables
+#   7. Runs DB migrations (drizzle-kit push)
+#
+# NOTE: If the script appears to hang on Python packages, press Ctrl+C
+#   and re-run — uv is fast but may take 60–90s on first run.
 # ============================================================
-set -euo pipefail
+set -eo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC}   $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error()   { echo -e "${RED}[ERR]${NC}  $*"; exit 1; }
+err_exit(){ echo -e "${RED}[ERR]${NC}  $*"; exit 1; }
 
 WORKSPACE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$WORKSPACE"
@@ -25,69 +37,101 @@ echo ""
 info "Checking Node.js..."
 NODE_VER=$(node --version 2>/dev/null || echo "none")
 if [[ "$NODE_VER" == "none" ]]; then
-  error "Node.js not found. Add 'nodejs-20' to .replit modules section."
+  err_exit "Node.js not found. Ensure 'nodejs-20' is in your .replit modules section."
 fi
 info "Node.js: $NODE_VER"
 
-# ── Step 2: Install pnpm (must be v9 for Node 20 compatibility) ───────────────
+# ── Step 2: Install pnpm@9 ────────────────────────────────────────────────────
 info "Setting up pnpm..."
-if ! command -v pnpm &>/dev/null || [[ "$(pnpm --version 2>/dev/null | cut -d. -f1)" != "9" ]]; then
-  info "Installing pnpm@9..."
-  npm install -g pnpm@9 --silent
+PNPM_VER=$(pnpm --version 2>/dev/null | cut -d. -f1 || echo "0")
+if ! command -v pnpm &>/dev/null || [[ "$PNPM_VER" != "9" ]]; then
+  info "Installing pnpm@9 via npm..."
+  npm install -g pnpm@9 --silent 2>&1 | tail -3
+  # Also install to ~/.local/bin for future non-login shells
+  node $(which npm 2>/dev/null || echo /nix/store/*-nodejs-*/bin/npm) install -g pnpm@9 --prefix "$HOME/.local" --silent 2>/dev/null || true
   success "pnpm@9 installed"
 else
   success "pnpm $(pnpm --version) already installed"
 fi
 
+export PATH="$HOME/.local/bin:$PATH"
+
 # ── Step 3: Install all workspace dependencies ────────────────────────────────
-info "Installing workspace dependencies (this may take 2-4 minutes)..."
-pnpm install --no-frozen-lockfile 2>&1 | grep -E "^(warn|ERR|error|Done|✓|Packages)" || true
+info "Installing workspace dependencies (this may take 2–4 minutes on first run)..."
+pnpm install --no-frozen-lockfile 2>&1 | grep -E "(warn|ERR|error|Done|✓|Packages|already up)" || true
 success "Dependencies installed"
 
-# ── Step 4: Build the shared DB package ──────────────────────────────────────
+# ── Step 4: Build shared DB package ──────────────────────────────────────────
 info "Building shared DB package..."
 if [ -d "lib/db" ]; then
-  (cd lib/db && pnpm run build 2>&1 | tail -5) || warn "DB package build had warnings"
+  (cd lib/db && pnpm run build 2>&1 | tail -5) || warn "DB package build had warnings (non-fatal)"
   success "DB package built"
 else
   warn "lib/db not found — skipping"
 fi
 
-# ── Step 5: Build the API server ─────────────────────────────────────────────
+# ── Step 5: Build API server ──────────────────────────────────────────────────
 info "Building API server..."
-(cd artifacts/api-server && pnpm run build 2>&1 | tail -10)
-success "API server built → artifacts/api-server/dist/index.mjs"
+if (cd artifacts/api-server && pnpm run build 2>&1 | tail -10); then
+  success "API server built → artifacts/api-server/dist/index.mjs"
+else
+  warn "API server build had errors — check TypeScript output above"
+fi
 
 # ── Step 6: Build CRM frontend ───────────────────────────────────────────────
 info "Building CRM frontend (takes ~60s)..."
-(cd artifacts/TolipAI-crm && pnpm run build 2>&1 | tail -10)
-success "CRM frontend built → artifacts/TolipAI-crm/dist/public/"
+if (cd artifacts/TolipAI-crm && pnpm run build 2>&1 | tail -10); then
+  success "CRM frontend built → artifacts/TolipAI-crm/dist/public/"
+else
+  warn "CRM frontend build had errors"
+fi
 
 # ── Step 7: Build Tools frontend ─────────────────────────────────────────────
 info "Building Tools frontend..."
-(cd artifacts/TolipAI-tools && pnpm run build 2>&1 | tail -10)
-success "Tools frontend built → artifacts/TolipAI-tools/dist/public/"
+if (cd artifacts/TolipAI-tools && pnpm run build 2>&1 | tail -10); then
+  success "Tools frontend built → artifacts/TolipAI-tools/dist/public/"
+else
+  warn "Tools frontend build had errors"
+fi
 
-# ── Step 8: Python packages ───────────────────────────────────────────────────
+# ── Step 8: Python packages via uv (fast, handles binary deps correctly) ───────
 info "Installing Python packages for scraper engine..."
-if command -v pip &>/dev/null || command -v pip3 &>/dev/null; then
-  PIP=$(command -v pip3 || command -v pip)
-  SCRAPER_REQS="artifacts/TolipAI-scraper-engine/requirements.txt"
+SCRAPER_REQS="artifacts/TolipAI-scraper-engine/requirements.txt"
+
+# Try uv first (handles native extensions like lxml without build issues)
+if command -v uv &>/dev/null; then
+  info "Using uv for Python package installation..."
   if [ -f "$SCRAPER_REQS" ]; then
-    $PIP install -r "$SCRAPER_REQS" -q 2>&1 | tail -5 || warn "Some Python packages failed (non-fatal)"
-    success "Python packages installed from requirements.txt"
+    uv pip install --system -r "$SCRAPER_REQS" 2>&1 | tail -5 || {
+      warn "uv install had errors — trying pip fallback..."
+      pip install -r "$SCRAPER_REQS" --no-build-isolation -q 2>&1 | tail -5 || warn "Some Python packages failed (non-fatal)"
+    }
+  fi
+  success "Python packages installed via uv"
+elif command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+  PIP=$(command -v pip3 2>/dev/null || command -v pip)
+  if [ -f "$SCRAPER_REQS" ]; then
+    # --no-build-isolation prevents the lxml/expat C-extension hang in Nix
+    info "Using pip (this may take 1–2 minutes for binary packages)..."
+    timeout 180 $PIP install -r "$SCRAPER_REQS" \
+      --no-build-isolation \
+      --prefer-binary \
+      -q 2>&1 | tail -8 || warn "Some Python packages failed (non-fatal)"
+    success "Python packages installed"
   else
-    # Fallback: install core packages
-    $PIP install fastapi uvicorn httpx pydantic python-dotenv boto3 -q || warn "Python install had errors"
-    success "Core Python packages installed"
+    # Fallback: install only core packages needed to run the engine
+    timeout 120 $PIP install fastapi uvicorn httpx pydantic python-dotenv \
+      --no-build-isolation --prefer-binary -q 2>&1 | tail -5 || warn "Core Python install had errors"
+    success "Core Python packages installed (requirements.txt not found)"
   fi
 else
-  warn "pip not found — skipping Python packages. Add 'python-3.11' to .replit modules."
+  warn "pip/uv not found — Python packages not installed."
+  warn "Add 'python-3.11' to .replit [nix] packages section."
 fi
 
 # ── Step 9: Environment variables check ───────────────────────────────────────
 echo ""
-info "Checking required environment variables..."
+info "Checking environment variables..."
 REQUIRED_VARS=(
   "DATABASE_URL"
   "JWT_SECRET"
@@ -132,17 +176,20 @@ echo ""
 if [ "$ALL_OK" = true ]; then
   success "All required env vars are set"
 else
-  warn "Some required env vars are missing — add them in Replit Secrets"
+  warn "Some required env vars are missing — add them in Replit Secrets panel"
 fi
 
-# ── Step 10: DB migrations check ─────────────────────────────────────────────
+# ── Step 10: DB migrations ────────────────────────────────────────────────────
 if [ -n "${DATABASE_URL:-}" ]; then
-  info "Running database migrations..."
+  info "Running database migrations (drizzle-kit push)..."
   if [ -f "lib/db/drizzle.config.ts" ]; then
-    (cd lib/db && npx drizzle-kit push --config drizzle.config.ts 2>&1 | tail -10) || warn "Migration had warnings"
+    (cd lib/db && npx drizzle-kit push --config drizzle.config.ts 2>&1 | tail -10) || \
+      warn "Migration had warnings — check drizzle output above"
     success "Migrations applied"
   elif [ -d "lib/db/migrations" ]; then
-    warn "Found migrations folder but no drizzle.config.ts — run migrations manually"
+    warn "Found migrations/ folder but no drizzle.config.ts — run migrations manually"
+  else
+    warn "No drizzle config found — skipping migrations"
   fi
 else
   warn "DATABASE_URL not set — skipping migrations"
@@ -155,12 +202,18 @@ echo -e "  ${GREEN}Setup complete!${NC}"
 echo "=================================================="
 echo ""
 echo "Next steps:"
-echo "  1. Add any missing secrets above in Replit Secrets panel"
-echo "  2. Click 'Run' (or use the 'Start application' workflow)"
-echo "  3. Open the preview at: /crm  (CRM frontend)"
-echo "                          /tools (Tools frontend)"
+echo "  1. Add any missing secrets above in the Replit Secrets panel (lock icon)"
+echo "  2. Click the Run ▶ button (or use 'Project' workflow)"
+echo "  3. Preview opens at:  /crm     (CRM frontend)"
+echo "                        /tools   (Tools frontend)"
 echo ""
 echo "Useful commands:"
-echo "  bash deploy.sh          — deploy scraper engine to AWS ECS"
-echo "  cat BUGS.md             — view known issues tracker"
+echo "  bash deploy.sh            — deploy scraper engine to AWS ECS"
+echo "  bash replit-setup.sh      — re-run this setup (safe to repeat)"
+echo "  cat BUGS.md               — view known issues tracker"
+echo ""
+echo "Troubleshooting:"
+echo "  • If Python packages hang: run 'pip install uv && uv pip install --system -r artifacts/TolipAI-scraper-engine/requirements.txt'"
+echo "  • If builds fail: check pnpm version with 'pnpm --version' (must be 9.x)"
+echo "  • If migrations fail: ensure DATABASE_URL secret is set and DB is reachable"
 echo ""

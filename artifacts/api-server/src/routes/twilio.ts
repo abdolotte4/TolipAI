@@ -1127,16 +1127,27 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
   const crmUser = req.crmUser!;
   try {
     const isSuperAdmin = crmUser.role === "super_admin";
-    const callCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
-      ? sql`TRUE`
-      : eq(crmCallLogs.campaignId, crmUser.campaignId);
-    const smsCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
-      ? sql`TRUE`
-      : eq(crmOpenPhoneMessages.campaignId, crmUser.campaignId);
-
     const ownedDigits = number.replace(/\D/g, "").slice(-10);
 
-    const [callRows, smsRows] = await Promise.all([
+    // Build WHERE conditions as arrays to avoid sql`TRUE` composition issues
+    const callConditions: any[] = [
+      sql`(RIGHT(REGEXP_REPLACE(crm_call_logs.from_number, '[^0-9]', '', 'g'), 10) = ${ownedDigits}
+        OR RIGHT(REGEXP_REPLACE(crm_call_logs.to_number, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`,
+    ];
+    if (!isSuperAdmin && crmUser.campaignId) {
+      callConditions.push(eq(crmCallLogs.campaignId, crmUser.campaignId));
+    }
+
+    const smsConditions: any[] = [
+      sql`(RIGHT(REGEXP_REPLACE(crm_openphone_messages.from_number, '[^0-9]', '', 'g'), 10) = ${ownedDigits}
+        OR RIGHT(REGEXP_REPLACE(crm_openphone_messages.to_number, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`,
+    ];
+    if (!isSuperAdmin && crmUser.campaignId) {
+      smsConditions.push(eq(crmOpenPhoneMessages.campaignId, crmUser.campaignId));
+    }
+
+    // Run both queries independently — if one fails, we still return the other
+    const [callResult, smsResult] = await Promise.allSettled([
       db.select({
         id:           crmCallLogs.id,
         fromNumber:   crmCallLogs.fromNumber,
@@ -1149,11 +1160,7 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
         createdAt:    crmCallLogs.createdAt,
       })
         .from(crmCallLogs)
-        .where(and(
-          callCampaignFilter,
-          sql`(RIGHT(REGEXP_REPLACE(${crmCallLogs.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits}
-            OR RIGHT(REGEXP_REPLACE(${crmCallLogs.toNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`
-        ))
+        .where(and(...callConditions))
         .orderBy(desc(crmCallLogs.createdAt))
         .limit(500),
 
@@ -1166,14 +1173,20 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
         createdAt:  crmOpenPhoneMessages.createdAt,
       })
         .from(crmOpenPhoneMessages)
-        .where(and(
-          smsCampaignFilter,
-          sql`(RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.fromNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits}
-            OR RIGHT(REGEXP_REPLACE(${crmOpenPhoneMessages.toNumber}, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`
-        ))
+        .where(and(...smsConditions))
         .orderBy(desc(crmOpenPhoneMessages.createdAt))
         .limit(500),
     ]);
+
+    if (callResult.status === "rejected") {
+      logger.warn({ err: callResult.reason, number }, "[phone-numbers/conversations] call query failed — returning empty");
+    }
+    if (smsResult.status === "rejected") {
+      logger.warn({ err: smsResult.reason, number }, "[phone-numbers/conversations] sms query failed — returning empty");
+    }
+
+    const callRows = callResult.status === "fulfilled" ? callResult.value : [];
+    const smsRows  = smsResult.status === "fulfilled"  ? smsResult.value  : [];
 
     type ConvEntry = {
       contact: string;

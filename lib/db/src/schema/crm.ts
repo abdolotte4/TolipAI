@@ -256,6 +256,7 @@ export const crmCallLogs = pgTable("crm_call_logs", {
   transcript: text("transcript"),
   disposition: text("disposition"),
   aiCoachingSummary: text("ai_coaching_summary"),
+  conferenceSid: text("conference_sid"),
   mosScore: numeric("mos_score", { precision: 4, scale: 2 }),
   jitterMs: numeric("jitter_ms", { precision: 8, scale: 2 }),
   packetLossPct: numeric("packet_loss_pct", { precision: 5, scale: 2 }),

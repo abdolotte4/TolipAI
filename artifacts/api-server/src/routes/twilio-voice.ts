@@ -427,6 +427,14 @@ router.post("/twilio/voice/conference-status", async (req, res) => {
       });
     }
     logger.info({ confName, conferenceSid }, "[twilio/voice/conference-status] stored");
+
+    // Persist conferenceSid to DB so recording callback survives server restarts
+    if (conferenceSid && agentCallSid) {
+      db.update(crmCallLogs)
+        .set({ conferenceSid, updatedAt: new Date() } as any)
+        .where(eq(crmCallLogs.callSid, agentCallSid))
+        .catch((e: any) => logger.warn({ err: e }, "[twilio/voice/conference-status] conferenceSid persist skipped (column may not exist yet)"));
+    }
   } catch (err) {
     logger.error(err, "[twilio/voice/conference-status] error");
   }
@@ -507,6 +515,20 @@ router.post("/twilio/voice/recording", async (req, res) => {
         }
       }
     }
+    // DB fallback — look up agentCallSid by conferenceSid persisted at conference-start
+    if (!callSid && conferenceSid) {
+      try {
+        const [cl] = await db
+          .select({ callSid: crmCallLogs.callSid })
+          .from(crmCallLogs)
+          .where((crmCallLogs as any).conferenceSid
+            ? eq((crmCallLogs as any).conferenceSid, conferenceSid)
+            : sql`false`)
+          .limit(1);
+        if (cl?.callSid) callSid = cl.callSid;
+      } catch { /* column may not exist yet — non-fatal */ }
+    }
+
     // Twilio REST API fallback — handles cases where activeConferences was cleared
     if (!callSid && conferenceSid) {
       try {
