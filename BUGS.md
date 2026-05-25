@@ -563,7 +563,45 @@ When a text arrives from a number with no lead record in the DB:
 
 ---
 
-## ACTION ITEMS (Updated Session 5)
+## SESSION 6 FIXES (2026-05-25 — OpenAI LLM, Inbound SMS Lead Creation, ENTERPRISE.md)
+
+### BUG-077 — Scraper LLM blocked by Groq daily rate limit — switched to OpenAI GPT-4o-mini 🟢 Fixed
+**Files:** `artifacts/TolipAI-scraper-engine/workers/config.py`, `artifacts/TolipAI-scraper-engine/workers/llm.py`, `artifacts/TolipAI-scraper-engine/workers/main.py`  
+**Root cause:** Groq free tier exhausts its daily token quota and returns HTTP 429 errors. The scraper's LLM provider chain had no paid/reliable tier between OpenRouter (Kimi) and Groq. When Groq hit its limit, all AI-scored scraper results returned 0.  
+**Fix:**
+- Added `openai_api_key`, `openai_base_url`, `openai_model` (`gpt-4o-mini`) to `config.py`
+- Added `_openai()` client factory to `llm.py` (same pattern as every other provider)
+- Inserted `("openai", _openai, settings.openai_model)` into the provider chain **between OpenRouter and Groq** — so OpenAI is tried before Groq but after the Kimi models
+- Updated `/health` endpoint in `main.py` to probe and report OpenAI status alongside other providers
+- Updated `/health/providers` to include OpenAI config + circuit-breaker state
+- Updated `/health/configs` `llm` block to include `openai_configured`
+- Updated fallback error message to mention `OPENAI_API_KEY`  
+**New provider order:** Moonshot (Kimi K2.6) → OpenRouter (Kimi K2.6) → **OpenAI GPT-4o-mini** → Groq → Cerebras → Together → NVIDIA  
+**Result:** `OPENAI_API_KEY` is already set in Replit Secrets. Scraper will now use GPT-4o-mini whenever Kimi providers aren't configured and Groq is rate-limited. Health endpoint will show `llm.openai.status: ok`. Re-deploy ECS task to pick up the new provider.
+
+### BUG-078 — Unknown inbound SMS creates no lead — AI cannot reply, no notifications fire 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/twilio.ts`  
+**Root cause:** When a phone number with no existing lead record texts a campaign's Twilio number, the webhook saved the message with `leadId: null` and stopped. No lead was created, so:
+- In-app notifications never fired (no lead → no assigned users to notify)
+- AI SMS auto-reply never fired (code gates on `lead?.campaignId`)
+- The conversation appeared in DB but was invisible in the CRM UI (no lead card)
+- Agents had to manually create a lead and link the conversation  
+**Fix:** Added an auto-create block **after** campaign resolution and **before** message save. Behavior:
+1. If `lead === null` AND `resolvedCampaignId` is not null → insert new lead:
+   - `phone` = `fromNumber`
+   - `campaignId` = `resolvedCampaignId`
+   - `sellerName` = `"Unknown (+1...)"` (formatted from number)
+   - `status` = `"new"`
+   - `leadSource` = `"inbound_sms"`
+2. Uses `.onConflictDoNothing()` to safely handle race conditions (two rapid texts from the same number)
+3. Emits `lead_created` SSE event — UI shows toast notification and new lead card appears
+4. The newly created `lead` object is then used for the rest of the webhook: message save gets correct `leadId`, notifications fire for all campaign users, AI SMS can now reply  
+**No-lead fallback:** If `resolvedCampaignId` is also null (Twilio number belongs to no campaign), behavior is unchanged — message saved with `leadId: null`, no lead created  
+**STOP/HELP behavior:** Lead is created before STOP/HELP check, so STOP from a new number creates a lead + immediately opts it out. This is intentional — the lead record is useful even for opt-outs.
+
+---
+
+## ACTION ITEMS (Updated Session 6)
 
 ### P0 — Infrastructure Blockers (user action required)
 1. **Fix AWS ELB → ECS connection** (BUG-051) → AWS Console → ECS → cluster `TolipAI-scraper-cluster` → service `tolipai-scraper-engine-service-xop` → Update service → attach load balancer + target group. Unblocks ALL scraper features in production.

@@ -812,7 +812,7 @@ router.post("/twilio/webhook", async (req, res) => {
       .from(crmLeads)
       .where(sql`regexp_replace(${crmLeads.phone}, '[^0-9]', '', 'g') = ${normFrom}`)
       .limit(1);
-    const lead = allLeads[0] ?? null;
+    let lead: { id: number; phone: string | null; campaignId: number | null } | null = allLeads[0] ?? null;
 
     // If no lead found, resolve campaignId from the receiving Twilio number (To).
     // Checks both the primary twilioPhoneNumber and the secondary crm_campaign_phone_numbers table.
@@ -834,6 +834,45 @@ router.post("/twilio/webhook", async (req, res) => {
           .where(sql`regexp_replace(${crmCampaignPhoneNumbers.phoneNumber}, '[^0-9]', '', 'g') = ${normTo}`)
           .limit(1);
         resolvedCampaignId = secondary[0]?.campaignId ?? null;
+      }
+    }
+
+    // ── Auto-create lead from unknown inbound SMS ─────────────────────────────
+    // If the texting number is not in our DB but we can attribute it to a campaign
+    // (via the receiving Twilio number), automatically create a new lead.  This
+    // ensures the conversation is tracked, notifications fire, and AI can reply
+    // with context.  We check for an existing lead one more time to avoid a rare
+    // race condition where two near-simultaneous messages from the same number
+    // could both hit this block before either insert commits.
+    if (!lead && resolvedCampaignId) {
+      try {
+        const [newLead] = await db
+          .insert(crmLeads)
+          .values({
+            phone: fromNumber,
+            campaignId: resolvedCampaignId,
+            sellerName: `Unknown (${fromNumber})`,
+            status: "new",
+            leadSource: "inbound_sms",
+          })
+          .returning({ id: crmLeads.id, phone: crmLeads.phone, campaignId: crmLeads.campaignId })
+          .onConflictDoNothing();
+        if (newLead) {
+          lead = { id: newLead.id, phone: newLead.phone, campaignId: newLead.campaignId };
+          logger.info(
+            { leadId: newLead.id, from: fromNumber, campaignId: resolvedCampaignId },
+            "[twilio webhook] Auto-created lead from unknown inbound SMS"
+          );
+          emitCrmActivity("lead_created", {
+            leadId: newLead.id,
+            campaignId: resolvedCampaignId,
+            source: "inbound_sms",
+            phone: fromNumber,
+            ts: Date.now(),
+          });
+        }
+      } catch (createErr) {
+        logger.warn(createErr, "[twilio webhook] Auto-create lead failed — continuing without lead");
       }
     }
 

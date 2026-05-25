@@ -873,7 +873,7 @@ async def health() -> Dict[str, Any]:
         except Exception as e:
             return {"status": "error", "error": str(e)[:120]}
 
-    from .llm import _groq, _cerebras, _nvidia, _openrouter, _moonshot
+    from .llm import _groq, _cerebras, _nvidia, _openrouter, _moonshot, _openai
 
     (
         llm_groq,
@@ -881,6 +881,7 @@ async def health() -> Dict[str, Any]:
         llm_nvidia,
         llm_openrouter,
         llm_moon,
+        llm_openai,
         db_result,
     ) = await asyncio.gather(
         _probe_llm("groq", _groq, settings.groq_model),
@@ -888,12 +889,13 @@ async def health() -> Dict[str, Any]:
         _probe_llm("nvidia", _nvidia, settings.nvidia_model),
         _probe_llm("openrouter", _openrouter, settings.openrouter_model),
         _probe_llm("moonshot", _moonshot, settings.moonshot_model),
+        _probe_llm("openai", _openai, settings.openai_model),
         _probe_db(),
     )
     sapi = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
     sbee = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
 
-    llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon)
+    llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon, llm_openai)
     llm_ok = any(r["status"] == "ok" for r in llm_results)
     db_ok = db_result.get("status") == "ok"
     overall = "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
@@ -902,6 +904,7 @@ async def health() -> Dict[str, Any]:
         "status": overall,
         "version": app.version,
         "llm": {
+            "openai": llm_openai,
             "groq": llm_groq,
             "cerebras": llm_cerebras,
             "nvidia": llm_nvidia,
@@ -959,6 +962,7 @@ async def health_keys() -> Dict[str, Any]:
             "keys_active": 0,
         },
         "llm": {
+            "openai_configured": bool(settings.openai_api_key),
             "groq_configured": bool(settings.groq_api_key),
             "cerebras_configured": bool(settings.cerebras_api_key),
             "together_configured": bool(settings.together_api_key),
@@ -1004,6 +1008,11 @@ async def health_providers() -> Dict[str, Any]:
         }
 
     llm_providers = {
+        "openai": {
+            "configured": bool(settings.openai_api_key),
+            "model": settings.openai_model,
+            "circuit_breaker": _cb("openai"),
+        },
         "groq": {
             "configured": bool(settings.groq_api_key),
             "model": settings.groq_model,

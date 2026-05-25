@@ -353,7 +353,7 @@ async def _chat_inner(
     if last_err:
         raise last_err
     raise RuntimeError(
-        "No LLM provider available — set MOONSHOT_KIMI_API_KEY (Kimi K2.6), "
+        "No LLM provider available — set OPENAI_API_KEY, MOONSHOT_KIMI_API_KEY (Kimi K2.6), "
         "OPENROUTER_API_KEY, or GROQ_API_KEY in Replit Secrets"
     )
 
