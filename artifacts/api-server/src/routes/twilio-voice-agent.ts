@@ -29,6 +29,7 @@ import {
 import { eq } from "drizzle-orm";
 import { getSmsCreds, getGlobalSmsCreds } from "../services/twilioCredentials";
 import { getOpenAIKey } from "../services/aiConfig";
+import { scoreCallTranscript, formatScoreNotes } from "../services/callScoring";
 import { logger } from "../lib/logger";
 import twilio from "twilio";
 import { getWebhookBase } from "../lib/webhookBase";
@@ -203,6 +204,21 @@ async function processCallEnd(session: AgentSession): Promise<void> {
   );
 
   try {
+    // Score the transcript async (fire-and-forget so it doesn't delay lead creation)
+    let qualificationScore: number | null = null;
+    let qualificationNotes: string | null = null;
+    if (transcript) {
+      try {
+        const scored = await scoreCallTranscript(transcript);
+        if (scored) {
+          qualificationScore = scored.score;
+          qualificationNotes = formatScoreNotes(scored);
+        }
+      } catch (err) {
+        logger.warn({ err }, "[agent] call scoring failed — skipping");
+      }
+    }
+
     // Update the call log created by the TwiML endpoint
     if (session.callLogId) {
       await db
@@ -212,6 +228,8 @@ async function processCallEnd(session: AgentSession): Promise<void> {
           duration: durationSec,
           transcript,
           disposition: qualified ? "ai_qualified" : "ai_unqualified",
+          qualificationScore,
+          qualificationNotes,
           updatedAt: new Date(),
         })
         .where(eq(crmCallLogs.id, session.callLogId));

@@ -240,8 +240,22 @@ router.get("/calls", crmAuth, async (req, res) => {
         FROM crm_call_logs
         ${campaignWhere}
       `),
+
+      // Qualification score distribution (calls with scores only)
+      db.execute(sql`
+        SELECT
+          count(*) FILTER (WHERE qualification_score >= 80)::int  AS hot,
+          count(*) FILTER (WHERE qualification_score >= 60 AND qualification_score < 80)::int AS warm,
+          count(*) FILTER (WHERE qualification_score >= 40 AND qualification_score < 60)::int AS lukewarm,
+          count(*) FILTER (WHERE qualification_score >= 20 AND qualification_score < 40)::int AS cold,
+          count(*) FILTER (WHERE qualification_score < 20 AND qualification_score IS NOT NULL)::int  AS not_a_lead,
+          count(*) FILTER (WHERE qualification_score IS NOT NULL)::int AS scored_total,
+          round(AVG(qualification_score), 1)::float AS avg_score
+        FROM crm_call_logs
+        ${campaignWhere}
+      `),
     ]);
-    const [volumeR, dispositionR, agentCallsR, summaryR] = _callsResults;
+    const [volumeR, dispositionR, agentCallsR, summaryR, scoreR] = _callsResults;
     _callsResults.forEach((r, i) => {
       if (r.status === "rejected") logger.warn({ reason: (r as PromiseRejectedResult).reason?.message, i }, "[crm/analytics/calls] sub-query failed");
     });
@@ -249,8 +263,10 @@ router.get("/calls", crmAuth, async (req, res) => {
     const dispositionRows = dispositionR.status === "fulfilled" ? dispositionR.value : { rows: [] };
     const agentRows       = agentCallsR.status  === "fulfilled" ? agentCallsR.value  : { rows: [] };
     const summaryRows     = summaryR.status     === "fulfilled" ? summaryR.value     : { rows: [{}] };
+    const scoreRows       = scoreR.status       === "fulfilled" ? scoreR.value       : { rows: [{}] };
 
     const summary = summaryRows.rows[0] as any;
+    const scoreRow = scoreRows.rows[0] as any;
 
     res.json({
       summary: {
@@ -285,6 +301,15 @@ router.get("/calls", crmAuth, async (req, res) => {
         totalDuration: Number(r.total_duration_sec),
         answered: Number(r.answered),
       })),
+      scoreDistribution: {
+        hot:       Number(scoreRow?.hot)        || 0,
+        warm:      Number(scoreRow?.warm)       || 0,
+        lukewarm:  Number(scoreRow?.lukewarm)   || 0,
+        cold:      Number(scoreRow?.cold)       || 0,
+        notALead:  Number(scoreRow?.not_a_lead) || 0,
+        scoredTotal: Number(scoreRow?.scored_total) || 0,
+        avgScore:  scoreRow?.avg_score ? Number(scoreRow.avg_score) : null,
+      },
     });
   } catch (err: any) {
     logger.warn({ err: err.message }, "[crm/analytics/calls] returning empty data");

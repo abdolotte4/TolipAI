@@ -38,6 +38,7 @@ import {
   hasAI,
   getChatModel,
 } from "../services/aiConfig";
+import { scoreCallTranscript, formatScoreNotes } from "../services/callScoring";
 import { logger } from "../lib/logger";
 import { emitCrmActivity } from "./sse";
 
@@ -665,9 +666,23 @@ router.post("/twilio/voice/recording", async (req, res) => {
           const text = await transcribeAudio(audioBuffer, "recording.mp3");
           if (!text) return;
 
+          // Score the transcript with AI (best-effort)
+          let qualificationScore: number | null = null;
+          let qualificationNotes: string | null = null;
+          try {
+            const scored = await scoreCallTranscript(text);
+            if (scored) {
+              qualificationScore = scored.score;
+              qualificationNotes = formatScoreNotes(scored);
+              logger.info({ callSid, score: scored.score, tier: scored.tier }, "[twilio/voice/recording] call scored");
+            }
+          } catch (scoreErr) {
+            logger.warn({ scoreErr }, "[twilio/voice/recording] scoring failed — continuing");
+          }
+
           await db
             .update(crmCallLogs)
-            .set({ transcript: text, updatedAt: new Date() })
+            .set({ transcript: text, qualificationScore, qualificationNotes, updatedAt: new Date() })
             .where(eq(crmCallLogs.callSid, callSid!));
 
           logger.info({ callSid }, "[twilio/voice/recording] transcript saved");

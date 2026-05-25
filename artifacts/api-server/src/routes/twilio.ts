@@ -1205,15 +1205,18 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
     // Run both queries independently — if one fails, we still return the other
     const [callResult, smsResult] = await Promise.allSettled([
       db.select({
-        id:           crmCallLogs.id,
-        fromNumber:   crmCallLogs.fromNumber,
-        toNumber:     crmCallLogs.toNumber,
-        direction:    crmCallLogs.direction,
-        status:       crmCallLogs.status,
-        duration:     crmCallLogs.duration,
-        recordingUrl: crmCallLogs.recordingUrl,
-        leadId:       crmCallLogs.leadId,
-        createdAt:    crmCallLogs.createdAt,
+        id:                 crmCallLogs.id,
+        fromNumber:         crmCallLogs.fromNumber,
+        toNumber:           crmCallLogs.toNumber,
+        direction:          crmCallLogs.direction,
+        status:             crmCallLogs.status,
+        duration:           crmCallLogs.duration,
+        recordingUrl:       crmCallLogs.recordingUrl,
+        leadId:             crmCallLogs.leadId,
+        createdAt:          crmCallLogs.createdAt,
+        qualificationScore: crmCallLogs.qualificationScore,
+        qualificationNotes: crmCallLogs.qualificationNotes,
+        disposition:        crmCallLogs.disposition,
       })
         .from(crmCallLogs)
         .where(and(...callConditions))

@@ -6,13 +6,35 @@ import {
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import {
-  Phone, PhoneCall, PhoneIncoming, PhoneMissed, Clock, Users,
-  BarChart2, ArrowLeft, RefreshCw, Loader2, TrendingUp,
+  Phone, PhoneCall, Clock, Users,
+  ArrowLeft, RefreshCw, Loader2, TrendingUp, Flame, Star,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+
+const TIER_CONFIG = [
+  { key: "hot",       label: "Hot",        color: "#ef4444", bg: "bg-red-500/10",    text: "text-red-400"    },
+  { key: "warm",      label: "Warm",       color: "#f97316", bg: "bg-orange-500/10", text: "text-orange-400" },
+  { key: "lukewarm",  label: "Lukewarm",   color: "#eab308", bg: "bg-yellow-500/10", text: "text-yellow-400" },
+  { key: "cold",      label: "Cold",       color: "#60a5fa", bg: "bg-blue-500/10",   text: "text-blue-400"   },
+  { key: "notALead",  label: "Not a Lead", color: "#6b7280", bg: "bg-gray-500/10",   text: "text-gray-400"   },
+];
+
+function ScoreBadge({ score }: { score: number | null }) {
+  if (score === null || score === undefined) return <span className="text-muted-foreground text-xs">—</span>;
+  const tier = score >= 80 ? TIER_CONFIG[0]
+    : score >= 60 ? TIER_CONFIG[1]
+    : score >= 40 ? TIER_CONFIG[2]
+    : score >= 20 ? TIER_CONFIG[3]
+    : TIER_CONFIG[4];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${tier.bg} ${tier.text}`}>
+      {score} · {tier.label}
+    </span>
+  );
+}
 
 const DISPOSITION_COLORS: Record<string, string> = {
   answered: "#10b981",
@@ -80,7 +102,7 @@ export default function CallReport() {
     );
   }
 
-  const { summary, volume, dispositions, agents } = data || {};
+  const { summary, volume, dispositions, agents, scoreDistribution } = data || {};
 
   return (
     <div className="space-y-6 pb-20">
@@ -140,6 +162,73 @@ export default function CallReport() {
           color="text-cyan-400"
         />
       </motion.div>
+
+      {/* AI Qualification Score Distribution */}
+      {scoreDistribution && scoreDistribution.scoredTotal > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+          <Card className="rounded-2xl border-white/5 bg-card overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center justify-between">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Flame className="w-4 h-4 text-red-400" /> AI Lead Qualification Scores
+              </h2>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Star className="w-3 h-3 text-amber-400" />
+                Avg score: <span className="font-semibold text-foreground">{scoreDistribution.avgScore ?? "—"}</span>
+                &nbsp;·&nbsp;{scoreDistribution.scoredTotal} calls scored
+              </div>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {TIER_CONFIG.map(tier => {
+                  const count = scoreDistribution[tier.key as keyof typeof scoreDistribution] as number ?? 0;
+                  const pct = scoreDistribution.scoredTotal > 0
+                    ? Math.round((count / scoreDistribution.scoredTotal) * 100)
+                    : 0;
+                  return (
+                    <div key={tier.key} className={`rounded-xl p-4 ${tier.bg} flex flex-col gap-1`}>
+                      <span className={`text-xs font-medium ${tier.text}`}>{tier.label}</span>
+                      <span className={`text-2xl font-bold ${tier.text}`}>{count}</span>
+                      <div className="w-full bg-white/5 rounded-full h-1.5 mt-1">
+                        <div
+                          className="h-1.5 rounded-full transition-all"
+                          style={{ width: `${pct}%`, background: tier.color }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground">{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Bar chart of score tiers */}
+              <div className="mt-5">
+                <ResponsiveContainer width="100%" height={120}>
+                  <BarChart
+                    data={TIER_CONFIG.map(t => ({
+                      name: t.label,
+                      count: scoreDistribution[t.key as keyof typeof scoreDistribution] as number ?? 0,
+                      fill: t.color,
+                    }))}
+                    margin={{ top: 0, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="name" tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ background: "#1c1c2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, fontSize: 12 }}
+                      formatter={(v: any) => [v, "Calls"]}
+                    />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      {TIER_CONFIG.map(t => (
+                        <Cell key={t.key} fill={t.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Volume + Duration Chart */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
