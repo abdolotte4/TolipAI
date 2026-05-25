@@ -28,6 +28,7 @@ from .config import settings
 
 log = logging.getLogger("llm")
 
+_openai_client: Optional[AsyncOpenAI] = None
 _groq_client: Optional[AsyncOpenAI] = None
 _cerebras_client: Optional[AsyncOpenAI] = None
 _together_client: Optional[AsyncOpenAI] = None
@@ -56,6 +57,16 @@ def _get_sem() -> asyncio.Semaphore:
     if _llm_sem is None:
         _llm_sem = asyncio.Semaphore(_LLM_CONCURRENCY)
     return _llm_sem
+
+
+def _openai() -> Optional[AsyncOpenAI]:
+    global _openai_client
+    if _openai_client is None and settings.openai_api_key:
+        _openai_client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+        )
+    return _openai_client
 
 
 def _groq() -> Optional[AsyncOpenAI]:
@@ -244,11 +255,12 @@ async def _chat_inner(
     if json_mode:
         messages = _ensure_json_in_messages(messages)
 
-    # Provider order: Kimi K2.6 first (best model, 1M context), Groq free fallback.
+    # Provider order: Kimi K2.6 first (best model), OpenAI paid second, free tiers last.
     providers = [
-        ("moonshot", _moonshot, settings.moonshot_model),  # Kimi K2.6 direct API
+        ("moonshot", _moonshot, settings.moonshot_model),    # Kimi K2.6 direct API
         ("openrouter", _openrouter, settings.openrouter_model),  # Kimi K2.6 via OpenRouter
-        ("groq", _groq, settings.groq_model),  # Free, fast fallback
+        ("openai", _openai, settings.openai_model),           # GPT-4o-mini — reliable paid
+        ("groq", _groq, settings.groq_model),                 # Free, fast (rate-limited)
         ("cerebras", _cerebras, settings.cerebras_model),
         ("together", _together, settings.together_model),
         ("nvidia", _nvidia, settings.nvidia_model),

@@ -39,6 +39,11 @@ class Settings:
     database_url: Optional[str] = _env("DATABASE_URL")
 
     # ── LLM providers ───────────────────────────────────────────────────────
+    # OpenAI — reliable paid tier; used as primary fallback when free providers hit rate limits
+    openai_api_key: Optional[str] = _env("OPENAI_API_KEY")
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = _env("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
+
     groq_api_key: Optional[str] = _env("GROQ_API_KEY")
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_model: str = _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
