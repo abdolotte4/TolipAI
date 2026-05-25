@@ -58,7 +58,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # ── Step 3: Install all workspace dependencies ────────────────────────────────
 info "Installing workspace dependencies (this may take 2–4 minutes on first run)..."
-pnpm install --no-frozen-lockfile 2>&1 | grep -E "(warn|ERR|error|Done|✓|Packages|already up)" || true
+timeout 300 pnpm install --no-frozen-lockfile 2>&1 | grep -E "(warn|ERR|error|Done|✓|Packages|already up)" || warn "pnpm install timed out or had errors — retry with: pnpm install --no-frozen-lockfile"
 success "Dependencies installed"
 
 # ── Step 4: Build shared DB package ──────────────────────────────────────────
@@ -183,7 +183,7 @@ fi
 if [ -n "${DATABASE_URL:-}" ]; then
   info "Running database migrations (drizzle-kit push)..."
   if [ -f "lib/db/drizzle.config.ts" ]; then
-    timeout 120 npx drizzle-kit push --force --config drizzle.config.ts 2>&1 | tail -10 || \
+    (cd lib/db && timeout 120 npx drizzle-kit push --force 2>&1 | tail -10) || \
       warn "Migration had warnings — check drizzle output above"
     success "Migrations applied (or skipped after timeout)"
   elif [ -d "lib/db/migrations" ]; then

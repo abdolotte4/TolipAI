@@ -781,9 +781,23 @@ router.post("/twilio/webhook", async (req, res) => {
       .limit(1);
     const lead = allLeads[0] ?? null;
 
+    // If no lead found, resolve campaignId from the receiving Twilio number (To).
+    // This ensures messages from unknown numbers (e.g. verification codes) still
+    // appear in the correct campaign's Phone Numbers inbox.
+    let resolvedCampaignId: number | null = lead?.campaignId ?? null;
+    if (!resolvedCampaignId && toNumber) {
+      const normTo = digitsOnly(toNumber);
+      const ownerCampaign = await db
+        .select({ id: crmCampaigns.id })
+        .from(crmCampaigns)
+        .where(sql`regexp_replace(${crmCampaigns.twilioPhoneNumber}, '[^0-9]', '', 'g') = ${normTo}`)
+        .limit(1);
+      resolvedCampaignId = ownerCampaign[0]?.id ?? null;
+    }
+
     await db.insert(crmOpenPhoneMessages).values({
       leadId: lead?.id ?? null,
-      campaignId: lead?.campaignId ?? null,
+      campaignId: resolvedCampaignId,
       openPhoneMessageId: sid || null,
       direction: "incoming",
       fromNumber,
@@ -797,7 +811,7 @@ router.post("/twilio/webhook", async (req, res) => {
       to: toNumber,
       body: content.slice(0, 200),
       leadId: lead?.id ?? null,
-      campaignId: lead?.campaignId ?? null,
+      campaignId: resolvedCampaignId,
       ts: Date.now(),
     });
 

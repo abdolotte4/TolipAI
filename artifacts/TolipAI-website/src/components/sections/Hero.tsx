@@ -6,7 +6,7 @@ import { ChevronDown, Play, Mail, ArrowRight, CheckCircle } from "lucide-react";
 const heroCityImg = "/images/hero-bg.jpg";
 const heroChartImg = "/images/performance-dashboard.jpg";
 
-const DEMO_URL = "https://heroic-curiosity-production-dc5a.up.railway.app/crm/";
+const DEMO_URL = "https://tolipai.com/crm/";
 
 export function Hero() {
   const [email, setEmail] = useState("");

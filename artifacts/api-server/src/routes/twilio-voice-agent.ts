@@ -15,7 +15,7 @@
 //
 // Required env vars:
 //   OPENAI_API_KEY   — must have Realtime API access
-//   API_BASE_URL     — e.g. https://yourapp.railway.app/api (used for WS URL)
+//   API_BASE_URL     — e.g. https://tolipai.com/api (used for WS URL)
 
 import { Router, type IRouter } from "express";
 import type { IncomingMessage } from "http";

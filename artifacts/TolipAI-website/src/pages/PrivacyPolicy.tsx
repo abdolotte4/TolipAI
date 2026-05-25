@@ -228,7 +228,7 @@ export default function PrivacyPolicy() {
             <p className="text-sm text-muted-foreground">
               This Privacy Policy is governed by the laws of the State of Wyoming. For our full Terms of Service, visit{" "}
               <a href="/terms-of-service" className="text-primary underline hover:text-primary/80">
-                tolip-production.up.railway.app/terms-of-service
+                tolipai.com/terms-of-service
               </a>.
             </p>
           </div>

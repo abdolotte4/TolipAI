@@ -53,7 +53,7 @@
 | `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET` | 🟡 | Browser Voice SDK tokens |
 | `TWILIO_VOICE_APP_SID` | 🟡 | TwiML App SID for browser calling |
 | `TWILIO_VOICE_CALLER_ID` | 🟡 | Global caller ID fallback |
-| `API_BASE_URL` | 🟡 | e.g. `https://yourapp.railway.app/api` — used for Twilio webhooks + WS URL |
+| `API_BASE_URL` | 🟡 | e.g. `https://tolipai.com/api` — used for Twilio webhooks + WS URL |
 | `STRIPE_SECRET_KEY` | 🟡 | Billing |
 | `ENCRYPTION_KEY` | 🟡 | AES-256 for stored secrets (auth tokens, passwords) |
 

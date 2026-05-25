@@ -4,7 +4,7 @@ import type { Request } from "express";
  * Returns the correct HTTPS base URL for Twilio webhook callbacks.
  *
  * Priority order:
- * 1. API_BASE_URL — set in Railway/production (e.g. https://tolip-production.up.railway.app/api).
+ * 1. API_BASE_URL — set in production (e.g. https://tolipai.com/api).
  *    This is always preferred when available so Twilio webhooks reach the production server.
  * 2. REPLIT_DEV_DOMAIN — set automatically by Replit; used only when API_BASE_URL is absent
  *    (pure local dev with no Railway deployment).
