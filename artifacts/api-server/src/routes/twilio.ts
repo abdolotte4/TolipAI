@@ -24,7 +24,7 @@ import { Router, type IRouter } from "express";
 import twilio from "twilio";
 import { crmAuth, crmAdminOnly } from "./crm/middleware";
 import { db, pool } from "@workspace/db";
-import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations, crmCallLogs } from "@workspace/db/schema";
+import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations, crmCallLogs, crmCampaignPhoneNumbers } from "@workspace/db/schema";
 import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { toE164, digitsOnly } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
@@ -735,9 +735,10 @@ async function validateTwilioSignature(req: any): Promise<boolean> {
     .where(eq(crmCampaigns.twilioEnabled, true));
 
   let authToken: string | null = null;
+  const normTo = digitsOnly(toNumber);
   for (const c of campaigns) {
     if (!c.twilioPhoneNumber) continue;
-    if (digitsOnly(c.twilioPhoneNumber) === digitsOnly(toNumber)) {
+    if (digitsOnly(c.twilioPhoneNumber) === normTo) {
       try {
         authToken = c.twilioAuthToken
           ? (c.twilioAuthToken.includes(":") ? decryptPassword(c.twilioAuthToken) : c.twilioAuthToken)
@@ -746,6 +747,20 @@ async function validateTwilioSignature(req: any): Promise<boolean> {
         authToken = c.twilioAuthToken;
       }
       break;
+    }
+  }
+
+  // Also check secondary numbers table — find the campaign that owns this extra number
+  if (!authToken) {
+    const secondaryMatch = await db
+      .select({ twilioAuthToken: crmCampaigns.twilioAuthToken })
+      .from(crmCampaignPhoneNumbers)
+      .innerJoin(crmCampaigns, eq(crmCampaignPhoneNumbers.campaignId, crmCampaigns.id))
+      .where(sql`regexp_replace(${crmCampaignPhoneNumbers.phoneNumber}, '[^0-9]', '', 'g') = ${normTo}`)
+      .limit(1);
+    if (secondaryMatch[0]?.twilioAuthToken) {
+      const raw = secondaryMatch[0].twilioAuthToken;
+      try { authToken = raw.includes(":") ? decryptPassword(raw) : raw; } catch { authToken = raw; }
     }
   }
 
@@ -800,17 +815,26 @@ router.post("/twilio/webhook", async (req, res) => {
     const lead = allLeads[0] ?? null;
 
     // If no lead found, resolve campaignId from the receiving Twilio number (To).
-    // This ensures messages from unknown numbers (e.g. verification codes) still
-    // appear in the correct campaign's Phone Numbers inbox.
+    // Checks both the primary twilioPhoneNumber and the secondary crm_campaign_phone_numbers table.
     let resolvedCampaignId: number | null = lead?.campaignId ?? null;
     if (!resolvedCampaignId && toNumber) {
       const normTo = digitsOnly(toNumber);
+      // Check primary number
       const ownerCampaign = await db
         .select({ id: crmCampaigns.id })
         .from(crmCampaigns)
         .where(sql`regexp_replace(${crmCampaigns.twilioPhoneNumber}, '[^0-9]', '', 'g') = ${normTo}`)
         .limit(1);
       resolvedCampaignId = ownerCampaign[0]?.id ?? null;
+      // Check secondary numbers table
+      if (!resolvedCampaignId) {
+        const secondary = await db
+          .select({ campaignId: crmCampaignPhoneNumbers.campaignId })
+          .from(crmCampaignPhoneNumbers)
+          .where(sql`regexp_replace(${crmCampaignPhoneNumbers.phoneNumber}, '[^0-9]', '', 'g') = ${normTo}`)
+          .limit(1);
+        resolvedCampaignId = secondary[0]?.campaignId ?? null;
+      }
     }
 
     await safeInsertOpenPhoneMessage({

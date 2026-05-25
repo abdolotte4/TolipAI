@@ -681,6 +681,19 @@ export const crmPhoneReadReceipts = pgTable("crm_phone_read_receipts", {
   index("crm_phone_read_receipts_campaign_idx").on(t.campaignId),
 ]);
 
+// ── crm_campaign_phone_numbers ────────────────────────────────────────────────
+// Additional Twilio phone numbers per campaign (beyond the primary twilioPhoneNumber).
+// Allows a campaign to own multiple numbers that all route to the same inbox.
+export const crmCampaignPhoneNumbers = pgTable("crm_campaign_phone_numbers", {
+  id:          serial("id").primaryKey(),
+  campaignId:  integer("campaign_id").notNull().references(() => crmCampaigns.id, { onDelete: "cascade" }),
+  phoneNumber: text("phone_number").notNull().unique(),
+  label:       text("label"),
+  createdAt:   timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (t) => [
+  index("crm_campaign_phone_numbers_campaign_idx").on(t.campaignId),
+]);
+
 // ── crm_waitlist ─────────────────────────────────────────────────────────────
 // Dedicated table for landing-page waitlist signups.
 // Source values: landing_hero | landing_compare | landing_cta | referral | organic

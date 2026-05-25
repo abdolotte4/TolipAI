@@ -490,7 +490,7 @@ export default function ManualDialerPage() {
 
         handleSms = (e: MessageEvent) => {
           try {
-            const data = JSON.parse(e.data) as { to?: string; from?: string };
+            const data = JSON.parse(e.data) as { to?: string; from?: string; body?: string };
             const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
             const affectedNumber = ownedNumbers.find(num => {
               const d = num.replace(/\D/g, "");
@@ -507,6 +507,10 @@ export default function ManualDialerPage() {
             } else {
               qc.invalidateQueries({ queryKey: ["phone-number-convs"] });
             }
+            // Show toast notification for every inbound SMS
+            const from = data.from ?? "Unknown";
+            const preview = data.body ? (data.body.length > 60 ? data.body.slice(0, 57) + "…" : data.body) : "New message";
+            toast({ title: `New SMS from ${from}`, description: preview, duration: 6000 });
           } catch { /* ignore malformed */ }
         };
 
