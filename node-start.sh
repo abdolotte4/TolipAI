@@ -92,6 +92,13 @@ else
   echo "[node-start] Dist is up to date — skipping build."
 fi
 
+# ── Ensure port is free before starting (prevents EADDRINUSE on restart) ──────
+if ss -tlnp 2>/dev/null | grep -q ":${PORT} "; then
+  echo "[node-start] Port ${PORT} already in use — releasing..."
+  fuser -k "${PORT}/tcp" 2>/dev/null || true
+  sleep 2
+fi
+
 echo "[node-start] Starting API server on port $PORT..."
 export NODE_ENV=production
 exec node --enable-source-maps artifacts/api-server/dist/index.mjs
