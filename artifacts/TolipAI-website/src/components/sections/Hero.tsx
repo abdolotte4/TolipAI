@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronDown, Play, Mail, ArrowRight, CheckCircle } from "lucide-react";
 
-const DEMO_URL = "https://tolipai.com/crm/";
+const DEMO_URL = "https://tolipai.com/demo/";
 
 export function Hero() {
   const [email, setEmail] = useState("");

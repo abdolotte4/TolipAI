@@ -271,6 +271,7 @@ if (process.env.NODE_ENV === "production") {
   const crmDir = path.join(cwd, "artifacts/TolipAI-crm/dist/public");
   const toolsDir = path.join(cwd, "artifacts/TolipAI-tools/dist/public");
   const websiteDir = path.join(cwd, "artifacts/TolipAI-website/dist/public");
+  const demoDir = path.join(cwd, "artifacts/demo-video/dist/public");
 
   app.use("/crm", express.static(crmDir));
   app.get("/crm/*path", (_req: Request, res: Response) => {
@@ -280,6 +281,11 @@ if (process.env.NODE_ENV === "production") {
   app.use("/tools", express.static(toolsDir));
   app.get("/tools/*path", (_req: Request, res: Response) => {
     res.sendFile(path.join(toolsDir, "index.html"));
+  });
+
+  app.use("/demo", express.static(demoDir));
+  app.get("/demo/*path", (_req: Request, res: Response) => {
+    res.sendFile(path.join(demoDir, "index.html"));
   });
 
   app.use("/", express.static(websiteDir));
