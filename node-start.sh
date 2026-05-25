@@ -71,10 +71,10 @@ if [ ! -f "$DIST" ]; then
   NEEDS_BUILD=1
 else
   # Check if any source file in artifacts/ or lib/ is newer than the dist
-  SRC_DIRS="artifacts/api-server/src artifacts/TolipAI-crm/src lib/db/src"
+  SRC_DIRS="artifacts/api-server/src artifacts/TolipAI-crm/src artifacts/TolipAI-website/src artifacts/TolipAI-tools/src lib/db/src"
   for d in $SRC_DIRS; do
     if [ -d "$d" ]; then
-      NEWER=$(find "$d" -name "*.ts" -newer "$DIST" 2>/dev/null | head -1)
+      NEWER=$(find "$d" \( -name "*.ts" -o -name "*.tsx" -o -name "*.css" \) -newer "$DIST" 2>/dev/null | head -1)
       if [ -n "$NEWER" ]; then
         echo "[node-start] Source change detected ($NEWER) — rebuilding..."
         NEEDS_BUILD=1
@@ -95,7 +95,11 @@ fi
 # ── Ensure port is free before starting (prevents EADDRINUSE on restart) ──────
 if ss -tlnp 2>/dev/null | grep -q ":${PORT} "; then
   echo "[node-start] Port ${PORT} already in use — releasing..."
-  fuser -k "${PORT}/tcp" 2>/dev/null || true
+  # fuser may not be available; use ss + /proc to find and kill the owning PID
+  STUCK_PID=$(ss -tlnp 2>/dev/null | grep ":${PORT} " | grep -oP 'pid=\K[0-9]+' | head -1)
+  if [ -n "$STUCK_PID" ]; then
+    kill -9 "$STUCK_PID" 2>/dev/null || true
+  fi
   sleep 2
 fi
 

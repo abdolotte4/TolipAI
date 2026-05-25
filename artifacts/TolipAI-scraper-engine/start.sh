@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # start.sh — Local / Replit startup script for TolipAI Scraper Engine
-# Uses Python 3.11 from .pythonlibs (where fastapi, uvicorn, playwright etc. are installed).
+# Uses the .venv virtual environment (created by uv venv) which has all packages.
 # For production Fargate deployments use start.fargate.sh instead.
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "[scraper] Starting TolipAI Scraper Engine (local/Replit mode)..."
 
-# Resolve Python 3.11 from Replit's .pythonlibs (preferred) or fall back to system python3
+# ── Python resolution: prefer .venv, then .pythonlibs, then system ────────────
 PYTHON=""
 for candidate in \
+  "$SCRIPT_DIR/.venv/bin/python" \
+  "$SCRIPT_DIR/.venv/bin/python3" \
   "/home/runner/workspace/.pythonlibs/bin/python3.11" \
   "/home/runner/.pythonlibs/bin/python3.11" \
   "$(which python3.11 2>/dev/null || true)" \
@@ -21,24 +25,44 @@ for candidate in \
 done
 
 if [ -z "$PYTHON" ]; then
-  echo "[scraper] ERROR: python3.11 not found. Install via Replit's package manager." >&2
+  echo "[scraper] ERROR: python3.11 not found." >&2
   exit 1
 fi
 
 echo "[scraper] Using Python: $PYTHON ($($PYTHON --version))"
 
-# Warn (don't fail) if optional services not configured
-[ -z "${DATABASE_URL:-}" ] && echo "[scraper] WARN: DATABASE_URL not set — DB features disabled"
-[ -z "${REDIS_URL:-}" ]    && echo "[scraper] WARN: REDIS_URL not set — using in-memory job store"
-[ -z "${GROQ_API_KEY:-}" ] && echo "[scraper] WARN: GROQ_API_KEY not set — AI features disabled"
+# ── Bootstrap venv if packages are missing ────────────────────────────────────
+if ! "$PYTHON" -c "import fastapi, uvicorn" 2>/dev/null; then
+  echo "[scraper] Packages missing — bootstrapping .venv..."
+  if command -v uv &>/dev/null; then
+    uv venv "$SCRIPT_DIR/.venv" --python python3.11 2>/dev/null || true
+    PYTHON="$SCRIPT_DIR/.venv/bin/python"
+    uv pip install --python "$PYTHON" \
+      "fastapi==0.115.12" "uvicorn[standard]==0.34.0" "pydantic==2.11.3" \
+      "python-multipart==0.0.20" "python-dotenv==1.0.1" "asyncpg==0.30.0" \
+      "orjson==3.10.16" "cryptography==44.0.2" "python-json-logger==3.3.0" \
+      "psutil==6.1.1" "redis[hiredis]==5.2.1" "httpx[http2]>=0.27.2,<1" \
+      "tenacity==9.0.0" "aiohttp==3.11.18" "cachetools==5.5.2" \
+      "openai>=1.32,<2" "beautifulsoup4==4.13.3" "lxml>=5.3.1,<6" \
+      "Pillow>=10.4.0,<11" "geopy==2.4.1" "shapely==2.1.0" \
+      "PyMuPDF==1.25.5" "pdfplumber==0.11.5" "pytesseract==0.3.13" \
+      "aioboto3==13.4.0" 2>&1 | tail -5
+  else
+    echo "[scraper] WARN: uv not found — cannot auto-install packages" >&2
+  fi
+fi
+
+# ── Optional service warnings ─────────────────────────────────────────────────
+[ -z "${DATABASE_URL:-}" ]    && echo "[scraper] WARN: DATABASE_URL not set — DB features disabled"
+[ -z "${REDIS_URL:-}" ]       && echo "[scraper] WARN: REDIS_URL not set — using in-memory job store"
+[ -z "${GROQ_API_KEY:-}" ]    && echo "[scraper] WARN: GROQ_API_KEY not set — AI features disabled"
 [ -z "${SCRAPER_API_KEY:-}" ] && echo "[scraper] WARN: SCRAPER_API_KEY not set — endpoints unprotected"
 
-# Install Playwright browser (Chromium) if not already present — needed for Propelio/Propwire/Zillow scrapers.
-# This is a no-op if the browser is already installed; takes ~30s on first run.
+# ── Playwright browser (optional) ─────────────────────────────────────────────
 PLAYWRIGHT_BIN="$($PYTHON -c 'import sys; print(sys.prefix)' 2>/dev/null)/bin/playwright"
 if [ -x "$PLAYWRIGHT_BIN" ]; then
   echo "[scraper] Installing Playwright Chromium browser (first-time setup)..."
-  "$PLAYWRIGHT_BIN" install chromium --with-deps 2>&1 | tail -3 || echo "[scraper] WARN: Playwright browser install failed — browser scrapers will be disabled"
+  "$PLAYWRIGHT_BIN" install chromium --with-deps 2>&1 | tail -3 || echo "[scraper] WARN: Playwright browser install failed"
 else
   echo "[scraper] WARN: playwright CLI not found — browser scrapers will be disabled"
 fi
@@ -48,6 +72,7 @@ LOG_LEVEL="${LOG_LEVEL:-info}"
 
 echo "[scraper] Listening on port $PORT"
 
+cd "$SCRIPT_DIR"
 exec "$PYTHON" -m uvicorn workers.main:app \
   --host 0.0.0.0 \
   --port "$PORT" \

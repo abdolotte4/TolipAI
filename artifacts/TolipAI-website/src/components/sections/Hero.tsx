@@ -3,8 +3,6 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronDown, Play, Mail, ArrowRight, CheckCircle } from "lucide-react";
-const heroCityImg = "/images/hero-bg.jpg";
-const heroChartImg = "/images/performance-dashboard.jpg";
 
 const DEMO_URL = "https://tolipai.com/crm/";
 
@@ -44,19 +42,27 @@ export function Hero() {
 
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
-      {/* Background Image & Overlay */}
-      <div className="absolute inset-0 z-0 bg-background">
-        <img
-          src={heroCityImg}
-          alt="City skyline with big data analytics"
-          className="absolute inset-0 w-full h-full object-cover opacity-50"
-        />
-        <img
-          src={heroChartImg}
-          alt="Real estate market growth charts"
-          className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/80 to-background" />
+      {/* Professional gradient background — no image dependency */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        {/* Deep dark base */}
+        <div className="absolute inset-0 bg-[#050810]" />
+        {/* Radial glow — top center (primary brand color) */}
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(212,175,55,0.12) 0%, transparent 70%)" }} />
+        {/* Radial glow — bottom left (cool accent) */}
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 50% at -10% 110%, rgba(99,102,241,0.10) 0%, transparent 65%)" }} />
+        {/* Radial glow — bottom right */}
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 50% 40% at 110% 100%, rgba(212,175,55,0.07) 0%, transparent 60%)" }} />
+        {/* Subtle dot-grid SVG overlay */}
+        <svg className="absolute inset-0 w-full h-full opacity-[0.07]" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="1" fill="#d4af37" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#dots)" />
+        </svg>
+        {/* Fade to background at bottom so page sections blend */}
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center flex flex-col items-center">
