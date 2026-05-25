@@ -44,16 +44,16 @@ export function Hero() {
     <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
       {/* Professional gradient background — no image dependency */}
       <div className="absolute inset-0 z-0 overflow-hidden">
-        {/* Deep dark base */}
-        <div className="absolute inset-0 bg-[#050810]" />
-        {/* Radial glow — top center (primary brand color) */}
-        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(212,175,55,0.12) 0%, transparent 70%)" }} />
+        {/* Base — dark mode: deep navy; light mode: uses page background */}
+        <div className="absolute inset-0 bg-background dark:bg-[#050810]" />
+        {/* Radial glow — top center (primary brand color) — stronger in light mode for visibility */}
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(212,175,55,0.18) 0%, transparent 70%)" }} />
         {/* Radial glow — bottom left (cool accent) */}
-        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 50% at -10% 110%, rgba(99,102,241,0.10) 0%, transparent 65%)" }} />
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 50% at -10% 110%, rgba(99,102,241,0.08) 0%, transparent 65%)" }} />
         {/* Radial glow — bottom right */}
-        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 50% 40% at 110% 100%, rgba(212,175,55,0.07) 0%, transparent 60%)" }} />
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 50% 40% at 110% 100%, rgba(212,175,55,0.08) 0%, transparent 60%)" }} />
         {/* Subtle dot-grid SVG overlay */}
-        <svg className="absolute inset-0 w-full h-full opacity-[0.07]" xmlns="http://www.w3.org/2000/svg">
+        <svg className="absolute inset-0 w-full h-full opacity-[0.06] dark:opacity-[0.07]" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
               <circle cx="1" cy="1" r="1" fill="#d4af37" />
