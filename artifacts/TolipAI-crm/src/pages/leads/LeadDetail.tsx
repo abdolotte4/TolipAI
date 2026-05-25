@@ -1401,6 +1401,20 @@ export default function LeadDetail() {
                                       <Mic className="w-2.5 h-2.5" /> Transcript
                                     </span>
                                   )}
+                                  {call.qualificationScore != null && (() => {
+                                    const s = call.qualificationScore;
+                                    const [bg, text, label] =
+                                      s >= 80 ? ["bg-red-500/10", "text-red-400", "Hot"]
+                                      : s >= 60 ? ["bg-orange-500/10", "text-orange-400", "Warm"]
+                                      : s >= 40 ? ["bg-yellow-500/10", "text-yellow-400", "Lukewarm"]
+                                      : s >= 20 ? ["bg-blue-500/10", "text-blue-400", "Cold"]
+                                      : ["bg-gray-500/10", "text-gray-400", "Not a lead"];
+                                    return (
+                                      <span className={`text-[10px] font-semibold ${bg} ${text} rounded px-1.5 py-0.5`}>
+                                        {s} · {label}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                   {call.createdAt ? format(new Date(call.createdAt), "MMM d, yyyy h:mm a") : ""}
@@ -1427,6 +1441,17 @@ export default function LeadDetail() {
                               <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3 pl-11 pt-1">
                                 "{call.transcript.slice(0, 200)}{call.transcript.length > 200 ? "…" : ""}"
                               </p>
+                            )}
+
+                            {/* AI qualification notes */}
+                            {call.qualificationNotes && (
+                              <div className="pl-11 pt-1 space-y-1">
+                                {call.qualificationNotes.split("\n").map((line: string, li: number) => (
+                                  <p key={li} className="text-[10px] text-muted-foreground leading-relaxed">
+                                    {line}
+                                  </p>
+                                ))}
+                              </div>
                             )}
                           </div>
                         );
