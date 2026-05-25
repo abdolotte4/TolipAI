@@ -111,6 +111,15 @@
 | S23-l | **GitHub Actions workflow** — `.github/workflows/deploy-scraper.yml` created: triggers on pushes to `main` touching `artifacts/TolipAI-scraper-engine/**` or `infrastructure/ecs-task-definition.json`; builds ARM64 Docker image via `docker/build-push-action` with GHA layer cache; registers new task definition revision; updates ECS service with stability wait; posts deployment summary. Uses `AWS_ACCOUNT_ID` secret + OIDC role `GithubActionsECRPush`. |
 | S23-m | **Dev api-server startup** — `start-dev.sh` updated: if `artifacts/api-server/dist/index.mjs` exists, starts api-server on port 3000 before Vite servers; prints build instruction if not built. Website Vite already proxies `/api → :3000` so CRM login works once built. Cleanup: kills api-server PID on exit. |
 | S23-n | **`infrastructure/.env.aws.example`** — template file for `infrastructure/.env.aws` with required (`AWS_ACCOUNT_ID`, `AWS_REGION`) and optional overrides (ECR repo, cluster, service, image tag, scaling bounds, S3 bucket). |
+| S3-a | **Twilio ringback** — `GET /twilio/voice/ringback` added; both Conference `waitUrl=""` → `waitUrl="${apiBase}/twilio/voice/ringback"`. Browser: `playRing()` on dial, stopped on accept. (BUG-060) |
+| S3-b | **callerIdRef** — `PhoneContext.tsx` stale closure fixed with `useRef` alongside `setCallerIdUsed`. (BUG-061) |
+| S3-c | **SSE call_logged** — emitted from `POST /voice/log` (frontend-triggered). `PhoneNumbers.tsx` refresh 30s→5s. (BUG-062, BUG-063) |
+| S3-d | **webhookBase.ts priority** — `REPLIT_DEV_DOMAIN` checked first, then `API_BASE_URL`. (BUG-064) |
+| S3-e | **Website TOLIP rebrand** — Hero/About/Services use 4 new branded images via `@assets/` Vite imports. (BUG-065) |
+| S4-a | **CORS port fix** — `\.replit\.dev$` → `\.replit\.dev(:\d+)?$` allows Replit iframe `:5000` origin. (BUG-069) |
+| S4-b | **scraperEngine fallback** — `proxyToScraper()` helper + localhost:8000 fallback when primary URL fails with ECONNREFUSED. Default fallback: `http://localhost:8000`. (BUG-068) |
+| S4-c | **`.replit` ports** — Removed port 3000 mapping; removed double-start "Project" workflow; `TolipAI API Server` = webview port 5000. (BUG-070) |
+| S4-d | **Full audit** — 43 endpoints tested (S4); satellite DFD confirmed live; TOOLS_PIN secret wrong (BUG-067 — user fix needed). See `TEST_RESULTS.md`. |
 
 ---
 

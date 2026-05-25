@@ -55,11 +55,11 @@
 **See BUG-051 for full diagnosis and fix steps.**  
 **Workaround:** Use `SCRAPER_ENGINE_URL=http://localhost:8000` in Replit dev environment.
 
-### BUG-006 — TOOLS_PIN 403 on Railway production 🔴 Open
-**Cause:** Railway production may have a different or missing `TOOLS_PIN` env var.  
-**Fix required:** Go to Railway dashboard → API service → Variables → set `TOOLS_PIN=Abdo4413$`.  
-**IMPORTANT:** Correct PIN is `Abdo4413$` (dollar sign `$`), NOT `Abdo4413#` (hash). Previous docs had this wrong.  
-**Confirmed working:** Local/Replit dev environment works correctly with `TOOLS_PIN=Abdo4413$` secret.
+### BUG-006 — TOOLS_PIN wrong value in Replit Secrets 🔴 Open
+**Cause:** Current Replit `TOOLS_PIN` secret value is `Abdo4413#` (hash `#`). Correct value is `Abdo4413$` (dollar `$`).  
+**Confirmed (Session 4):** All tools endpoints return `"Invalid PIN"` because the secret is wrong. Env dump: `TOOLS_PIN=[Abdo4413#]`.  
+**Fix:** Replit Secrets panel → change `TOOLS_PIN` from `Abdo4413#` to `Abdo4413$` → restart API workflow.  
+**Railway:** Also set `TOOLS_PIN=Abdo4413$` in Railway dashboard → API service → Variables.
 
 ### BUG-007 — Live transcript only works for agent side, not caller 🟢 Fixed
 **File:** `artifacts/api-server/src/routes/twilio-voice.ts`  
@@ -466,22 +466,66 @@ Twilio SID/auth token may be configured but the account is not reachable from Re
 
 ---
 
+## SESSION 4 FIXES (2026-05-25 — Audit + Endpoint Tests)
+
+### BUG-067 — TOOLS_PIN secret has wrong value (hash `#` instead of dollar `$`) 🔴 Open (User Action Required)
+**Confirmed (Session 4):** `TOOLS_PIN=[Abdo4413#]` via env dump. Correct value: `Abdo4413$`.  
+**Impact:** ALL tools endpoints (`/api/tools/*`) return `"Invalid PIN"` — ARV, property lookup, skip trace, distressed, phone finder all broken in Replit dev.  
+**Fix:** Go to Replit Secrets panel → find `TOOLS_PIN` → change value from `Abdo4413#` to `Abdo4413$` → restart `TolipAI API Server` workflow.
+
+### BUG-068 — scraperEngine.ts proxy wraps ELB 502 HTML as `{raw:"<html>..."}` 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/scraperEngine.ts`  
+**Cause:** When `SCRAPER_ENGINE_URL` (ELB) returns 502 HTML, `JSON.parse()` fails and the catch wraps the raw string as `{raw: "<html>..."}`. All `/api/scraper-engine/*` routes returned `{raw: ...}`.  
+**Fix:** Added `proxyToScraper()` helper + localhost fallback logic. When the primary URL fails with ECONNREFUSED/fetch-failed, the proxy automatically retries against `http://localhost:8000`. Default fallback when `SCRAPER_ENGINE_URL` is unset is also `http://localhost:8000`.
+
+### BUG-069 — CORS blocked Replit iframe when origin includes port suffix 🟢 Fixed
+**File:** `artifacts/api-server/src/app.ts`  
+**Cause:** Replit preview iframe sends `origin: https://....replit.dev:5000` (with `:5000` suffix). The CORS regex `^https:\/\/.*\.replit\.dev$` failed because the `$` anchor didn't match the `:5000` suffix. Result: all static assets returned 500 after screenshot was taken.  
+**Fix:** Changed both replit.app and replit.dev regexes to `(:\d+)?$` to allow optional port suffixes.
+
+### BUG-070 — `.replit` listed port 3000 with no service listening there 🟢 Fixed
+**File:** `.replit` (managed via Replit workflow tool)  
+**Cause:** Port 3000 was listed in `[[ports]]` but the API server runs on port 5000. The "Project" workflow also double-started the API (ran both `bash node-start.sh` directly AND `workflow.run TolipAI API Server`). Preview pane accessed port 3000 and got "Cannot GET /".  
+**Fix:** Removed port 3000 mapping. Reconfigured `TolipAI API Server` workflow with `outputType: "webview"` and `waitForPort: 5000`. Removed redundant "Project" parent workflow.
+
+### BUG-071 — Satellite DFD confirmed working directly but broken via API proxy (BUG-068) 🟢 Fixed
+**Endpoint:** `POST /ai/satellite-dfd` on scraper engine (port 8000 direct)  
+**Test result (Session 4, Dallas TX 75201):** `total_scanned: 33`, `total_above_threshold: 2`  
+  - `2315 Routh St Dallas TX 75201` — distress_score: 40, medium distress, lat/lng included  
+**Previously broken via API proxy** due to BUG-068 returning `{raw:...}`. Now fixed with localhost fallback.
+
+### SESSION 4 — Scraper Engine Health Report
+**Tested:** Direct port 8000 + all 42 routes via `/openapi.json`  
+**Status:** degraded (non-critical — GROQ quota, Playwright disabled)  
+- ✅ DB: ok (60ms latency)  
+- ✅ 231 distressed property sources, 6 categories loaded  
+- ✅ All circuit breakers: closed  
+- ✅ Skip trace: PropertyAPI + OpenCorporates enabled  
+- ❌ GROQ: 429 rate limit (resets midnight UTC)  
+- ❌ Playwright: install failed in Nix env (known — INFRA-007)  
+- ❌ Google Maps: Playwright unavailable  
+- ❌ NAR Directory: all endpoint patterns failed  
+- ⚠️ Redis: in-memory (no persistence across restarts)  
+- ⚠️ BrightData: proxy credentials missing HOST/PORT
+
+---
+
 ## ACTION ITEMS FOR NEXT SESSION
 
 ### Must-Do (Blockers)
-1. **Renew ATTOM subscription** → Update `ATTOM_API_KEY` in Replit Secrets + Railway
-2. **Fix AWS ELB → ECS connection** (BUG-051) → Re-attach load balancer to ECS service in AWS Console
-3. **Set Propelio/Propwire credentials** in Replit Secrets: `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD`
-4. **Set BrightData HOST/PORT** in Replit Secrets: `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT`
-5. **Fix Playwright in Replit** (INFRA-007) → Add `playwright install chromium` to `start.sh`
-6. **Add OPENAI_API_KEY** if needed for voice agent (Realtime API requires own key)
+1. **Fix TOOLS_PIN** in Replit Secrets → change from `Abdo4413#` to `Abdo4413$` (BUG-067) — **USER ACTION REQUIRED**
+2. **Renew ATTOM subscription** → Update `ATTOM_API_KEY` in Replit Secrets + Railway (BUG-036)
+3. **Fix AWS ELB → ECS connection** (BUG-051) → Re-attach load balancer to ECS service in AWS Console
+4. **Set Propelio/Propwire credentials** in Replit Secrets: `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD` (BUG-037)
+5. **Set BrightData HOST/PORT** in Replit Secrets: `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT` (BUG-038)
+6. **Fix Playwright in Replit** (INFRA-007) → Add `playwright install chromium --with-deps` to `artifacts/TolipAI-scraper-engine/start.sh`
 
 ### Should-Do
 7. **Re-test all AI endpoints** after GROQ quota resets midnight UTC
 8. **Test power dialer full session flow** with real Twilio credentials
-9. **Test SSE connection** (`GET /api/crm/events?token=...`)
+9. **Test hold/mute race** — callerCallSid timing (conference state lookup) — needs live call test
 10. **Fix `street` vs `address` field** in Tools ARV calculate (BUG-055)
-11. **Test hold/mute race** — callerCallSid timing (conference state lookup) — needs live call test
+11. **Test Tools endpoints** after TOOLS_PIN is corrected (BUG-067)
 
 ### Informational
 - GROQ resets daily at midnight UTC. All AI features work once quota refreshes.
@@ -489,3 +533,5 @@ Twilio SID/auth token may be configured but the account is not reachable from Re
 - All 20 ECS secrets ARE in AWS Secrets Manager (verified via AWS console description).
 - `push-github.sh` and `auto-push.sh` replace the old `push_github.sh`.
 - `replit-setup.sh` is the full fresh-install script — run on new Replit project after `git clone`.
+- API server runs on **port 5000** in Replit (not 3000). Preview pane is configured to port 5000.
+- Scraper engine runs on **port 8000**. API server proxies to it at `/api/scraper-engine/*`.

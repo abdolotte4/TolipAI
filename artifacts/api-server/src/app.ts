@@ -33,8 +33,9 @@ app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
 
 const ALLOWED_ORIGINS = [
   // Replit published domains (*.replit.app) and dev preview (*.replit.dev)
-  /^https:\/\/.*\.replit\.app$/,
-  /^https:\/\/.*\.replit\.dev$/,
+  // Port suffix allowed — Replit iframe sends origin with :PORT when port ≠ 80/443
+  /^https:\/\/.*\.replit\.app(:\d+)?$/,
+  /^https:\/\/.*\.replit\.dev(:\d+)?$/,
   // Railway scraper / internal services
   /^https:\/\/.*\.up\.railway\.app$/,
   // Custom domain
