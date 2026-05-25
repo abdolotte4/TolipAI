@@ -33,7 +33,8 @@ export function Navbar() {
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? "bg-background/80 backdrop-blur-md border-b border-border shadow-lg shadow-black/20 py-4" : "bg-transparent py-6"}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        <div className="flex items-center cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+        <div className="flex items-center gap-2 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+          <img src="/logo.png" alt="TolipAI" className="h-8 w-8 object-contain dark:invert" />
           <span className="font-display text-2xl font-bold tracking-wider text-foreground group-hover:text-primary transition-colors">
             TOLIPAI<span className="text-primary">.</span>
           </span>
