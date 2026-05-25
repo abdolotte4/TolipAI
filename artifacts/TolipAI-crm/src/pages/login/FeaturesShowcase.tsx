@@ -94,7 +94,7 @@ export default function FeaturesShowcase() {
           >
             Get Access to TolipAI →
           </a>
-          <p className="text-xs text-slate-600">Contact us at info@tolipai.com · (555) 201-4892</p>
+          <p className="text-xs text-slate-600">Contact us at info@tolipai.com · (307) 488-2217</p>
         </div>
       </motion.div>
     </section>

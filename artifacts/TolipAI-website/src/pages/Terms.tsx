@@ -20,7 +20,7 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">1. Agreement to Terms</h2>
             <p>
-              By subscribing to any service offered by <strong className="text-foreground">TolipAI LLC</strong> ("TolipAI," "we," "us," or "our"),
+              By subscribing to any service offered by <strong className="text-foreground">Tolip Group LLC</strong> ("TolipAI," "we," "us," or "our"),
               a Wyoming Limited Liability Company (1095 Sugar View Dr Ste 500, Sheridan, WY 82801),
               you ("Client," "you," or "your") agree to be bound by these Terms of Service ("Terms").
               If you do not agree to these Terms, do not subscribe or use our services.
@@ -34,7 +34,7 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">2. Services</h2>
             <p>
-              TolipAI LLC provides managed B2B marketing and data infrastructure services for real estate investors, including but not limited to:
+              Tolip Group LLC provides managed B2B marketing and data infrastructure services for real estate investors, including but not limited to:
             </p>
             <ul className="list-disc pl-6 mt-3 space-y-1">
               <li>Managed Data Engineering &amp; Contact Enrichment</li>
@@ -53,7 +53,7 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">3. Subscription &amp; Billing</h2>
             <p>
-              All subscriptions are billed on a recurring monthly basis. By subscribing, you authorize TolipAI LLC to automatically charge
+              All subscriptions are billed on a recurring monthly basis. By subscribing, you authorize Tolip Group LLC to automatically charge
               your payment method on file each billing period until you cancel.
             </p>
             <p className="mt-3">
@@ -136,7 +136,7 @@ export default function Terms() {
             <h2 className="text-xl font-semibold text-foreground mb-3">6. Dispute Resolution</h2>
             <p>
               Before initiating any chargeback or payment dispute with your card issuer or bank, you agree to first contact
-              TolipAI LLC directly at <span className="text-primary">info@tolipai.com</span> to attempt resolution.
+              Tolip Group LLC directly at <span className="text-primary">info@tolipai.com</span> to attempt resolution.
               Unauthorized chargebacks may result in immediate service termination and may be contested with full documentation
               of ToS acceptance, service delivery records, and communication logs.
             </p>
@@ -151,23 +151,23 @@ export default function Terms() {
               <li>Respond to onboarding requests within a reasonable timeframe</li>
               <li>Comply with all applicable laws in connection with your use of our services</li>
               <li>Not misuse or attempt to reverse-engineer any proprietary systems or data provided</li>
-              <li>Client acknowledges that TolipAI LLC does not share SMS opt-in data or consent with third parties for marketing purposes, and Client agrees to maintain similar privacy standards for any data enriched through our infrastructure.</li>
+              <li>Client acknowledges that Tolip Group LLC does not share SMS opt-in data or consent with third parties for marketing purposes, and Client agrees to maintain similar privacy standards for any data enriched through our infrastructure.</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">8. Limitation of Liability</h2>
             <p>
-              To the maximum extent permitted by law, TolipAI LLC shall not be liable for any indirect, incidental, special,
+              To the maximum extent permitted by law, Tolip Group LLC shall not be liable for any indirect, incidental, special,
               consequential, or punitive damages, including but not limited to lost profits, lost revenue, lost business opportunities,
               or data loss arising out of or related to your use of our services.
             </p>
             <p className="mt-3">
               Our total aggregate liability for any claims under these Terms shall not exceed the total amount paid by you
-              to TolipAI LLC in the 30 days immediately preceding the event giving rise to the claim.
+              to Tolip Group LLC in the 30 days immediately preceding the event giving rise to the claim.
             </p>
             <p className="mt-3">
-              TolipAI LLC provides infrastructure and support services; we do not guarantee specific financial outcomes,
+              Tolip Group LLC provides infrastructure and support services; we do not guarantee specific financial outcomes,
               conversion rates, or a minimum number of closed real estate transactions.
             </p>
           </section>
@@ -175,7 +175,7 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">9. Modifications to Terms</h2>
             <p>
-              TolipAI LLC reserves the right to modify these Terms at any time. Changes will be posted on this page with an updated
+              Tolip Group LLC reserves the right to modify these Terms at any time. Changes will be posted on this page with an updated
               effective date. Your continued use of our services after any change constitutes acceptance of the revised Terms.
               For material changes, we will notify you by email at least 14 days in advance.
             </p>
@@ -192,21 +192,21 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">11. Contact</h2>
             <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-              <p className="font-semibold text-foreground mb-3">TolipAI LLC</p>
+              <p className="font-semibold text-foreground mb-3">Tolip Group LLC</p>
               <p>1095 Sugar View Dr Ste 500, Sheridan, WY 82801</p>
               <p className="mt-2">📧 <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a></p>
-              <p>📞 (555) 201-4892</p>
+              <p>📞 (307) 488-2217</p>
             </div>
           </section>
 
           <div className="pt-6 border-t border-border">
             <p className="text-sm text-muted-foreground">
-              By subscribing to any TolipAI LLC service, you acknowledge that you have read these Terms of Service,
+              By subscribing to any Tolip Group LLC service, you acknowledge that you have read these Terms of Service,
               understand them, and agree to be bound by them. These Terms, together with Stripe's{" "}
               <a href="https://stripe.com/legal/consumer" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">
                 Consumer Terms
               </a>,
-              constitute the entire agreement between you and TolipAI LLC with respect to the subject matter hereof.
+              constitute the entire agreement between you and Tolip Group LLC with respect to the subject matter hereof.
             </p>
           </div>
         </div>

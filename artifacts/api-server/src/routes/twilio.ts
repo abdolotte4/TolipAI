@@ -854,7 +854,7 @@ router.post("/twilio/webhook", async (req, res) => {
           try {
             await sendSms({
               to: fromNumber,
-              body: "TolipAI: For help, email info@tolipai.com or call (555) 201-4892. Reply STOP to unsubscribe. Msg & data rates may apply.",
+              body: "TolipAI: For help, email info@tolipai.com or call (307) 488-2217. Reply STOP to unsubscribe. Msg & data rates may apply.",
               campaignId: lead.campaignId!,
             });
             logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] HELP auto-reply sent");

@@ -574,7 +574,7 @@ PIN-gated internal tools portal for acquisition and research work. Separate from
 
 ### TolipAI Website
 
-Public-facing B2B marketing site for TolipAI LLC.
+Public-facing B2B marketing site for Tolip Group LLC.
 
 - Dark professional design with gold accent palette
 - Sections: Hero, Services, Methodology, Case Studies, Team, About, Contact

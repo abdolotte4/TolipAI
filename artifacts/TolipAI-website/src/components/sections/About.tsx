@@ -28,7 +28,7 @@ export function About() {
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">About TolipAI LLC</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">About Tolip Group LLC</h2>
             <div className="w-20 h-1 bg-primary rounded-full mb-8" />
             <p className="text-lg text-muted-foreground leading-relaxed mb-6">
               TolipAI LLC is a Wyoming-based managed services agency established in 2024. We provide specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations.

@@ -33,8 +33,7 @@ export function Footer() {
               <li>
                 <a href="mailto:info@tolipai.com" className="hover:text-primary transition-colors">info@tolipai.com</a>
               </li>
-              <li>(555) 201-4892</li>
-              <li>(555) 307-6148</li>
+              <li>(307) 488-2217</li>
             </ul>
             <div className="mt-4 pt-4 border-t border-border/50">
               <h4 className="font-semibold text-foreground mb-2 text-sm">Legal</h4>

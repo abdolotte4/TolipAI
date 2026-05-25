@@ -297,14 +297,14 @@ export default function Login() {
                 <span className="relative">Get Access — Email Us →</span>
               </a>
               <a
-                href="tel:5552014892"
+                href="tel:3074882217"
                 className="rounded-xl border border-white/15 bg-white/5 px-10 py-4 font-semibold text-white hover:bg-white/10 transition text-base backdrop-blur-sm"
               >
-                (555) 201-4892
+                (307) 488-2217
               </a>
             </div>
             <p className="text-xs text-slate-600 pt-2">
-              TolipAI LLC · info@tolipai.com · Real estate wholesaling CRM platform ·{" "}
+              Tolip Group LLC · info@tolipai.com · Real estate wholesaling CRM platform ·{" "}
               <a href="/tos" className="hover:text-slate-400 underline underline-offset-2 transition-colors">
                 Terms of Service
               </a>

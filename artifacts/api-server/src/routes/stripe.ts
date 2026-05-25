@@ -108,7 +108,7 @@ router.post("/stripe/checkout", async (req: Request, res: Response) => {
       },
       custom_text: {
         terms_of_service_acceptance: {
-          message: `By subscribing, you authorize TolipAI LLC to charge you until you cancel. Service is non-refundable. For billing inquiries or technical support, contact info@tolipai.com within 3 days of a charge. Full terms: [Terms of Service](${tosUrl}).`,
+          message: `By subscribing, you authorize Tolip Group LLC to charge you until you cancel. Service is non-refundable. For billing inquiries or technical support, contact info@tolipai.com within 3 days of a charge. Full terms: [Terms of Service](${tosUrl}).`,
         },
       },
     });

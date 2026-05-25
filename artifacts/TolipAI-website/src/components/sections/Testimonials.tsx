@@ -35,7 +35,7 @@ export function Testimonials() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Client Testimonials</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Don't just take our word for it. Hear what industry leaders are saying about TolipAI LLC.
+            Don't just take our word for it. Hear what industry leaders are saying about Tolip Group LLC.
           </p>
         </motion.div>
 

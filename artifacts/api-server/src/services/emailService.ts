@@ -71,7 +71,7 @@ export function buildNewLeadEmail(opts: {
           View Lead in TolipAI CRM
         </a>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
-        <p style="margin: 0; font-size: 12px; color: #9ea8ae;">TolipAI LLC &bull; <a href="https://tolipai.com" style="color: #7367F0;">tolipai.com</a> &bull; Automated notification from TolipAI CRM</p>
+        <p style="margin: 0; font-size: 12px; color: #9ea8ae;">Tolip Group LLC &bull; <a href="https://tolipai.com" style="color: #7367F0;">tolipai.com</a> &bull; Automated notification from TolipAI CRM</p>
       </div>
     </div>
   `;
@@ -114,7 +114,7 @@ export function buildWelcomeOnboardingEmail(opts: {
           <li>Day 3: Twilio dialer + AI SMS sequence walkthrough</li>
           <li>Day 7: Check-in from our team — how can we optimize your pipeline?</li>
         </ul>
-        <p style="margin: 0; font-size: 12px; color: #9ea8ae;">TolipAI LLC &bull; <a href="https://tolipai.com" style="color: #D4AF37;">tolipai.com</a> &bull; Reply to this email for support</p>
+        <p style="margin: 0; font-size: 12px; color: #9ea8ae;">Tolip Group LLC &bull; <a href="https://tolipai.com" style="color: #D4AF37;">tolipai.com</a> &bull; Reply to this email for support</p>
       </div>
     </div>
   `;
@@ -137,7 +137,7 @@ export function buildOnboardingDay1Email(opts: { customerName: string; loginUrl:
           <li><strong>Enable AI SMS follow-up</strong> — in Campaign Settings, flip on "AI SMS Auto-Reply" and customize the tone.</li>
         </ol>
         <a href="${loginUrl}" style="display: inline-block; background: #7367F0; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">Open My CRM →</a>
-        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">TolipAI LLC &bull; Reply with any questions</p>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">Tolip Group LLC &bull; Reply with any questions</p>
       </div>
     </div>
   `;
@@ -163,7 +163,7 @@ export function buildOnboardingDay3Email(opts: { customerName: string; loginUrl:
           <p style="margin: 0; color: #6b7280; font-size: 14px;">Go to <strong>Sequences</strong> and create a 5-step follow-up. The AI personalizes each message based on lead status and response history.</p>
         </div>
         <a href="${loginUrl}" style="display: inline-block; background: #28C76F; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">Start Calling →</a>
-        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">TolipAI LLC &bull; Reply to this email for support</p>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">Tolip Group LLC &bull; Reply to this email for support</p>
       </div>
     </div>
   `;
@@ -188,7 +188,7 @@ export function buildOnboardingDay7Email(opts: { customerName: string; loginUrl:
         </ul>
         <p style="margin: 0 0 24px; color: #374151;">If you haven't hit these marks yet — <strong>reply to this email</strong> and we'll personally walk you through setup. That's included in your subscription.</p>
         <a href="${loginUrl}/analytics" style="display: inline-block; background: #D4AF37; color: #0a0e1a; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 700;">View My Analytics →</a>
-        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">TolipAI LLC &bull; Reply directly to this email — we read every response.</p>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">Tolip Group LLC &bull; Reply directly to this email — we read every response.</p>
       </div>
     </div>
   `;
@@ -220,7 +220,7 @@ export function buildOnboardingDay14Email(opts: { customerName: string; loginUrl
           </div>
         </div>
         <a href="${loginUrl}" style="display: inline-block; background: #7367F0; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">Explore Advanced Features →</a>
-        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">TolipAI LLC &bull; Questions? Reply to this email or book a call at <a href="https://calendly.com/tolipai/demo" style="color: #7367F0;">calendly.com/tolipai/demo</a></p>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #9ea8ae;">Tolip Group LLC &bull; Questions? Reply to this email or book a call at <a href="https://calendly.com/tolipai/demo" style="color: #7367F0;">calendly.com/tolipai/demo</a></p>
       </div>
     </div>
   `;
@@ -254,7 +254,7 @@ export function buildTaskReminderEmail(opts: {
         </div>
         ${leadId ? `<a href="https://tolipai.com/crm/leads/${leadId}" style="display: inline-block; background: #7367F0; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600;">View Lead</a>` : ""}
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
-        <p style="margin: 0; font-size: 12px; color: #9ea8ae;">TolipAI LLC &bull; Automated reminder from TolipAI CRM</p>
+        <p style="margin: 0; font-size: 12px; color: #9ea8ae;">Tolip Group LLC &bull; Automated reminder from TolipAI CRM</p>
       </div>
     </div>
   `;

@@ -86,8 +86,8 @@ export default function LoginCard({
               info@tolipai.com
             </a>
             <span className="opacity-40">|</span>
-            <a href="tel:5552014892" className="hover:text-violet-400 transition-colors">
-              (555) 201-4892
+            <a href="tel:3074882217" className="hover:text-violet-400 transition-colors">
+              (307) 488-2217
             </a>
           </div>
         </div>

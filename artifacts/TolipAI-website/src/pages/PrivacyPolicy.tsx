@@ -20,7 +20,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">1. Introduction</h2>
             <p>
-              <strong className="text-foreground">TolipAI LLC</strong> ("TolipAI," "we," "us," or "our"), a Wyoming Limited Liability Company
+              <strong className="text-foreground">Tolip Group LLC</strong> ("TolipAI," "we," "us," or "our"), a Wyoming Limited Liability Company
               (1095 Sugar View Dr Ste 500, Sheridan, WY 82801), is committed to protecting your privacy.
               This Privacy Policy explains how we collect, use, disclose, and safeguard information about you
               when you visit our website, use our services, or interact with us.
@@ -214,10 +214,10 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">13. Contact Us</h2>
             <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-              <p className="font-semibold text-foreground mb-3">TolipAI LLC</p>
+              <p className="font-semibold text-foreground mb-3">Tolip Group LLC</p>
               <p>1095 Sugar View Dr Ste 500, Sheridan, WY 82801</p>
               <p className="mt-2">📧 <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a></p>
-              <p>📞 (555) 201-4892</p>
+              <p>📞 (307) 488-2217</p>
               <p className="mt-3 text-sm text-muted-foreground">
                 For privacy-related inquiries, please include "Privacy Request" in the subject line.
               </p>

@@ -4,7 +4,7 @@ import { Target, Eye, Star, Users, BarChart2, Lightbulb, Shield } from "lucide-r
 export default function MissionVisionValues() {
   useEffect(() => {
     window.scrollTo({ top: 0 });
-    document.title = "Mission, Vision & Values | TolipAI LLC";
+    document.title = "Mission, Vision & Values | Tolip Group LLC";
   }, []);
 
   const values = [
@@ -39,7 +39,7 @@ export default function MissionVisionValues() {
           <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-[#d4af37]/5 rounded-full blur-3xl" />
         </div>
         <div className="relative max-w-4xl mx-auto text-center">
-          <p className="text-[#d4af37] text-sm font-semibold uppercase tracking-widest mb-4">TolipAI LLC</p>
+          <p className="text-[#d4af37] text-sm font-semibold uppercase tracking-widest mb-4">Tolip Group LLC</p>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground leading-tight mb-6">
             Mission, Vision <span className="text-[#d4af37]">&amp;</span> Values
           </h1>
@@ -151,7 +151,7 @@ export default function MissionVisionValues() {
             </p>
             <div className="flex flex-col items-center gap-1">
               <p className="text-[#d4af37] font-bold text-lg">Abdullah Gawish</p>
-              <p className="text-muted-foreground text-sm">Partner &amp; Chief Marketing Officer, TolipAI LLC</p>
+              <p className="text-muted-foreground text-sm">Partner &amp; Chief Marketing Officer, Tolip Group LLC</p>
             </div>
           </div>
         </div>

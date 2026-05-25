@@ -72,7 +72,7 @@ router.post("/contact", async (req, res) => {
   if (transporter) {
     try {
       await transporter.sendMail({
-        from: `"TolipAI LLC Website" <${process.env.SMTP_USER}>`,
+        from: `"TolipAI  Website" <${process.env.SMTP_USER}>`,
         to: "info@tolipai.com",
         cc: "hello@tolipai.com, martin@tolipai.com",
         replyTo: email,

@@ -5,11 +5,11 @@ import { MessageSquare, X, Send, ChevronDown } from "lucide-react";
 const BOT_RESPONSES = [
   {
     keywords: ["price", "pricing", "cost", "rate", "fee", "how much", "package"],
-    response: "Our pricing is customized based on your operational scope and service requirements. We offer flexible engagement models for Data Engineering, Managed Outreach Operations, and Technical CRM Infrastructure. Please schedule a consultation with our team for a detailed proposal tailored to your needs. You can reach us at info@tolipai.com or call (555) 201-4892."
+    response: "Our pricing is customized based on your operational scope and service requirements. We offer flexible engagement models for Data Engineering, Managed Outreach Operations, and Technical CRM Infrastructure. Please schedule a consultation with our team for a detailed proposal tailored to your needs. You can reach us at info@tolipai.com or call (307) 488-2217."
   },
   {
     keywords: ["service", "offer", "provide", "what do", "what you do"],
-    response: "TolipAI LLC provides three core B2B infrastructure services:\n\n1. **Data Engineering** — Property data acquisition, cleansing, verification, and contact data enrichment\n\n2. **Managed Outreach Operations** — High-intent, compliance-driven outbound outreach managed end-to-end\n\n3. **Technical CRM Infrastructure** — Enterprise CRM architecture, automation workflows, and pipeline engineering\n\nWould you like more details about any specific service?"
+    response: "Tolip Group LLC provides three core B2B infrastructure services:\n\n1. **Data Engineering** — Property data acquisition, cleansing, verification, and contact data enrichment\n\n2. **Managed Outreach Operations** — High-intent, compliance-driven outbound outreach managed end-to-end\n\n3. **Technical CRM Infrastructure** — Enterprise CRM architecture, automation workflows, and pipeline engineering\n\nWould you like more details about any specific service?"
   },
   {
     keywords: ["data", "skip", "tracing", "engineer", "clean"],
@@ -25,15 +25,15 @@ const BOT_RESPONSES = [
   },
   {
     keywords: ["contact", "email", "phone", "address", "location", "reach", "office"],
-    response: "You can reach TolipAI LLC through the following channels:\n\n📧 General: info@tolipai.com\n📧 Info: hello@tolipai.com\n📧 Technology: martin@tolipai.com\n📞 Phone: (555) 201-4892 or (555) 307-6148\n📍 Address: 1095 Sugar View Dr Ste 500, Sheridan, WY 82801\n\nOur team responds to all inquiries within one business day."
+    response: "You can reach Tolip Group LLC through the following channels:\n\n📧 General: info@tolipai.com\n📧 Info: hello@tolipai.com\n📧 Technology: martin@tolipai.com\n📞 Phone: (307) 488-2217\n📍 Address: 1095 Sugar View Dr Ste 500, Sheridan, WY 82801\n\nOur team responds to all inquiries within one business day."
   },
   {
     keywords: ["real estate", "property", "wholesale", "acquisition", "investor"],
-    response: "TolipAI LLC specializes exclusively in B2B infrastructure for real estate investors and acquisition-focused organizations. We've helped clients achieve 340%+ pipeline growth, 3x operational throughput, and 98%+ data accuracy rates. Our integrated approach is purpose-built for the real estate acquisition market."
+    response: "Tolip Group LLC specializes exclusively in B2B infrastructure for real estate investors and acquisition-focused organizations. We've helped clients achieve 340%+ pipeline growth, 3x operational throughput, and 98%+ data accuracy rates. Our integrated approach is purpose-built for the real estate acquisition market."
   },
   {
     keywords: ["team", "who", "people", "founder", "ceo", "staff"],
-    response: "TolipAI LLC is led by an experienced executive team:\n\n👔 James Carter — CEO\n⚙️ David Holloway — COO\n📣 Abdullah Gawish — CMO\n💻 Martin Adams — CTO\n📋 Ryan Mitchell — Outreach Operations Specialist\n\nOur team brings deep expertise in data engineering, managed operations, and technical infrastructure."
+    response: "Tolip Group LLC is led by an experienced executive team:\n\n👔 James Carter — CEO\n⚙️ David Holloway — COO\n📣 Abdullah Gawish — CMO\n💻 Martin Adams — CTO\n📋 Ryan Mitchell — Outreach Operations Specialist\n\nOur team brings deep expertise in data engineering, managed operations, and technical infrastructure."
   },
   {
     keywords: ["result", "roi", "return", "performance", "outcome"],
@@ -41,15 +41,15 @@ const BOT_RESPONSES = [
   },
   {
     keywords: ["compliance", "regulation", "legal", "standard"],
-    response: "Compliance is foundational to everything we do at TolipAI LLC. Our Operational Compliance Framework ensures all workflows — from data sourcing to outreach execution — meet and exceed industry regulatory standards. Our Human-in-the-Loop QA process provides human oversight at every stage of the pipeline."
+    response: "Compliance is foundational to everything we do at Tolip Group LLC. Our Operational Compliance Framework ensures all workflows — from data sourcing to outreach execution — meet and exceed industry regulatory standards. Our Human-in-the-Loop QA process provides human oversight at every stage of the pipeline."
   },
   {
     keywords: ["about", "company", "founded", "wyoming", "llc", "established"],
-    response: "TolipAI LLC is a Wyoming-based Managed Marketing and Data Infrastructure Agency established in 2024. We are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
+    response: "Tolip Group LLC is a Wyoming-based Managed Marketing and Data Infrastructure Agency established in 2024. We are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
   },
   {
     keywords: ["start", "begin", "get started", "onboard", "sign up", "work together"],
-    response: "Getting started with TolipAI LLC is straightforward:\n\n1. Schedule a consultation — contact us at info@tolipai.com\n2. We'll assess your operational needs and current infrastructure\n3. We'll propose a customized service engagement\n4. Onboarding typically takes 1-2 weeks\n\nReady to scale your operations? Use the contact form below or call us at (555) 307-6148."
+    response: "Getting started with Tolip Group LLC is straightforward:\n\n1. Schedule a consultation — contact us at info@tolipai.com\n2. We'll assess your operational needs and current infrastructure\n3. We'll propose a customized service engagement\n4. Onboarding typically takes 1-2 weeks\n\nReady to scale your operations? Use the contact form below or call us at (307) 488-2217."
   }
 ];
 
@@ -65,7 +65,7 @@ export function ChatBot() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
-      text: "Hello! I'm the TolipAI LLC assistant. How can I help you today? You can ask me about our services, pricing, team, or contact information.",
+      text: "Hello! I'm the Tolip Group LLC assistant. How can I help you today? You can ask me about our services, pricing, team, or contact information.",
       sender: "bot"
     }
   ]);
@@ -108,7 +108,7 @@ export function ChatBot() {
       if (!foundResponse) {
         setMessages(prev => [...prev, {
           id: (Date.now() + 1).toString(),
-          text: "I'd be happy to connect you with our team for more specific information. Please reach out at info@tolipai.com or call (555) 307-6148, and a specialist will assist you promptly.",
+          text: "I'd be happy to connect you with our team for more specific information. Please reach out at info@tolipai.com or call (307) 488-2217, and a specialist will assist you promptly.",
           sender: "bot"
         }]);
       }
