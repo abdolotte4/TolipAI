@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import teamBg from "@assets/8_Diverse_Business_Team_Collaborating_1779718492062.png";
+const teamBg = "/images/about-bg.jpg";
 
 export function About() {
   const highlights = [

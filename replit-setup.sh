@@ -183,9 +183,9 @@ fi
 if [ -n "${DATABASE_URL:-}" ]; then
   info "Running database migrations (drizzle-kit push)..."
   if [ -f "lib/db/drizzle.config.ts" ]; then
-    (cd lib/db && npx drizzle-kit push --config drizzle.config.ts 2>&1 | tail -10) || \
+    timeout 120 npx drizzle-kit push --force --config drizzle.config.ts 2>&1 | tail -10 || \
       warn "Migration had warnings — check drizzle output above"
-    success "Migrations applied"
+    success "Migrations applied (or skipped after timeout)"
   elif [ -d "lib/db/migrations" ]; then
     warn "Found migrations/ folder but no drizzle.config.ts — run migrations manually"
   else

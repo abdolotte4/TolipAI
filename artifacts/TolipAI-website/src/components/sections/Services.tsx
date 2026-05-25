@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Database, MessageSquare, Settings, Users, BarChart3 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import servicesBg from "@assets/8_51_795_Digital_Real_Estate_Background_1779718492062.png";
+const servicesBg = "/images/hero-bg.jpg";
 
 export function Services() {
   const services = [

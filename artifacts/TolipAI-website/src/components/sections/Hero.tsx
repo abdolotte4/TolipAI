@@ -3,8 +3,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronDown, Play, Mail, ArrowRight, CheckCircle } from "lucide-react";
-import heroCityImg from "@assets/10_Big_Data_and_Analytics_Informed_Decision_1779718492061.png";
-import heroChartImg from "@assets/7_Real_Estate_Market_Growth_Concept_1779718492062.png";
+const heroCityImg = "/images/hero-bg.jpg";
+const heroChartImg = "/images/performance-dashboard.jpg";
 
 const DEMO_URL = "https://heroic-curiosity-production-dc5a.up.railway.app/crm/";
 
