@@ -33,7 +33,7 @@ const BOT_RESPONSES = [
   },
   {
     keywords: ["team", "who", "people", "founder", "ceo", "staff"],
-    response: "Tolip Group LLC is led by an experienced executive team:\n\n👔 James Carter — CEO\n⚙️ David Holloway — COO\n📣 Abdullah Gawish — CMO\n💻 Martin Adams — CTO\n📋 Ryan Mitchell — Outreach Operations Specialist\n\nOur team brings deep expertise in data engineering, managed operations, and technical infrastructure."
+    response: "Tolip Group LLC is led by an experienced executive team:\n\n👔 Mahmoud Aly — CEO\n⚙️ David Holloway — COO\n📣 Abdullah Gawish — CMO\n💻 Martin Adams — CTO\n📋 Ryan Mitchell — Outreach Operations Specialist\n\nOur team brings deep expertise in data engineering, managed operations, and technical infrastructure."
   },
   {
     keywords: ["result", "roi", "return", "performance", "outcome"],

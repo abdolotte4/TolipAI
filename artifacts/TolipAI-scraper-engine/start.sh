@@ -9,6 +9,58 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "[scraper] Starting TolipAI Scraper Engine (local/Replit mode)..."
 
+# Force-kill any stale process holding PORT before we do anything else.
+# We use SIGKILL (not SIGTERM) because SpotHandler traps SIGTERM for 90s drain.
+# fuser may not have cross-session permissions in Replit — use Python via /proc instead.
+_PORT="${PORT:-8000}"
+python3 - <<PYEOF 2>/dev/null || true
+import os, signal, socket, struct
+
+port = int(os.environ.get('PORT', '${_PORT}'))
+hex_port = format(port, '04X')
+
+# Read /proc/net/tcp to find inodes listening on our port
+inodes = set()
+for proto in ['/proc/net/tcp', '/proc/net/tcp6']:
+    try:
+        with open(proto) as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 10: continue
+                local, state = parts[1], parts[3]
+                if local.endswith(':' + hex_port) and state == '0A':  # 0A = LISTEN
+                    inodes.add(parts[9])
+    except: pass
+
+if not inodes: raise SystemExit(0)
+
+# Find PIDs that own those inodes
+pids = set()
+for pid in os.listdir('/proc'):
+    if not pid.isdigit(): continue
+    fd_dir = f'/proc/{pid}/fd'
+    try:
+        for fd in os.listdir(fd_dir):
+            try:
+                link = os.readlink(f'{fd_dir}/{fd}')
+                if link.startswith('socket:['):
+                    inode = link[8:-1]
+                    if inode in inodes:
+                        pids.add(int(pid))
+            except: pass
+    except: pass
+
+my_pid = os.getpid()
+for pid in pids:
+    if pid != my_pid:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            print(f'[scraper] Killed stale process PID {pid} on port {port}')
+        except Exception as e:
+            print(f'[scraper] Could not kill PID {pid}: {e}')
+PYEOF
+sleep 1
+
 # ── Python resolution: prefer .venv, then .pythonlibs, then system ────────────
 PYTHON=""
 for candidate in \

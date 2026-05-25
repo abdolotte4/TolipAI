@@ -4,9 +4,9 @@ import { Mail } from "lucide-react";
 export function Team() {
   const leaders = [
     {
-      name: "James Carter",
+      name: "Mahmoud Aly",
       role: "Chief Executive Officer",
-      email: "james@tolipai.com",
+      email: "admin@tolipai.com",
       description: "Visionary leader driving TolipAI's strategic direction, client relationships, and operational excellence. With deep expertise in B2B infrastructure and real estate acquisition markets.",
       image: "avatar-1.jpg"
     },
