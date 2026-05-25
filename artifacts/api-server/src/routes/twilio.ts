@@ -60,6 +60,24 @@ setInterval(() => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Safe insert for crm_openphone_messages — handles broken IDENTITY sequences
+// (same pattern as safeInsertCallLog in twilio-voice.ts)
+async function safeInsertOpenPhoneMessage(values: Record<string, any>): Promise<void> {
+  try {
+    await db.insert(crmOpenPhoneMessages).values(values).onConflictDoNothing();
+  } catch (err: any) {
+    const msg: string = err?.message ?? "";
+    if (msg.includes('null value in column "id"') || msg.includes("not-null constraint")) {
+      const result = await db.execute(sql`SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM crm_openphone_messages`);
+      const nextId = Number((result.rows[0] as any)?.next_id ?? 1);
+      await db.insert(crmOpenPhoneMessages).values({ ...values, id: nextId }).onConflictDoNothing();
+      logger.info({ nextId }, "[safeInsert] crm_openphone_messages sequence repaired via MAX(id)+1");
+    } else {
+      throw err;
+    }
+  }
+}
+
 function twilioBaseUrl(accountSid: string) {
   return `https://api.twilio.com/2010-04-01/Accounts/${accountSid}`;
 }
@@ -499,7 +517,7 @@ router.post("/twilio/messages", crmAuth, validateBody(smsMessageSchema), async (
     const data = await twilioFetch(creds, "/Messages.json", { method: "POST", body: body.toString() });
 
     if (data.sid) {
-      await db.insert(crmOpenPhoneMessages).values({
+      await safeInsertOpenPhoneMessage({
         leadId: leadId ? Number(leadId) : null,
         campaignId: campId,
         openPhoneMessageId: data.sid,
@@ -508,7 +526,7 @@ router.post("/twilio/messages", crmAuth, validateBody(smsMessageSchema), async (
         toNumber: toE164Result,
         content,
         status: data.status || "sent",
-      }).onConflictDoNothing();
+      });
     }
     res.json({ message: data });
   } catch (err: any) {
@@ -795,7 +813,7 @@ router.post("/twilio/webhook", async (req, res) => {
       resolvedCampaignId = ownerCampaign[0]?.id ?? null;
     }
 
-    await db.insert(crmOpenPhoneMessages).values({
+    await safeInsertOpenPhoneMessage({
       leadId: lead?.id ?? null,
       campaignId: resolvedCampaignId,
       openPhoneMessageId: sid || null,
@@ -804,7 +822,7 @@ router.post("/twilio/webhook", async (req, res) => {
       toNumber,
       content,
       status: "received",
-    }).onConflictDoNothing();
+    });
 
     emitCrmActivity("new_inbound_sms", {
       from: fromNumber,
@@ -1455,7 +1473,7 @@ router.post("/twilio/auto-missed-call-sms", crmAuth, async (req, res) => {
     const body = new URLSearchParams({ From: from, To: toE164Result, Body: message });
     const data = await twilioFetch(creds, "/Messages.json", { method: "POST", body: body.toString() });
     if (data.sid) {
-      await db.insert(crmOpenPhoneMessages).values({
+      await safeInsertOpenPhoneMessage({
         leadId: leadId ? Number(leadId) : null,
         campaignId: crmUser.campaignId,
         openPhoneMessageId: data.sid,
@@ -1464,7 +1482,7 @@ router.post("/twilio/auto-missed-call-sms", crmAuth, async (req, res) => {
         toNumber: toE164Result,
         content: message,
         status: data.status || "sent",
-      }).onConflictDoNothing();
+      });
     }
     res.json({ success: true, sid: data.sid });
   } catch (err: any) {
