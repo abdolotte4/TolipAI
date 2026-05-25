@@ -135,6 +135,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const pendingAcceptLeadIdRef = useRef<{ leadId?: number | null } | null>(null);
   const ringStopRef = useRef<(() => void) | null>(null);
   const analyticsRef = useRef<CallAnalytics>({ mos: null, jitter: null, packetLoss: null });
+  const callerIdRef = useRef<string | null>(null);
   const speechRecognitionRef = useRef<any>(null);
 
   const [status, setStatus] = useState<PhoneStatus>("idle");
@@ -218,6 +219,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       }
 
       const { token, callerId } = await authFetch("/twilio/voice/token", { method: "POST" });
+      callerIdRef.current = callerId || null;
       setCallerIdUsed(callerId || null);
 
       const device = new Device(token, {
@@ -302,9 +304,19 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       setActiveLeadName(leadName);
       clearTranscript();
 
+      // Play ringback so the caller hears ringing during the "calling" phase.
+      // Stopped as soon as the remote party answers (call "accept" event).
+      if (!ringStopRef.current) {
+        const stopSignal = { stopped: false };
+        ringStopRef.current = playRing(stopSignal);
+      }
+
+      // Use ref so we never capture a stale callerIdUsed closure.
+      const effectiveCallerId = callerIdRef.current || "";
+
       const params: Record<string, string> = {
         To: phone,
-        CallerId: callerIdUsed || "",
+        CallerId: effectiveCallerId,
         ...(record ? { Record: "true" } : {}),
       };
 
@@ -312,6 +324,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       callRef.current = call;
 
       call.on("accept", async (c: Call) => {
+        stopRing();
         setStatus("in-progress");
         const sid = c.parameters?.CallSid || null;
         currentCallSidRef.current = sid;
@@ -325,7 +338,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
               callSid: sid,
               leadId: leadId ?? null,
               toNumber: phone,
-              fromNumber: callerIdUsed,
+              fromNumber: callerIdRef.current,
               direction: "outbound",
             }),
           });
@@ -382,7 +395,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         setCurrentCallSid(null);
       });
     },
-    [initDevice, callerIdUsed, stopTimer, clearTranscript]
+    [initDevice, stopRing, stopTimer, clearTranscript]
   );
 
   const hangUp = useCallback(() => {

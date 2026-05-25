@@ -564,7 +564,7 @@ export default function ManualDialerPage() {
       queryFn: () => apiRawFetch(`/twilio/phone-numbers/${encodeURIComponent(selectedNumber!.number)}/conversations`),
       enabled: !!selectedNumber,
       staleTime: 30_000,
-      refetchInterval: 30_000,
+      refetchInterval: 5_000,
     });
 
   const { data: historyData, isLoading: historyLoading } =
@@ -573,7 +573,7 @@ export default function ManualDialerPage() {
       queryFn: () => apiRawFetch(`/twilio/phone-numbers/${encodeURIComponent(selectedNumber!.number)}/conversations/${encodeURIComponent(selectedContact!)}`),
       enabled: !!selectedNumber && !!selectedContact,
       staleTime: 15_000,
-      refetchInterval: 20_000,
+      refetchInterval: 5_000,
     });
 
   const markReadMutation = useMutation({
@@ -634,6 +634,15 @@ export default function ManualDialerPage() {
     if (!target || !selectedNumber) return;
     startCall(target, null, fmtPhone(target), true);
     toast({ title: "Calling…", description: `Dialing ${fmtPhone(target)} from ${selectedNumber.number}` });
+    // Select the contact immediately so the conversation panel opens
+    setSelectedContact(target);
+    setShowDialPad(false);
+    // Aggressively refresh so the new call log appears in the list right away
+    setTimeout(() => {
+      qc.invalidateQueries({ queryKey: ["phone-number-convs", selectedNumber.number] });
+      qc.invalidateQueries({ queryKey: ["phone-number-history", selectedNumber.number, target] });
+      refetchConvs();
+    }, 1500);
   };
 
   const handleSms = (number: string) => {

@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronDown, Play, Mail, ArrowRight, CheckCircle } from "lucide-react";
+import heroCityImg from "@assets/10_Big_Data_and_Analytics_Informed_Decision_1779718492061.png";
+import heroChartImg from "@assets/7_Real_Estate_Market_Growth_Concept_1779718492062.png";
 
 const DEMO_URL = "https://heroic-curiosity-production-dc5a.up.railway.app/crm/";
 
@@ -45,13 +47,13 @@ export function Hero() {
       {/* Background Image & Overlay */}
       <div className="absolute inset-0 z-0 bg-background">
         <img
-          src={`${import.meta.env.BASE_URL}images/office-team.jpg`}
-          alt="Professional office team"
-          className="absolute inset-0 w-full h-full object-cover opacity-55"
+          src={heroCityImg}
+          alt="City skyline with big data analytics"
+          className="absolute inset-0 w-full h-full object-cover opacity-50"
         />
         <img
-          src={`${import.meta.env.BASE_URL}images/hero-bg.jpg`}
-          alt="Abstract geometric background"
+          src={heroChartImg}
+          alt="Real estate market growth charts"
           className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/80 to-background" />

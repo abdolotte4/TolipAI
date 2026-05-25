@@ -1,6 +1,6 @@
 # TolipAI CRM — Bug Tracker
 
-> Last updated: 2026-05-24 (Session 2 comprehensive live test)
+> Last updated: 2026-05-25 (Session 3 — Twilio voice bugs, website rebrand, scripts)
 > Status legend: 🔴 Open | 🟡 In-Progress | 🟢 Fixed | ⚪ Needs-Test
 
 ---
@@ -416,6 +416,56 @@ Twilio SID/auth token may be configured but the account is not reachable from Re
 
 ---
 
+---
+
+## SESSION 3 FIXES (2026-05-25)
+
+### BUG-060 — No ringback audio during outbound call 🟢 Fixed
+**Files:** `artifacts/api-server/src/routes/twilio-voice.ts`, `artifacts/TolipAI-crm/src/contexts/PhoneContext.tsx`
+**Cause 1 (server):** Both Conference TwiML blocks had `waitUrl=""` — agent heard silence while destination leg connected.
+**Fix 1:** Added `GET /api/twilio/voice/ringback` TwiML endpoint returning `<Play loop="10">` of Twilio's ringback audio. Changed both `waitUrl=""` to `waitUrl="${apiBase}/twilio/voice/ringback"`.
+**Cause 2 (browser):** `startCall` in PhoneContext never played ring audio on outbound call — only incoming calls had ringback.
+**Fix 2:** Added `playRing()` immediately after `setStatus("calling")` in `startCall`. Ring is stopped in the `call.on("accept")` handler via `stopRing()`.
+
+### BUG-061 — CallerID is null on first call (stale closure race) 🟢 Fixed
+**File:** `artifacts/TolipAI-crm/src/contexts/PhoneContext.tsx`
+**Cause:** `startCall` captured `callerIdUsed` (state) in a closure. On the very first call, `initDevice()` sets `setCallerIdUsed()` but React state hasn't re-rendered yet when the dependency array bound `callerIdUsed` was captured — so `CallerId` param was always `""` on the first call.
+**Fix:** Added `callerIdRef = useRef<string | null>(null)`. After fetching the token, both `callerIdRef.current` and `setCallerIdUsed()` are set together. `startCall` now reads `callerIdRef.current` instead of the state value. Removed `callerIdUsed` from the `useCallback` dependency array.
+
+### BUG-062 — New outbound calls not appearing in Phone Numbers call list (SSE missing) 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/twilio-voice.ts` (voice/log endpoint)
+**Cause:** `call_logged` SSE was only emitted from `POST /twilio/voice/call-status` (Twilio's end-of-call webhook). On Railway, this webhook returns 404 because the route URL in TwiML pointed to a stale domain. So new calls never triggered SSE → call list never refreshed.
+**Fix:** Added `emitCrmActivity("call_logged", {...})` directly inside `POST /twilio/voice/log` (frontend-initiated, fires immediately when agent dials). This is always reachable (same-origin, JWT auth) regardless of Railway webhook routing.
+
+### BUG-063 — Manual Dialer refresh fragile and slow 🟢 Fixed
+**File:** `artifacts/TolipAI-crm/src/pages/integrations/PhoneNumbers.tsx`
+**Cause 1:** `refetchInterval: 30_000` for conversations, `20_000` for history — calls needed to wait up to 30s to appear.
+**Fix 1:** Reduced both intervals to `5_000` (5 seconds).
+**Cause 2:** After dialing from the dialpad, the conversation panel didn't open for the dialed number — user had to find it manually.
+**Fix 2:** `handleCall()` now immediately calls `setSelectedContact(target)` + `setShowDialPad(false)`, then does an eager `invalidateQueries` + `refetchConvs()` after 1.5s (enough time for the call log to be created).
+
+### BUG-064 — webhookBase.ts used Railway URL for Replit dev webhooks 🟢 Fixed
+**File:** `artifacts/api-server/src/lib/webhookBase.ts`
+**Cause:** Priority order was `API_BASE_URL` first — so even when developing in Replit, all Twilio webhooks pointed to Railway. Twilio couldn't reach the local Replit container.
+**Fix:** Moved `REPLIT_DEV_DOMAIN` to first priority. When set (Replit environment), all webhook URLs use the Replit public domain. Production Railway still uses `API_BASE_URL` when `REPLIT_DEV_DOMAIN` is absent.
+
+### BUG-065 — Website shows old "DIGOR LLC" branding in hero background image 🟢 Fixed
+**Files:** `artifacts/TolipAI-website/src/components/sections/Hero.tsx`, `About.tsx`, `Services.tsx`
+**Cause:** Hero used hardcoded `images/office-team.jpg` / `hero-bg.jpg` which contained visible "DIGOR LLC" text in a corner.
+**Fix:** Replaced all three image references with the 4 provided TOLIP-branded images via `@assets/` Vite imports:
+- Hero section: `10_Big_Data_and_Analytics_Informed_Decision` + `7_Real_Estate_Market_Growth_Concept` (blended overlay)
+- Services section: `8_51_795_Digital_Real_Estate_Background` (subtle 5% opacity background)
+- About section: `8_Diverse_Business_Team_Collaborating` (right-side accent)
+
+### BUG-066 — Duplicate push scripts causing confusion 🟢 Fixed
+**Cause:** `push_github.sh` (old, pushed both repos including Python worker subtree split) existed alongside a need for cleaner, purpose-specific scripts.
+**Fix:**
+- Removed `push_github.sh` (old)
+- Created `push-github.sh` — manual push, stages all changes, commits with message arg, pushes monorepo to GitHub
+- Created `auto-push.sh` — runs in background loop (default 30min interval), can also run `--once`; use `AUTO_PUSH_INTERVAL=900` env var for 15min intervals
+
+---
+
 ## ACTION ITEMS FOR NEXT SESSION
 
 ### Must-Do (Blockers)
@@ -431,9 +481,11 @@ Twilio SID/auth token may be configured but the account is not reachable from Re
 8. **Test power dialer full session flow** with real Twilio credentials
 9. **Test SSE connection** (`GET /api/crm/events?token=...`)
 10. **Fix `street` vs `address` field** in Tools ARV calculate (BUG-055)
-11. **Fix Railway TOOLS_PIN** → change from `#` to `$` if wrong
+11. **Test hold/mute race** — callerCallSid timing (conference state lookup) — needs live call test
 
 ### Informational
 - GROQ resets daily at midnight UTC. All AI features work once quota refreshes.
 - AWS ECS task is RUNNING/HEALTHY — it's only the ELB routing that's broken.
 - All 20 ECS secrets ARE in AWS Secrets Manager (verified via AWS console description).
+- `push-github.sh` and `auto-push.sh` replace the old `push_github.sh`.
+- `replit-setup.sh` is the full fresh-install script — run on new Replit project after `git clone`.

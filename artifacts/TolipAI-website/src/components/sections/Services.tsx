@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Database, MessageSquare, Settings, Users, BarChart3 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import servicesBg from "@assets/8_51_795_Digital_Real_Estate_Background_1779718492062.png";
 
 export function Services() {
   const services = [
@@ -37,8 +38,16 @@ export function Services() {
   ];
 
   return (
-    <section id="services" className="py-24 bg-background relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="services" className="py-24 bg-background relative overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
+        <img
+          src={servicesBg}
+          alt=""
+          className="w-full h-full object-cover opacity-5"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-transparent to-background" />
+      </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}

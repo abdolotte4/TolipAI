@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import teamBg from "@assets/8_Diverse_Business_Team_Collaborating_1779718492062.png";
 
 export function About() {
   const highlights = [
@@ -12,8 +13,8 @@ export function About() {
     <section id="about" className="py-24 bg-background relative overflow-hidden">
       <div className="absolute right-0 top-0 w-1/2 h-full opacity-10 pointer-events-none">
         <img 
-          src={`${import.meta.env.BASE_URL}images/about-bg.jpg`}
-          alt="Technical background"
+          src={teamBg}
+          alt="Diverse business team collaborating"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-background to-transparent" />

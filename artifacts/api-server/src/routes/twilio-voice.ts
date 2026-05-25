@@ -246,8 +246,8 @@ router.post("/twilio/voice/answer", async (req, res) => {
 
     if (confName && voiceCfg) {
       // ── Conference-based TwiML (hold music capable via participant API) ───────────────────────
-      // waitUrl="" → agent hears silence (not Twilio's default hold music) while waiting for
-      // the destination leg to connect. Hold music can be toggled later via the Participant API.
+      // waitUrl → ringback TwiML so agent hears ringing while the destination leg connects.
+      // Hold music can be toggled later via the Participant API.
       const recordAttr = record
         ? `record="record-from-start" recordingStatusCallback="${apiBase}/twilio/voice/recording" recordingStatusCallbackMethod="POST"`
         : "";
@@ -262,7 +262,7 @@ router.post("/twilio/voice/answer", async (req, res) => {
     <Conference startConferenceOnEnter="true"
                 endConferenceOnExit="true"
                 beep="false"
-                waitUrl=""
+                waitUrl="${apiBase}/twilio/voice/ringback"
                 waitMethod="GET"
                 ${recordAttr}
                 ${transcribeAttr}
@@ -348,6 +348,17 @@ router.post("/twilio/voice/answer", async (req, res) => {
   }
 });
 
+// ── GET /api/twilio/voice/ringback ───────────────────────────────────────────
+// Conference waitUrl — played to the agent while the destination leg is dialing.
+// Returns looping ringback TwiML so agents hear ringing instead of silence.
+router.get("/twilio/voice/ringback", (_req, res) => {
+  res.set("Content-Type", "text/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Play loop="10">https://sdk.twilio.com/js/client/sounds/releases/1.0.0/outgoing.mp3</Play>
+</Response>`);
+});
+
 // ── POST /api/twilio/voice/join-conference ────────────────────────────────────
 // TwiML URL for the called party (destination) to join the agent's conference room.
 router.post("/twilio/voice/join-conference", async (req, res) => {
@@ -364,7 +375,7 @@ router.post("/twilio/voice/join-conference", async (req, res) => {
     <Conference startConferenceOnEnter="true"
                 endConferenceOnExit="true"
                 beep="false"
-                waitUrl=""
+                waitUrl="${apiBase}/twilio/voice/ringback"
                 waitMethod="GET"
                 transcribe="true"
                 transcribeCallback="${apiBase}/twilio/voice/transcript">
@@ -723,6 +734,20 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
       });
       logId = result.id;
     }
+
+    // Emit SSE so the Phone Numbers / call list refreshes immediately.
+    // call-status webhook only fires at end-of-call (and may 404 on Railway),
+    // so this is the authoritative real-time notification for new outbound calls.
+    emitCrmActivity("call_logged", {
+      callSid: callSid || null,
+      status: "initiated",
+      from: values.fromNumber,
+      to: values.toNumber,
+      direction: direction || "outbound",
+      leadId: values.leadId ?? null,
+      campaignId,
+      ts: Date.now(),
+    });
 
     res.json({ success: true, id: logId });
   } catch (err: any) {
