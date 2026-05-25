@@ -44,8 +44,14 @@ class Settings:
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = _env("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
 
-    groq_api_key: Optional[str] = _env("GROQ_API_KEY")
-    groq_base_url: str = "https://api.groq.com/openai/v1"
+    # Groq key may be stored as AI_INTEGRATIONS_OPENAI_API_KEY (shared OpenAI-compat secret)
+    # or as GROQ_API_KEY — check both, prefer the integration key.
+    groq_api_key: Optional[str] = (
+        _env("AI_INTEGRATIONS_OPENAI_API_KEY") or _env("GROQ_API_KEY")
+    )
+    groq_base_url: str = (
+        _env("AI_INTEGRATIONS_OPENAI_BASE_URL") or "https://api.groq.com/openai/v1"
+    )
     groq_model: str = _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
 
     cerebras_api_key: Optional[str] = _env("CEREBRAS_API_KEY")

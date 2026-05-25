@@ -232,6 +232,38 @@ app.use("/api", (_req: Request, res: Response) => {
   res.status(404).json({ error: "API endpoint not found" });
 });
 
+// ── SEO: sitemap.xml + robots.txt ─────────────────────────────────────────────
+// Served dynamically so the Content-Type header is always correct and the
+// response is never affected by stale build artifacts or static-file cache.
+app.get("/sitemap.xml", (_req: Request, res: Response) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const urls = [
+    { loc: "https://tolipai.com/",                    changefreq: "weekly",  priority: "1.0" },
+    { loc: "https://tolipai.com/crm/",               changefreq: "weekly",  priority: "0.9" },
+    { loc: "https://tolipai.com/tools/",             changefreq: "weekly",  priority: "0.9" },
+    { loc: "https://tolipai.com/mission-vision-values", changefreq: "monthly", priority: "0.7" },
+    { loc: "https://tolipai.com/privacy-policy",     changefreq: "yearly",  priority: "0.3" },
+    { loc: "https://tolipai.com/terms-of-service",   changefreq: "yearly",  priority: "0.3" },
+  ];
+  const urlsXml = urls
+    .map(
+      (u) =>
+        `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+    )
+    .join("\n");
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlsXml}\n</urlset>`;
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=43200"); // 12-hour cache
+  res.send(xml);
+});
+
+app.get("/robots.txt", (_req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.send(
+    "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /crm/\n\nSitemap: https://tolipai.com/sitemap.xml\n"
+  );
+});
+
 // Serve static frontend builds in production
 if (process.env.NODE_ENV === "production") {
   const cwd = process.cwd();
