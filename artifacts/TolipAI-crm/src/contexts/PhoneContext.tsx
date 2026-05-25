@@ -55,7 +55,7 @@ interface PhoneContextValue {
   clearAiSuggestion: () => void;
 
   initDevice: () => Promise<boolean>;
-  startCall: (phone: string, leadId: number | null, leadName: string, record: boolean) => Promise<void>;
+  startCall: (phone: string, leadId: number | null, leadName: string, record: boolean, fromNumber?: string | null) => Promise<void>;
   hangUp: () => void;
   toggleMute: () => void;
   toggleHold: () => void;
@@ -290,7 +290,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   }, [stopRing]);
 
   const startCall = useCallback(
-    async (phone: string, leadId: number | null, leadName: string, record: boolean) => {
+    async (phone: string, leadId: number | null, leadName: string, record: boolean, fromNumber?: string | null) => {
       const ready = await initDevice();
       if (!ready || !deviceRef.current) return;
 
@@ -312,7 +312,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       }
 
       // Use ref so we never capture a stale callerIdUsed closure.
-      const effectiveCallerId = callerIdRef.current || "";
+      // If a specific fromNumber is passed (e.g. user selected OH number), use it.
+      const effectiveCallerId = fromNumber || callerIdRef.current || "";
 
       const params: Record<string, string> = {
         To: phone,
@@ -338,7 +339,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
               callSid: sid,
               leadId: leadId ?? null,
               toNumber: phone,
-              fromNumber: callerIdRef.current,
+              fromNumber: fromNumber || callerIdRef.current,
               direction: "outbound",
             }),
           });

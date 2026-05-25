@@ -116,9 +116,10 @@ function formatSessionResponse(job: any, currentLead: any | null) {
 
 router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
-  const { agentPhone, callMode = "bridge", filters = {} } = req.body as {
+  const { agentPhone, callMode = "bridge", filters = {}, fromPhoneNumber } = req.body as {
     agentPhone?: string;
     callMode?: "browser" | "bridge";
+    fromPhoneNumber?: string;
     filters?: {
       status?: string | string[];
       assignedTo?: number;
@@ -200,7 +201,7 @@ router.post("/twilio/voice/power-dial/session", crmAuth, async (req, res) => {
       leadIds,
       currentIndex: 0,
       agentPhone: agentPhone ?? "",
-      callerIdPhone: creds.phoneNumber,
+      callerIdPhone: fromPhoneNumber || creds.phoneNumber,
       campaignId,
       lines,
       stats: {

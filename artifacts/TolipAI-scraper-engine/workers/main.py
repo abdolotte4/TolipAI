@@ -1297,6 +1297,11 @@ def _decrypt_password(ciphertext: str) -> str:
     if not secret:
         raise ValueError("ENCRYPTION_KEY or JWT_SECRET env var is required for credential decryption")
 
+    # If ciphertext is plain text (no ":" separator), return as-is.
+    # Encrypted format is ivHex ":" encryptedHex from Node crypto-util.ts.
+    if ":" not in ciphertext:
+        return ciphertext
+
     key = hashlib.sha256(secret.encode()).digest()
     iv_hex, enc_hex = ciphertext.split(":", 1)
     iv = bytes.fromhex(iv_hex)

@@ -636,7 +636,7 @@ export default function ManualDialerPage() {
   const handleCall = (number?: string) => {
     const target = number || selectedContact;
     if (!target || !selectedNumber) return;
-    startCall(target, null, fmtPhone(target), true);
+    startCall(target, null, fmtPhone(target), true, selectedNumber?.number || null);
     toast({ title: "Calling…", description: `Dialing ${fmtPhone(target)} from ${selectedNumber.number}` });
     // Select the contact immediately so the conversation panel opens
     setSelectedContact(target);

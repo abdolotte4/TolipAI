@@ -860,14 +860,16 @@ router.post("/twilio/webhook", async (req, res) => {
     // ── Carrier-compliance keywords (unconditional — fire before notifications/AI) ──
 
     // STOP → record opt-out in DB + send mandatory carrier acknowledgement
+    // Use resolvedCampaignId so unknown numbers (no lead record) still get compliance handling.
+    const stopCampaignId = lead?.campaignId ?? resolvedCampaignId;
     if (isOptOutMessage(content)) {
-      if (lead?.campaignId) {
+      if (stopCampaignId) {
         try {
           await db.insert(crmSmsOptOuts).values({
             phone: fromNumber,
-            campaignId: lead.campaignId,
+            campaignId: stopCampaignId,
           }).onConflictDoNothing();
-          logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] STOP opt-out recorded");
+          logger.info({ leadId: lead?.id ?? null, from: fromNumber }, "[twilio webhook] STOP opt-out recorded");
         } catch (dbErr) {
           logger.warn(dbErr, "[twilio webhook] STOP opt-out DB insert failed");
         }
@@ -876,30 +878,32 @@ router.post("/twilio/webhook", async (req, res) => {
             await sendSms({
               to: fromNumber,
               body: "You've been unsubscribed from TolipAI messages. No further texts will be sent. Reply START to resubscribe.",
-              campaignId: lead.campaignId!,
+              campaignId: stopCampaignId!,
             });
-            logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] STOP confirmation sent");
+            logger.info({ leadId: lead?.id ?? null, from: fromNumber }, "[twilio webhook] STOP confirmation sent");
           } catch (smsErr) {
             logger.warn(smsErr, "[twilio webhook] STOP confirmation SMS failed — carrier may handle it natively");
           }
         });
       } else {
-        logger.warn({ from: fromNumber, to: toNumber }, "[twilio webhook] STOP from unrecognised number — cannot record opt-out");
+        logger.warn({ from: fromNumber, to: toNumber }, "[twilio webhook] STOP from unrecognised number with no campaign match — cannot record opt-out");
       }
       return;
     }
 
     // HELP → carrier-required support info (regardless of AI SMS setting)
+    // Use resolvedCampaignId so unknown numbers still get the compliance response.
+    const helpCampaignId = lead?.campaignId ?? resolvedCampaignId;
     if (/^HELP\b/i.test(content.trim())) {
-      if (lead?.campaignId) {
+      if (helpCampaignId) {
         setImmediate(async () => {
           try {
             await sendSms({
               to: fromNumber,
               body: "TolipAI: For help, email info@tolipai.com or call (307) 488-2217. Reply STOP to unsubscribe. Msg & data rates may apply.",
-              campaignId: lead.campaignId!,
+              campaignId: helpCampaignId!,
             });
-            logger.info({ leadId: lead.id, from: fromNumber }, "[twilio webhook] HELP auto-reply sent");
+            logger.info({ leadId: lead?.id ?? null, from: fromNumber }, "[twilio webhook] HELP auto-reply sent");
           } catch (helpErr) {
             logger.warn(helpErr, "[twilio webhook] HELP auto-reply failed");
           }

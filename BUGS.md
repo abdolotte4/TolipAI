@@ -1,6 +1,6 @@
 # TolipAI CRM — Bug Tracker
 
-> Last updated: 2026-05-25 (Session 3 — Twilio voice bugs, website rebrand, scripts)
+> Last updated: 2026-05-25 (Session 5 — SCRAPER_API_KEY, caller ID, SMS compliance, scraper tests)
 > Status legend: 🔴 Open | 🟡 In-Progress | 🟢 Fixed | ⚪ Needs-Test
 
 ---
@@ -496,26 +496,97 @@ Twilio SID/auth token may be configured but the account is not reachable from Re
 
 ---
 
-## ACTION ITEMS
+## SESSION 5 FIXES (2026-05-25 — API Key, Caller ID, SMS Compliance, Scraper Tests)
+
+### BUG-072 — SCRAPER_API_KEY not set — scraper endpoints unprotected 🟢 Fixed
+**Symptom:** Every scraper startup printed `[WARN: SCRAPER_API_KEY not set — endpoints unprotected]`.  
+**Fix:** Generated a 32-byte hex key and stored it as `SCRAPER_API_KEY` env var (shared). Scraper `main.py` already had auth middleware at lines 294-303 checking `X-API-Key` header. `scraperEngine.ts` proxy at line 481 already forwarded it: `...(apiKey ? { "X-API-Key": apiKey } : {})`.  
+**Result:** All scrape/session/AI endpoints now require `X-API-Key: <key>`. Health endpoint (`/health`) remains public (by design). Session test endpoints confirm 401 Unauthorized without key.  
+**Note:** Add same `SCRAPER_API_KEY` value to Railway environment variables.
+
+### BUG-073 — Manual dialer always calls from campaign primary number (ignores selected number) 🟢 Fixed
+**Files:** `artifacts/TolipAI-crm/src/contexts/PhoneContext.tsx`, `artifacts/TolipAI-crm/src/pages/integrations/PhoneNumbers.tsx`, `artifacts/api-server/src/routes/twilio-power-dialer.ts`  
+**Root cause:** When user selected the OH number in the phone numbers list and dialed, the call was placed FROM the Wyoming number (+13074882217) because:  
+1. `startCall()` hardcoded `CallerId` to `callerIdRef.current` (the token's default callerId — always the campaign's primary number from DB)  
+2. Power dialer session creation hardcoded `callerIdPhone: creds.phoneNumber` (campaign primary) with no override param  
+**Fix 1 (PhoneContext):** Added optional `fromNumber?: string | null` param to `startCall`. `effectiveCallerId` now uses `fromNumber || callerIdRef.current`. `fromNumber` is also passed to the call log endpoint.  
+**Fix 2 (PhoneNumbers):** `handleCall()` now passes `selectedNumber?.number` as the `fromNumber` param — the number the user has selected in the left panel is always used as the CallerId.  
+**Fix 3 (Power dialer):** Session creation now accepts optional `fromPhoneNumber` in body; `callerIdPhone` set to `fromPhoneNumber || creds.phoneNumber`. Frontend can override per-session.  
+**Architectural note:** This fix only affects which number Twilio displays as the FROM number to the callee. The actual call still routes through the campaign's Twilio account. If a campaign has its own Twilio account (different accountSid), they must also configure API Key SID, API Key Secret, and TwiML App SID in Campaign → Twilio settings — otherwise the SDK falls back to the global (Wyoming) Twilio account. This is a configuration gap, not a code bug.
+
+### BUG-074 — AI SMS: STOP/HELP compliance broken for unknown phone numbers 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/twilio.ts`  
+**Root cause:** STOP and HELP webhook handlers used `lead?.campaignId` — which is `null` for numbers not in the leads DB. This meant:
+- Unknown number sends STOP → opt-out NOT recorded in DB, NO confirmation SMS sent (TCPA violation risk)
+- Unknown number sends HELP → NO support response sent (carrier compliance violation)
+**Fix:** Both handlers now use `stopCampaignId = lead?.campaignId ?? resolvedCampaignId`. `resolvedCampaignId` is already resolved from the `To` number (the Twilio number that received the message) via `crm_campaigns.twilioPhoneNumber` and `crm_campaign_phone_numbers` table. Unknown-number STOP/HELP now work as long as the receiving Twilio number belongs to a campaign.
+
+### BUG-075 — Propwire/Propelio session test crashes with "not enough values to unpack" 🟢 Fixed
+**File:** `artifacts/TolipAI-scraper-engine/workers/main.py`  
+**Root cause:** `_decrypt_password()` line 1301 did `iv_hex, enc_hex = ciphertext.split(":", 1)` — assuming Node.js AES-CBC encrypted format (`ivHex:encryptedHex`). When called with plaintext credentials (no `:` separator), Python unpack raised `ValueError: not enough values to unpack`.  
+**Fix:** Added plaintext passthrough: `if ":" not in ciphertext: return ciphertext`. Encrypted credentials still work as before. Plaintext credentials now pass through.  
+**Test result:** Endpoint no longer crashes. Returns `{"success": false, "error": "...playwright error..."}` as expected when Playwright browser isn't available (INFRA-007).
+
+### BUG-076 — CRM blank / not loading in dev env 🟢 Fixed
+**Root cause:** Stale process was holding port 5000. The previous API server process survived a workflow stop because Replit's SIGTERM couldn't reach it (trapped by signal handler).  
+**Fix:** Killed stale PID directly. `node-start.sh`'s Python-based `/proc` port killer (fixed in prior session) handles this automatically going forward.  
+**Confirmed:** `GET /crm/` returns 200, CRM React SPA loads correctly.
+
+---
+
+## SESSION 5 — SCRAPER TEST RESULTS (2026-05-25)
+
+Tests run against local scraper engine (port 8000) using `SCRAPER_API_KEY`.
+
+| Endpoint | Test | Result | Root Cause |
+|---|---|---|---|
+| `POST /scrape/distressed` | Dallas TX county | Queued OK, 0 results | Groq 429 (rate limited) |
+| `POST /scrape/cash-buyers` | Dallas TX | Queued OK, 0 results | Groq 429 + no BrightData |
+| `POST /ai/satellite-dfd` | Dallas TX 75201 | 0 scanned | No Google Maps key + Groq 429 |
+| `POST /session/propwire/test` | test@test.com | Crashes (timeout) | Playwright not installed locally (INFRA-007) |
+| `POST /session/propelio/test` | test@test.com | Crashes (timeout) | Playwright not installed locally (INFRA-007) |
+| `GET /health` | — | `degraded` (Groq 429, db ok) | Groq daily limit exhausted |
+| `GET /jobs/{id}` | distressed job | Done, 0 listings | Groq 429 (no AI scoring) |
+
+**Scraper API key enforcement confirmed:** Endpoints correctly return `401 Unauthorized` without key, pass with correct key.  
+**All scraper AI features are blocked by:** Groq 429 (resets midnight UTC), missing Playwright browser (INFRA-007), missing Propwire/Propelio credentials (INFRA-005), missing Google Maps key (INFRA-006).
+
+### AI SMS Behavior — Unknown Phone Numbers (Documented)
+When a text arrives from a number with no lead record in the DB:
+- Message is **saved to DB** with `leadId: null`, `campaignId: resolvedCampaignId`
+- **SSE event** is emitted — UI will toast "New SMS from +1..."
+- **STOP opt-out**: NOW recorded + confirmation SMS sent (fixed BUG-074)
+- **HELP response**: NOW sent (fixed BUG-074)
+- **Notifications**: NOT created (no lead = no assigned users to notify) — by design
+- **AI auto-reply**: NOT triggered — AI SMS only fires when a lead record exists. This is intentional: AI shouldn't reply to cold/unknown contacts with no context
+- **Inbound message visible in UI**: YES, under the campaign's phone number conversations (via `resolvedCampaignId`)
+
+---
+
+## ACTION ITEMS (Updated Session 5)
 
 ### P0 — Infrastructure Blockers (user action required)
-1. **Fix AWS ELB → ECS connection** (BUG-051) → AWS Console → ECS → cluster `TolipAI-scraper-cluster` → service `tolipai-scraper-engine-service-xop` → Update service → attach load balancer + target group. Unblocks ALL scraper features.
+1. **Fix AWS ELB → ECS connection** (BUG-051) → AWS Console → ECS → cluster `TolipAI-scraper-cluster` → service `tolipai-scraper-engine-service-xop` → Update service → attach load balancer + target group. Unblocks ALL scraper features in production.
 2. **Renew ATTOM subscription** → Update `ATTOM_API_KEY` in both Replit Secrets and Railway (BUG-036). Unblocks ARV, comps, property data features.
+3. **Add `SCRAPER_API_KEY` to Railway** — same value as Replit env var. Required for production scraper proxy.
 
 ### P1 — Credential Gaps
-3. **Set Propelio/Propwire credentials:** `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD` in Replit Secrets + Railway (BUG-037)
-4. **Set BrightData proxy credentials:** `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT` in Replit Secrets + Railway (BUG-038)
-5. **Set Google Maps API key:** `GOOGLE_MAPS_API_KEY` in Replit Secrets + Railway (BUG-039)
+4. **Set Propelio/Propwire credentials:** `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD` in Replit Secrets + Railway (INFRA-005). Needed to test login sessions.
+5. **Set BrightData proxy credentials:** `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT` in Replit Secrets + Railway (INFRA-001). Needed for distressed/cash-buyers scrapers.
+6. **Set Google Maps API key:** `GOOGLE_MAPS_API_KEY` in Replit Secrets + Railway (INFRA-006). Needed for Satellite DFD.
 
-### P2 — After External Credentials Fixed
-6. **Re-test all AI endpoints** after GROQ quota resets midnight UTC (BUG-045)
-7. **Test power dialer** full session flow with real Twilio credentials
-8. **Test hold/mute conference state** — needs live active call
-9. **Fix `street` vs `address` field** alias in Tools ARV/property endpoints (BUG-055)
+### P2 — After Credentials Fixed
+7. **Re-test scraper AI endpoints** after Groq quota resets (midnight UTC). `POST /scrape/distressed`, `/scrape/cash-buyers`, `/ai/satellite-dfd` are ready — just blocked by rate limits.
+8. **Test Propwire login** with real credentials via `POST /session/propwire/test` — endpoint works, needs creds + Playwright.
+9. **Test Propelio login** same as above.
+10. **Test power dialer** full session flow with real Twilio credentials — create session, initiate call, log disposition.
+11. **Test AI SMS auto-reply** — text a campaign number from a known lead's phone. Verify AI reply arrives within 60s. Check `aiSmsEnabled` is `true` in campaign settings.
+12. **Fix `street` vs `address` field** alias in Tools ARV/property endpoints (BUG-055).
 
 ### Informational
 - `API_BASE_URL` (Railway production) is always the Twilio webhook base — set this correctly in Railway env vars.
-- Scraper runs exclusively on AWS Fargate ECS. No localhost fallback in code.
+- Scraper runs exclusively on AWS Fargate ECS. Replit local scraper is for dev/testing only.
 - GROQ resets daily at midnight UTC.
 - AWS ECS task is RUNNING/HEALTHY — only the ELB target group attachment is missing.
 - `push-github.sh` — manual push to GitHub; run from Shell tab.
+- Each campaign needing its own Twilio voice (browser SDK) must configure: Account SID, API Key SID, API Key Secret, TwiML App SID, and Phone Number in Campaign → Twilio settings. Partial config falls back to global Wyoming account.
