@@ -114,12 +114,12 @@
 | S3-a | **Twilio ringback** — `GET /twilio/voice/ringback` added; both Conference `waitUrl=""` → `waitUrl="${apiBase}/twilio/voice/ringback"`. Browser: `playRing()` on dial, stopped on accept. (BUG-060) |
 | S3-b | **callerIdRef** — `PhoneContext.tsx` stale closure fixed with `useRef` alongside `setCallerIdUsed`. (BUG-061) |
 | S3-c | **SSE call_logged** — emitted from `POST /voice/log` (frontend-triggered). `PhoneNumbers.tsx` refresh 30s→5s. (BUG-062, BUG-063) |
-| S3-d | **webhookBase.ts priority** — `REPLIT_DEV_DOMAIN` checked first, then `API_BASE_URL`. (BUG-064) |
+| S3-d | ~~webhookBase.ts REPLIT_DEV_DOMAIN first — REVERTED S4~~ |
 | S3-e | **Website TOLIP rebrand** — Hero/About/Services use 4 new branded images via `@assets/` Vite imports. (BUG-065) |
 | S4-a | **CORS port fix** — `\.replit\.dev$` → `\.replit\.dev(:\d+)?$` allows Replit iframe `:5000` origin. (BUG-069) |
-| S4-b | **scraperEngine fallback** — `proxyToScraper()` helper + localhost:8000 fallback when primary URL fails with ECONNREFUSED. Default fallback: `http://localhost:8000`. (BUG-068) |
+| S4-b | **scraperEngine.ts clean error** — non-JSON ELB responses now return `{error:"Scraper engine returned non-JSON response (HTTP <N>)"}` instead of `{raw:"<html>..."}`. No localhost fallback — scraper is AWS Fargate only. `SCRAPER_ENGINE_URL` not set → immediate 503. (BUG-068) |
 | S4-c | **`.replit` ports** — Removed port 3000 mapping; removed double-start "Project" workflow; `TolipAI API Server` = webview port 5000. (BUG-070) |
-| S4-d | **Full audit** — 43 endpoints tested (S4); satellite DFD confirmed live; TOOLS_PIN secret wrong (BUG-067 — user fix needed). See `TEST_RESULTS.md`. |
+| S4-d | **webhookBase.ts reverted** — `API_BASE_URL` (production) restored as first priority. `REPLIT_DEV_DOMAIN` is secondary fallback only when `API_BASE_URL` not set. Twilio webhooks always point to Railway production. (BUG-064 revert) |
 
 ---
 

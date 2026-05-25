@@ -461,80 +461,41 @@ router.get("/scraper-engine/jobs/:jobId", async (req: Request, res: Response) =>
 
 // ─── Catch-all proxy for every other /scraper-engine/* route ─────────────────
 
-const _ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "http://localhost:8000").replace(/\/$/, "");
-const _LOCAL_FALLBACK = "http://localhost:8000";
-
-async function proxyToScraper(
-  targetUrl: string,
-  req: Request,
-  apiKey: string | undefined,
-  signal: AbortSignal
-) {
-  const isBodyMethod = !["GET", "HEAD", "DELETE"].includes(req.method.toUpperCase());
-  const upstream = await fetch(targetUrl, {
-    method: req.method,
-    headers: {
-      "content-type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-      ...(req.headers.authorization ? { "Authorization": req.headers.authorization } : {}),
-    },
-    ...(isBodyMethod ? { body: JSON.stringify(req.body) } : {}),
-    signal,
-  });
-  const text = await upstream.text();
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = { raw: text };
-  }
-  if (body && typeof body === "object" && (body as Record<string, unknown>).status === "done") {
-    (body as Record<string, unknown>).status = "completed";
-  }
-  return { status: upstream.status, body };
-}
-
-function shouldFallback(status: number, body: unknown): boolean {
-  if (_ENGINE_URL === _LOCAL_FALLBACK) return false;
-  if (status >= 500) return true;
-  if (body && typeof body === "object" && "raw" in (body as object)) return true;
-  return false;
-}
-
-async function tryFallback(
-  subPath: string,
-  req: Request,
-  apiKey: string | undefined
-): Promise<{ status: number; body: unknown } | null> {
-  const fallbackController = new AbortController();
-  const fallbackTimer = setTimeout(() => fallbackController.abort(), 30_000);
-  try {
-    const result = await proxyToScraper(`${_LOCAL_FALLBACK}${subPath}`, req, apiKey, fallbackController.signal);
-    clearTimeout(fallbackTimer);
-    return result;
-  } catch {
-    clearTimeout(fallbackTimer);
-    return null;
-  }
-}
+const _ENGINE_URL = (process.env.SCRAPER_ENGINE_URL ?? "").replace(/\/$/, "");
 
 router.all("/scraper-engine/{*path}", crmAuth, async (req: Request, res: Response) => {
+  if (!_ENGINE_URL) {
+    res.status(503).json({ error: "SCRAPER_ENGINE_URL is not configured" });
+    return;
+  }
   const subPath = req.path.slice("/scraper-engine".length) || "/";
+  const isBodyMethod = !["GET", "HEAD", "DELETE"].includes(req.method.toUpperCase());
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 180_000);
   const apiKey = process.env.SCRAPER_API_KEY;
   try {
-    const primaryUrl = `${_ENGINE_URL}${subPath}`;
-    const { status, body } = await proxyToScraper(primaryUrl, req, apiKey, controller.signal);
+    const upstream = await fetch(`${_ENGINE_URL}${subPath}`, {
+      method: req.method,
+      headers: {
+        "content-type": "application/json",
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
+        ...(req.headers.authorization ? { "Authorization": req.headers.authorization } : {}),
+      },
+      ...(isBodyMethod ? { body: JSON.stringify(req.body) } : {}),
+      signal: controller.signal,
+    });
     clearTimeout(timer);
-    if (shouldFallback(status, body)) {
-      const fallback = await tryFallback(subPath, req, apiKey);
-      if (fallback) {
-        res.status(fallback.status).json(fallback.body);
-        return;
-      }
+    const text = await upstream.text();
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: `Scraper engine returned non-JSON response (HTTP ${upstream.status})` };
     }
-    res.status(status).json(body);
+    if (body && typeof body === "object" && (body as Record<string, unknown>).status === "done") {
+      (body as Record<string, unknown>).status = "completed";
+    }
+    res.status(upstream.status).json(body);
   } catch (err: unknown) {
     clearTimeout(timer);
     const e = err as Record<string, unknown> | null;
@@ -546,16 +507,9 @@ router.all("/scraper-engine/{*path}", crmAuth, async (req: Request, res: Respons
     const isConn =
       cause?.["code"] === "ECONNREFUSED" ||
       /ECONNREFUSED|fetch failed/i.test(toMessage(err));
-    if (isConn) {
-      const fallback = await tryFallback(subPath, req, apiKey);
-      if (fallback) {
-        res.status(fallback.status).json(fallback.body);
-        return;
-      }
-    }
     res.status(503).json({
       error: isConn
-        ? "Scraper engine is not running or unreachable"
+        ? "Scraper engine is unreachable — check SCRAPER_ENGINE_URL and ELB health (BUG-051)"
         : toMessage(err),
     });
   }

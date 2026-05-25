@@ -37,7 +37,7 @@
 **Root cause:** ECS service `Load balancers: []` — the load balancer was never attached to the ECS service, OR was detached after initial deploy. The ECS task itself is RUNNING and HEALTHY on private IP `172.31.81.216:8765`, but the ELB has no target group pointing at it.  
 **Fix required:** AWS Console → ECS → cluster `TolipAI-scraper-cluster` → service `tolipai-scraper-engine-service-xop` → Update service → attach load balancer + target group.  
 **OR:** Delete and recreate the ECS service with the load balancer configured from the start.  
-**Workaround:** Use local scraper engine on port 8000 (Replit env) for development and testing.
+**Note:** The API proxy at `/api/scraper-engine/*` will return a clear JSON error while BUG-051 is open. No localhost fallback — scraper runs exclusively on AWS Fargate.
 
 ---
 
@@ -466,72 +466,56 @@ Twilio SID/auth token may be configured but the account is not reachable from Re
 
 ---
 
-## SESSION 4 FIXES (2026-05-25 — Audit + Endpoint Tests)
+## SESSION 4 FIXES (2026-05-25 — Audit + Code Corrections)
 
-### BUG-067 — TOOLS_PIN secret has wrong value (hash `#` instead of dollar `$`) 🔴 Open (User Action Required)
-**Confirmed (Session 4):** `TOOLS_PIN=[Abdo4413#]` via env dump. Correct value: `Abdo4413$`.  
-**Impact:** ALL tools endpoints (`/api/tools/*`) return `"Invalid PIN"` — ARV, property lookup, skip trace, distressed, phone finder all broken in Replit dev.  
-**Fix:** Go to Replit Secrets panel → find `TOOLS_PIN` → change value from `Abdo4413#` to `Abdo4413$` → restart `TolipAI API Server` workflow.
+### BUG-064 REVERTED — webhookBase.ts REPLIT_DEV_DOMAIN priority was wrong 🟢 Reverted
+**File:** `artifacts/api-server/src/lib/webhookBase.ts`  
+**Session 3 mistake:** `REPLIT_DEV_DOMAIN` was placed as first priority, causing Twilio webhooks in production to point to the Replit dev URL instead of the Railway production server.  
+**Correct behaviour:** `API_BASE_URL` (Railway production) is always first. `REPLIT_DEV_DOMAIN` is only used as a secondary fallback when `API_BASE_URL` is not set (pure local dev with no Railway deployment).  
+**Priority order (corrected):** API_BASE_URL → REPLIT_DEV_DOMAIN → x-forwarded-host → host header.
 
-### BUG-068 — scraperEngine.ts proxy wraps ELB 502 HTML as `{raw:"<html>..."}` 🟢 Fixed
+### BUG-068 — scraperEngine.ts proxy returned `{raw:"<html>..."}` on ELB 502 🟢 Fixed
 **File:** `artifacts/api-server/src/routes/scraperEngine.ts`  
-**Cause:** When `SCRAPER_ENGINE_URL` (ELB) returns 502 HTML, `JSON.parse()` fails and the catch wraps the raw string as `{raw: "<html>..."}`. All `/api/scraper-engine/*` routes returned `{raw: ...}`.  
-**Fix:** Added `proxyToScraper()` helper + localhost fallback logic. When the primary URL fails with ECONNREFUSED/fetch-failed, the proxy automatically retries against `http://localhost:8000`. Default fallback when `SCRAPER_ENGINE_URL` is unset is also `http://localhost:8000`.
+**Cause:** When ELB returns a 502 with an HTML body, `JSON.parse()` throws, and the catch block was wrapping the raw HTML string as `{raw: "<html>..."}`. This was confusing to the frontend.  
+**Fix:** When `JSON.parse` fails, the proxy now returns `{error: "Scraper engine returned non-JSON response (HTTP <status>)"}` — a clean JSON error. No localhost fallback was added; the scraper runs exclusively on AWS Fargate (see BUG-051 for ELB fix).  
+**Also fixed:** `SCRAPER_ENGINE_URL` not set → immediate 503 `{"error":"SCRAPER_ENGINE_URL is not configured"}` instead of silently trying localhost.
 
 ### BUG-069 — CORS blocked Replit iframe when origin includes port suffix 🟢 Fixed
 **File:** `artifacts/api-server/src/app.ts`  
-**Cause:** Replit preview iframe sends `origin: https://....replit.dev:5000` (with `:5000` suffix). The CORS regex `^https:\/\/.*\.replit\.dev$` failed because the `$` anchor didn't match the `:5000` suffix. Result: all static assets returned 500 after screenshot was taken.  
-**Fix:** Changed both replit.app and replit.dev regexes to `(:\d+)?$` to allow optional port suffixes.
+**Cause:** Replit preview iframe sends `origin: https://....replit.dev:5000`. The CORS regex `^https:\/\/.*\.replit\.dev$` failed to match the `:5000` suffix.  
+**Fix:** Changed both `.replit.app` and `.replit.dev` regexes to `(:\d+)?$` to allow optional port suffixes.
 
-### BUG-070 — `.replit` listed port 3000 with no service listening there 🟢 Fixed
-**File:** `.replit` (managed via Replit workflow tool)  
-**Cause:** Port 3000 was listed in `[[ports]]` but the API server runs on port 5000. The "Project" workflow also double-started the API (ran both `bash node-start.sh` directly AND `workflow.run TolipAI API Server`). Preview pane accessed port 3000 and got "Cannot GET /".  
-**Fix:** Removed port 3000 mapping. Reconfigured `TolipAI API Server` workflow with `outputType: "webview"` and `waitForPort: 5000`. Removed redundant "Project" parent workflow.
+### BUG-070 — `.replit` listed port 3000 with no service listening there 🟢 Fixed  
+**Cause:** Port 3000 was in `[[ports]]` but the API runs on port 5000. A redundant "Project" workflow was also double-starting the API.  
+**Fix:** Removed port 3000 mapping. Removed "Project" workflow. `TolipAI API Server` configured as `webview` on port 5000.
 
-### BUG-071 — Satellite DFD confirmed working directly but broken via API proxy (BUG-068) 🟢 Fixed
-**Endpoint:** `POST /ai/satellite-dfd` on scraper engine (port 8000 direct)  
-**Test result (Session 4, Dallas TX 75201):** `total_scanned: 33`, `total_above_threshold: 2`  
-  - `2315 Routh St Dallas TX 75201` — distress_score: 40, medium distress, lat/lng included  
-**Previously broken via API proxy** due to BUG-068 returning `{raw:...}`. Now fixed with localhost fallback.
-
-### SESSION 4 — Scraper Engine Health Report
-**Tested:** Direct port 8000 + all 42 routes via `/openapi.json`  
-**Status:** degraded (non-critical — GROQ quota, Playwright disabled)  
-- ✅ DB: ok (60ms latency)  
-- ✅ 231 distressed property sources, 6 categories loaded  
-- ✅ All circuit breakers: closed  
-- ✅ Skip trace: PropertyAPI + OpenCorporates enabled  
-- ❌ GROQ: 429 rate limit (resets midnight UTC)  
-- ❌ Playwright: install failed in Nix env (known — INFRA-007)  
-- ❌ Google Maps: Playwright unavailable  
-- ❌ NAR Directory: all endpoint patterns failed  
-- ⚠️ Redis: in-memory (no persistence across restarts)  
-- ⚠️ BrightData: proxy credentials missing HOST/PORT
+### BUG-071 — Satellite DFD via API proxy returns `{raw:...}` (ELB 502) 🔴 Open → blocked by BUG-051
+**Endpoint:** `POST /api/scraper-engine/satellite-dfd`  
+**Root cause:** BUG-051 (ELB disconnected). Until ELB is re-attached to ECS service, all `/api/scraper-engine/*` calls return a clean `{error: "..."}` JSON (BUG-068 fixed the response format).  
+**Satellite DFD confirmed working** when called directly against a healthy scraper (Dallas TX 75201: 33 scanned, 2 distressed properties). Feature is ready — only infra fix needed.
 
 ---
 
-## ACTION ITEMS FOR NEXT SESSION
+## ACTION ITEMS
 
-### Must-Do (Blockers)
-1. **Fix TOOLS_PIN** in Replit Secrets → change from `Abdo4413#` to `Abdo4413$` (BUG-067) — **USER ACTION REQUIRED**
-2. **Renew ATTOM subscription** → Update `ATTOM_API_KEY` in Replit Secrets + Railway (BUG-036)
-3. **Fix AWS ELB → ECS connection** (BUG-051) → Re-attach load balancer to ECS service in AWS Console
-4. **Set Propelio/Propwire credentials** in Replit Secrets: `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD` (BUG-037)
-5. **Set BrightData HOST/PORT** in Replit Secrets: `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT` (BUG-038)
-6. **Fix Playwright in Replit** (INFRA-007) → Add `playwright install chromium --with-deps` to `artifacts/TolipAI-scraper-engine/start.sh`
+### P0 — Infrastructure Blockers (user action required)
+1. **Fix AWS ELB → ECS connection** (BUG-051) → AWS Console → ECS → cluster `TolipAI-scraper-cluster` → service `tolipai-scraper-engine-service-xop` → Update service → attach load balancer + target group. Unblocks ALL scraper features.
+2. **Renew ATTOM subscription** → Update `ATTOM_API_KEY` in both Replit Secrets and Railway (BUG-036). Unblocks ARV, comps, property data features.
 
-### Should-Do
-7. **Re-test all AI endpoints** after GROQ quota resets midnight UTC
-8. **Test power dialer full session flow** with real Twilio credentials
-9. **Test hold/mute race** — callerCallSid timing (conference state lookup) — needs live call test
-10. **Fix `street` vs `address` field** in Tools ARV calculate (BUG-055)
-11. **Test Tools endpoints** after TOOLS_PIN is corrected (BUG-067)
+### P1 — Credential Gaps
+3. **Set Propelio/Propwire credentials:** `PROPELIO_EMAIL`, `PROPELIO_PASSWORD`, `PROPWIRE_EMAIL`, `PROPWIRE_PASSWORD` in Replit Secrets + Railway (BUG-037)
+4. **Set BrightData proxy credentials:** `BRIGHTDATA_HOST`, `BRIGHTDATA_PORT` in Replit Secrets + Railway (BUG-038)
+5. **Set Google Maps API key:** `GOOGLE_MAPS_API_KEY` in Replit Secrets + Railway (BUG-039)
+
+### P2 — After External Credentials Fixed
+6. **Re-test all AI endpoints** after GROQ quota resets midnight UTC (BUG-045)
+7. **Test power dialer** full session flow with real Twilio credentials
+8. **Test hold/mute conference state** — needs live active call
+9. **Fix `street` vs `address` field** alias in Tools ARV/property endpoints (BUG-055)
 
 ### Informational
-- GROQ resets daily at midnight UTC. All AI features work once quota refreshes.
-- AWS ECS task is RUNNING/HEALTHY — it's only the ELB routing that's broken.
-- All 20 ECS secrets ARE in AWS Secrets Manager (verified via AWS console description).
-- `push-github.sh` and `auto-push.sh` replace the old `push_github.sh`.
-- `replit-setup.sh` is the full fresh-install script — run on new Replit project after `git clone`.
-- API server runs on **port 5000** in Replit (not 3000). Preview pane is configured to port 5000.
-- Scraper engine runs on **port 8000**. API server proxies to it at `/api/scraper-engine/*`.
+- `API_BASE_URL` (Railway production) is always the Twilio webhook base — set this correctly in Railway env vars.
+- Scraper runs exclusively on AWS Fargate ECS. No localhost fallback in code.
+- GROQ resets daily at midnight UTC.
+- AWS ECS task is RUNNING/HEALTHY — only the ELB target group attachment is missing.
+- `push-github.sh` — manual push to GitHub; run from Shell tab.
