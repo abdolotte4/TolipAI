@@ -771,6 +771,35 @@ router.post("/twilio/voice/recording", twilioAuth, async (req, res) => {
 
     logger.info({ callSid, recordingSid }, "[twilio/voice/recording] stored");
 
+    // Push an SSE notification so the conversation thread refreshes immediately
+    // and the recording player appears without waiting for the 5s poll interval.
+    setImmediate(async () => {
+      try {
+        const [logRow] = await db
+          .select({
+            fromNumber: crmCallLogs.fromNumber,
+            toNumber: crmCallLogs.toNumber,
+            campaignId: crmCallLogs.campaignId,
+            leadId: crmCallLogs.leadId,
+          })
+          .from(crmCallLogs)
+          .where(eq(crmCallLogs.callSid, callSid!))
+          .limit(1);
+        if (logRow) {
+          emitCrmActivity("call_logged", {
+            callSid,
+            status: "recording-ready",
+            from: logRow.fromNumber,
+            to: logRow.toNumber,
+            direction: "outbound",
+            leadId: logRow.leadId ?? null,
+            campaignId: logRow.campaignId ?? null,
+            ts: Date.now(),
+          });
+        }
+      } catch { /* non-fatal */ }
+    });
+
     // Fire-and-forget AI transcription if OpenAI key available
     if (recordingUrl && getOpenAIKey()) {
       // Look up campaign for recording auth (callSid already bound in outer scope)

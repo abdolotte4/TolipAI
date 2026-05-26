@@ -387,27 +387,27 @@ function ConversationItem({
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <span className={`font-medium text-sm truncate ${hasUnread && !selected ? "text-foreground font-semibold" : "text-foreground"}`}>
+        {/* Phone number on its own line — never truncated */}
+        <div className="flex items-center gap-2">
+          <span className={`font-mono font-medium text-sm ${hasUnread && !selected ? "text-foreground font-semibold" : "text-foreground"}`}>
             {fmtPhone(conv.contact)}
           </span>
-          {lastTs && (
-            <span className={`text-[10px] flex-shrink-0 ${hasUnread && !selected ? "text-amber-500 font-medium" : "text-muted-foreground"}`}>
-              {formatDistanceToNow(new Date(lastTs), { addSuffix: true })}
-            </span>
+          {conv.leadId && (
+            <Badge className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20 flex-shrink-0">Lead</Badge>
           )}
         </div>
+        {/* Second row: icon + subtext + timestamp */}
         <div className="flex items-center gap-1.5 mt-0.5">
           <Icon className={`w-3 h-3 flex-shrink-0 ${missedOrFailed ? "text-red-400" : isSmsOnly ? "text-sky-400" : "text-muted-foreground"}`} />
           <span className={`text-xs truncate ${missedOrFailed ? "text-red-400" : hasUnread && !selected ? "text-foreground" : "text-muted-foreground"}`}>
             {subtext}
           </span>
+          {lastTs && (
+            <span className={`text-[10px] ml-auto flex-shrink-0 whitespace-nowrap ${hasUnread && !selected ? "text-amber-500 font-medium" : "text-muted-foreground"}`}>
+              {formatDistanceToNow(new Date(lastTs), { addSuffix: true })}
+            </span>
+          )}
         </div>
-      </div>
-      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        {conv.leadId && (
-          <Badge className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20">Lead</Badge>
-        )}
       </div>
     </button>
   );
@@ -461,6 +461,13 @@ export default function ManualDialerPage() {
   const threadEndRef = useRef<HTMLDivElement>(null);
   const prevPhoneStatus = useRef(phone.status);
 
+  // Refs to avoid SSE closure staleness — updated synchronously on every render
+  // so the SSE handler always sees current values without re-subscribing.
+  const selectedContactRef = useRef<string | null>(null);
+  const selectedNumberRef = useRef<string | null>(null);
+  selectedContactRef.current = selectedContact;
+  selectedNumberRef.current = selectedNumber?.number ?? null;
+
   // ── Data queries — must be declared BEFORE effects that reference them ─────
   // (Declaring after a useEffect that lists them in its dep array causes a
   //  "Cannot access '…' before initialization" TDZ crash in the built bundle.)
@@ -471,16 +478,33 @@ export default function ManualDialerPage() {
       staleTime: 60_000,
     });
 
-  // ── SSE-driven real-time conversation refresh (Phase 2.1) ─────────────────
+  // ── SSE-driven real-time conversation refresh ─────────────────────────────
   // Listens for new_inbound_sms and call_logged events pushed from the server
-  // and immediately invalidates the conversation list — no 30s wait.
+  // and immediately invalidates the conversation list — no polling wait.
+  //
+  // IMPORTANT: selectedContact and selectedNumber are accessed via refs, NOT as
+  // closure values captured at effect registration time. This prevents the effect
+  // from tearing down and re-creating the SSE connection every time the user
+  // selects a contact — which was causing the `call_logged` SSE event to arrive
+  // during the reconnection gap and be silently dropped (the original bug that
+  // prevented outbound calls from appearing in the conversation list).
+  const ownedNumbersKey = numbersData?.phoneNumbers?.map(n => n.number).join(",") ?? "";
   useEffect(() => {
     const token = localStorage.getItem("crm_token");
     if (!token) return;
     let es: EventSource | null = null;
     let cancelled = false;
-    let handleSms: ((e: MessageEvent) => void) | null = null;
-    let handleCallLogged: ((e: MessageEvent) => void) | null = null;
+
+    const findAffectedNumber = (data: { to?: string; from?: string }) => {
+      const ownedNumbers = (ownedNumbersKey || "").split(",").filter(Boolean);
+      return ownedNumbers.find(num => {
+        const d = num.replace(/\D/g, "");
+        return (
+          (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
+          (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
+        );
+      }) ?? selectedNumberRef.current ?? undefined;
+    };
 
     fetch("/api/crm/auth/sse-token", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
@@ -488,65 +512,49 @@ export default function ManualDialerPage() {
         if (cancelled) return;
         es = new EventSource(`/api/crm/events?token=${encodeURIComponent(sseToken)}`);
 
-        handleSms = (e: MessageEvent) => {
+        es.addEventListener("new_inbound_sms", (e: MessageEvent) => {
           try {
             const data = JSON.parse(e.data) as { to?: string; from?: string; body?: string };
-            const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
-            const affectedNumber = ownedNumbers.find(num => {
-              const d = num.replace(/\D/g, "");
-              return (
-                (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
-                (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
-              );
-            }) ?? selectedNumber?.number;
+            const affectedNumber = findAffectedNumber(data);
             if (affectedNumber) {
               qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
-              if (selectedContact) {
-                qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
+              const contact = selectedContactRef.current;
+              if (contact) {
+                qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, contact] });
               }
             } else {
               qc.invalidateQueries({ queryKey: ["phone-number-convs"] });
             }
-            // Show toast notification for every inbound SMS
             const from = data.from ?? "Unknown";
             const preview = data.body ? (data.body.length > 60 ? data.body.slice(0, 57) + "…" : data.body) : "New message";
             toast({ title: `New SMS from ${from}`, description: preview, duration: 6000 });
           } catch { /* ignore malformed */ }
-        };
+        });
 
-        handleCallLogged = (e: MessageEvent) => {
+        es.addEventListener("call_logged", (e: MessageEvent) => {
           try {
             const data = JSON.parse(e.data) as { to?: string; from?: string };
-            const ownedNumbers = numbersData?.phoneNumbers?.map(n => n.number) ?? [];
-            const affectedNumber = ownedNumbers.find(num => {
-              const d = num.replace(/\D/g, "");
-              return (
-                (data.to?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10)) ||
-                (data.from?.replace(/\D/g, "") ?? "").endsWith(d.slice(-10))
-              );
-            }) ?? selectedNumber?.number;
+            const affectedNumber = findAffectedNumber(data);
             if (affectedNumber) {
               qc.invalidateQueries({ queryKey: ["phone-number-convs", affectedNumber] });
-              if (selectedContact) {
-                qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, selectedContact] });
+              const contact = selectedContactRef.current;
+              if (contact) {
+                qc.invalidateQueries({ queryKey: ["phone-number-history", affectedNumber, contact] });
               }
             }
           } catch { /* ignore malformed */ }
-        };
+        });
 
-        es.addEventListener("new_inbound_sms", handleSms);
-        es.addEventListener("call_logged", handleCallLogged);
         es.onerror = () => { /* SSE will auto-reconnect */ };
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
-      if (es && handleSms) es.removeEventListener("new_inbound_sms", handleSms);
-      if (es && handleCallLogged) es.removeEventListener("call_logged", handleCallLogged);
       es?.close();
     };
-  }, [qc, selectedNumber?.number, selectedContact, numbersData?.phoneNumbers]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, ownedNumbersKey]);
 
   // ── Auto-refresh conversation list when a call ends ────────────────────────
   if (prevPhoneStatus.current !== phone.status) {
@@ -636,17 +644,22 @@ export default function ManualDialerPage() {
   const handleCall = (number?: string) => {
     const target = number || selectedContact;
     if (!target || !selectedNumber) return;
-    startCall(target, null, fmtPhone(target), true, selectedNumber?.number || null);
-    toast({ title: "Calling…", description: `Dialing ${fmtPhone(target)} from ${selectedNumber.number}` });
+    const fromNum = selectedNumber.number;
+    startCall(target, null, fmtPhone(target), true, fromNum);
+    toast({ title: "Calling…", description: `Dialing ${fmtPhone(target)} from ${fromNum}` });
     // Select the contact immediately so the conversation panel opens
     setSelectedContact(target);
     setShowDialPad(false);
-    // Aggressively refresh so the new call log appears in the list right away
-    setTimeout(() => {
-      qc.invalidateQueries({ queryKey: ["phone-number-convs", selectedNumber.number] });
-      qc.invalidateQueries({ queryKey: ["phone-number-history", selectedNumber.number, target] });
-      refetchConvs();
-    }, 1500);
+    // Twilio's /voice/answer webhook fires asynchronously after the WebRTC
+    // connection is established (typically 1-4 seconds). Retry at 2s, 5s,
+    // and 10s so the new conversation is guaranteed to appear in the list
+    // regardless of network latency, even if the SSE event is somehow missed.
+    [2000, 5000, 10000].forEach(delay => {
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["phone-number-convs", fromNum] });
+        qc.invalidateQueries({ queryKey: ["phone-number-history", fromNum, target] });
+      }, delay);
+    });
   };
 
   const handleSms = (number: string) => {
