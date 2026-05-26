@@ -12,11 +12,15 @@ import type { Request } from "express";
  * 4. Host header — last-resort local dev fallback.
  */
 export function getWebhookBase(req: Request): string {
-  if (process.env.API_BASE_URL) {
-    return process.env.API_BASE_URL.replace(/\/+$/, "");
-  }
+  // When running inside the Replit environment, always route Twilio callbacks back
+  // to the Replit dev server — not to Railway production — so every webhook in the
+  // call flow (inbound, no-answer, status, agent-stream) stays on this server.
+  // REPLIT_DEV_DOMAIN is automatically set by Replit and absent on Railway.
   if (process.env.REPLIT_DEV_DOMAIN) {
     return `https://${process.env.REPLIT_DEV_DOMAIN}/api`;
+  }
+  if (process.env.API_BASE_URL) {
+    return process.env.API_BASE_URL.replace(/\/+$/, "");
   }
   const fwdHost = (req.headers["x-forwarded-host"] as string | undefined)
     ?.split(",")[0]

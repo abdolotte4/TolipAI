@@ -1458,6 +1458,10 @@ router.post("/twilio/voice/inbound", async (req, res) => {
       <Parameter name="to" value="${toNum}"/>
     </Stream>
   </Connect>
+  <Say voice="Polly.Joanna">Thank you for calling. Our team will follow up with you shortly. Please leave a message after the tone.</Say>
+  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
+  <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
+  <Hangup/>
 </Response>`;
   };
 
@@ -1575,6 +1579,10 @@ ${clientTags}${forwardTag}
       <Parameter name="to" value="${toNum}"/>
     </Stream>
   </Connect>
+  <Say voice="Polly.Joanna">Thank you for calling. Our team will follow up with you shortly. Please leave a message after the tone.</Say>
+  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
+  <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
+  <Hangup/>
 </Response>`);
   }
 });
@@ -1614,6 +1622,10 @@ router.post("/twilio/voice/inbound-no-answer", async (req, res) => {
       <Parameter name="to" value="${toNum}"/>
     </Stream>
   </Connect>
+  <Say voice="Polly.Joanna">Thank you for calling. Our team will follow up with you shortly. Please leave a message after the tone.</Say>
+  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
+  <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
+  <Hangup/>
 </Response>`);
 });
 
