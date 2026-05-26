@@ -18,6 +18,19 @@ const router: IRouter = Router();
 
 type ScraperService = "propelio" | "propwire";
 
+// ─── Dual-auth middleware — accepts CRM JWT OR Tools PIN ──────────────────────
+// Used for endpoints called from both the CRM (Bearer token) and the Tools
+// site (X-Tools-Pin).  Checks PIN first (cheap string compare) then falls
+// through to full JWT validation.
+function crmOrPinAuth(req: Request, res: Response, next: () => void): void {
+  const toolsPin = process.env.TOOLS_PIN;
+  const provided = req.headers["x-tools-pin"] as string | undefined;
+  if (toolsPin && provided && provided.trim() === toolsPin.trim()) {
+    return next();
+  }
+  return crmAuth(req, res, next);
+}
+
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -467,7 +480,7 @@ router.get("/scraper-engine/jobs/:jobId", async (req: Request, res: Response) =>
 
 const _ENGINE_URL = (process.env.SCRAPER_ENGINE_URL ?? "").replace(/\/$/, "");
 
-router.all("/scraper-engine/{*path}", crmAuth, async (req: Request, res: Response) => {
+router.all("/scraper-engine/{*path}", crmOrPinAuth, async (req: Request, res: Response) => {
   if (!_ENGINE_URL) {
     res.status(503).json({ error: "SCRAPER_ENGINE_URL is not configured" });
     return;

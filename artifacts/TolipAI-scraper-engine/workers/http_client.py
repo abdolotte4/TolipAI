@@ -113,7 +113,14 @@ _persistent_client: Optional[httpx.AsyncClient] = None
 async def init_client() -> None:
     global _persistent_client
     if _persistent_client is None or _persistent_client.is_closed:
-        _persistent_client = httpx.AsyncClient(timeout=settings.request_timeout)
+        # verify=False — government/county sites routinely use self-signed certs
+        # or broken cert chains. Since we are a scraper, not a security client,
+        # disabling SSL verification is safe and prevents the majority of
+        # "CERTIFICATE_VERIFY_FAILED" failures on public-record portals.
+        _persistent_client = httpx.AsyncClient(
+            timeout=settings.request_timeout,
+            verify=False,
+        )
     log.info("Persistent HTTP client initialised")
 
 
@@ -194,7 +201,7 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us", is_
     gov_site = _should_skip_proxy(url)
 
     try:
-        return await fetch_direct(url, use_proxy=not gov_site)
+        return await fetch_direct(url, use_proxy=not gov_site, verify_ssl=False)
     except Exception as e:
         errors.append(f"direct: {e}")
         log.debug("Direct fetch failed for %s: %s", url, e)
