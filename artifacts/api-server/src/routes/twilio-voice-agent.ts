@@ -66,7 +66,7 @@ const agentSessions = new Map<string, AgentSession>();
 const OPENAI_REALTIME_URL =
   "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
 
-const SYSTEM_PROMPT = `You are Alex, a friendly acquisitions specialist at TolipAI (also called Digor). You answer inbound calls from property sellers.
+const SYSTEM_PROMPT = `You are Alex, a friendly acquisitions specialist at TolipAI (also called TolipAI). You answer inbound calls from property sellers.
 
 SPEECH STYLE:
 Use natural filler words: "um", "uh", "you know", "actually", "let me see"

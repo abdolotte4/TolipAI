@@ -1,7 +1,7 @@
 {
-  "name": "Digor CRM",
-  "short_name": "CRM",
-  "description": "Digor real estate CRM — manage leads, calls, and deals on the go.",
+  "name": "TolipAI CRM",
+  "short_name": "TolipAI",
+  "description": "TolipAI CRM — AI-powered real estate wholesaling platform.",
   "start_url": "/crm/",
   "scope": "/crm/",
   "display": "standalone",

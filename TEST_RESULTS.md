@@ -11,8 +11,8 @@
 | Endpoint | Method | Result | Notes |
 |----------|--------|--------|-------|
 | `/api/health` | GET | ✅ 200 `{"status":"ok"}` | Server up; DB connection OK |
-| `/api/crm/auth/login` | POST | ✅ 200 + JWT token | admin@digorcrm.com / Admin4413$AbdoKing |
-| `/api/crm/me` | GET | ✅ 200 | email: admin@digorcrm.com, role: super_admin |
+| `/api/crm/auth/login` | POST | ✅ 200 + JWT token | admin@tolipaicrm.com / Admin4413$AbdoKing |
+| `/api/crm/me` | GET | ✅ 200 | email: admin@tolipaicrm.com, role: super_admin |
 | `/api/crm/auth/sse-token` | POST | ✅ 200 + token | 36-char SSE token |
 | `/` (root) | GET | ✅ 200 (website) | TolipAI website with new TOLIP backgrounds |
 | `/crm` | GET | ✅ 200 (CRM frontend) | React SPA served correctly |
@@ -201,7 +201,7 @@ POST /ai/satellite-dfd {"city":"Dallas","state":"TX","zip":"75201","limit":10}
 | BUG-062: call_logged SSE not emitted from /voice/log | `twilio-voice.ts` | ✅ S3 Fixed |
 | BUG-063: Manual Dialer 30s refresh + no contact selection | `PhoneNumbers.tsx` | ✅ S3 Fixed |
 | BUG-064: webhookBase.ts Railway URL in Replit dev | `webhookBase.ts` | ✅ S3 Fixed |
-| BUG-065: DIGOR LLC branding in website hero | `Hero.tsx`, `About.tsx`, `Services.tsx` | ✅ S3 Fixed |
+| BUG-065: TOLIP GROUP LLC branding in website hero | `Hero.tsx`, `About.tsx`, `Services.tsx` | ✅ S3 Fixed |
 | BUG-048: API wildcard 404 — website HTML for bad API paths | `app.ts` | ✅ S2 Fixed |
 | BUG-033: callAI() model mismatch (GROQ base URL + gpt-4o-mini) | `aiConfig.ts` | ✅ S1 Fixed |
 | BUG-034: Activity log prompt truncation (2500 char limit) | `leads.ts` | ✅ S1 Fixed |

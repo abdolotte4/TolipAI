@@ -1,7 +1,7 @@
-// Digor CRM — Service Worker
+// TolipAI CRM — Service Worker
 // Strategy: cache-first for static assets, network-first for navigation & API.
 
-const CACHE_NAME = "digor-crm-v1";
+const CACHE_NAME = "TolipAI-crm-v1";
 
 // Static asset extensions to cache
 const CACHE_EXTS = [".js", ".css", ".png", ".svg", ".ico", ".woff2", ".woff", ".ttf"];

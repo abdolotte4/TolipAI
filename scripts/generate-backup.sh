@@ -72,7 +72,7 @@ else
 fi
 
 # ── Add header comment ────────────────────────────────────────────────────────
-HEADER="-- TolipAI / DigorCRM — PostgreSQL Schema Backup
+HEADER="-- TolipAI / TolipAI CRM — PostgreSQL Schema Backup
 -- Generated : $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 -- Source    : NeonDB (ep-hidden-sound-apu9c516 / us-east-1)
 -- Target    : AWS RDS / Aurora PostgreSQL 14+ (no NeonDB-specific features)

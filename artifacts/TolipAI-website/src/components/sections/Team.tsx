@@ -6,7 +6,7 @@ export function Team() {
     {
       name: "Mahmoud Aly",
       role: "Chief Executive Officer",
-      email: "admin@tolipai.com",
+      email: "info@tolipai.com",
       description: "Visionary leader driving TolipAI's strategic direction, client relationships, and operational excellence. With deep expertise in B2B infrastructure and real estate acquisition markets.",
       image: "avatar-1.jpg"
     },

@@ -17,7 +17,7 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
-const EMAIL = process.env.E2E_EMAIL || process.env.CRM_ADMIN_EMAIL || "admin@tolipai.com";
+const EMAIL = process.env.E2E_EMAIL || process.env.CRM_ADMIN_EMAIL || "info@tolipai.com";
 const PASSWORD = process.env.E2E_PASSWORD || process.env.CRM_ADMIN_PASSWORD || "changeme";
 
 async function login(page: Page) {
