@@ -687,6 +687,9 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
     const numbers: any[] = data.incoming_phone_numbers || [];
 
     const voiceWebhook = `${apiBase}/twilio/voice/inbound`;
+    const statusCallbackUrl = `${apiBase}/twilio/voice/call-status`;
+    const recordingCallbackUrl = `${apiBase}/twilio/voice/recording`;
+
     const results = await Promise.all(
       numbers.map(async (n: any) => {
         try {
@@ -695,6 +698,8 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
             SmsMethod: "POST",
             VoiceUrl: voiceWebhook,
             VoiceMethod: "POST",
+            StatusCallback: statusCallbackUrl,
+            StatusCallbackMethod: "POST",
           });
           await twilioFetch(creds, `/IncomingPhoneNumbers/${n.sid}.json`, {
             method: "POST",

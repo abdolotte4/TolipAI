@@ -538,7 +538,7 @@ router.delete("/twilio/voice/power-dial/session/:id", crmAuth, async (req, res) 
 // the session so the agent doesn't have to click a button after every call.
 // Query param: ?sessionId=<job-id>
 
-router.post("/twilio/voice/power-dial/call-status", async (req, res) => {
+router.post("/twilio/voice/power-dial/call-status", twilioAuth, async (req, res) => {
   // Respond immediately — Twilio expects a fast 2xx
   res.status(204).end();
 

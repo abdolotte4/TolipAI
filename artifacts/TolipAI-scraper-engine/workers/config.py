@@ -1,10 +1,11 @@
 """Centralised env config + key rotation state for the scraper engine.
 
-LLM: OpenAI only (OPENAI_API_KEY).
+LLM: OpenAI (OPENAI_API_KEY) — primary. Amazon Bedrock optional (USE_BEDROCK=1).
 Scraping: BrightData / Oxylabs residential proxy + Propelio + Propwire.
+Data: ATTOM API optional (ATTOM_API_KEY) for cash-buyer Tier-1 sales data.
 Skip-trace: PropertyAPI (PROPERTY_API_KEY).
-All dead providers removed: Groq, Cerebras, Together, NVIDIA, OpenRouter,
-Moonshot, ScraperAPI, ScrapingBee, ATTOM.
+Dead providers removed: Groq, Cerebras, Together, NVIDIA, OpenRouter,
+Moonshot, ScraperAPI, ScrapingBee.
 """
 from __future__ import annotations
 
@@ -70,8 +71,9 @@ class Settings:
     oxylabs_user: Optional[str] = _env("OXYLABS_USERNAME")
     oxylabs_pass: Optional[str] = _env("OXYLABS_PASSWORD")
 
-    # ── Property data (skip-trace only) ────────────────────────────────────
-    # Used by skip_trace.py PropertyAPI lookups. ATTOM has been removed.
+    # ── ATTOM API (optional) ────────────────────────────────────────────────
+    # Used by cash_buyers.py as Tier-1 sales data source when keys are configured.
+    # If no keys are set, pipeline falls back to county deeds then Zillow/Redfin.
     attom_keys: List[str] = field(
         default_factory=lambda: _env_list(
             "ATTOM_API_KEY",

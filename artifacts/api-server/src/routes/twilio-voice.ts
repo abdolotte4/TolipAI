@@ -589,7 +589,7 @@ router.post("/twilio/voice/call-status", twilioAuth, async (req, res) => {
 // ── POST /api/twilio/voice/status ─────────────────────────────────────────────
 // Alias for /call-status — handles legacy Twilio console configurations that use
 // the shorter path. Returns 200 immediately to stop the "Got HTTP 404" error.
-router.post("/twilio/voice/status", async (req, res) => {
+router.post("/twilio/voice/status", twilioAuth, async (req, res) => {
   res.type("text/xml").send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
   try {
     const callSid = req.body?.CallSid as string | undefined;
@@ -704,12 +704,15 @@ router.post("/twilio/voice/recording", twilioAuth, async (req, res) => {
 
     // Fallback 2: look up by ConferenceSid stored in call log (future-proofing)
     if (!updated && conferenceSid) {
-      [updated] = await db
+      const rows = await db
         .update(crmCallLogs)
         .set(recordSet)
         .where(eq((crmCallLogs as any).conferenceSid ?? sql`'__never__'`, conferenceSid))
         .returning({ id: crmCallLogs.id })
-        .catch(() => [undefined] as const);
+        .catch(() => [] as any[]);
+      if (rows && rows.length > 0) {
+        updated = rows[0];
+      }
     }
 
     // If no call log row exists yet (race condition or log-creation failure), insert a minimal one.

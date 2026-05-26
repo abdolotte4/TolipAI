@@ -937,67 +937,44 @@ async def health() -> Dict[str, Any]:
 
 @app.get("/health/keys")
 async def health_keys() -> Dict[str, Any]:
-    """Per-key status for all scraping providers — shows active vs exhausted keys."""
+    """Check configuration status of all third-party API keys."""
     return {
-        "llm": {
-            "openai_configured": bool(settings.openai_api_key),
-            "mode": "openai_only",
-        },
-        "proxy": {
-            "brightdata_configured": settings.brightdata_configured(),
-            "proxy_host": settings.brightdata_host,
-            "proxy_port": settings.brightdata_port,
-            "zone": settings.brightdata_zone or "(embedded in username)",
-            "browser_max_concurrent": int(os.getenv("BROWSER_MAX_CONCURRENT", "2")),
-        },
-        "skip_trace": {
-            "property_api_keys": len(settings.property_api_keys),
-        },
+        "openai": bool(settings.openai_api_key),
+        "brightdata": settings.brightdata_configured(),
+        "attom": bool(settings.attom_keys),
+        "property_api": bool(settings.property_api_keys),
+        "propelio": bool(os.getenv("PROPELIO_EMAIL") and os.getenv("PROPELIO_PASSWORD")),
+        "propwire": bool(os.getenv("PROPWIRE_EMAIL") and os.getenv("PROPWIRE_PASSWORD")),
+        "google_maps": bool(os.getenv("GOOGLE_MAPS_API_KEY")),
     }
 
 
 @app.get("/health/providers")
 async def health_providers() -> Dict[str, Any]:
-    """
-    Lightweight provider status endpoint.
+    """Return status of all configured LLM and scraper providers."""
+    def _cb(svc):
+        return all_breaker_states().get(svc, {"state": "closed"})
 
-    Reports configuration state and circuit-breaker health for every external
-    provider without making any live LLM or database calls.  Safe to poll
-    frequently from load balancers, dashboards, and alerting tools.
-    """
-    breakers: Dict[str, Any] = all_breaker_states()
-
-    def _cb(name: str) -> Dict[str, Any]:
-        """Return circuit-breaker state for a provider (or 'no_data' if unseen)."""
-        state = breakers.get(name)
-        if state is None:
-            return {"state": "closed", "note": "no_data_yet"}
-        return {
-            "state": state.get("state", "unknown"),
-            "failure_count": state.get("failure_count", 0),
-            "last_failure": state.get("last_failure_at"),
-        }
-
+    # ─── LLM ──────────────────────────────────────────────────────────
     llm_providers = {
         "openai": {
             "configured": bool(settings.openai_api_key),
-            "model": settings.openai_model,
             "circuit_breaker": _cb("openai"),
-        },
+        }
     }
 
     # ─── Scrapers ─────────────────────────────────────────────────────
     scraper_providers = {
+        "attom": {
+            "configured": bool(settings.attom_keys),
+            "circuit_breaker": _cb("attom"),
+        },
         "propelio": {
-            "configured": bool(
-                os.getenv("PROPELIO_EMAIL") and os.getenv("PROPELIO_PASSWORD")
-            ),
+            "configured": bool(os.getenv("PROPELIO_EMAIL")),
             "circuit_breaker": _cb("propelio"),
         },
         "propwire": {
-            "configured": bool(
-                os.getenv("PROPWIRE_EMAIL") and os.getenv("PROPWIRE_PASSWORD")
-            ),
+            "configured": bool(os.getenv("PROPWIRE_EMAIL")),
             "circuit_breaker": _cb("propwire"),
         },
         "property_api": {
@@ -1042,7 +1019,7 @@ async def health_providers() -> Dict[str, Any]:
         },
         "scrapers": scraper_providers,
         "infra": infra,
-        "circuit_breakers_all": breakers,
+        "circuit_breakers_all": all_breaker_states(),
     }
 
 # ─── Circuit breaker admin endpoints ────────────────────────────────────────

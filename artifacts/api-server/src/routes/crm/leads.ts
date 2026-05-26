@@ -571,10 +571,11 @@ router.post("/bulk-status", crmAuth, crmAdminOnly, async (req, res) => {
 
   const crmUser = req.crmUser!;
 
-  try {
-    const whereClause = crmUser.role === "super_admin"
-      ? inArray(crmLeads.id, numericIds)
-      : and(inArray(crmLeads.id, numericIds), eq(crmLeads.campaignId, crmUser.campaignId));
+    try {
+      const campaignId = crmUser.campaignId!;
+      const whereClause = crmUser.role === "super_admin"
+        ? inArray(crmLeads.id, numericIds)
+        : and(inArray(crmLeads.id, numericIds), eq(crmLeads.campaignId, campaignId));
 
     const existing = await db
       .select({ id: crmLeads.id, status: crmLeads.status })
@@ -599,11 +600,12 @@ router.post("/bulk-status", crmAuth, crmAdminOnly, async (req, res) => {
           tableName: "crm_leads",
           rowId: lead.id,
           actorId: crmUser.userId,
-          action: "update",
-          before: { status: lead.status },
-          after: { status },
+          action: "status_change",
+          field: "status",
+          oldValue: lead.status as string,
+          newValue: status as string,
         });
-        setImmediate(() => onLeadStatusChanged(lead.id, status, crmUser.userId).catch(() => {}));
+        setImmediate(() => onLeadStatusChanged(lead.id, status as any, crmUser.userId).catch(() => {}));
       }
     }
 

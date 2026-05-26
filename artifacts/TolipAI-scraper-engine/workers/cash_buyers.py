@@ -1,14 +1,14 @@
 """Cash-buyer discovery orchestrator.
 
 Workflow per lead:
-  1. Pull recent sold properties from ATTOM first.
+  1. Pull recent sold properties from ATTOM first (if ATTOM_API_KEY configured).
   2. Fall back to county deeds, then Zillow/Redfin backfill.
   3. Group by buyer (mailing address ≠ property address ⇒ likely investor).
      Each unique buyer becomes a candidate.
   4. Skip-trace each candidate (LLC → officers → phones/emails).
-  5. Use Kimi to classify each candidate (flipper/landlord/hedge_fund/lender/
-     wholesaler) based on portfolio behaviour.
-  6. Use Kimi to score how well each buyer matches THIS lead.
+  5. Use OpenAI (gpt-4o-mini) to classify each candidate (flipper/landlord/
+     hedge_fund/lender/wholesaler) based on portfolio behaviour.
+  6. Use OpenAI to score how well each buyer matches THIS lead.
   7. Persist matches sorted by score.
 """
 from __future__ import annotations
