@@ -90,6 +90,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Misc
     curl \
     ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python env from builder
@@ -102,6 +103,9 @@ ENV PATH="/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+# CRITICAL FIX: scraper user needs a real home dir for crawl4ai/pip caches
+ENV HOME=/home/scraper
+ENV CRAWL4AI_DATA_DIR=/tmp/crawl4ai
 
 # ── App code ──────────────────────────────────────────────────────────────────
 COPY workers/ ./workers/
@@ -118,9 +122,11 @@ HEALTHCHECK \
 
 EXPOSE 8765
 
-# Run as non-root user for security
-RUN useradd -r -s /bin/false scraper && \
-    chown -R scraper:scraper /app
+# CRITICAL FIX: -m creates /home/scraper (prevents crawl4ai PermissionError);
+# .cache/.local subdirs ensure pip/crawl4ai never write to /root (read-only).
+RUN useradd -r -m -s /bin/false scraper && \
+    mkdir -p /home/scraper/.cache /home/scraper/.local && \
+    chown -R scraper:scraper /app /home/scraper
 USER scraper
 
 CMD ["bash", "./start.sh"]

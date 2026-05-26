@@ -1,18 +1,13 @@
-"""LLM client — provider chain with circuit breakers.
+"""LLM client — OpenAI only with circuit breaker and concurrency gate.
 
-Provider order (Kimi K2.6 first, free fallback second):
-  Moonshot (Kimi K2.6 direct) → OpenRouter (Kimi K2.6) → Groq → Cerebras → Together → NVIDIA
+All non-OpenAI providers (Groq, Cerebras, Together, NVIDIA, OpenRouter, Moonshot)
+have been removed.  They were causing runaway 429s, credit-bleeding on free tiers,
+and cascading failures that hung jobs indefinitely.
 
-Kimi K2.6 features:
-  - 1M token context window, 200K input tokens
-  - Agent swarm support (up to 300 parallel agents)
-  - Top-tier coding and reasoning model
-
-All providers expose an OpenAI-compatible Chat Completions API.
-Circuit breakers: each provider is permanently skipped after its first
-unrecoverable failure (suspended / deprecated / auth error) so the same
-error never spams the logs.  Transient 429s are retried with backoff (max 2
-retries) before the provider is considered dead for this process lifetime.
+Provider: OpenAI (gpt-4o-mini default, configurable via OPENAI_MODEL env var).
+Circuit breaker: permanently skips on fatal errors (auth/suspended/deprecated).
+Rate-limit: exponential backoff up to _MAX_RATE_HITS before cooling down.
+Concurrency: global semaphore (LLM_CONCURRENCY, default 2) caps concurrent calls.
 """
 from __future__ import annotations
 
@@ -29,25 +24,18 @@ from .config import settings
 log = logging.getLogger("llm")
 
 _openai_client: Optional[AsyncOpenAI] = None
-_groq_client: Optional[AsyncOpenAI] = None
-_cerebras_client: Optional[AsyncOpenAI] = None
-_together_client: Optional[AsyncOpenAI] = None
-_nvidia_client: Optional[AsyncOpenAI] = None
-_openrouter_client: Optional[AsyncOpenAI] = None
-_moonshot_client: Optional[AsyncOpenAI] = None
 
-# Permanently dead providers (auth/deprecated errors — never recoverable)
+# Permanently dead — auth/deprecated errors, never recoverable this process lifetime
 _dead_providers: Set[str] = set()
-# Track 429 consecutive hits per provider (reset on success)
+# Track consecutive 429s per provider (reset on success)
 _rate_hits: Dict[str, int] = {}
 # Cooldown: provider → unix timestamp when it's allowed to retry after rate-limit
 _rate_cooldown_until: Dict[str, float] = {}
-_MAX_RATE_HITS = 8  # cooldown after 8 consecutive 429s (was: permanently die at 5)
-_RATE_COOLDOWN_SEC = 180  # 3-minute cooldown before retrying a rate-limited provider
+_MAX_RATE_HITS = 8  # enter cooldown after 8 consecutive 429s
+_RATE_COOLDOWN_SEC = 180  # 3-minute cooldown before retrying
 
-# Global concurrency gate — Groq free tier is ~30 req/min.
-# Limiting to 2 concurrent calls keeps us well under the limit and
-# eliminates the 429 storm that happens when 40+ buyers are processed at once.
+# Global concurrency gate — keeps us well under OpenAI burst limits and prevents
+# a single 40-buyer job from spawning 40 concurrent API calls.
 _LLM_CONCURRENCY = int(__import__("os").getenv("LLM_CONCURRENCY", "2"))
 _llm_sem: Optional[asyncio.Semaphore] = None
 
@@ -69,72 +57,8 @@ def _openai() -> Optional[AsyncOpenAI]:
     return _openai_client
 
 
-def _groq() -> Optional[AsyncOpenAI]:
-    global _groq_client
-    if _groq_client is None and settings.groq_api_key:
-        _groq_client = AsyncOpenAI(
-            api_key=settings.groq_api_key,
-            base_url=settings.groq_base_url,
-        )
-    return _groq_client
-
-
-def _cerebras() -> Optional[AsyncOpenAI]:
-    global _cerebras_client
-    if _cerebras_client is None and settings.cerebras_api_key:
-        _cerebras_client = AsyncOpenAI(
-            api_key=settings.cerebras_api_key,
-            base_url=settings.cerebras_base_url,
-        )
-    return _cerebras_client
-
-
-def _together() -> Optional[AsyncOpenAI]:
-    global _together_client
-    if _together_client is None and settings.together_api_key:
-        _together_client = AsyncOpenAI(
-            api_key=settings.together_api_key,
-            base_url=settings.together_base_url,
-        )
-    return _together_client
-
-
-def _nvidia() -> Optional[AsyncOpenAI]:
-    global _nvidia_client
-    if _nvidia_client is None and settings.nvidia_api_key:
-        _nvidia_client = AsyncOpenAI(
-            api_key=settings.nvidia_api_key,
-            base_url=settings.nvidia_base_url,
-        )
-    return _nvidia_client
-
-
-def _openrouter() -> Optional[AsyncOpenAI]:
-    global _openrouter_client
-    if _openrouter_client is None and settings.openrouter_api_key:
-        _openrouter_client = AsyncOpenAI(
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
-            default_headers={
-                "HTTP-Referer": "https://tolipai.com",
-                "X-Title": "TolipAI",
-            },
-        )
-    return _openrouter_client
-
-
-def _moonshot() -> Optional[AsyncOpenAI]:
-    global _moonshot_client
-    if _moonshot_client is None and settings.moonshot_api_key:
-        _moonshot_client = AsyncOpenAI(
-            api_key=settings.moonshot_api_key,
-            base_url=settings.moonshot_base_url,
-        )
-    return _moonshot_client
-
-
 def _is_fatal(exc: Exception) -> bool:
-    """Return True for errors that mean this provider will never work."""
+    """Return True for errors that mean OpenAI will never work this session."""
     msg = str(exc).lower()
     return any(
         k in msg
@@ -164,12 +88,11 @@ async def _chat(
     temperature: float = 0.2,
     max_tokens: int = 1500,
 ) -> str:
-    """Run a chat completion through the provider chain with circuit breakers.
+    """Run a chat completion through OpenAI with circuit breaker + rate-limit backoff.
 
-    Provider order: Moonshot/Kimi K2.6 → OpenRouter/Kimi K2.6 → Groq (free fallback).
-    Each provider is skipped silently after its first fatal error.
-    Rate-limit (429) is retried up to _MAX_RATE_HITS times before moving on.
-    A global semaphore caps concurrent calls so we never hammer free-tier limits.
+    Uses a global semaphore to cap concurrent calls.  On fatal errors the provider
+    is permanently skipped for this process lifetime.  On rate limits, exponential
+    backoff is applied before giving up and entering cooldown.
     """
     async with _get_sem():
         return await _chat_inner(
@@ -178,30 +101,6 @@ async def _chat(
             temperature=temperature,
             max_tokens=max_tokens,
         )
-
-
-def _ensure_json_in_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    """Groq requires the word 'json' to appear in messages when json_object mode is used.
-
-    If no message contains the word 'json', append a short reminder to the
-    last system message (or the first user message as a fallback).
-    """
-    combined = " ".join(m.get("content", "") for m in messages).lower()
-    if "json" in combined:
-        return messages  # already compliant
-
-    result = list(messages)
-    for i, m in enumerate(result):
-        if m.get("role") == "system":
-            result[i] = {**m, "content": m["content"] + " Respond with valid JSON."}
-            return result
-    # No system message — append to first user message
-    if result:
-        result[0] = {
-            **result[0],
-            "content": result[0].get("content", "") + " Respond with valid JSON.",
-        }
-    return result
 
 
 async def _chat_inner(
@@ -244,118 +143,95 @@ async def _chat_inner(
                 out = _json.loads(resp["body"].read())
                 return " ".join(c["text"] for c in out.get("content", []) if "text" in c)
 
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, _bedrock_sync)
             log.info("LLM: Bedrock response received (%d chars)", len(result))
             return result
         except Exception as bedrock_exc:
-            log.warning("Bedrock call failed — falling back to provider chain: %s", bedrock_exc)
+            log.warning("Bedrock call failed — falling back to OpenAI: %s", bedrock_exc)
 
-    # Ensure Groq's json_object requirement is satisfied before any provider call
-    if json_mode:
-        messages = _ensure_json_in_messages(messages)
+    provider = "openai"
 
-    # Provider order: Kimi K2.6 first (best model), OpenAI paid second, free tiers last.
-    providers = [
-        ("moonshot", _moonshot, settings.moonshot_model),    # Kimi K2.6 direct API
-        ("openrouter", _openrouter, settings.openrouter_model),  # Kimi K2.6 via OpenRouter
-        ("openai", _openai, settings.openai_model),           # GPT-4o-mini — reliable paid
-        ("groq", _groq, settings.groq_model),                 # Free, fast (rate-limited)
-        ("cerebras", _cerebras, settings.cerebras_model),
-        ("together", _together, settings.together_model),
-        ("nvidia", _nvidia, settings.nvidia_model),
-    ]
+    if provider in _dead_providers:
+        raise RuntimeError("OpenAI provider is permanently dead (auth/deprecated error). Check OPENAI_API_KEY.")
+
+    client = _openai()
+    if client is None:
+        raise RuntimeError(
+            "No LLM available — set OPENAI_API_KEY in ECS task environment variables."
+        )
+
+    hits = _rate_hits.get(provider, 0)
+    cooldown_until = _rate_cooldown_until.get(provider, 0.0)
+    if hits >= _MAX_RATE_HITS:
+        if time.time() < cooldown_until:
+            remaining = int(cooldown_until - time.time())
+            raise RuntimeError(
+                f"OpenAI rate-limited — cooling down for {remaining}s more. "
+                "Reduce LLM_CONCURRENCY or wait for cooldown to expire."
+            )
+        else:
+            log.info("OpenAI cooldown expired, retrying")
+            _rate_hits[provider] = 0
+            hits = 0
+
+    _LLM_TIMEOUT = float(_os.getenv("LLM_TIMEOUT_SEC", "90"))
     last_err: Optional[Exception] = None
-    for provider, client_fn, model in providers:
-        if provider in _dead_providers:
-            continue
-        client = client_fn()
-        if client is None:
-            continue
-        hits = _rate_hits.get(provider, 0)
-        # Check cooldown — provider may recover after _RATE_COOLDOWN_SEC
-        cooldown_until = _rate_cooldown_until.get(provider, 0.0)
-        if hits >= _MAX_RATE_HITS:
-            if time.time() < cooldown_until:
-                remaining = int(cooldown_until - time.time())
-                log.debug("LLM provider %s in cooldown for %ds more", provider, remaining)
-                continue
-            else:
-                # Cooldown expired — give this provider another chance
-                log.info("LLM provider %s cooldown expired, retrying", provider)
-                _rate_hits[provider] = 0
-                hits = 0
-        for attempt in range(2):
-            try:
-                kwargs: Dict[str, Any] = {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                }
-                if json_mode:
-                    kwargs["response_format"] = {"type": "json_object"}
-                _LLM_TIMEOUT = float(__import__("os").getenv("LLM_TIMEOUT_SEC", "90"))
-                resp = await asyncio.wait_for(
-                    client.chat.completions.create(**kwargs),
-                    timeout=_LLM_TIMEOUT,
-                )
-                _rate_hits[provider] = 0  # reset on success
-                _rate_cooldown_until.pop(provider, None)
-                return resp.choices[0].message.content or ""
-            except Exception as e:
-                last_err = e
-                err_str = str(e)
-                # Groq-specific: json_object mode without 'json' in messages — permanent config error
-                if "must contain the word" in err_str and "json" in err_str.lower():
-                    _dead_providers.add(provider)
+
+    for attempt in range(2):
+        try:
+            kwargs: Dict[str, Any] = {
+                "model": settings.openai_model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(**kwargs),
+                timeout=_LLM_TIMEOUT,
+            )
+            _rate_hits[provider] = 0  # reset on success
+            _rate_cooldown_until.pop(provider, None)
+            return resp.choices[0].message.content or ""
+        except Exception as e:
+            last_err = e
+            if _is_fatal(e):
+                _dead_providers.add(provider)
+                log.error("OpenAI permanently dead: %s", e)
+                raise
+            if _is_rate_limited(e):
+                new_hits = hits + 1
+                _rate_hits[provider] = new_hits
+                if new_hits >= _MAX_RATE_HITS:
+                    _rate_cooldown_until[provider] = time.time() + _RATE_COOLDOWN_SEC
                     log.warning(
-                        "LLM provider %s permanently skipped: JSON mode misconfiguration — %s",
-                        provider,
-                        e,
+                        "OpenAI: %d consecutive 429s — cooling down for %ds",
+                        new_hits,
+                        _RATE_COOLDOWN_SEC,
                     )
-                    break
-                if _is_fatal(e):
-                    _dead_providers.add(provider)
-                    log.warning("LLM provider %s permanently dead: %s", provider, e)
-                    break
-                if _is_rate_limited(e):
-                    new_hits = hits + 1
-                    _rate_hits[provider] = new_hits
-                    if new_hits >= _MAX_RATE_HITS:
-                        _rate_cooldown_until[provider] = time.time() + _RATE_COOLDOWN_SEC
-                        log.warning(
-                            "LLM provider %s: %d consecutive 429s — cooling down for %ds",
-                            provider,
-                            new_hits,
-                            _RATE_COOLDOWN_SEC,
-                        )
-                        break
-                    if attempt == 0:
-                        backoff = min(2.0 * (2**hits), 30.0)  # 2s → 4s → 8s … cap 30s
-                        log.info(
-                            "LLM provider %s rate-limited (hit %d/%d), backing off %.1fs…",
-                            provider,
-                            new_hits,
-                            _MAX_RATE_HITS,
-                            backoff,
-                        )
-                        await asyncio.sleep(backoff)
-                        continue
+                    raise
+                if attempt == 0:
+                    backoff = min(2.0 * (2**hits), 30.0)
                     log.info(
-                        "LLM provider %s rate-limited, moving to next provider",
-                        provider,
+                        "OpenAI rate-limited (hit %d/%d), backing off %.1fs…",
+                        new_hits,
+                        _MAX_RATE_HITS,
+                        backoff,
                     )
-                    break
-                log.warning("LLM provider %s error: %s", provider, e)
-                break  # non-fatal non-rate error → try next provider
+                    await asyncio.sleep(backoff)
+                    continue
+                raise
+            log.warning("OpenAI error: %s", e)
+            raise
 
     if last_err:
         raise last_err
-    raise RuntimeError(
-        "No LLM provider available — set OPENAI_API_KEY, MOONSHOT_KIMI_API_KEY (Kimi K2.6), "
-        "OPENROUTER_API_KEY, or GROQ_API_KEY in Replit Secrets"
-    )
+    raise RuntimeError("OpenAI: unexpected retry exhaustion")
 
 
 # ─── Public helpers ──────────────────────────────────────────────────────────

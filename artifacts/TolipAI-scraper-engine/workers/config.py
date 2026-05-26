@@ -208,14 +208,8 @@ class Settings:
         return self.proxy_dict()
 
     def has_llm(self) -> bool:
-        return bool(
-            self.groq_api_key
-            or self.cerebras_api_key
-            or self.together_api_key
-            or self.nvidia_api_key
-            or self.openrouter_api_key
-            or self.moonshot_api_key
-        )
+        # OpenAI-only — all other providers removed (Fix 12)
+        return bool(self.openai_api_key)
 
     def rotate_key(self, keys: List[str], counter: int) -> Optional[str]:
         """Round-robin key rotation helper."""

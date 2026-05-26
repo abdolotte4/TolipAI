@@ -98,6 +98,26 @@ def _get_metrics_lock() -> asyncio.Lock:
         _METRICS_LOCK = asyncio.Lock()
     return _METRICS_LOCK
 
+
+async def _evict_old_jobs() -> None:
+    """Remove completed jobs older than 1 hour from in-memory store."""
+    import time
+    while True:
+        await asyncio.sleep(300)  # every 5 minutes
+        try:
+            now = time.monotonic()
+            to_evict = [
+                jid for jid, j in list(_jobs.items())
+                if j.get("status") in ("done", "failed", "partial_success")
+                and now - j.get("_completed_at", now) > 3600
+            ]
+            for jid in to_evict:
+                _jobs.pop(jid, None)
+            if to_evict:
+                log.debug("Evicted %d old jobs from memory", len(to_evict))
+        except Exception as e:
+            log.warning("Job eviction failed: %s", e)
+
 # ─── Mode B safety helpers ───────────────────────────────────────────────────
 
 _SCRAPER_SEM: Optional[asyncio.Semaphore] = None
@@ -230,6 +250,9 @@ async def lifespan(app: FastAPI):
     # ── Browser pool (warm Playwright instances, idle eviction) ──────────────
     browser_pool.start()
 
+    # ── Job memory eviction (prevents unbounded growth on Fargate Spot) ───────
+    _evict_task = asyncio.create_task(_evict_old_jobs(), name="job_eviction")
+
     # ── CloudWatch EMF metrics emitter (every 60 s) ───────────────────────────
     _emf_task = asyncio.create_task(_emit_cloudwatch_emf(), name="cloudwatch_emf")
 
@@ -248,8 +271,9 @@ async def lifespan(app: FastAPI):
     # and clean up resources for normal (non-spot) shutdowns.
     retry_queue.stop()
     _mem_task.cancel()
+    _evict_task.cancel()
     _emf_task.cancel()
-    await asyncio.gather(_mem_task, _emf_task, return_exceptions=True)
+    await asyncio.gather(_mem_task, _evict_task, _emf_task, return_exceptions=True)
     await browser_pool.stop()
     await job_store.close()
     await http_client.close_client()
@@ -412,17 +436,26 @@ async def _make_progress_cb(job_id: str):
 
 
 def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
-    if job_id in _jobs:
-        _jobs[job_id]["status"] = status
-        for k, v in kwargs.items():
-            _jobs[job_id][k] = v
-        # Fire-and-forget Redis write from sync context
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(job_store.set_job(job_id, _jobs[job_id]))
-        except Exception:
-            pass
+    if job_id not in _jobs:
+        return
+    _jobs[job_id]["status"] = status
+    for k, v in kwargs.items():
+        _jobs[job_id][k] = v
+    if status in ("done", "failed", "partial_success"):
+        import time
+        _jobs[job_id]["_completed_at"] = time.monotonic()
+
+    # Safer fire-and-forget Redis persistence
+    try:
+        loop = asyncio.get_running_loop()
+        async def _persist():
+            try:
+                await job_store.set_job(job_id, _jobs[job_id])
+            except Exception as e:
+                log.debug("Redis persist failed for job %s: %s", job_id, str(e)[:80])
+        loop.create_task(_persist())
+    except RuntimeError:
+        log.debug("No running event loop — skipping Redis persist for job %s", job_id)
 
 
 # ─── Retry-queue standalone runners ─────────────────────────────────────────
@@ -451,12 +484,24 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
         _set_status(job_id, "retrying")
         await db.update_job(job_id, status="running", progress=0)
         cb = await _make_progress_cb(job_id)
-        results = await cash_buyers.find_cash_buyers(
-            lead,
-            max_buyers=params.get("max_buyers", 25),
-            job_id=job_id,
-            progress_cb=cb,
-        )
+
+        # CRITICAL FIX: 15min cap — prevents infinite hang on dead LLM
+        try:
+            results = await asyncio.wait_for(
+                cash_buyers.find_cash_buyers(
+                    lead,
+                    max_buyers=params.get("max_buyers", 25),
+                    job_id=job_id,
+                    progress_cb=cb,
+                ),
+                timeout=900,
+            )
+        except asyncio.TimeoutError:
+            log.error("cash_buyers retry job %s timed out after 900s", job_id)
+            _set_status(job_id, "failed", error="timeout_exceeded")
+            await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+            return {"count": 0}
+
         _set_status(job_id, "done", progress=100, result=results)
         await db.update_job(
             job_id,
@@ -477,8 +522,6 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
 
 async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
     register_job(job_id)
-    listings: List[Dict[str, Any]] = []
-    partial = False
     try:
         _jobs.setdefault(
             job_id,
@@ -495,7 +538,9 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
         _set_status(job_id, "retrying")
         await db.update_job(job_id, status="running", progress=0)
         cb = await _make_progress_cb(job_id)
-        # Overall job timeout: 8 minutes; sources each have their own 45 s timeout
+
+        # CRITICAL FIX: asyncio.wait_for cancels the coroutine on timeout so
+        # listings stays [] — the old partial-results branch was dead code.
         try:
             listings = await asyncio.wait_for(
                 distressed.find_distressed(
@@ -511,57 +556,30 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
                 timeout=480,
             )
         except asyncio.TimeoutError:
-            log.warning(
-                "distressed job %s: overall timeout hit — returning partial results (%d so far)",
-                job_id,
-                len(listings),
-            )
-            partial = True
+            log.warning("distressed job %s: timeout after 480s", job_id)
+            _set_status(job_id, "failed", error="Timeout: exceeded 8 minutes")
+            await db.update_job(job_id, status="failed", error="Timeout: exceeded 8 minutes", completed=True)
+            return {"count": 0}
 
         if listings:
-            final_status = "partial_success" if partial else "done"
-            _set_status(job_id, final_status, progress=100, result=listings)
+            _set_status(job_id, "done", progress=100, result=listings)
             await db.update_job(
                 job_id,
-                status=final_status,
+                status="done",
                 progress=100,
                 result_count=len(listings),
                 completed=True,
             )
         else:
-            # No results at all — treat as failed
-            _set_status(
-                job_id,
-                "failed",
-                error="No listings found" + (" (timeout)" if partial else ""),
-            )
-            await db.update_job(
-                job_id,
-                status="failed",
-                error="No listings found" + (" (timeout)" if partial else ""),
-                completed=True,
-            )
+            _set_status(job_id, "failed", error="No listings found")
+            await db.update_job(job_id, status="failed", error="No listings found", completed=True)
         return {"count": len(listings)}
+
     except Exception as e:
         log.error("distressed job %s failed: %s", job_id, str(e)[:120])
-        if listings:
-            log.info(
-                "distressed job %s: returning %d partial results despite error",
-                job_id,
-                len(listings),
-            )
-            _set_status(job_id, "partial_success", progress=100, result=listings)
-            await db.update_job(
-                job_id,
-                status="partial_success",
-                progress=100,
-                result_count=len(listings),
-                completed=True,
-            )
-        else:
-            _set_status(job_id, "failed", error=str(e))
-            await db.update_job(job_id, status="failed", error=str(e), completed=True)
-        return {"count": len(listings)}
+        _set_status(job_id, "failed", error=str(e))
+        await db.update_job(job_id, status="failed", error=str(e), completed=True)
+        return {"count": 0}
     finally:
         unregister_job(job_id)
 
@@ -584,16 +602,28 @@ async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
         _set_status(job_id, "retrying")
         await db.update_job(job_id, status="running", progress=0)
         cb = await _make_progress_cb(job_id)
-        result = await propelio_v2.cash_buyers_for_address(
-            params["address"],
-            distance_miles=params.get("distance_miles", 10),
-            active_within=params.get("active_within", "ANY_TIME"),
-            min_properties=params.get("min_properties", 3),
-            landlords=params.get("landlords", True),
-            flippers=params.get("flippers", True),
-            max_results=params.get("max_results", 500),
-            progress_cb=cb,
-        )
+
+        # CRITICAL FIX: 15min cap
+        try:
+            result = await asyncio.wait_for(
+                propelio_v2.cash_buyers_for_address(
+                    params["address"],
+                    distance_miles=params.get("distance_miles", 10),
+                    active_within=params.get("active_within", "ANY_TIME"),
+                    min_properties=params.get("min_properties", 3),
+                    landlords=params.get("landlords", True),
+                    flippers=params.get("flippers", True),
+                    max_results=params.get("max_results", 500),
+                    progress_cb=cb,
+                ),
+                timeout=900,
+            )
+        except asyncio.TimeoutError:
+            log.error("propelio_cash_buyers job %s timed out", job_id)
+            _set_status(job_id, "failed", error="timeout_exceeded")
+            await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+            return {"count": 0}
+
         buyers = result.get("buyers") or []
         if params.get("persist") and params.get("lead_id"):
             try:
@@ -637,13 +667,25 @@ async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
         _set_status(job_id, "retrying")
         await db.update_job(job_id, status="running", progress=0)
         cb = await _make_progress_cb(job_id)
-        buyers = await propwire.fetch_cash_buyers_nearby(
-            params["query"],
-            radius_miles=params.get("radius_miles", 1.0),
-            min_properties=params.get("min_properties", 3),
-            max_results=params.get("max_results", 200),
-            progress_cb=cb,
-        )
+
+        # CRITICAL FIX: 15min cap
+        try:
+            buyers = await asyncio.wait_for(
+                propwire.fetch_cash_buyers_nearby(
+                    params["query"],
+                    radius_miles=params.get("radius_miles", 1.0),
+                    min_properties=params.get("min_properties", 3),
+                    max_results=params.get("max_results", 200),
+                    progress_cb=cb,
+                ),
+                timeout=900,
+            )
+        except asyncio.TimeoutError:
+            log.error("propwire_cash_buyers job %s timed out", job_id)
+            _set_status(job_id, "failed", error="timeout_exceeded")
+            await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+            return {"count": 0}
+
         if params.get("persist") and params.get("lead_id"):
             try:
                 inserted = await db.insert_cash_buyers_batch(params["lead_id"], job_id, buyers)
@@ -794,6 +836,11 @@ async def _emit_cloudwatch_emf() -> None:
         try:
             ts = int(_time.time() * 1000)
             active = len([j for j in _jobs.values() if j.get("status") == "running"])
+
+            # Read under lock to prevent torn reads from concurrent increments
+            async with _get_metrics_lock():
+                metrics_snapshot = {k: v for k, v in METRICS.items()}
+
             emf = {
                 "_aws": {
                     "Timestamp": ts,
@@ -810,7 +857,7 @@ async def _emit_cloudwatch_emf() -> None:
                 },
                 "ServiceName": "scraper-engine",
                 "ActiveJobs": active,
-                **{k: v for k, v in METRICS.items()},
+                **metrics_snapshot,
             }
             print(_json.dumps(emf), flush=True)
         except Exception as _emf_err:
@@ -822,44 +869,9 @@ async def _emit_cloudwatch_emf() -> None:
 
 @app.get("/health")
 async def health() -> Dict[str, Any]:
-    """Deep health-check: probes DB, each LLM provider, and each scraper tier."""
+    """Lightweight health-check: probes DB and OpenAI config only.
+    Does NOT burn credits on live LLM calls."""
     import time
-    from .llm import _dead_providers, _rate_hits, _MAX_RATE_HITS
-    from .skip_trace import _dead_sources
-
-    async def _probe_llm(name: str, client_fn, model: str) -> Dict[str, Any]:
-        if name in _dead_providers:
-            return {"status": "dead", "reason": "circuit_breaker_open"}
-        hits = _rate_hits.get(name, 0)
-        if hits >= _MAX_RATE_HITS:
-            return {"status": "rate_limited", "consecutive_hits": hits}
-        client = client_fn()
-        if client is None:
-            return {"status": "unconfigured", "reason": "no_api_key"}
-        t0 = time.monotonic()
-        try:
-            resp = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": "reply with the single word OK"}],
-                    max_tokens=5,
-                    temperature=0,
-                ),
-                timeout=8.0,
-            )
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            content = (resp.choices[0].message.content or "").strip()
-            return {"status": "ok", "latency_ms": latency_ms, "response": content[:20]}
-        except asyncio.TimeoutError:
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            return {
-                "status": "timeout",
-                "latency_ms": latency_ms,
-                "error": "probe timed out (>8s)",
-            }
-        except Exception as e:
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            return {"status": "error", "latency_ms": latency_ms, "error": str(e)[:120]}
 
     async def _probe_db() -> Dict[str, Any]:
         t0 = time.monotonic()
@@ -873,31 +885,16 @@ async def health() -> Dict[str, Any]:
         except Exception as e:
             return {"status": "error", "error": str(e)[:120]}
 
-    from .llm import _groq, _cerebras, _nvidia, _openrouter, _moonshot, _openai
-
-    (
-        llm_groq,
-        llm_cerebras,
-        llm_nvidia,
-        llm_openrouter,
-        llm_moon,
-        llm_openai,
-        db_result,
-    ) = await asyncio.gather(
-        _probe_llm("groq", _groq, settings.groq_model),
-        _probe_llm("cerebras", _cerebras, settings.cerebras_model),
-        _probe_llm("nvidia", _nvidia, settings.nvidia_model),
-        _probe_llm("openrouter", _openrouter, settings.openrouter_model),
-        _probe_llm("moonshot", _moonshot, settings.moonshot_model),
-        _probe_llm("openai", _openai, settings.openai_model),
-        _probe_db(),
-    )
-    sapi = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
-    sbee = {"status": "disabled", "reason": "permanently_removed_use_crawl4ai"}
-
-    llm_results = (llm_groq, llm_cerebras, llm_nvidia, llm_openrouter, llm_moon, llm_openai)
-    llm_ok = any(r["status"] == "ok" for r in llm_results)
+    db_result = await _probe_db()
     db_ok = db_result.get("status") == "ok"
+
+    # OpenAI only — do NOT import or probe dead providers
+    llm_openai = {
+        "status": "ok" if bool(settings.openai_api_key) else "unconfigured",
+        "model": settings.openai_model,
+    }
+    llm_ok = bool(settings.openai_api_key)
+
     overall = "ok" if (llm_ok and db_ok) else ("degraded" if (llm_ok or db_ok) else "down")
 
     return {
@@ -905,24 +902,17 @@ async def health() -> Dict[str, Any]:
         "version": app.version,
         "llm": {
             "openai": llm_openai,
-            "groq": llm_groq,
-            "cerebras": llm_cerebras,
-            "nvidia": llm_nvidia,
-            "openrouter": llm_openrouter,
-            "moonshot": llm_moon,
+            "mode": "openai_only",
             "any_ok": llm_ok,
         },
         "database": db_result,
         "scrapers": {
-            "scraperapi": sapi,
-            "scrapingbee": sbee,
             "residential_proxy": bool(settings.proxy_url()),
             "google_dorks_enabled": settings.enable_google_dorks,
         },
         "skip_trace": {
             "opencorporates_enabled": settings.enable_opencorporates,
             "propertyapi_enabled": settings.enable_propertyapi,
-            "dead_sources": sorted(_dead_sources),
         },
         "distressed_sources": {
             "total": len(distressed.list_sources()),
@@ -963,12 +953,7 @@ async def health_keys() -> Dict[str, Any]:
         },
         "llm": {
             "openai_configured": bool(settings.openai_api_key),
-            "groq_configured": bool(settings.groq_api_key),
-            "cerebras_configured": bool(settings.cerebras_api_key),
-            "together_configured": bool(settings.together_api_key),
-            "nvidia_configured": bool(settings.nvidia_api_key),
-            "openrouter_configured": bool(settings.openrouter_api_key),
-            "moonshot_configured": bool(settings.moonshot_api_key),
+            "mode": "openai_only",
         },
         "proxy": {
             "brightdata_configured": settings.brightdata_configured(),
@@ -1007,7 +992,7 @@ async def health_providers() -> Dict[str, Any]:
             "last_failure": state.get("last_failure_at"),
         }
 
-   llm_providers = {
+    llm_providers = {
         "openai": {
             "configured": bool(settings.openai_api_key),
             "model": settings.openai_model,
@@ -1176,7 +1161,7 @@ async def debug_proxy() -> Dict[str, Any]:
             proxy=proxy_url,
             timeout=20.0,
             follow_redirects=True,
-            verify=False,
+            verify=True,
         ) as cli:
             r = await cli.get("https://api.ipify.org?format=json")
             if r.status_code == 407:
@@ -1235,7 +1220,7 @@ async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
             proxy=test_url,
             timeout=20.0,
             follow_redirects=True,
-            verify=False,
+            verify=True,
         ) as cli:
             r = await cli.get("https://api.ipify.org?format=json")
             if r.status_code == 407:
@@ -2592,5 +2577,18 @@ async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]
     """Start chained foreclosure lead-gen pipeline. Returns job_id immediately."""
     job_id = _new_job("foreclosure_lead_gen", req.model_dump())
     await db.create_job(job_id, "foreclosure_lead_gen", req.model_dump(), campaign_id=req.campaign_id)
-    safe_create_task(_run_foreclosure_lead_gen(job_id, req.model_dump()), name="foreclosure_lead_gen")
+
+    # CRITICAL FIX: 30-min hard cap prevents infinite hang on dead LLM/scraper
+    async def _timed_foreclosure():
+        try:
+            await asyncio.wait_for(
+                _run_foreclosure_lead_gen(job_id, req.model_dump()),
+                timeout=1800,
+            )
+        except asyncio.TimeoutError:
+            log.error("foreclosure_lead_gen job %s timed out after 1800s", job_id)
+            _set_status(job_id, "failed", error="timeout_exceeded")
+            await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+
+    safe_create_task(_timed_foreclosure(), name="foreclosure_lead_gen")
     return {"job_id": job_id, "status": "queued", "city": req.city, "state": req.state}

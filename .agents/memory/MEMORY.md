@@ -4,3 +4,4 @@
 - [Scraper engine auth chain](scraper-engine-auth.md) — Fargate validates X-API-Key against SCRAPER_API_KEY env var (← TolipAI/scraper/api-key secret). Express sends WEBSCRAPER_API_KEY. Both must match. Task def rev 32 is current.
 - [Scraper engine AWS infra](scraper-engine-aws.md) — Cluster: TolipAI-scraper-cluster; service: tolipai-scraper-engine-service-xop; ELB on port 8765. Task def must not reference deleted secrets or container fails to start.
 - [handleEngineError status propagation](handle-engine-error.md) — propagates (err as any).status so 404/422/etc from Fargate reach the client correctly (was always 500).
+- [Scraper engine critical fixes](scraper-engine-critical-fixes.md) — All 12 fixes from TolipAI_Scraper_Engine_Critical_Fixes.md applied; llm.py is now OpenAI-only.
