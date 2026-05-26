@@ -37,7 +37,30 @@ echo ""
 info "Checking Node.js..."
 NODE_VER=$(node --version 2>/dev/null || echo "none")
 if [[ "$NODE_VER" == "none" ]]; then
-  err_exit "Node.js not found. Ensure 'nodejs-20' is in your .replit modules section."
+  info "Node.js not in PATH — searching common locations..."
+  # Check ~/.nix-profile, /run/current-system, and a fast glob over nix store
+  for _candidate in \
+      "$HOME/.nix-profile/bin/node" \
+      "/run/current-system/sw/bin/node" \
+      "/usr/local/bin/node" \
+      "/usr/bin/node" \
+      /nix/store/*nodejs*/bin/node \
+      /nix/store/*nodejs-2*/bin/node; do
+    if [[ -x "$_candidate" ]]; then
+      export PATH="$(dirname "$_candidate"):$PATH"
+      NODE_VER=$("$_candidate" --version 2>/dev/null || echo "none")
+      info "Found Node.js: $_candidate"
+      break
+    fi
+  done
+fi
+if [[ "$NODE_VER" == "none" ]]; then
+  # Last resort: pull node into the shell via nix-shell and re-exec this script
+  if command -v nix-shell &>/dev/null; then
+    info "Bootstrapping Node.js via nix-shell (one-time, may take ~30s)..."
+    exec nix-shell -p nodejs_20 --run "bash '$0' $*"
+  fi
+  err_exit "Node.js not found. Run:  nix-env -iA nixpkgs.nodejs_20  then retry."
 fi
 info "Node.js: $NODE_VER"
 
