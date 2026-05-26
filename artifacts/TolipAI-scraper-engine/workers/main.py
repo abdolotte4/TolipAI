@@ -1007,44 +1007,15 @@ async def health_providers() -> Dict[str, Any]:
             "last_failure": state.get("last_failure_at"),
         }
 
-    llm_providers = {
+   llm_providers = {
         "openai": {
             "configured": bool(settings.openai_api_key),
             "model": settings.openai_model,
             "circuit_breaker": _cb("openai"),
         },
-        "groq": {
-            "configured": bool(settings.groq_api_key),
-            "model": settings.groq_model,
-            "circuit_breaker": _cb("groq"),
-        },
-        "cerebras": {
-            "configured": bool(settings.cerebras_api_key),
-            "model": settings.cerebras_model,
-            "circuit_breaker": _cb("cerebras"),
-        },
-        "together": {
-            "configured": bool(settings.together_api_key),
-            "model": settings.together_model,
-            "circuit_breaker": _cb("together"),
-        },
-        "nvidia": {
-            "configured": bool(settings.nvidia_api_key),
-            "model": settings.nvidia_model,
-            "circuit_breaker": _cb("nvidia"),
-        },
-        "openrouter": {
-            "configured": bool(settings.openrouter_api_key),
-            "model": settings.openrouter_model,
-            "circuit_breaker": _cb("openrouter"),
-        },
-        "moonshot": {
-            "configured": bool(settings.moonshot_api_key),
-            "model": settings.moonshot_model,
-            "circuit_breaker": _cb("moonshot"),
-        },
     }
 
+    # ─── Scrapers ─────────────────────────────────────────────────────
     scraper_providers = {
         "propelio": {
             "configured": bool(
@@ -1060,12 +1031,12 @@ async def health_providers() -> Dict[str, Any]:
         },
         "attom": {
             "configured": bool(settings.attom_keys),
-            "key_count": len(settings.attom_keys),
+            "key_count": len(settings.attom_keys) if settings.attom_keys else 0,
             "circuit_breaker": _cb("attom"),
         },
         "property_api": {
             "configured": bool(settings.property_api_keys),
-            "key_count": len(settings.property_api_keys),
+            "key_count": len(settings.property_api_keys) if settings.property_api_keys else 0,
             "circuit_breaker": _cb("property_api"),
         },
         "brightdata_proxy": {
@@ -1074,6 +1045,7 @@ async def health_providers() -> Dict[str, Any]:
         },
     }
 
+    # ─── Infra ────────────────────────────────────────────────────────
     infra = {
         "database": {
             "configured": bool(os.getenv("DATABASE_URL")),
@@ -1100,12 +1072,12 @@ async def health_providers() -> Dict[str, Any]:
         "llm_summary": {
             "any_configured": llm_any_configured,
             "any_open": llm_any_open,
+            "mode": "openai_only",  # ← explicit flag for monitoring
         },
         "scrapers": scraper_providers,
         "infra": infra,
         "circuit_breakers_all": breakers,
     }
-
 
 # ─── Circuit breaker admin endpoints ────────────────────────────────────────
 

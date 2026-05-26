@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# push-github.sh — Manually push TolipAI monorepo to GitHub.
+# push-github.sh — Push TolipAI monorepo and Python-Worker subtree to GitHub.
 # Usage:   bash push-github.sh
 #          bash push-github.sh "feat: my commit message"
 # Requires GAWISH_GIT_TOKEN to be set in Replit Secrets.
+
 set -e
 
 TOKEN="${GAWISH_GIT_TOKEN:-}"
@@ -12,7 +13,9 @@ if [ -z "${TOKEN}" ]; then
 fi
 
 MSG="${1:-"chore: sync from Replit [$(date '+%Y-%m-%d %H:%M')]"}"
+
 MONO_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
+WORKER_URL="https://${TOKEN}@github.com/Agawish24/Python-Worker.git"
 
 echo "=== Staging all changes ==="
 git add -A
@@ -27,5 +30,13 @@ fi
 echo ""
 echo "=== Pushing monorepo → Agawish24/TolipAI (main) ==="
 git push "${MONO_URL}" main
+echo "✓ Monorepo push complete."
+
 echo ""
-echo "✓ GitHub push complete."
+echo "=== Splitting subtree: artifacts/TolipAI-scraper-engine → Python-Worker (main) ==="
+SHA=$(git subtree split --prefix=artifacts/TolipAI-scraper-engine main)
+git push "${WORKER_URL}" "${SHA}:main" --force
+echo "✓ Subtree push complete."
+
+echo ""
+echo "✓ All pushes finished successfully."
