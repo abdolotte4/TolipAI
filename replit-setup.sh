@@ -65,11 +65,11 @@ info "Installing workspace dependencies (this may take 2–4 minutes on first ru
 timeout 300 pnpm install --no-frozen-lockfile 2>&1 | grep -E "(warn|ERR|error|Done|✓|Packages|already up)" || warn "pnpm install timed out or had errors — retry with: pnpm install --no-frozen-lockfile"
 success "Dependencies installed"
 
-# ── Step 4: Build shared DB package ──────────────────────────────────────────
-info "Building shared DB package..."
+# ── Step 4: Verify shared DB package ─────────────────────────────────────────
+info "Verifying shared DB package..."
 if [ -d "lib/db" ]; then
-  (cd lib/db && pnpm run build 2>&1 | tail -5) || warn "DB package build had warnings (non-fatal)"
-  success "DB package built"
+  # lib/db exports raw TypeScript — no compile step needed
+  success "DB package ready (TypeScript source, no build required)"
 else
   warn "lib/db not found — skipping"
 fi
