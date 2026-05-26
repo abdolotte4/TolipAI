@@ -939,18 +939,6 @@ async def health() -> Dict[str, Any]:
 async def health_keys() -> Dict[str, Any]:
     """Per-key status for all scraping providers — shows active vs exhausted keys."""
     return {
-        "scraperapi": {
-            "status": "disabled",
-            "reason": "permanently_removed_use_crawl4ai",
-            "keys_total": len(settings.scraperapi_keys),
-            "keys_active": 0,
-        },
-        "scrapingbee": {
-            "status": "disabled",
-            "reason": "permanently_removed_use_crawl4ai",
-            "keys_total": len(settings.scrapingbee_keys),
-            "keys_active": 0,
-        },
         "llm": {
             "openai_configured": bool(settings.openai_api_key),
             "mode": "openai_only",
@@ -962,9 +950,7 @@ async def health_keys() -> Dict[str, Any]:
             "zone": settings.brightdata_zone or "(embedded in username)",
             "browser_max_concurrent": int(os.getenv("BROWSER_MAX_CONCURRENT", "2")),
         },
-        "attom": {
-            "keys_total": len(settings.attom_keys) + len(settings.property_api_keys),
-            "attom_keys": len(settings.attom_keys),
+        "skip_trace": {
             "property_api_keys": len(settings.property_api_keys),
         },
     }
@@ -1013,11 +999,6 @@ async def health_providers() -> Dict[str, Any]:
                 os.getenv("PROPWIRE_EMAIL") and os.getenv("PROPWIRE_PASSWORD")
             ),
             "circuit_breaker": _cb("propwire"),
-        },
-        "attom": {
-            "configured": bool(settings.attom_keys),
-            "key_count": len(settings.attom_keys) if settings.attom_keys else 0,
-            "circuit_breaker": _cb("attom"),
         },
         "property_api": {
             "configured": bool(settings.property_api_keys),

@@ -1463,21 +1463,14 @@ router.post("/twilio/voice/inbound", async (req, res) => {
 
   const apiBase = getWebhookBase(req);
 
-  // Helper: TwiML that connects directly to the AI agent stream
+  // AI voice agent PAUSED — Stream connection caused silent calls for inbound callers.
+  // All inbound paths now go directly to voicemail recording until the AI is re-enabled.
   const aiAgentTwiml = () => {
-    const wsBase = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
-    const streamUrl = `${wsBase}/twilio/voice/agent-stream`;
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="${streamUrl}">
-      <Parameter name="from" value="${fromNum}"/>
-      <Parameter name="to" value="${toNum}"/>
-    </Stream>
-  </Connect>
-  <Say voice="Polly.Joanna">Thank you for calling. Our team will follow up with you shortly. Please leave a message after the tone.</Say>
-  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
-  <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
+  <Say voice="Polly.Joanna">Thank you for calling. Our team will review your inquiry and follow up within 24 hours. Please leave a message after the tone.</Say>
+  <Record maxLength="180" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
+  <Say voice="Polly.Joanna">Thank you for your message. Goodbye.</Say>
   <Hangup/>
 </Response>`;
   };
@@ -1586,19 +1579,12 @@ ${clientTags}${forwardTag}
   </Dial>
 </Response>`);
   } catch (err) {
-    logger.error(err, "[twilio/voice/inbound] error — falling back to AI agent");
-    const wsBase = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
+    logger.error(err, "[twilio/voice/inbound] error — falling back to voicemail");
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="${wsBase}/twilio/voice/agent-stream">
-      <Parameter name="from" value="${fromNum}"/>
-      <Parameter name="to" value="${toNum}"/>
-    </Stream>
-  </Connect>
-  <Say voice="Polly.Joanna">Thank you for calling. Our team will follow up with you shortly. Please leave a message after the tone.</Say>
-  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
-  <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
+  <Say voice="Polly.Joanna">Thank you for calling. Please leave a message after the tone and we will follow up within 24 hours.</Say>
+  <Record maxLength="180" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
+  <Say voice="Polly.Joanna">Thank you. Goodbye.</Say>
   <Hangup/>
 </Response>`);
   }
@@ -1606,41 +1592,20 @@ ${clientTags}${forwardTag}
 
 // ── POST /api/twilio/voice/inbound-no-answer ──────────────────────────────────
 // Dial action callback — called when no browser agent answers within the timeout.
-// Falls back to the AI qualification agent so the caller is never dropped.
+// AI agent PAUSED: always drops to voicemail to prevent silent calls.
 router.post("/twilio/voice/inbound-no-answer", async (req, res) => {
   res.set("Content-Type", "text/xml");
 
   const fromNum = (req.body?.From as string) || "";
   const toNum   = (req.body?.To   as string) || "";
   const apiBase = getWebhookBase(req);
-  const wsBase  = apiBase.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
 
-  logger.info({ fromNum, toNum }, "[twilio/voice/inbound-no-answer] no agent answered → AI agent or voicemail");
-
-  // If OpenAI is not configured, fall back to voicemail so the call never dead-ends
-  if (!getOpenAIKey()) {
-    logger.warn("[twilio/voice/inbound-no-answer] No OpenAI key configured — falling back to voicemail recording");
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">Thank you for calling. Our team is unavailable right now. Please leave a message after the tone and we will return your call within 24 hours.</Say>
-  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true" />
-  <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
-  <Hangup/>
-</Response>`);
-    return;
-  }
+  logger.info({ fromNum, toNum }, "[twilio/voice/inbound-no-answer] no agent answered → voicemail");
 
   res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Please hold while we connect you with our assistant.</Say>
-  <Connect>
-    <Stream url="${wsBase}/twilio/voice/agent-stream">
-      <Parameter name="from" value="${fromNum}"/>
-      <Parameter name="to" value="${toNum}"/>
-    </Stream>
-  </Connect>
-  <Say voice="Polly.Joanna">Thank you for calling. Our team will follow up with you shortly. Please leave a message after the tone.</Say>
-  <Record maxLength="120" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
+  <Say voice="Polly.Joanna">Thank you for calling. Our team is unavailable right now. Please leave a message after the tone and we will return your call within 24 hours.</Say>
+  <Record maxLength="180" transcribeCallback="${apiBase}/twilio/voice/recording" playBeep="true"/>
   <Say voice="Polly.Joanna">Thank you, goodbye.</Say>
   <Hangup/>
 </Response>`);

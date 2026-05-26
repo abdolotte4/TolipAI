@@ -1,4 +1,11 @@
-"""Centralised env config + key rotation state for the scraper engine."""
+"""Centralised env config + key rotation state for the scraper engine.
+
+LLM: OpenAI only (OPENAI_API_KEY).
+Scraping: BrightData / Oxylabs residential proxy + Propelio + Propwire.
+Skip-trace: PropertyAPI (PROPERTY_API_KEY).
+All dead providers removed: Groq, Cerebras, Together, NVIDIA, OpenRouter,
+Moonshot, ScraperAPI, ScrapingBee, ATTOM.
+"""
 from __future__ import annotations
 
 import os
@@ -38,63 +45,12 @@ class Settings:
     # ── Database ────────────────────────────────────────────────────────────
     database_url: Optional[str] = _env("DATABASE_URL")
 
-    # ── LLM providers ───────────────────────────────────────────────────────
-    # OpenAI — reliable paid tier; used as primary fallback when free providers hit rate limits
+    # ── LLM — OpenAI only ──────────────────────────────────────────────────
+    # All other providers (Groq, Cerebras, Together, NVIDIA, OpenRouter,
+    # Moonshot) have been removed. The scraper engine uses only OpenAI.
     openai_api_key: Optional[str] = _env("OPENAI_API_KEY")
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = _env("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
-
-    # Groq key may be stored as AI_INTEGRATIONS_OPENAI_API_KEY (shared OpenAI-compat secret)
-    # or as GROQ_API_KEY — check both, prefer the integration key.
-    groq_api_key: Optional[str] = (
-        _env("AI_INTEGRATIONS_OPENAI_API_KEY") or _env("GROQ_API_KEY")
-    )
-    groq_base_url: str = (
-        _env("AI_INTEGRATIONS_OPENAI_BASE_URL") or "https://api.groq.com/openai/v1"
-    )
-    groq_model: str = _env("GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
-
-    cerebras_api_key: Optional[str] = _env("CEREBRAS_API_KEY")
-    cerebras_base_url: str = "https://api.cerebras.ai/v1"
-    cerebras_model: str = _env("CEREBRAS_MODEL", "llama3.1-8b") or "llama3.1-8b"
-
-    together_api_key: Optional[str] = _env("TOGETHER_API_KEY")
-    together_base_url: str = "https://api.together.xyz/v1"
-    together_model: str = _env("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") or ""
-
-    nvidia_api_key: Optional[str] = _env("NVIDIA_API_KEY")
-    nvidia_base_url: str = _env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1") or ""
-    nvidia_model: str = _env("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct") or ""
-
-    openrouter_api_key: Optional[str] = _env("OPENROUTER_API_KEY")
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Kimi K2.6 via OpenRouter — 1M token context, top coding model
-    openrouter_model: str = _env("OPENROUTER_MODEL", "moonshotai/kimi-k2.6") or "moonshotai/kimi-k2.6"
-
-    # Moonshot direct API — set MOONSHOT_KIMI_API_KEY for direct access
-    # Model IDs: kimi-k2 | moonshot-v1-128k | moonshot-v1-32k | moonshot-v1-8k
-    moonshot_api_key: Optional[str] = _env("MOONSHOT_KIMI_API_KEY")
-    moonshot_base_url: str = _env("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1") or ""
-    moonshot_model: str = _env("MOONSHOT_MODEL", "kimi-k2") or "kimi-k2"
-
-    # ── Scraping providers ──────────────────────────────────────────────────
-    scraperapi_keys: List[str] = field(
-        default_factory=lambda: _env_list(
-            "SCRAPERAPI_KEY",
-            "SCRAPERAPI_KEY_2",
-            "SCRAPERAPI_KEY_3",
-            "SCRAPERAPI_KEY_4",
-        )
-    )
-    scrapingbee_keys: List[str] = field(
-        default_factory=lambda: _env_list(
-            "SCRAPINGBEE_API_KEY",
-            "SCRAPINGBEE_API_KEY_2",
-            "SCRAPINGBEE_API_KEY_3",
-            "SCRAPINGBEE_API_KEY_4",
-        )
-    )
-    webscraper_key: Optional[str] = _env("WEBSCRAPER_API_KEY")
 
     # ── Residential proxy ───────────────────────────────────────────────────
     brightdata_username: Optional[str] = _env("BRIGHTDATA_USERNAME")
@@ -109,7 +65,8 @@ class Settings:
     oxylabs_user: Optional[str] = _env("OXYLABS_USERNAME")
     oxylabs_pass: Optional[str] = _env("OXYLABS_PASSWORD")
 
-    # ── Property data ───────────────────────────────────────────────────────
+    # ── Property data (skip-trace only) ────────────────────────────────────
+    # Used by skip_trace.py PropertyAPI lookups. ATTOM has been removed.
     property_api_keys: List[str] = field(
         default_factory=lambda: _env_list(
             "PROPERTY_API_KEY",
@@ -120,12 +77,6 @@ class Settings:
             "PROPERTY_API_KEY_5",
             "PROPERTY_API_KEY_6",
             "PROPERTY_API_KEY_7",
-        )
-    )
-    attom_keys: List[str] = field(
-        default_factory=lambda: _env_list(
-            "ATTOM_API_KEY",
-            "ATTOM_API_KEY_2",
         )
     )
 
@@ -208,7 +159,7 @@ class Settings:
         return self.proxy_dict()
 
     def has_llm(self) -> bool:
-        # OpenAI-only — all other providers removed (Fix 12)
+        # OpenAI-only — all other providers removed
         return bool(self.openai_api_key)
 
     def rotate_key(self, keys: List[str], counter: int) -> Optional[str]:

@@ -1,8 +1,75 @@
 # TolipAI Scraper Engine — Critical Fix Specification
 
 > **Generated:** 2026-05-26  
+> **Last Updated:** 2026-05-26  
 > **Target:** AWS Fargate `tolipai-scraper-engine-service-xop`  
 > **Goal:** Stop 429 rate-limit bleeding, fix container permissions/SSL, prevent infinite hangs, and force OpenAI-only LLM usage.
+
+---
+
+## ✅ Implementation Status — All Fixes Applied
+
+| Fix | File | Status |
+|-----|------|--------|
+| Fix 1: `/health` stops burning LLM credits | `workers/main.py` | ✅ Done |
+| Fix 2A/B/C: Job runner 15-min timeouts | `workers/main.py` | ✅ Done |
+| Fix 3: `_run_distressed` clean timeout | `workers/main.py` | ✅ Done |
+| Fix 4: `_set_status` uses `create_task` + `_completed_at` | `workers/main.py` | ✅ Done |
+| Fix 5: CloudWatch EMF reads METRICS under lock | `workers/main.py` | ✅ Done |
+| Fix 6: `verify=False` → `verify=True` in debug proxy | `workers/main.py` | ✅ Done |
+| Fix 7A/B: Job memory eviction every 5 min | `workers/main.py` | ✅ Done |
+| Fix 8: Foreclosure endpoint 30-min timeout | `workers/main.py` | ✅ Done |
+| Fix 9: `/health/providers` indentation bug | `workers/main.py` | ✅ Done |
+| Fix 10: Dockerfile SSL certs + `useradd -m` + HOME/CRAWL4AI_DATA_DIR | `Dockerfile.fargate` | ✅ Done |
+| Fix 11: Remove dead env vars from ECS task definition | AWS Console | ⚠️ Manual — see below |
+| Fix 12: `llm.py` OpenAI-only rewrite | `workers/llm.py` | ✅ Done |
+
+### Additional Fixes Applied (beyond original 12)
+
+| Fix | File | Status |
+|-----|------|--------|
+| Remove ATTOM API from cash_buyers pipeline | `workers/cash_buyers.py` | ✅ Done |
+| Remove ATTOM/ScraperAPI/ScrapingBee/Groq/Cerebras/Moonshot from config | `workers/config.py` | ✅ Done |
+| Remove dead API key fields from `/health/keys` and `/health/providers` | `workers/main.py` | ✅ Done |
+| `has_llm()` checks only `openai_api_key` | `workers/config.py` | ✅ Done |
+
+### Fix 11 — AWS ECS Task Definition: Environment Variables to Remove
+
+In the AWS Console → ECS → Task Definitions → create a new revision and **remove these environment variables**:
+
+```
+GROQ_API_KEY
+CEREBRAS_API_KEY
+TOGETHER_API_KEY
+NVIDIA_API_KEY
+OPENROUTER_API_KEY
+MOONSHOT_KIMI_API_KEY
+SCRAPERAPI_KEY (and _2, _3, _4)
+SCRAPINGBEE_API_KEY (and _2, _3, _4)
+ATTOM_API_KEY (and _2)
+AI_INTEGRATIONS_OPENAI_API_KEY  (if set — Groq compat key, no longer needed)
+AI_INTEGRATIONS_OPENAI_BASE_URL (if set — Groq base URL, no longer needed)
+WEBSCRAPER_API_KEY              (scraper engine auth is via SCRAPER_API_KEY only)
+```
+
+**Must keep:**
+```
+OPENAI_API_KEY          — LLM (required)
+SCRAPER_API_KEY         — Engine auth (required)
+DATABASE_URL            — PostgreSQL (required)
+BRIGHTDATA_USERNAME     — Residential proxy (required)
+BRIGHTDATA_PASSWORD     — Residential proxy (required)
+BRIGHTDATA_ZONE         — Proxy zone (if not embedded in username)
+PROPELIO_EMAIL          — Propelio scraper (required)
+PROPELIO_PASSWORD       — Propelio scraper (required)
+PROPWIRE_EMAIL          — Propwire scraper (required)
+PROPWIRE_PASSWORD       — Propwire scraper (required)
+PROPERTY_API_KEY        — Skip-trace (optional but recommended)
+REDIS_URL               — Retry queue (optional, falls back to in-memory)
+S3_CACHE_BUCKET         — Response cache (optional)
+```
+
+---
 
 ---
 

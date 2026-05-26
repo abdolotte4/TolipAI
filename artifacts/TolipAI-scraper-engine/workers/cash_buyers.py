@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from . import db
 from .llm import extract_investor_profile, score_buyer_match
-from .scrapers import zillow, redfin, attom
+from .scrapers import zillow, redfin
 from .scrapers.county_deeds import fetch_recent_deeds
 from .skip_trace import trace as skip_trace
 
@@ -74,19 +74,7 @@ async def find_cash_buyers(
     city = lead.get("city") or ""
     state = lead.get("state") or ""
 
-    # ── Tier 1: ATTOM (paid, accurate — preferred source) ──────────────────
-    sold_attom: List[Dict[str, Any]] = []
-    if progress_cb:
-        await progress_cb(5, "Trying ATTOM Data API for recent sales…")
-    try:
-        sold_attom = await attom.recent_sales(zip_code=zip_code, city=city, state=state, max_results=80)
-    except Exception as e:  # noqa: BLE001
-        log.info(
-            "ATTOM unavailable / exhausted, falling back to county deeds/free scrape: %s",
-            e,
-        )
-
-    # ── Tier 2: County deed records (real grantee/buyer names from public records)
+    # ── Tier 1: County deed records (real grantee/buyer names from public records)
     sold_deeds: List[Dict[str, Any]] = []
     if progress_cb:
         await progress_cb(12, "Pulling county deed transfer records…")
@@ -120,7 +108,7 @@ async def find_cash_buyers(
     except Exception as e:  # noqa: BLE001
         log.info("County deed scrape failed, continuing: %s", e)
 
-    # ── Tier 3: free scrape (Zillow + Redfin) — always run as backfill ─────
+    # ── Tier 2: free scrape (Zillow + Redfin) — always run as backfill ────
     if progress_cb:
         await progress_cb(22, "Scanning recent sales (Zillow)…")
     sold_zillow = await zillow.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
@@ -128,12 +116,11 @@ async def find_cash_buyers(
         await progress_cb(35, "Scanning recent sales (Redfin)…")
     sold_redfin = await redfin.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
 
-    # Deeds first so real names take priority in aggregation
-    all_sales = sold_attom + sold_deeds + sold_zillow + sold_redfin
+    # County deeds first so real buyer names take priority in aggregation
+    all_sales = sold_deeds + sold_zillow + sold_redfin
     log.info(
-        "Found %d recent sales (%d ATTOM + %d Deeds + %d Zillow + %d Redfin) for ZIP=%s city=%s",
+        "Found %d recent sales (%d Deeds + %d Zillow + %d Redfin) for ZIP=%s city=%s",
         len(all_sales),
-        len(sold_attom),
         len(sold_deeds),
         len(sold_zillow),
         len(sold_redfin),
