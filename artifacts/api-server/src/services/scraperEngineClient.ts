@@ -25,7 +25,7 @@ async function request<T = any>(
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const apiKey = process.env.WEBSCRAPER_API_KEY || process.env.SCRAPER_API_KEY;
+    const apiKey = process.env.WEBSCRAPER_API_KEY;
     const res = await fetch(`${ENGINE_URL}${path}`, {
       ...rest,
       signal: controller.signal,

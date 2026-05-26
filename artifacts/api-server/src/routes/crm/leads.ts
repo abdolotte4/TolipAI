@@ -1640,7 +1640,7 @@ async function fetchCompsViaScraperEngine(
   try {
     const res = await fetch(`${scraperUrl}/scrape/comps`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": process.env.WEBSCRAPER_API_KEY || process.env.SCRAPER_API_KEY || "" },
+      headers: { "Content-Type": "application/json", "X-API-Key": process.env.WEBSCRAPER_API_KEY || "" },
       body: JSON.stringify({ address, radius_miles: radiusMiles, max_results: 12 }),
       signal: AbortSignal.timeout(120_000),
     });
@@ -1660,7 +1660,7 @@ async function fetchCompsViaScraperEngine(
   try {
     const res = await fetch(`${scraperUrl}/scrape/propwire/comps`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": process.env.WEBSCRAPER_API_KEY || process.env.SCRAPER_API_KEY || "" },
+      headers: { "Content-Type": "application/json", "X-API-Key": process.env.WEBSCRAPER_API_KEY || "" },
       body: JSON.stringify({ query: address }),
       signal: AbortSignal.timeout(120_000),
     });
