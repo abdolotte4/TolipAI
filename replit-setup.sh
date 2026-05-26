@@ -37,30 +37,11 @@ echo ""
 info "Checking Node.js..."
 NODE_VER=$(node --version 2>/dev/null || echo "none")
 if [[ "$NODE_VER" == "none" ]]; then
-  info "Node.js not in PATH — searching common locations..."
-  # Check ~/.nix-profile, /run/current-system, and a fast glob over nix store
-  for _candidate in \
-      "$HOME/.nix-profile/bin/node" \
-      "/run/current-system/sw/bin/node" \
-      "/usr/local/bin/node" \
-      "/usr/bin/node" \
-      /nix/store/*nodejs*/bin/node \
-      /nix/store/*nodejs-2*/bin/node; do
-    if [[ -x "$_candidate" ]]; then
-      export PATH="$(dirname "$_candidate"):$PATH"
-      NODE_VER=$("$_candidate" --version 2>/dev/null || echo "none")
-      info "Found Node.js: $_candidate"
-      break
-    fi
-  done
+  err_exit "Node.js not found. The nodejs-20 module should be installed — try opening a fresh Shell tab and running again."
 fi
-if [[ "$NODE_VER" == "none" ]]; then
-  # Last resort: pull node into the shell via nix-shell and re-exec this script
-  if command -v nix-shell &>/dev/null; then
-    info "Bootstrapping Node.js via nix-shell (one-time, may take ~30s)..."
-    exec nix-shell -p nodejs_20 --run "bash '$0' $*"
-  fi
-  err_exit "Node.js not found. Run:  nix-env -iA nixpkgs.nodejs_20  then retry."
+MAJOR=$(echo "$NODE_VER" | tr -d 'v' | cut -d. -f1)
+if [[ "$MAJOR" -lt 18 ]]; then
+  err_exit "Node.js $NODE_VER is too old (need ≥18). The nodejs-20 module is installed — open a fresh Shell tab and retry."
 fi
 info "Node.js: $NODE_VER"
 
