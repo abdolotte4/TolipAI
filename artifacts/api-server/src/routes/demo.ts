@@ -40,6 +40,54 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000);
 
+// ── Brevo email notification helper ──────────────────────────────────────────
+async function sendDemoNotification(name: string | undefined, phone: string, status: "requested" | "initiated" | "failed") {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@tolipai.com";
+  if (!apiKey) {
+    logger.warn("[demo/call] BREVO_API_KEY not set — demo notification skipped");
+    return;
+  }
+  const statusLabel = status === "initiated" ? "✅ Call Initiated" : status === "requested" ? "📞 Call Requested" : "❌ Call Failed";
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9;">
+      <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
+        <h1 style="color:#d4af37;margin:0;font-size:24px;">TOLIPAI LLC</h1>
+        <p style="color:#aaa;margin:8px 0 0;font-size:13px;">${statusLabel} — Website Demo Request</p>
+      </div>
+      <div style="background:#fff;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;">
+        <h2 style="color:#0a0e1a;margin-top:0;">Demo Call ${status === "initiated" ? "Initiated" : status === "requested" ? "Requested" : "Failed"}</h2>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px 0;font-weight:bold;color:#555;width:140px;">Name:</td><td style="padding:8px 0;color:#222;">${name || "Not provided"}</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Phone:</td><td style="padding:8px 0;color:#222;">${phone}</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Status:</td><td style="padding:8px 0;color:#222;">${statusLabel}</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Time:</td><td style="padding:8px 0;color:#222;">${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} ET</td></tr>
+        </table>
+        <p style="margin-top:24px;color:#888;font-size:12px;border-top:1px solid #eee;padding-top:16px;">
+          TolipAI LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
+        </p>
+      </div>
+    </div>
+  `;
+  try {
+    await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender: { name: "TolipAI Website", email: senderEmail },
+        to: [{ email: "info@tolipai.com", name: "TolipAI Info" }],
+        subject: `${statusLabel}: Demo Call from ${name || phone}`,
+        htmlContent: html,
+        textContent: `Demo call ${status}\nName: ${name || "N/A"}\nPhone: ${phone}\nTime: ${new Date().toISOString()}`,
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    logger.info({ phone, status }, "[demo/call] Notification email sent via Brevo");
+  } catch (err: any) {
+    logger.error({ err: err.message }, "[demo/call] Failed to send Brevo notification");
+  }
+}
+
 // ── POST /api/demo/call ───────────────────────────────────────────────────────
 router.post("/demo/call", async (req: Request, res: Response) => {
   const { phone, name } = req.body as { phone?: string; name?: string };
@@ -65,6 +113,8 @@ router.post("/demo/call", async (req: Request, res: Response) => {
 
   if (!accountSid || !authToken || !fromNumber) {
     logger.warn("[demo/call] Demo Twilio credentials not configured — TWILIO_DEMO_ACCOUNT_SID/AUTH_TOKEN/FROM_NUMBER missing");
+    // Still notify via email even when Twilio isn't configured
+    sendDemoNotification(name, phone, "requested").catch(() => {});
     res.status(503).json({ error: "Demo calling is not yet configured. Please book a consultation via the contact form." });
     return;
   }
@@ -102,14 +152,19 @@ router.post("/demo/call", async (req: Request, res: Response) => {
     const json = await callRes.json() as any;
     if (!callRes.ok) {
       logger.error({ status: callRes.status, body: json }, "[demo/call] Twilio call creation failed");
+      sendDemoNotification(name, toNumber, "failed").catch(() => {});
       res.status(502).json({ error: "Failed to initiate demo call. Please try the contact form." });
       return;
     }
 
     logger.info({ sid: json.sid, to: toNumber }, "[demo/call] Demo call initiated");
+    sendDemoNotification(name, toNumber, "initiated").catch(() => {});
     res.json({ success: true, message: "Your demo call is on the way! You'll receive a call within 30 seconds.", sid: json.sid });
   } catch (err: any) {
     logger.error({ err: err.message }, "[demo/call] Error initiating demo call");
+    const normalizedPhone = phone.replace(/\D/g, "");
+    const toNumber = normalizedPhone.startsWith("1") && normalizedPhone.length === 11 ? `+${normalizedPhone}` : `+1${normalizedPhone}`;
+    sendDemoNotification(name, toNumber, "failed").catch(() => {});
     res.status(500).json({ error: "Something went wrong. Please try the contact form instead." });
   }
 });

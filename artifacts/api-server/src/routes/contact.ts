@@ -2,20 +2,24 @@ import { Router, type IRouter } from "express";
 import * as ZodSchemas from "@workspace/api-zod";
 const { SubmitContactBody, SubmitContactResponse } = ZodSchemas;
 import { db, contactsTable } from "@workspace/db";
-import nodemailer from "nodemailer";
 
 const router: IRouter = Router();
 
-function createTransporter() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  if (!host || !user || !pass) return null;
-  return nodemailer.createTransport({
-    host, port, secure: port === 465,
-    auth: { user, pass },
-  });
+// ── Brevo transactional email sender ─────────────────────────────────────────
+async function sendViaBrevo(payload: object): Promise<boolean> {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) return false;
+  try {
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 router.post("/contact", async (req, res) => {
@@ -41,7 +45,8 @@ router.post("/contact", async (req, res) => {
     req.log.error({ err }, "Failed to save contact to database");
   }
 
-  // Send email
+  // Send email via Brevo
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@tolipai.com";
   const emailHtml = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9;">
       <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
@@ -68,24 +73,23 @@ router.post("/contact", async (req, res) => {
     </div>
   `;
 
-  const transporter = createTransporter();
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: `"TolipAI  Website" <${process.env.SMTP_USER}>`,
-        to: "info@tolipai.com",
-        cc: "hello@tolipai.com, martin@tolipai.com",
-        replyTo: email,
-        subject: `New Inquiry from ${name} — ${serviceLabel}`,
-        html: emailHtml,
-        text: `New inquiry from ${name}\nEmail: ${email}\nCompany: ${company || "N/A"}\nPhone: ${phone || "N/A"}\nService: ${serviceLabel}\n\nMessage:\n${message}`,
-      });
-      req.log.info({ name, email }, "Contact email sent");
-    } catch (err) {
-      req.log.error({ err }, "Failed to send contact email");
-    }
+  const sent = await sendViaBrevo({
+    sender: { name: "TolipAI Website", email: senderEmail },
+    to: [{ email: "info@tolipai.com", name: "TolipAI Info" }],
+    cc: [
+      { email: "hello@tolipai.com" },
+      { email: "martin@tolipai.com" },
+    ],
+    replyTo: { email, name },
+    subject: `New Inquiry from ${name} — ${serviceLabel}`,
+    htmlContent: emailHtml,
+    textContent: `New inquiry from ${name}\nEmail: ${email}\nCompany: ${company || "N/A"}\nPhone: ${phone || "N/A"}\nService: ${serviceLabel}\n\nMessage:\n${message}`,
+  });
+
+  if (sent) {
+    req.log.info({ name, email }, "Contact email sent via Brevo");
   } else {
-    req.log.warn("SMTP not configured — email not sent");
+    req.log.warn({ name, email }, "Contact email not sent — BREVO_API_KEY not set or Brevo error");
   }
 
   res.json(SubmitContactResponse.parse({
