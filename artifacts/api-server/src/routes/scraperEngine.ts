@@ -27,7 +27,11 @@ function handleEngineError(err: unknown, res: Response): void {
     res.status(503).json({ error: err.message });
     return;
   }
-  res.status(500).json({ error: toMessage(err) });
+  const upstreamStatus = (err as any)?.status;
+  const httpStatus = typeof upstreamStatus === "number" && upstreamStatus >= 400 && upstreamStatus < 600
+    ? upstreamStatus
+    : 500;
+  res.status(httpStatus).json({ error: toMessage(err) });
 }
 
 function maskEmail(email: string | null | undefined): string | null {

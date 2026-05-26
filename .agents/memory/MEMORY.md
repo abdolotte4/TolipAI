@@ -1,4 +1,6 @@
 - [Twilio webhook base URL](twilio-webhook-base.md) — API_BASE_URL always first; REPLIT_DEV_DOMAIN removed entirely; tolipai.com is sole production domain.
 - [Twilio TwiML transcribe attr](twilio-twiml-transcribe.md) — transcribe/transcribeCallback on <Conference> causes Error 12200 unless TWILIO_VOICE_INTELLIGENCE_SID is set; attr is now conditional.
 - [Frontend app directories](frontend-dirs.md) — Real code is under artifacts/TolipAI-crm, TolipAI-tools, TolipAI-website; vite ports: website=3000, crm=3001, tools=3002.
-- [WEBSCRAPER_API_KEY sync](webscraper-key-sync.md) — Arbitrary shared secret; must match Replit env + AWS TolipAI/scraper/webscraper-key + Railway WEBSCRAPER_API_KEY.
+- [Scraper engine auth chain](scraper-engine-auth.md) — Fargate validates X-API-Key against SCRAPER_API_KEY env var (← TolipAI/scraper/api-key secret). Express sends WEBSCRAPER_API_KEY. Both must match. Task def rev 32 is current.
+- [Scraper engine AWS infra](scraper-engine-aws.md) — Cluster: TolipAI-scraper-cluster; service: tolipai-scraper-engine-service-xop; ELB on port 8765. Task def must not reference deleted secrets or container fails to start.
+- [handleEngineError status propagation](handle-engine-error.md) — propagates (err as any).status so 404/422/etc from Fargate reach the client correctly (was always 500).
