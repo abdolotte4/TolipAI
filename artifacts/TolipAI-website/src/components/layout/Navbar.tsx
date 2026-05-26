@@ -31,59 +31,65 @@ export function Navbar() {
   };
 
   return (
-    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? "bg-background/80 backdrop-blur-md border-b border-border shadow-lg shadow-black/20 py-4" : "bg-transparent py-6"}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        <div className="flex items-center gap-2 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-          <img src="/logo.png" alt="TolipAI" className="h-8 w-8 object-contain dark:invert" />
-          <span className="font-display text-2xl font-bold tracking-wider text-foreground group-hover:text-primary transition-colors">
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? "bg-background/80 backdrop-blur-md border-b border-border shadow-lg shadow-black/20 py-3" : "bg-transparent py-5"}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+
+        {/* Logo — flex-shrink-0 prevents it from being squashed */}
+        <div className="flex items-center gap-2 cursor-pointer group flex-shrink-0" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+          <img
+            src={isDark ? "/logo-gold.png" : "/logo.png"}
+            alt="TolipAI"
+            className="h-8 w-8 object-contain"
+          />
+          <span className="font-display text-xl font-bold tracking-wider text-foreground group-hover:text-primary transition-colors">
             TOLIPAI<span className="text-primary">.</span>
           </span>
         </div>
 
-        {/* Desktop Nav */}
-        <div className="hidden md:flex items-center space-x-6">
+        {/* Desktop Nav — only visible at lg+ to avoid overlap */}
+        <div className="hidden lg:flex items-center gap-4 xl:gap-5 flex-1 justify-end">
           {navLinks.map((link) => (
             <button key={link.name} onClick={() => scrollTo(link.href)}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
               {link.name}
             </button>
           ))}
           <a href="/mission-vision-values"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+            className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
             Mission, Vision &amp; Values
           </a>
           <button onClick={() => scrollTo("#services")}
-            className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors whitespace-nowrap">
+            className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors whitespace-nowrap">
             Watch Demo
           </button>
           <Button
             onClick={openSubscribe}
             variant="outline"
-            className="border-primary/50 text-primary hover:bg-primary/10 rounded-full px-5 font-semibold text-sm flex items-center gap-1.5"
+            size="sm"
+            className="border-primary/50 text-primary hover:bg-primary/10 rounded-full px-4 font-semibold text-xs flex items-center gap-1.5 flex-shrink-0"
           >
-            <Zap className="w-3.5 h-3.5" /> Subscribe
+            <Zap className="w-3 h-3" /> Subscribe
           </Button>
-          <a href="https://tolipai.com/crm/" target="_blank" rel="noopener noreferrer">
-            <Button variant="outline" className="border-border text-foreground hover:bg-secondary rounded-full px-5 font-semibold text-sm">
+          <a href="https://tolipai.com/crm/" target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+            <Button variant="outline" size="sm" className="border-border text-foreground hover:bg-secondary rounded-full px-4 font-semibold text-xs whitespace-nowrap">
               TolipAI CRM
             </Button>
           </a>
-          {/* Theme toggle */}
           <button
             onClick={toggleTheme}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="p-2 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="p-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex-shrink-0"
           >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
           </button>
-          <Button onClick={() => scrollTo("#contact")}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-6 font-semibold">
+          <Button onClick={() => scrollTo("#contact")} size="sm"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-5 font-semibold text-xs flex-shrink-0">
             Consultation
           </Button>
         </div>
 
-        <div className="md:hidden flex items-center gap-2">
-          {/* Theme toggle (mobile) */}
+        {/* Mobile / medium — hamburger */}
+        <div className="lg:hidden flex items-center gap-2">
           <button
             onClick={toggleTheme}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
@@ -99,7 +105,7 @@ export function Navbar() {
 
       {/* Mobile Nav */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 bg-card border-b border-border shadow-xl">
+        <div className="lg:hidden absolute top-full left-0 right-0 bg-card border-b border-border shadow-xl">
           <div className="flex flex-col px-4 py-6 space-y-4">
             {navLinks.map((link) => (
               <button key={link.name} onClick={() => scrollTo(link.href)}
