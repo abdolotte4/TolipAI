@@ -9,3 +9,5 @@
 - [AI config key priority](ai-config-key-priority.md) — aiConfig.ts: OPENAI_API_KEY first, then AI_INTEGRATIONS_OPENAI_API_KEY; ignores AI_INTEGRATIONS_OPENAI_BASE_URL if it points to groq.com; falls back to GROQ_API_KEY for CRM AI features.
 - [DB duplicate indexes cleaned](db-indexes.md) — 11 duplicate single-column indexes dropped from crm_leads, crm_notes, crm_notifications, crm_tasks, cash_buyer_matches, crm_comps, crm_lead_followers; kept idx_* naming pattern.
 - [Tools session storage key](tools-session-key.md) — Canonical localStorage key is tolipai_tools_pin (lowercase). Any use of TolipAI_tools_pin is a bug.
+- [Inbound call toNumber bug](inbound-call-tonumber.md) — /voice/log POST must NOT overwrite toNumber/fromNumber with null; use conditional patch so existing values from /voice/inbound are preserved.
+- [Crawl4AI ProxyConfig](crawl4ai-proxyconfig.md) — Newer crawl4ai (>=0.4) requires ProxyConfig object not a plain dict for proxy_config in BrowserConfig; try import ProxyConfig, fall back to dict.

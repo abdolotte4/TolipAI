@@ -53,6 +53,8 @@ interface PhoneContextValue {
   liveTranscript: TranscriptSegment[];
   aiSuggestion: string | null;
   clearAiSuggestion: () => void;
+  lastInboundCaller: string | null;
+  clearLastInboundCaller: () => void;
 
   initDevice: () => Promise<boolean>;
   startCall: (phone: string, leadId: number | null, leadName: string, record: boolean, fromNumber?: string | null) => Promise<void>;
@@ -149,6 +151,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const [currentCallSid, setCurrentCallSid] = useState<string | null>(null);
   const [incomingCallInfo, setIncomingCallInfo] = useState<IncomingCallInfo | null>(null);
   const [hasPendingIncoming, setHasPendingIncoming] = useState(false);
+  const [lastInboundCaller, setLastInboundCaller] = useState<string | null>(null);
   const [activeLeadId, setActiveLeadId] = useState<number | null>(null);
   const [activeLeadName, setActiveLeadName] = useState<string | null>(null);
   const [liveTranscript, setLiveTranscript] = useState<TranscriptSegment[]>([]);
@@ -500,6 +503,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     stopRing();
     pendingIncomingCallRef.current = null;
     setHasPendingIncoming(false);
+    setIncomingCallInfo(null);
 
     callRef.current = call;
     setStatus("in-progress");
@@ -511,6 +515,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     clearTranscript();
 
     const phone = (call.parameters as any)?.From || "";
+    if (phone) setLastInboundCaller(phone);
     if (leadId !== undefined) setActiveLeadId(leadId ?? null);
 
     call.on("sample", (sample: any) => {
@@ -706,6 +711,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     liveTranscript,
     aiSuggestion,
     clearAiSuggestion: () => setAiSuggestion(null),
+    lastInboundCaller,
+    clearLastInboundCaller: () => setLastInboundCaller(null),
     initDevice,
     startCall,
     hangUp,

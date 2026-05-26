@@ -449,7 +449,7 @@ function NumberItem({
 
 export default function ManualDialerPage() {
   const phone = usePhone();
-  const { startCall } = phone;
+  const { startCall, lastInboundCaller, clearLastInboundCaller } = phone;
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -555,6 +555,21 @@ export default function ManualDialerPage() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc, ownedNumbersKey]);
+
+  // ── Auto-select inbound caller when a call is accepted ───────────────────
+  // When the agent accepts an inbound call, automatically navigate to that
+  // contact's conversation thread in the currently-selected phone number.
+  useEffect(() => {
+    if (!lastInboundCaller || !selectedNumber) return;
+    setSelectedContact(lastInboundCaller);
+    setShowDialPad(false);
+    clearLastInboundCaller();
+    // Refresh both lists so the new conversation appears immediately
+    const num = selectedNumber.number;
+    qc.invalidateQueries({ queryKey: ["phone-number-convs", num] });
+    qc.invalidateQueries({ queryKey: ["phone-number-history", num, lastInboundCaller] });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastInboundCaller]);
 
   // ── Auto-refresh conversation list when a call ends ────────────────────────
   if (prevPhoneStatus.current !== phone.status) {

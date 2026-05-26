@@ -879,13 +879,17 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
 
     // UPDATE-then-INSERT: avoids ON CONFLICT constraint dependency on schema migrations.
     // If the recording webhook already inserted a minimal row for this callSid, enrich it.
+    // IMPORTANT: fromNumber/toNumber use COALESCE so we never overwrite an existing non-null
+    // value with null. This prevents inbound-call logs (which have toNumber=owned number set
+    // by /voice/inbound) from losing their toNumber when acceptIncoming() posts here with
+    // toNumber: null, which would break the conversations list matching.
     const now = new Date();
+    const resolvedFromNumber = fromNumber || null;
+    const resolvedToNumber = toNumber || null;
     const values = {
       campaignId,
       leadId: leadId ? Number(leadId) : null,
       userId: crmUser.userId ?? crmUser.id,
-      fromNumber: fromNumber || null,
-      toNumber: toNumber || null,
       mosScore: analytics?.mos ? String(analytics.mos) : null,
       jitterMs: analytics?.jitter ? String(analytics.jitter) : null,
       packetLossPct: analytics?.packetLoss ? String(analytics.packetLoss) : null,
@@ -893,13 +897,25 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
     };
 
     let logId: number | null = null;
+    let finalFrom: string | null = resolvedFromNumber;
+    let finalTo: string | null = resolvedToNumber;
     if (callSid) {
+      // Only set fromNumber/toNumber if non-null — preserves the existing value
+      // when acceptIncoming() posts with toNumber:null for inbound calls.
+      const numberPatch: Record<string, any> = {};
+      if (resolvedFromNumber !== null) numberPatch.fromNumber = resolvedFromNumber;
+      if (resolvedToNumber   !== null) numberPatch.toNumber   = resolvedToNumber;
+
       const [updated] = await db
         .update(crmCallLogs)
-        .set(values)
+        .set({ ...values, ...numberPatch })
         .where(eq(crmCallLogs.callSid, callSid))
-        .returning({ id: crmCallLogs.id });
+        .returning({ id: crmCallLogs.id, fromNumber: crmCallLogs.fromNumber, toNumber: crmCallLogs.toNumber });
       logId = updated?.id ?? null;
+      if (updated) {
+        finalFrom = (updated as any).fromNumber ?? resolvedFromNumber;
+        finalTo   = (updated as any).toNumber   ?? resolvedToNumber;
+      }
     }
 
     if (!logId) {
@@ -909,6 +925,8 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
         direction: direction || "outbound",
         status: "initiated",
         ...values,
+        fromNumber: resolvedFromNumber,
+        toNumber:   resolvedToNumber,
       });
       logId = result.id;
     }
@@ -919,10 +937,10 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
     emitCrmActivity("call_logged", {
       callSid: callSid || null,
       status: "initiated",
-      from: values.fromNumber,
-      to: values.toNumber,
+      from: finalFrom,
+      to: finalTo,
       direction: direction || "outbound",
-      leadId: values.leadId ?? null,
+      leadId: leadId ? Number(leadId) : null,
       campaignId,
       ts: Date.now(),
     });

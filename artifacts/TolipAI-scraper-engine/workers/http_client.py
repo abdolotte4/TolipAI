@@ -228,20 +228,32 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None, use_proxy:
     except (ImportError, OSError) as e:
         raise RuntimeError(f"Crawl4AI unavailable: {e}") from e
 
-    # Determine proxy config dict
-    _proxy_cfg: Optional[Dict[str, str]] = None
+    # Determine proxy config — newer crawl4ai versions require a ProxyConfig
+    # object rather than a plain dict; try the object first, fall back to dict.
+    _proxy_cfg = None
     if use_proxy:
-        _proxy_cfg = settings.proxy_dict()
-        if _proxy_cfg is None and settings.proxy_url():
-            # Fallback: parse proxy_url() manually
+        raw_proxy = settings.proxy_dict()
+        if raw_proxy is None and settings.proxy_url():
             from urllib.parse import urlparse as _urlparse
-
             _u = _urlparse(settings.proxy_url() or "")
-            _proxy_cfg = {"server": f"{_u.scheme}://{_u.hostname}:{_u.port}"}
+            raw_proxy = {"server": f"{_u.scheme}://{_u.hostname}:{_u.port}"}
             if _u.username:
-                _proxy_cfg["username"] = _u.username
+                raw_proxy["username"] = _u.username
             if _u.password:
-                _proxy_cfg["password"] = _u.password
+                raw_proxy["password"] = _u.password
+
+        if raw_proxy:
+            # Try to use the ProxyConfig dataclass (crawl4ai >= 0.4)
+            try:
+                from crawl4ai import ProxyConfig as _ProxyConfig  # type: ignore
+                _proxy_cfg = _ProxyConfig(
+                    server=raw_proxy.get("server", ""),
+                    username=raw_proxy.get("username"),
+                    password=raw_proxy.get("password"),
+                )
+            except (ImportError, TypeError):
+                # Older crawl4ai versions accept a plain dict
+                _proxy_cfg = raw_proxy
 
     # Extra Chromium args for stealth + memory efficiency
     extra_args = [
