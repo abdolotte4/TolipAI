@@ -155,7 +155,7 @@ router.use("/crm/admin/waitlist", waitlistRouter);
 router.use("/crm/billing", billingRouter);
 
 // Super-admin system health checks
-router.use("/crm", systemHealthRouter);
+router.use(systemHealthRouter);
 
 // ── Public waitlist signup ────────────────────────────────────────────────────
 // POST /crm/public/waitlist  (legacy, kept for backward compat — redirects to new table)

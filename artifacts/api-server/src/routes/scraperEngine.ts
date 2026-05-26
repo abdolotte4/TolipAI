@@ -6,6 +6,7 @@
  * the distressed-property scraper.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
+import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import { csvCell } from "../lib/textUtils";
 import { cashBuyerMatches, crmLeads, crmCampaigns } from "@workspace/db/schema";
@@ -13,6 +14,8 @@ import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "driz
 import { crmAuth, type CrmTokenPayload } from "./crm/middleware";
 import { scraperEngine, ScraperEngineUnavailable } from "../services/scraperEngineClient";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
+import { runSkipTrace } from "../services/propertyApi";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -475,6 +478,127 @@ router.get("/scraper-engine/jobs/:jobId", async (req: Request, res: Response) =>
     handleEngineError(err, res);
   }
 });
+
+// ─── Distressed Lead Gen — skip-trace enrichment ─────────────────────────────
+// POST /scraper-engine/distressed/:jobId/enrich
+// Fetches distressed listings from the engine for the given job, runs
+// skip-trace on each record in the background, and returns a tracking ID.
+
+interface DistressedEnrichJob {
+  enrichJobId: string;
+  sourceJobId: string;
+  status: "running" | "completed" | "failed";
+  total: number;
+  processed: number;
+  results: any[];
+  startedAt: string;
+  error?: string;
+}
+
+const distressedEnrichJobs = new Map<string, DistressedEnrichJob>();
+
+setInterval(() => {
+  const cutoff = Date.now() - 8 * 60 * 60 * 1000;
+  for (const [id, job] of distressedEnrichJobs) {
+    if (new Date(job.startedAt).getTime() < cutoff) distressedEnrichJobs.delete(id);
+  }
+}, 30 * 60 * 1000).unref();
+
+router.post(
+  "/scraper-engine/distressed/:jobId/enrich",
+  crmOrPinAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const jobId = String(req.params.jobId);
+      const data = await scraperEngine.listDistressedForJob(jobId);
+      const listings: any[] = data.listings || [];
+
+      if (!listings.length) {
+        res.status(404).json({ error: "No listings found for this job — nothing to enrich" });
+        return;
+      }
+
+      const enrichJobId = randomUUID();
+      const enrichJob: DistressedEnrichJob = {
+        enrichJobId,
+        sourceJobId: jobId,
+        status: "running",
+        total: listings.length,
+        processed: 0,
+        results: [],
+        startedAt: new Date().toISOString(),
+      };
+      distressedEnrichJobs.set(enrichJobId, enrichJob);
+
+      setImmediate(async () => {
+        try {
+          for (const listing of listings) {
+            try {
+              const street    = listing.address || listing.street || "";
+              const city      = listing.city || "";
+              const state     = listing.state || "";
+              const zip       = listing.zip || listing.zip_code || "";
+              const ownerName = listing.owner_name || listing.ownerName || "";
+              const parts     = ownerName.trim().split(/\s+/);
+              const firstName = parts[0] || null;
+              const lastName  = parts.length > 1 ? parts.slice(1).join(" ") : null;
+
+              const st = await runSkipTrace(
+                street, city || null, state || null, zip || null,
+                firstName, lastName,
+              );
+
+              enrichJob.results.push({
+                ...listing,
+                phones: st ? st.phones.map((p: any) => p.number || p) : [],
+                emails: st ? st.emails : [],
+                skip_trace_status: st ? "found" : "not_found",
+              });
+            } catch {
+              enrichJob.results.push({
+                ...listing,
+                phones: [],
+                emails: [],
+                skip_trace_status: "error",
+              });
+            }
+            enrichJob.processed++;
+            await new Promise(r => setTimeout(r, 500));
+          }
+          enrichJob.status = "completed";
+        } catch (err: any) {
+          enrichJob.status = "failed";
+          enrichJob.error = err?.message;
+          logger.error({ enrichJobId, err: err?.message }, "[distressed-enrich] job crashed");
+        }
+      });
+
+      logger.info({ enrichJobId, sourceJobId: jobId, total: listings.length }, "[distressed-enrich] job started");
+      res.json({ enrichJobId, total: listings.length, status: "running" });
+    } catch (err: unknown) {
+      if (err instanceof ScraperEngineUnavailable) { res.status(503).json({ error: (err as Error).message }); return; }
+      res.status(500).json({ error: toMessage(err) });
+    }
+  },
+);
+
+router.get(
+  "/scraper-engine/distressed/enrich-status/:enrichJobId",
+  crmOrPinAuth,
+  (req: Request, res: Response) => {
+    const job = distressedEnrichJobs.get(String(req.params.enrichJobId));
+    if (!job) { res.status(404).json({ error: "Enrich job not found" }); return; }
+    res.json({
+      enrichJobId: job.enrichJobId,
+      sourceJobId: job.sourceJobId,
+      status:      job.status,
+      total:       job.total,
+      processed:   job.processed,
+      results:     job.status === "completed" ? job.results : [],
+      error:       job.error ?? null,
+    });
+  },
+);
 
 // ─── Catch-all proxy for every other /scraper-engine/* route ─────────────────
 
