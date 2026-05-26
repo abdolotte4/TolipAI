@@ -26,13 +26,35 @@ export function getOpenAIKey(): string | undefined {
   );
 }
 
-/** Returns the base URL for OpenAI API calls. */
+/**
+ * Returns the base URL for real OpenAI API calls.
+ *
+ * IMPORTANT: AI_INTEGRATIONS_OPENAI_BASE_URL is sometimes set to a
+ * Groq-compatible endpoint (api.groq.com).  We must never send a real
+ * OpenAI sk-proj key to groq.com — it will always 401.  When the
+ * integration base URL points to a non-OpenAI host we fall through to
+ * the canonical OpenAI endpoint so the real key works correctly.
+ * Groq is handled separately by getGroqBaseUrl() / getGroqKey().
+ */
 export function getOpenAIBaseUrl(): string {
-  return (
-    process.env.OPENAI_BASE_URL ||
-    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ||
-    "https://api.openai.com/v1"
-  );
+  // Explicit override always wins, regardless of content
+  if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL;
+
+  // Only use AI_INTEGRATIONS_OPENAI_BASE_URL when it actually points at
+  // OpenAI (or a compatible proxy such as Azure OpenAI / LiteLLM).
+  // If it points at groq.com/openrouter.ai/etc., ignore it here — those
+  // providers have their own dedicated helpers.
+  const integrationUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || "";
+  const isNonOpenAIEndpoint =
+    integrationUrl.includes("groq.com") ||
+    integrationUrl.includes("openrouter.ai") ||
+    integrationUrl.includes("anthropic.com") ||
+    integrationUrl.includes("together.ai") ||
+    integrationUrl.includes("mistral.ai");
+
+  if (integrationUrl && !isNonOpenAIEndpoint) return integrationUrl;
+
+  return "https://api.openai.com/v1";
 }
 
 /** Returns true if any OpenAI key is configured. */
