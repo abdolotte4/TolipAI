@@ -1,0 +1,4 @@
+- [Twilio webhook base URL](twilio-webhook-base.md) — API_BASE_URL always first; REPLIT_DEV_DOMAIN removed entirely; tolipai.com is sole production domain.
+- [Twilio TwiML transcribe attr](twilio-twiml-transcribe.md) — transcribe/transcribeCallback on <Conference> causes Error 12200 unless TWILIO_VOICE_INTELLIGENCE_SID is set; attr is now conditional.
+- [Frontend app directories](frontend-dirs.md) — Real code is under artifacts/TolipAI-crm, TolipAI-tools, TolipAI-website; vite ports: website=3000, crm=3001, tools=3002.
+- [WEBSCRAPER_API_KEY sync](webscraper-key-sync.md) — Arbitrary shared secret; must match Replit env + AWS TolipAI/scraper/webscraper-key + Railway WEBSCRAPER_API_KEY.

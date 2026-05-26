@@ -253,9 +253,11 @@ router.post("/twilio/voice/answer", async (req, res) => {
         ? `record="record-from-start" recordingStatusCallback="${apiBase}/twilio/voice/recording" recordingStatusCallbackMethod="POST"`
         : "";
 
-      // Real-time transcription — enabled when Twilio Voice Intelligence is configured in the account.
-      // Sends TranscriptionEvent webhooks to /twilio/voice/transcript for live AI coaching.
-      const transcribeAttr = `transcribe="true" transcribeCallback="${apiBase}/twilio/voice/transcript"`;
+      // Real-time transcription via Twilio Voice Intelligence — only enabled when
+      // TWILIO_VOICE_INTELLIGENCE_SID is configured; omitting these attrs avoids Error 12200.
+      const transcribeAttr = process.env.TWILIO_VOICE_INTELLIGENCE_SID
+        ? `transcribe="true" transcribeCallback="${apiBase}/twilio/voice/transcript" voiceIntelligenceService="${process.env.TWILIO_VOICE_INTELLIGENCE_SID}"`
+        : "";
 
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>${whisperXml}
@@ -459,9 +461,7 @@ router.post("/twilio/voice/join-conference", async (req, res) => {
                 endConferenceOnExit="true"
                 beep="false"
                 waitUrl="${apiBase}/twilio/voice/ringback"
-                waitMethod="GET"
-                transcribe="true"
-                transcribeCallback="${apiBase}/twilio/voice/transcript">
+                waitMethod="GET">
       ${confName}
     </Conference>
   </Dial>
@@ -577,6 +577,23 @@ router.post("/twilio/voice/call-status", async (req, res) => {
   } catch (err) {
     logger.error(err, "[twilio/voice/call-status] error");
   }
+});
+
+// ── POST /api/twilio/voice/status ─────────────────────────────────────────────
+// Alias for /call-status — handles legacy Twilio console configurations that use
+// the shorter path. Returns 200 immediately to stop the "Got HTTP 404" error.
+router.post("/twilio/voice/status", async (req, res) => {
+  res.type("text/xml").send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
+  try {
+    const callSid = req.body?.CallSid as string | undefined;
+    const status = req.body?.CallStatus as string | undefined;
+    const duration = req.body?.CallDuration ? parseInt(req.body.CallDuration) : undefined;
+    if (!callSid) return;
+    await db
+      .update(crmCallLogs)
+      .set({ status: status || "completed", duration: duration ?? null, updatedAt: new Date() })
+      .where(eq(crmCallLogs.callSid, callSid));
+  } catch { /* non-fatal */ }
 });
 
 // ── POST /api/twilio/voice/recording ─────────────────────────────────────────

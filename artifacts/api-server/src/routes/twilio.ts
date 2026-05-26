@@ -237,7 +237,6 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
         // API_BASE_URL which may point to a different deployment (Railway vs Replit).
         const ownHost = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
           || (req.headers.host as string | undefined)
-          || process.env.REPLIT_DEV_DOMAIN
           || "localhost:8080";
         const apiBase = `https://${ownHost.replace(/:\d+$/, "")}/api`;
         const appBody = new URLSearchParams({
@@ -276,7 +275,6 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     if (apiKeySid && apiKeySecret && existingVoiceAppSid && targetCampaignId) {
       const ownHostCfg = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
         || (req.headers.host as string | undefined)
-        || process.env.REPLIT_DEV_DOMAIN
         || "localhost:8080";
       const cfgBase = `https://${ownHostCfg.replace(/:\d+$/, "")}/api`;
       try {
@@ -595,7 +593,6 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
   if (!agentE164) { res.status(400).json({ error: "Invalid agent phone number" }); return; }
   const ownHostCtC = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
     || (req.headers.host as string | undefined)
-    || process.env.REPLIT_DEV_DOMAIN
     || "localhost:8080";
   const apiBase = `https://${ownHostCtC.replace(/:\d+$/, "")}/api`;
   const twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(leadE164)}&callerId=${encodeURIComponent(fromNumber)}`;
@@ -636,7 +633,7 @@ router.post("/twilio/reconfigure-twiml-app", crmAuth, crmAdminOnly, async (req, 
     const voiceCfg = await resolveVoiceConfig(targetCampaignId, isSuperAdmin);
     // Always use the server that handled THIS request — not API_BASE_URL (which may point to a different env).
     // x-forwarded-host is set by Replit/Railway proxies and carries the public hostname.
-    const ownHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || process.env.REPLIT_DEV_DOMAIN || "localhost:8080";
+    const ownHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "localhost:8080";
     const ownBase = `https://${ownHost.split(",")[0].trim()}/api`;
     const voiceUrl = `${ownBase}/twilio/voice/answer`;
 
@@ -683,7 +680,6 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
     // that is actually handling traffic — never to a stale API_BASE_URL env var.
     const ownHostWH = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
       || (req.headers.host as string | undefined)
-      || process.env.REPLIT_DEV_DOMAIN
       || "localhost:8080";
     const apiBase = `https://${ownHostWH.replace(/:\d+$/, "")}/api`;
     const smsWebhook = `${apiBase}/twilio/webhook`;

@@ -5,20 +5,14 @@ import type { Request } from "express";
  *
  * Priority order:
  * 1. API_BASE_URL — set in production (e.g. https://tolipai.com/api).
- *    This is always preferred when available so Twilio webhooks reach the production server.
- * 2. REPLIT_DEV_DOMAIN — set automatically by Replit; used only when API_BASE_URL is absent
- *    (pure local dev with no Railway deployment).
- * 3. x-forwarded-host header — set by Railway / Replit proxies.
- * 4. Host header — last-resort local dev fallback.
+ *    Always preferred so Twilio webhooks reach the production server.
+ * 2. x-forwarded-host header — set by Railway / reverse-proxy.
+ * 3. Host header — last-resort local dev fallback.
+ *
+ * REPLIT_DEV_DOMAIN is intentionally NOT used — production always runs
+ * behind tolipai.com and REPLIT_DEV_DOMAIN must never override API_BASE_URL.
  */
 export function getWebhookBase(req: Request): string {
-  // When running inside the Replit environment, always route Twilio callbacks back
-  // to the Replit dev server — not to Railway production — so every webhook in the
-  // call flow (inbound, no-answer, status, agent-stream) stays on this server.
-  // REPLIT_DEV_DOMAIN is automatically set by Replit and absent on Railway.
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}/api`;
-  }
   if (process.env.API_BASE_URL) {
     return process.env.API_BASE_URL.replace(/\/+$/, "");
   }
