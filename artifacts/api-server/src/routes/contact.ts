@@ -46,7 +46,7 @@ router.post("/contact", async (req, res) => {
   }
 
   // Send email via Brevo
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@tolipai.com";
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || "info@tolipai.com";
   const emailHtml = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9;">
       <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">

@@ -43,7 +43,7 @@ setInterval(() => {
 // ── Brevo email notification helper ──────────────────────────────────────────
 async function sendDemoNotification(name: string | undefined, phone: string, status: "requested" | "initiated" | "failed") {
   const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@tolipai.com";
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || "info@tolipai.com";
   if (!apiKey) {
     logger.warn("[demo/call] BREVO_API_KEY not set — demo notification skipped");
     return;

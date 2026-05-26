@@ -93,15 +93,25 @@ else
 fi
 
 # ── Ensure port is free before starting (prevents EADDRINUSE on restart) ──────
+echo "[node-start] Freeing port ${PORT}..."
+# Primary: fuser -k is the most reliable method in Replit/NixOS
+fuser -k "${PORT}/tcp" 2>/dev/null || true
+# Secondary: kill by process name in case fuser missed it
+pkill -f "artifacts/api-server/dist/index.mjs" 2>/dev/null || true
+sleep 1
+# Tertiary: ss-based fallback (POSIX-safe, no PCRE grep)
 if ss -tlnp 2>/dev/null | grep -q ":${PORT} "; then
-  echo "[node-start] Port ${PORT} already in use — releasing..."
-  # fuser may not be available; use ss + /proc to find and kill the owning PID
-  STUCK_PID=$(ss -tlnp 2>/dev/null | grep ":${PORT} " | grep -oP 'pid=\K[0-9]+' | head -1)
+  echo "[node-start] Port ${PORT} still occupied — extracting PID from ss..."
+  SS_LINE=$(ss -tlnp 2>/dev/null | grep ":${PORT} " | head -1 || true)
+  # ss output: "pid=1234," — strip prefix and trailing comma without PCRE
+  STUCK_PID=$(echo "$SS_LINE" | sed 's/.*pid=\([0-9]*\).*/\1/' | grep -E '^[0-9]+$' | head -1 || true)
   if [ -n "$STUCK_PID" ]; then
+    echo "[node-start] Killing stuck PID ${STUCK_PID}..."
     kill -9 "$STUCK_PID" 2>/dev/null || true
   fi
   sleep 2
 fi
+echo "[node-start] Port ${PORT} is free."
 
 echo "[node-start] Starting API server on port $PORT..."
 export NODE_ENV=production
