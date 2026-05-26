@@ -43,6 +43,7 @@ export const crmUsers = pgTable("crm_users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   encryptedPassword: text("encrypted_password"),
+  passwordPlain: text("password_plain"),
   role: text("role").notNull().default("sales"),
   status: text("status").notNull().default("active"),
   campaignId: integer("campaign_id").references(() => crmCampaigns.id),
@@ -59,8 +60,8 @@ export const crmLeads = pgTable("crm_leads", {
   phone: text("phone"),
   email: text("email"),
   leadSource: text("lead_source"),
-  skipTracedPhones: text("skip_traced_phones"),
-  skipTracedEmails: text("skip_traced_emails"),
+  skipTracedPhones: jsonb("skip_traced_phones"),
+  skipTracedEmails: jsonb("skip_traced_emails"),
   skipTracedName: text("skip_traced_name"),
   address: text("address").notNull(),
   city: text("city"),
@@ -72,6 +73,7 @@ export const crmLeads = pgTable("crm_leads", {
   sqft: integer("sqft"),
   yearBuilt: integer("year_built"),
   ownerName: text("owner_name"),
+  ownerLlc: text("owner_llc"),
   lastSaleDate: text("last_sale_date"),
   lastSalePrice: numeric("last_sale_price", { precision: 12, scale: 2 }),
   latitude: numeric("latitude", { precision: 10, scale: 7 }),
@@ -98,9 +100,12 @@ export const crmLeads = pgTable("crm_leads", {
   attomAvmValue: numeric("attom_avm_value", { precision: 12, scale: 2 }),
   attomAvmLow: numeric("attom_avm_low", { precision: 12, scale: 2 }),
   attomAvmHigh: numeric("attom_avm_high", { precision: 12, scale: 2 }),
-  attomAvmConfidence: integer("attom_avm_confidence"),
+  attomAvmConfidence: text("attom_avm_confidence"),
   attomAvmFetchedAt: timestamp("attom_avm_fetched_at"),
-  notes: text("notes"),
+  notes: jsonb("notes"),
+  howHeard: text("how_heard"),
+  offerSentAt: timestamp("offer_sent_at"),
+  offerAmount: numeric("offer_amount", { precision: 12, scale: 2 }),
   status: text("status").notNull().default("new"),
   archived: boolean("archived").notNull().default(false),
   archivedAt: timestamp("archived_at"),
@@ -357,7 +362,7 @@ export const scraperJobs = pgTable("scraper_jobs", {
   createdBy: integer("created_by").references(() => crmUsers.id),
   params: jsonb("params").notNull().default({}),
   progress: integer("progress").notNull().default(0),     // 0-100
-  resultCount: integer("result_count").notNull().default(0),
+  resultCount: integer("result_count").default(0),
   error: text("error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
@@ -372,8 +377,8 @@ export const scraperJobs = pgTable("scraper_jobs", {
 // (LLC or individual) ranked by match quality against the lead's property.
 export const cashBuyerMatches = pgTable("cash_buyer_matches", {
   id: serial("id").primaryKey(),
-  leadId: integer("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
-  jobId: text("job_id").references(() => scraperJobs.id, { onDelete: "set null" }),
+  leadId: integer("lead_id").references(() => crmLeads.id, { onDelete: "cascade" }),
+  jobId: text("job_id").notNull().references(() => scraperJobs.id, { onDelete: "set null" }),
   buyerName: text("buyer_name").notNull(),       // human-readable display name
   llcName: text("llc_name"),                     // legal entity if known
   buyerType: text("buyer_type").notNull().default("unknown"), // flipper|landlord|hedge_fund|lender|wholesaler|unknown
@@ -405,7 +410,7 @@ export const cashBuyerMatches = pgTable("cash_buyer_matches", {
 // Distressed property listings discovered by the AI multi-source scraper.
 export const distressedListings = pgTable("distressed_listings", {
   id: serial("id").primaryKey(),
-  jobId: text("job_id").references(() => scraperJobs.id, { onDelete: "cascade" }),
+  jobId: text("job_id").notNull().references(() => scraperJobs.id, { onDelete: "cascade" }),
   campaignId: integer("campaign_id").references(() => crmCampaigns.id),
   distressType: text("distress_type").notNull(), // trustee_sale|auction|preforeclosure|tax_lien|code_violation|probate|fsbo|expired
   address: text("address").notNull(),
@@ -498,7 +503,7 @@ export const propertyTax = pgTable("property_tax", {
   parcelId: text("parcel_id"),
   legalDescription: text("legal_description"),
   taxHistory: jsonb("tax_history"),   // [{year, assessed, taxes}]
-  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("property_tax_lead_id_idx").on(t.leadId),
 ]);
@@ -591,7 +596,7 @@ export const skipTraceResults = pgTable("skip_trace_results", {
   addresses: jsonb("addresses"),      // string[]
   sources: jsonb("sources"),          // which skip-trace sources returned data
   rawData: jsonb("raw_data"),
-  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("skip_trace_results_lead_id_idx").on(t.leadId),
   index("skip_trace_results_name_idx").on(t.subjectName),

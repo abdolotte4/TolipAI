@@ -67,6 +67,53 @@ async function runDbStartupTasks(): Promise<void> {
     logger.error({ err }, "[startup] crm_waitlist migration failed");
   }
 
+  // ── Idempotent column migrations — add missing columns that weren't in initial migrations ──
+  const columnMigrations: Array<{ desc: string; sql: string }> = [
+    // distressed_listings.imported_as_lead_id — in Drizzle schema but column never created
+    {
+      desc: "distressed_listings.imported_as_lead_id",
+      sql: `ALTER TABLE distressed_listings ADD COLUMN IF NOT EXISTS imported_as_lead_id INTEGER REFERENCES crm_leads(id) ON DELETE SET NULL`,
+    },
+    // crm_leads.owner_llc — in DB but missing from initial Drizzle push
+    {
+      desc: "crm_leads.owner_llc",
+      sql: `ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS owner_llc TEXT`,
+    },
+    // crm_leads.how_heard — in DB but not in schema until now
+    {
+      desc: "crm_leads.how_heard",
+      sql: `ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS how_heard TEXT`,
+    },
+    // crm_leads.offer_sent_at / offer_amount — in DB but not in schema
+    {
+      desc: "crm_leads.offer_sent_at",
+      sql: `ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS offer_sent_at TIMESTAMPTZ`,
+    },
+    {
+      desc: "crm_leads.offer_amount",
+      sql: `ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS offer_amount NUMERIC(12,2)`,
+    },
+    // crm_users.password_plain — in DB but not in schema
+    {
+      desc: "crm_users.password_plain",
+      sql: `ALTER TABLE crm_users ADD COLUMN IF NOT EXISTS password_plain TEXT`,
+    },
+    // tools_distressed_jobs and tools_skip_trace_jobs — DB has nullable columns, convert notNull constraints
+    // (non-destructive: just ensure the column exists with the right type)
+    {
+      desc: "tools_distressed_jobs.status default",
+      sql: `ALTER TABLE tools_distressed_jobs ALTER COLUMN status SET DEFAULT 'queued'`,
+    },
+  ];
+  for (const m of columnMigrations) {
+    try {
+      await pool.query(m.sql);
+    } catch (err: any) {
+      logger.warn({ desc: m.desc, err: err?.message }, "[startup] column migration warning");
+    }
+  }
+  logger.info("DB column migrations verified.");
+
   // ── DB indexes (CONCURRENTLY — no table lock, safe to run before listen) ──
   const ensureIndexes: Array<{ name: string; sql: string }> = [
     {

@@ -1420,9 +1420,9 @@ router.post("/:id/skip-trace", crmAuth, async (req, res) => {
       fieldsUpdated.push("email"); 
     }
 
-    // Always save full skip trace results
-    updates["skipTracedPhones"] = JSON.stringify(skipResult.phones || []);
-    updates["skipTracedEmails"] = JSON.stringify(skipResult.emails || []);
+    // Always save full skip trace results (jsonb column — pass array directly, no stringify)
+    updates["skipTracedPhones"] = skipResult.phones || [];
+    updates["skipTracedEmails"] = skipResult.emails || [];
 
     // Fix: Cast to any specifically for the name check
     if (skipResult.name) {
