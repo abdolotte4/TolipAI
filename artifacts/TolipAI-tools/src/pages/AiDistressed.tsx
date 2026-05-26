@@ -59,7 +59,7 @@ export default function AiDistressed() {
     pollRef.current = setInterval(async () => {
       const res = await fetch(`/api/tools/distressed/status/${jobId}`, { headers: { "X-Tools-Pin": pin || "" } });
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("TolipAI_tools_pin");
+        localStorage.removeItem("tolipai_tools_pin");
         window.location.href = "/";
         return;
       }
@@ -87,10 +87,10 @@ export default function AiDistressed() {
       const res = await fetch(`/api/tools/distressed/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Tools-Pin": pin || "" },
-        body: JSON.stringify({ zip: zip.trim() || undefined, city: city.trim() || undefined, county: county.trim() || undefined, state: state.trim().toUpperCase(), categories: selected }),
+        body: JSON.stringify({ zip: zip.trim() || undefined, city: city.trim() || undefined, county: county.trim() || undefined, state: state.trim().toUpperCase(), categories: selected, limit: 100 }),
       });
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("TolipAI_tools_pin");
+        localStorage.removeItem("tolipai_tools_pin");
         window.location.href = "/";
         return;
       }

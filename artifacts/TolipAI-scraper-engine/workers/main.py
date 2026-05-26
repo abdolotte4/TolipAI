@@ -1529,7 +1529,7 @@ async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
 # ─── Google Maps / Google Search / Bulk lead-scraper endpoints ───────────────
 # These endpoints give the Node API server a Playwright-primary route so it can
 # call tryEngine("/google-maps", …) and get real Places API data instead of
-# immediately falling back to ScraperAPI.
+# immediately falling back to a direct fetch.
 
 
 @app.post("/google-maps")

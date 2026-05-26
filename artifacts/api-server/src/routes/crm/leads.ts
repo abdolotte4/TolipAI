@@ -1192,7 +1192,7 @@ Do not include markdown, only the raw JSON object.`;
       const cleaned = stripJsonMarkdown(rawContent);
       parsed = JSON.parse(cleaned);
     } catch (parseErr) {
-      logger.error("AI repair estimate parse error. Raw content:", rawContent, "Parse err:", parseErr);
+      logger.error({ rawContent, parseErr }, "AI repair estimate parse error.");
       res.status(502).json({ error: "AI returned an unexpected format. Please try again." }); return;
     }
 

@@ -109,7 +109,8 @@ router.post("/tools/distressed/search", requirePin, async (req: Request, res: Re
       const job = await scraperEngine.startDistressed({
         ...fields,
         categories: categories || [],
-      });
+        limit: Number(req.body?.limit) || 100,
+      } as any);
       jobIds.push(job.job_id);
       distressedJobIds.push({ jobId: job.job_id, createdAt: new Date().toISOString() });
     }

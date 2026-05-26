@@ -23,6 +23,8 @@
  */
 
 import { logger } from "../lib/logger";
+import { callAI, hasAI } from "./aiConfig";
+import { stripJsonMarkdown } from "../lib/textUtils";
 
 // NOTE: The subdomain api.propertyapi.co has no DNS record — use root domain
 const BASE_URL = "https://propertyapi.co/api/v1";
@@ -685,9 +687,7 @@ export async function estimateMarketPricePerSqft(
   state: string,
   zip?: string,
 ): Promise<number | null> {
-  const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  const aiApiKey  = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!aiBaseUrl || !aiApiKey) {
+  if (!hasAI()) {
     logger.warn("[propertyApi] AI not configured — cannot estimate market $/sqft");
     return null;
   }
@@ -699,29 +699,15 @@ export async function estimateMarketPricePerSqft(
     `Reply ONLY with a JSON object: { "pricePerSqft": <number> }. No explanation.`;
 
   try {
-    const aiRes = await fetch(`${aiBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${aiApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.AI_MODEL || "llama-3.3-70b-versatile",
-        max_tokens: 128,
-        messages: [
-          { role: "system", content: "You are a real estate market data expert. Answer only with valid JSON." },
-          { role: "user",   content: prompt },
-        ],
-      }),
-    });
+    const raw = await callAI(
+      [
+        { role: "system", content: "You are a real estate market data expert. Answer only with valid JSON." },
+        { role: "user",   content: prompt },
+      ],
+      { maxTokens: 128, jsonMode: true }
+    );
 
-    if (!aiRes.ok) {
-      logger.error({ status: aiRes.status, location }, "[propertyApi] AI market $/sqft call failed");
-      return null;
-    }
-
-    const json = await aiRes.json() as any;
-    const content = json?.choices?.[0]?.message?.content ?? "";
+    const content = stripJsonMarkdown(raw);
     const parsed = JSON.parse(content);
     const rate = Number(parsed?.pricePerSqft);
     if (rate > 0 && rate < 10000) {

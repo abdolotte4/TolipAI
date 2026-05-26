@@ -101,6 +101,7 @@ export const scraperEngine = {
     categories?: string[];
     sourceKeys?: string[];
     campaignId?: number;
+    limit?: number;
   }) {
     return request<JobResponse>("/scrape/distressed", {
       method: "POST",
@@ -111,6 +112,7 @@ export const scraperEngine = {
         categories: params.categories || [],
         source_keys: params.sourceKeys || [],
         campaign_id: params.campaignId,
+        limit: params.limit,
       }),
     });
   },

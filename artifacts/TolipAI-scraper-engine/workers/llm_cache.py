@@ -8,8 +8,8 @@ Caching
 
 Model tiering
 ─────────────
-  complexity="fast"  → caps max_tokens at 400 — uses Groq/Cerebras (free)
-  complexity="smart" → full token budget — uses Moonshot/Kimi-K2 first
+  complexity="fast"  → caps max_tokens at 400
+  complexity="smart" → full token budget
 
   Recommended mapping:
     score_buyer_match         → "fast"   (simple JSON, < 300 tokens)
@@ -170,14 +170,10 @@ async def tiered_chat(
     """Cached chat with explicit complexity hint.
 
     complexity="fast"
-        Caps max_tokens to _FAST_MAX_TOKENS (default 400).  The existing
-        provider chain already attempts free/fast providers (Groq, Cerebras)
-        after paid ones, so low-token requests naturally land there quickly
-        once paid providers are busy.
+        Caps max_tokens to _FAST_MAX_TOKENS (default 400).
 
     complexity="smart"
-        No token cap — uses whatever max_tokens is passed.  Moonshot/Kimi-K2
-        is tried first (1M context, best reasoning).
+        No token cap — uses whatever max_tokens is passed.
 
     Both paths go through the cache, so repeated identical calls are free
     regardless of complexity.

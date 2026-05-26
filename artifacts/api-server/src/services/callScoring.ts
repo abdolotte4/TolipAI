@@ -13,7 +13,7 @@
  */
 
 import { logger } from "../lib/logger";
-import { getOpenAIKey, getOpenAIBaseUrl, getGroqKey } from "./aiConfig";
+import { getOpenAIKey, getOpenAIBaseUrl, getGroqKey, callAI, getChatModel, getGroqModel } from "./aiConfig";
 
 export interface CallScoreResult {
   score: number;           // 0-100
@@ -53,69 +53,6 @@ Tiers:
 
 Return ONLY the JSON object, no markdown fences.`;
 
-async function callOpenAI(transcript: string): Promise<CallScoreResult | null> {
-  const key = getOpenAIKey();
-  if (!key) return null;
-
-  const baseUrl = getOpenAIBaseUrl();
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: SCORING_PROMPT },
-        { role: "user", content: `TRANSCRIPT:\n${transcript}` },
-      ],
-      temperature: 0.2,
-      max_tokens: 400,
-    }),
-    signal: AbortSignal.timeout(20_000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
-  }
-
-  const data = await res.json() as any;
-  const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
-  return JSON.parse(raw) as CallScoreResult;
-}
-
-async function callGroq(transcript: string): Promise<CallScoreResult | null> {
-  const key = getGroqKey();
-  if (!key) return null;
-
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: SCORING_PROMPT },
-        { role: "user", content: `TRANSCRIPT:\n${transcript}` },
-      ],
-      temperature: 0.2,
-      max_tokens: 400,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Groq ${res.status}: ${await res.text()}`);
-  }
-
-  const data = await res.json() as any;
-  const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
-  return JSON.parse(raw) as CallScoreResult;
-}
-
 /**
  * Score a call transcript.  Returns null if transcript is too short or AI unavailable.
  * Never throws — callers should fire-and-forget.
@@ -134,23 +71,23 @@ export async function scoreCallTranscript(
     : transcript;
 
   try {
-    const result = await callOpenAI(t);
-    if (result) {
-      logger.info({ score: result.score, tier: result.tier }, "[callScoring] Scored via OpenAI");
-      return result;
-    }
-  } catch (err) {
-    logger.warn({ err }, "[callScoring] OpenAI scoring failed, trying Groq");
-  }
+    const raw = await callAI([
+      { role: "system", content: SCORING_PROMPT },
+      { role: "user", content: `TRANSCRIPT:\n${t}` },
+    ], {
+      model: getChatModel(),
+      temperature: 0.2,
+      maxTokens: 400,
+      jsonMode: true,
+    });
 
-  try {
-    const result = await callGroq(t);
-    if (result) {
-      logger.info({ score: result.score, tier: result.tier }, "[callScoring] Scored via Groq");
+    if (raw) {
+      const result = JSON.parse(raw) as CallScoreResult;
+      logger.info({ score: result.score, tier: result.tier }, "[callScoring] Scored via callAI helper");
       return result;
     }
   } catch (err) {
-    logger.warn({ err }, "[callScoring] Groq scoring also failed");
+    logger.warn({ err }, "[callScoring] AI scoring failed");
   }
 
   return null;

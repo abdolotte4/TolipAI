@@ -431,7 +431,7 @@ export async function runEmailSequenceJob() {
                   body: aiReply,
                   aiGenerated: true,
                   twilioSid: smsResult.sid ?? null,
-                  aiModel: process.env.AI_SMS_MODEL || process.env.AI_MODEL || "openai/gpt-4o-mini",
+                  aiModel: process.env.AI_SMS_MODEL || "gpt-4o-mini",
                   aiCostUsd: AI_SMS_COST_USD.toString(),
                 }).catch(e => logger.error(e, "Failed to log ai_sms to crmSmsConversations"));
               }

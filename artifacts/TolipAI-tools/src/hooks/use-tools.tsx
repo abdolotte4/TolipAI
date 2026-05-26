@@ -12,7 +12,7 @@ async function fetchApi(endpoint: string, options: RequestInit = {}, pin: string
   const signal = options.signal ?? AbortSignal.timeout(60_000);
   const res = await fetch(endpoint, { ...options, headers, signal });
   if (res.status === 401 || res.status === 403) {
-    localStorage.removeItem("TolipAI_tools_pin");
+    localStorage.removeItem("tolipai_tools_pin");
     window.location.href = "/";
     throw new Error("Session expired or invalid PIN — please log in again.");
   }

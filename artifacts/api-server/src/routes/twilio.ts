@@ -41,8 +41,11 @@ import { sendSms } from "../services/smsService";
 import { validateBody } from "../lib/validate";
 import { z } from "zod";
 import { emitCrmActivity } from "./sse";
+import { getWebhookBase } from "../lib/webhookBase";
+import { twilioWebhookMiddleware } from "../lib/twilioWebhookMiddleware";
 
 const router: IRouter = Router();
+const twilioAuth = twilioWebhookMiddleware();
 
 
 // In-memory cooldown map: leadId → last AI reply timestamp (ms)
@@ -233,12 +236,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     let autoCreatedVoiceAppSid: string | null = null;
     if (apiKeySid && !voiceAppSid) {
       try {
-        // Always derive the base URL from the current request's host — NOT from
-        // API_BASE_URL which may point to a different deployment (Railway vs Replit).
-        const ownHost = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
-          || (req.headers.host as string | undefined)
-          || "localhost:8080";
-        const apiBase = `https://${ownHost.replace(/:\d+$/, "")}/api`;
+        const apiBase = getWebhookBase(req);
         const appBody = new URLSearchParams({
           FriendlyName: `TolipAI CRM Voice – Campaign ${targetCampaignId}`,
           VoiceUrl: `${apiBase}/twilio/voice/answer`,
@@ -273,10 +271,7 @@ router.post("/twilio/config", crmAuth, crmAdminOnly, async (req, res) => {
     // across environment changes (e.g. Railway → Replit or domain updates).
     const existingVoiceAppSid = voiceAppSid || autoCreatedVoiceAppSid;
     if (apiKeySid && apiKeySecret && existingVoiceAppSid && targetCampaignId) {
-      const ownHostCfg = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
-        || (req.headers.host as string | undefined)
-        || "localhost:8080";
-      const cfgBase = `https://${ownHostCfg.replace(/:\d+$/, "")}/api`;
+      const cfgBase = getWebhookBase(req);
       try {
         const rawSecret = apiKeySecret; // user just submitted plaintext secret in body
         const authHdr = Buffer.from(`${apiKeySid}:${rawSecret}`).toString("base64");
@@ -591,10 +586,7 @@ router.post("/twilio/click-to-call", crmAuth, async (req, res) => {
   const agentE164 = toE164(agentPhone);
   if (!leadE164) { res.status(400).json({ error: "Invalid lead phone number" }); return; }
   if (!agentE164) { res.status(400).json({ error: "Invalid agent phone number" }); return; }
-  const ownHostCtC = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
-    || (req.headers.host as string | undefined)
-    || "localhost:8080";
-  const apiBase = `https://${ownHostCtC.replace(/:\d+$/, "")}/api`;
+  const apiBase = getWebhookBase(req);
   const twimlUrl = `${apiBase}/twilio/twiml/call?to=${encodeURIComponent(leadE164)}&callerId=${encodeURIComponent(fromNumber)}`;
 
   try {
@@ -1071,7 +1063,7 @@ router.post("/twilio/webhook", async (req, res) => {
               body: aiReply,
               aiGenerated: true,
               twilioSid: smsResult.sid ?? null,
-              aiModel: process.env.AI_SMS_MODEL || process.env.AI_MODEL || "openai/gpt-4o-mini",
+              aiModel: process.env.AI_SMS_MODEL || "gpt-4o-mini",
               aiCostUsd: AI_SMS_COST_USD.toString(),
             });
             logger.info({ leadId: lead.id, from: fromNumber, len: aiReply.length }, "[aiSms] reply sent");

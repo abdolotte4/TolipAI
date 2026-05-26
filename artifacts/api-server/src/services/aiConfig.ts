@@ -79,7 +79,11 @@ export function getGroqBaseUrl(): string {
  * llama-3.3-70b-versatile is Groq's most capable and still very fast.
  */
 export function getGroqModel(): string {
-  return process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  // Prefer GROQ_MODEL, then AI_MODEL when it's a Groq-compatible name, then default.
+  if (process.env.GROQ_MODEL) return process.env.GROQ_MODEL;
+  const aiModel = process.env.AI_MODEL;
+  if (aiModel && isNonOpenAIModel(aiModel)) return aiModel;
+  return "llama-3.3-70b-versatile";
 }
 
 /** Returns true if Groq is configured. */
@@ -94,14 +98,38 @@ export function hasAI(): boolean {
   return hasOpenAI() || hasGroq();
 }
 
-/** Returns the default chat completion model (OpenAI). */
-export function getChatModel(): string {
-  return process.env.AI_MODEL || "gpt-4o-mini";
+/**
+ * Model name patterns that belong to non-OpenAI providers.
+ * When AI_MODEL is set to one of these, we must NOT send it to OpenAI —
+ * fall back to gpt-4o-mini instead.  These same patterns are valid for Groq.
+ */
+const NON_OPENAI_MODEL_PATTERNS = [
+  "llama", "mixtral", "gemma", "mistral", "falcon", "qwen",
+  "deepseek", "phi-", "command-", "claude", "gemini",
+];
+
+function isNonOpenAIModel(model: string): boolean {
+  const lower = model.toLowerCase();
+  return NON_OPENAI_MODEL_PATTERNS.some((p) => lower.includes(p));
 }
 
-/** Returns the SMS-specific completion model. */
+/** Returns the OpenAI chat completion model.
+ *  Uses OPENAI_MODEL if set; otherwise uses AI_MODEL only when it looks like
+ *  a real OpenAI model name (e.g. gpt-*).  Prevents Groq model names like
+ *  llama-3.3-70b-versatile from being sent to api.openai.com. */
+export function getChatModel(): string {
+  if (process.env.OPENAI_MODEL) return process.env.OPENAI_MODEL;
+  const aiModel = process.env.AI_MODEL;
+  if (aiModel && !isNonOpenAIModel(aiModel)) return aiModel;
+  return "gpt-4o-mini";
+}
+
+/** Returns the SMS-specific completion model (OpenAI-safe). */
 export function getSmsModel(): string {
-  return process.env.AI_SMS_MODEL || process.env.AI_MODEL || "gpt-4o-mini";
+  if (process.env.AI_SMS_MODEL && !isNonOpenAIModel(process.env.AI_SMS_MODEL)) {
+    return process.env.AI_SMS_MODEL;
+  }
+  return getChatModel();
 }
 
 /** Convenience: build a Bearer auth header for OpenAI. */

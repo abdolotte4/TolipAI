@@ -113,21 +113,36 @@ import { getWebhookBase } from "../lib/webhookBase";
 // Resolve voice API key credentials by Twilio Account SID.
 // Used inside the /answer webhook (no crmAuth — looks up campaign by accountSid).
 async function getVoiceConfigByAccountSid(accountSid: string): Promise<{
-  accountSid: string; apiKeySid: string; apiKeySecret: string;
+  accountSid: string; apiKeySid: string; apiKeySecret: string; authToken: string;
 } | null> {
   try {
     const [camp] = await db
-      .select({ id: crmCampaigns.id })
+      .select({ id: crmCampaigns.id, authToken: crmCampaigns.twilioAuthToken })
       .from(crmCampaigns)
       .where(eq(crmCampaigns.twilioAccountSid, accountSid))
       .limit(1);
     if (camp?.id) {
       const cfg = await getVoiceConfig(camp.id);
-      if (cfg) return { accountSid: cfg.accountSid, apiKeySid: cfg.apiKeySid, apiKeySecret: cfg.apiKeySecret };
+      if (cfg) {
+        let auth = "";
+        if (camp.authToken) {
+          try {
+            const { decryptPassword } = await import("./crm/crypto-util");
+            auth = camp.authToken.includes(":") ? decryptPassword(camp.authToken) : camp.authToken;
+          } catch { auth = camp.authToken; }
+        }
+        return { accountSid: cfg.accountSid, apiKeySid: cfg.apiKeySid, apiKeySecret: cfg.apiKeySecret, authToken: auth };
+      }
     }
     const global = getGlobalVoiceConfig();
+    const globalSms = getGlobalSmsCreds();
     if (global && global.accountSid === accountSid) {
-      return { accountSid: global.accountSid, apiKeySid: global.apiKeySid, apiKeySecret: global.apiKeySecret };
+      return {
+        accountSid: global.accountSid,
+        apiKeySid: global.apiKeySid,
+        apiKeySecret: global.apiKeySecret,
+        authToken: globalSms?.authToken || process.env.TWILIO_AUTH_TOKEN || "",
+      };
     }
     return null;
   } catch { return null; }
@@ -265,6 +280,16 @@ router.post("/twilio/voice/answer", twilioAuth, async (req, res) => {
       const transcribeAttr = process.env.TWILIO_VOICE_INTELLIGENCE_SID
         ? `transcribe="true" transcribeCallback="${apiBase}/twilio/voice/transcript" voiceIntelligenceService="${process.env.TWILIO_VOICE_INTELLIGENCE_SID}"`
         : "";
+
+      // Signature validation for conference legs
+      const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
+      const valid = twilioSig && voiceCfg.authToken ? require("twilio").validateRequest(voiceCfg.authToken, twilioSig, `${apiBase}/twilio/voice/answer`, req.body) : true;
+
+      if (!valid) {
+        logger.warn({ callSid: agentCallSid }, "[twilio/voice/answer] Invalid signature — rejecting leg");
+        res.status(403).send('<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>');
+        return;
+      }
 
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>${whisperXml}

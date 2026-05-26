@@ -4,7 +4,8 @@
 - [Scraper engine auth chain](scraper-engine-auth.md) — Fargate validates X-API-Key against SCRAPER_API_KEY env var (← TolipAI/scraper/api-key secret). Express sends WEBSCRAPER_API_KEY. Both must match. Task def rev 32 is current.
 - [Scraper engine AWS infra](scraper-engine-aws.md) — Cluster: TolipAI-scraper-cluster; service: tolipai-scraper-engine-service-xop; ELB on port 8765. Task def must not reference deleted secrets or container fails to start.
 - [handleEngineError status propagation](handle-engine-error.md) — propagates (err as any).status so 404/422/etc from Fargate reach the client correctly (was always 500).
-- [Scraper engine critical fixes](scraper-engine-critical-fixes.md) — All 12 fixes applied; OpenAI-only LLM; ATTOM is optional Tier-1 (falls back to county deeds); Bedrock optional via USE_BEDROCK=1.
+- [AI_MODEL env var routing](ai-model-env-routing.md) — AI_MODEL secret = llama-3.3-70b-versatile (Groq model). getChatModel() guards against sending it to OpenAI via NON_OPENAI_MODEL_PATTERNS. getGroqModel() picks it up correctly.
 - [Twilio webhook security](twilio-webhook-security.md) — All public Twilio webhook routes use twilioWebhookMiddleware (lib/twilioWebhookMiddleware.ts); hard-fails if TWILIO_AUTH_TOKEN missing; validates X-Twilio-Signature.
 - [AI config key priority](ai-config-key-priority.md) — aiConfig.ts: OPENAI_API_KEY first, then AI_INTEGRATIONS_OPENAI_API_KEY; ignores AI_INTEGRATIONS_OPENAI_BASE_URL if it points to groq.com; falls back to GROQ_API_KEY for CRM AI features.
 - [DB duplicate indexes cleaned](db-indexes.md) — 11 duplicate single-column indexes dropped from crm_leads, crm_notes, crm_notifications, crm_tasks, cash_buyer_matches, crm_comps, crm_lead_followers; kept idx_* naming pattern.
+- [Tools session storage key](tools-session-key.md) — Canonical localStorage key is tolipai_tools_pin (lowercase). Any use of TolipAI_tools_pin is a bug.
