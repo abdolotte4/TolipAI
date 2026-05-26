@@ -182,12 +182,10 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     };
   }, [stopRing, stopTimer]);
 
-  // Auto-register the device for inbound calls if the user previously initialised it.
-  // This lets inbound Twilio calls ring in the browser without the agent manually clicking
-  // "Initialize Dialer" every session.
+  // Auto-register the device for inbound calls on every session.
+  // This ensures inbound Twilio calls always ring in the browser without the agent
+  // needing to manually click "Initialize Dialer" each time they log in.
   useEffect(() => {
-    const shouldAutoInit = localStorage.getItem("crm_phone_auto_init") === "true";
-    if (!shouldAutoInit) return;
     const token = localStorage.getItem("crm_token");
     if (!token) return;
     // Defer slightly so the page finishes rendering before we request mic permissions

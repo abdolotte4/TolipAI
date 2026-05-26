@@ -1540,14 +1540,7 @@ router.post("/twilio/voice/inbound", twilioAuth, async (req, res) => {
       .orderBy(desc(crmLeads.createdAt))
       .limit(1);
 
-    if (!lead) {
-      // Unknown caller — AI agent qualifies them as a new lead
-      logger.info({ fromNum, toNum }, "[twilio/voice/inbound] unknown caller → AI agent");
-      res.send(aiAgentTwiml());
-      return;
-    }
-
-    // ── 3. Find browser-connected agents for this campaign ────────────────────
+    // ── 3. Find all agents for this campaign to ring ──────────────────────────
     const agentWhere = campaignId
       ? eq(crmUsers.campaignId, campaignId)
       : sql`1=1`;
@@ -1558,30 +1551,47 @@ router.post("/twilio/voice/inbound", twilioAuth, async (req, res) => {
       .where(agentWhere)
       .limit(8);
 
-    if (agents.length === 0) {
-      logger.info({ fromNum, leadId: lead.id }, "[twilio/voice/inbound] no agents → AI agent");
-      res.send(aiAgentTwiml());
-      return;
-    }
-
     // ── 4. Log the inbound call ───────────────────────────────────────────────
     if (callSid) {
       db.insert(crmCallLogs).values({
         callSid,
         campaignId,
-        leadId: lead.id,
+        leadId: lead?.id ?? null,
         direction: "inbound",
         status: "ringing",
         fromNumber: fromNum,
         toNumber: toNum,
-        disposition: "inbound_lead",
+        disposition: lead ? "inbound_lead" : "inbound_unknown",
       }).onConflictDoNothing().catch(() => { /* non-fatal */ });
     }
 
-    // ── 5. Ring all agents simultaneously in the browser dialer ──────────────
+    // ── 5. Notify browser clients via SSE so the device wakes up if needed ───
+    // Fire for ALL callers — known and unknown — so agents get a chance to answer
+    setImmediate(() => {
+      emitCrmActivity("incoming_call", {
+        campaignId: campaignId ?? null,
+        leadId: lead?.id ?? null,
+        leadName: lead?.sellerName || null,
+        phone: fromNum,
+        ts: Date.now(),
+      });
+    });
+
+    // ── 6. If no agents exist for this campaign, fall back to voicemail ───────
+    if (agents.length === 0) {
+      logger.info({ fromNum, campaignId }, "[twilio/voice/inbound] no agents in campaign → voicemail");
+      res.send(aiAgentTwiml());
+      return;
+    }
+
+    // ── 7. Ring all agents simultaneously in the browser dialer ──────────────
     // Twilio Client identity format matches the token issued in /voice/token:
     //   identity = `user_${crmUser.id}`
-    const sellerName = (lead.sellerName || "a lead").replace(/[<>&"]/g, (c) =>
+    // Ring ALL inbound calls — known leads AND unknown callers — to the browser.
+    const callerLabel = lead
+      ? (lead.sellerName || "a lead")
+      : "an unknown caller";
+    const sellerName = callerLabel.replace(/[<>&"]/g, (c) =>
       ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
     );
     const clientTags = agents.map((a) => `    <Client>user_${a.id}</Client>`).join("\n");
@@ -1590,20 +1600,9 @@ router.post("/twilio/voice/inbound", twilioAuth, async (req, res) => {
       ? `\n    <Number>${campaignForwardPhone}</Number>` : "";
 
     logger.info(
-      { fromNum, toNum, leadId: lead.id, agents: agents.length, forwardPhone: campaignForwardPhone },
-      "[twilio/voice/inbound] known lead → ringing agents"
+      { fromNum, toNum, leadId: lead?.id ?? null, isKnownLead: !!lead, agents: agents.length, forwardPhone: campaignForwardPhone },
+      "[twilio/voice/inbound] ringing agents"
     );
-
-    // Notify all connected browser clients so agents see the incoming call toast
-    setImmediate(() => {
-      emitCrmActivity("incoming_call", {
-        campaignId: campaignId ?? null,
-        leadId: lead.id,
-        leadName: lead.sellerName || null,
-        phone: fromNum,
-        ts: Date.now(),
-      });
-    });
 
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
