@@ -344,6 +344,59 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
             }),
           });
         } catch { }
+
+        // ── Remote (callee) audio capture for live transcript ─────────────────
+        // Access the WebRTC peer connection through Twilio.js internals to get
+        // the remote audio track, then stream 8-second chunks to our Whisper
+        // transcription endpoint which emits them as SSE call_transcript events.
+        try {
+          const pc: RTCPeerConnection | undefined =
+            (c as any)._mediaHandler?._peerConnection ??
+            (c as any).mediaHandler?._peerConnection;
+          if (pc) {
+            const audioTrack = pc.getReceivers()
+              .find((r: RTCRtpReceiver) => r.track?.kind === "audio")?.track;
+            if (audioTrack) {
+              const remoteStream = new MediaStream([audioTrack]);
+              const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+                ? "audio/webm;codecs=opus"
+                : MediaRecorder.isTypeSupported("audio/webm")
+                ? "audio/webm"
+                : "audio/mp4";
+              const recorder = new MediaRecorder(remoteStream, { mimeType });
+
+              recorder.ondataavailable = async (e: BlobEvent) => {
+                const callSidNow = currentCallSidRef.current;
+                if (e.data.size < 500 || !callSidNow) return;
+                try {
+                  const base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () =>
+                      resolve(((reader.result as string).split(",")[1]) ?? "");
+                    reader.onerror = reject;
+                    reader.readAsDataURL(e.data);
+                  });
+                  if (!base64) return;
+                  await authFetch("/twilio/voice/transcribe-chunk", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      callSid: callSidNow,
+                      audioBase64: base64,
+                      mimeType: e.data.type,
+                    }),
+                  });
+                } catch { /* non-fatal — transcript just won't show for this chunk */ }
+              };
+
+              recorder.start(8000); // emit a chunk every 8 seconds
+              const stopRecorder = () => {
+                try { if (recorder.state !== "inactive") recorder.stop(); } catch { }
+              };
+              call.on("disconnect", stopRecorder);
+              call.on("cancel", stopRecorder);
+            }
+          }
+        } catch { /* remote audio capture not supported — graceful fallback */ }
       });
 
       call.on("sample", (sample: any) => {

@@ -319,6 +319,53 @@ router.post("/twilio/voice/answer", async (req, res) => {
           logger.error(err, "[twilio/voice/answer] conference REST dial error");
         }
       });
+
+      // Pre-insert the outbound call record so it exists before the browser fires /voice/log.
+      // This prevents the race condition where the conversations list doesn't show the call.
+      setImmediate(async () => {
+        if (!agentCallSid) return;
+        try {
+          const [existing] = await db.select({ id: crmCallLogs.id })
+            .from(crmCallLogs).where(eq(crmCallLogs.callSid, agentCallSid)).limit(1);
+          if (existing) return;
+          let campaignId: number | null = null;
+          if (accountSidFromTwilio) {
+            const [camp] = await db.select({ id: crmCampaigns.id }).from(crmCampaigns)
+              .where(eq(crmCampaigns.twilioAccountSid, accountSidFromTwilio)).limit(1);
+            campaignId = camp?.id ?? null;
+          }
+          let leadId: number | null = null;
+          if (to) {
+            const digits10 = to.replace(/\D/g, "").slice(-10);
+            const [lead] = await db.select({ id: crmLeads.id }).from(crmLeads)
+              .where(sql`regexp_replace(${crmLeads.phone}, '[^0-9]', '', 'g') LIKE ${"%" + digits10}`)
+              .orderBy(desc(crmLeads.createdAt)).limit(1);
+            leadId = lead?.id ?? null;
+          }
+          await safeInsertCallLog({
+            callSid: agentCallSid,
+            campaignId,
+            leadId,
+            direction: "outbound",
+            status: "initiated",
+            fromNumber: callerId || null,
+            toNumber: to || null,
+          });
+          emitCrmActivity("call_logged", {
+            callSid: agentCallSid,
+            status: "initiated",
+            from: callerId || null,
+            to: to || null,
+            direction: "outbound",
+            leadId,
+            campaignId,
+            ts: Date.now(),
+          });
+          logger.info({ agentCallSid, callerId, to }, "[twilio/voice/answer] pre-inserted call log");
+        } catch (err) {
+          logger.warn({ err }, "[twilio/voice/answer] pre-insert call log failed (non-fatal)");
+        }
+      });
     } else {
       // ── Fallback: classic <Dial><Number> (no hold music) ─────────────────
       if (record) {
@@ -339,6 +386,41 @@ router.post("/twilio/voice/answer", async (req, res) => {
   </Dial>
 </Response>`);
       }
+      // Pre-insert call log for the fallback path too
+      setImmediate(async () => {
+        if (!agentCallSid) return;
+        try {
+          const [existing] = await db.select({ id: crmCallLogs.id })
+            .from(crmCallLogs).where(eq(crmCallLogs.callSid, agentCallSid)).limit(1);
+          if (existing) return;
+          let campaignId: number | null = null;
+          if (accountSidFromTwilio) {
+            const [camp] = await db.select({ id: crmCampaigns.id }).from(crmCampaigns)
+              .where(eq(crmCampaigns.twilioAccountSid, accountSidFromTwilio)).limit(1);
+            campaignId = camp?.id ?? null;
+          }
+          let leadId: number | null = null;
+          if (to) {
+            const digits10 = to.replace(/\D/g, "").slice(-10);
+            const [lead] = await db.select({ id: crmLeads.id }).from(crmLeads)
+              .where(sql`regexp_replace(${crmLeads.phone}, '[^0-9]', '', 'g') LIKE ${"%" + digits10}`)
+              .orderBy(desc(crmLeads.createdAt)).limit(1);
+            leadId = lead?.id ?? null;
+          }
+          await safeInsertCallLog({
+            callSid: agentCallSid, campaignId, leadId,
+            direction: "outbound", status: "initiated",
+            fromNumber: callerId || null, toNumber: to || null,
+          });
+          emitCrmActivity("call_logged", {
+            callSid: agentCallSid, status: "initiated",
+            from: callerId || null, to: to || null,
+            direction: "outbound", leadId, campaignId, ts: Date.now(),
+          });
+        } catch (err) {
+          logger.warn({ err }, "[twilio/voice/answer] pre-insert call log (fallback) failed (non-fatal)");
+        }
+      });
     }
   } catch (err) {
     logger.error(err, "[twilio/voice/answer] error");
@@ -815,6 +897,45 @@ router.patch("/twilio/voice/log/:callSid", crmAuth, async (req, res) => {
   } catch (err: any) {
     logger.error(err, "[twilio/voice/log PATCH] error");
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/voice/transcribe-chunk ───────────────────────────────────
+// Receives a base64-encoded audio chunk from the browser (remote/callee audio),
+// transcribes it via OpenAI Whisper, and emits a call_transcript SSE event so the
+// agent sees the other party's words in the live transcript panel.
+router.post("/twilio/voice/transcribe-chunk", crmAuth, async (req, res) => {
+  res.json({ received: true }); // respond immediately so the browser isn't blocked
+  try {
+    const { callSid, audioBase64, mimeType } = req.body ?? {};
+    if (!callSid || !audioBase64) return;
+
+    const audioBuffer = Buffer.from(audioBase64 as string, "base64");
+    if (audioBuffer.length < 400) return; // too small — silence / no audio
+
+    // Determine file extension for Whisper (it sniffs format by filename)
+    const ext = typeof mimeType === "string" && mimeType.includes("ogg") ? "ogg"
+      : typeof mimeType === "string" && mimeType.includes("mp4") ? "mp4"
+      : "webm";
+    const text = await transcribeAudio(audioBuffer, `chunk.${ext}`).catch(() => null);
+    if (!text?.trim()) return;
+
+    // Look up campaignId so SSE is scoped to the right tenant
+    const [row] = await db
+      .select({ campaignId: crmCallLogs.campaignId, leadId: crmCallLogs.leadId })
+      .from(crmCallLogs)
+      .where(eq(crmCallLogs.callSid, callSid))
+      .limit(1);
+
+    emitCrmActivity("call_transcript", {
+      campaignId: row?.campaignId ?? null,
+      leadId: row?.leadId ?? null,
+      callSid,
+      segment: { track: "inbound", text: text.trim(), ts: Date.now() },
+    });
+    logger.info({ callSid, chars: text.length }, "[twilio/voice/transcribe-chunk] emitted inbound transcript");
+  } catch (err) {
+    logger.error(err, "[twilio/voice/transcribe-chunk] error");
   }
 });
 
@@ -1437,8 +1558,9 @@ router.post("/twilio/voice/inbound", async (req, res) => {
 
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Incoming call from ${sellerName}.</Say>
-  <Dial timeout="30" action="${apiBase}/twilio/voice/inbound-no-answer" method="POST">
+  <Say voice="Polly.Joanna">Incoming call from ${sellerName}. Please hold.</Say>
+  <Dial timeout="30" action="${apiBase}/twilio/voice/inbound-no-answer" method="POST"
+        waitUrl="${apiBase}/twilio/voice/ringback" waitUrlMethod="GET">
 ${clientTags}${forwardTag}
   </Dial>
 </Response>`);
