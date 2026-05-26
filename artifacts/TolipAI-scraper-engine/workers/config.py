@@ -52,6 +52,11 @@ class Settings:
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = _env("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
 
+    # ─── Amazon Bedrock ─────────────────────────────────────────────────────
+    use_bedrock: bool = os.getenv("USE_BEDROCK", "0") == "1"
+    bedrock_region: str = _env("AWS_REGION", "us-east-1") or "us-east-1"
+    bedrock_model_id: str = _env("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0") or "anthropic.claude-3-sonnet-20240229-v1:0"
+
     # ── Residential proxy ───────────────────────────────────────────────────
     brightdata_username: Optional[str] = _env("BRIGHTDATA_USERNAME")
     brightdata_password: Optional[str] = _env("BRIGHTDATA_PASSWORD")
@@ -67,6 +72,13 @@ class Settings:
 
     # ── Property data (skip-trace only) ────────────────────────────────────
     # Used by skip_trace.py PropertyAPI lookups. ATTOM has been removed.
+    attom_keys: List[str] = field(
+        default_factory=lambda: _env_list(
+            "ATTOM_API_KEY",
+            "ATTOM_API_KEY_1",
+            "ATTOM_API_KEY_2",
+        )
+    )
     property_api_keys: List[str] = field(
         default_factory=lambda: _env_list(
             "PROPERTY_API_KEY",

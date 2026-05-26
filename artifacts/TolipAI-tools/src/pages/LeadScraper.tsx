@@ -421,6 +421,11 @@ export default function LeadScraper() {
         method: "POST", headers,
         body: JSON.stringify({ keywords: mapsKeywords, locations: mapsLocations, maxResults: Number(mapsMax) }),
       });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("TolipAI_tools_pin");
+        window.location.href = "/";
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Scrape failed");
       setMapsResults(data.results || []);
@@ -442,6 +447,11 @@ export default function LeadScraper() {
         method: "POST", headers,
         body: JSON.stringify({ keywords: searchKeywords, locations: searchLocations, maxResults: Number(searchMax) }),
       });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("TolipAI_tools_pin");
+        window.location.href = "/";
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Scrape failed");
       setSearchResults(data.results || []);
@@ -463,6 +473,11 @@ export default function LeadScraper() {
         method: "POST", headers,
         body: JSON.stringify({ state: narState, city: narCity, maxResults: Number(narMax) }),
       });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("TolipAI_tools_pin");
+        window.location.href = "/";
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Scrape failed");
       setNarResults(data.results || []);
@@ -513,6 +528,11 @@ export default function LeadScraper() {
           headers,
           body: JSON.stringify({ keywords: [keyword], locations: [location], maxResults: Number(bulkMaxPerCombo) }),
         });
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem("TolipAI_tools_pin");
+          window.location.href = "/";
+          return;
+        }
         const data = await res.json();
         if (data.creditExhausted) {
           setBulkApiWarning("ScraperAPI fallback credits exhausted — using ScrapingBee fallback (limited results). Configure GOOGLE_MAPS_API_KEY on the engine for unlimited primary results.");
@@ -564,6 +584,11 @@ export default function LeadScraper() {
         method: "POST", headers,
         body: JSON.stringify({ mode: zillowMode, city: zillowCity, state: zillowState, maxResults: Number(zillowMax) }),
       });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("TolipAI_tools_pin");
+        window.location.href = "/";
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Scrape failed");
       if (data.warning) setZillowWarning(data.warning);

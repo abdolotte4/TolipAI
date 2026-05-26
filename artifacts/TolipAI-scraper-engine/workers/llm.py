@@ -110,20 +110,17 @@ async def _chat_inner(
     temperature: float = 0.2,
     max_tokens: int = 1500,
 ) -> str:
-    import os as _os
-
     # ── Amazon Bedrock short-circuit (USE_BEDROCK=1) ──────────────────────────
-    if _os.getenv("USE_BEDROCK") == "1":
+    if settings.use_bedrock:
         try:
             import boto3 as _boto3  # type: ignore[import]
-            import json as _json
 
             def _bedrock_sync() -> str:
                 client = _boto3.client(
                     "bedrock-runtime",
-                    region_name=_os.getenv("AWS_REGION", "us-east-1"),
+                    region_name=settings.bedrock_region,
                 )
-                body = _json.dumps(
+                body = json.dumps(
                     {
                         "anthropic_version": "bedrock-2023-05-31",
                         "max_tokens": max_tokens,
@@ -135,12 +132,12 @@ async def _chat_inner(
                     }
                 )
                 resp = client.invoke_model(
-                    modelId=_os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"),
+                    modelId=settings.bedrock_model_id,
                     body=body,
                     contentType="application/json",
                     accept="application/json",
                 )
-                out = _json.loads(resp["body"].read())
+                out = json.loads(resp["body"].read())
                 return " ".join(c["text"] for c in out.get("content", []) if "text" in c)
 
             try:
@@ -153,6 +150,7 @@ async def _chat_inner(
         except Exception as bedrock_exc:
             log.warning("Bedrock call failed — falling back to OpenAI: %s", bedrock_exc)
 
+    _LLM_TIMEOUT = float(__import__("os").getenv("LLM_TIMEOUT_SEC", "90"))
     provider = "openai"
 
     if provider in _dead_providers:
@@ -178,7 +176,7 @@ async def _chat_inner(
             _rate_hits[provider] = 0
             hits = 0
 
-    _LLM_TIMEOUT = float(_os.getenv("LLM_TIMEOUT_SEC", "90"))
+    _LLM_TIMEOUT = float(__import__("os").getenv("LLM_TIMEOUT_SEC", "90"))
     last_err: Optional[Exception] = None
 
     for attempt in range(2):

@@ -38,8 +38,12 @@ import { getSmsCreds } from "../services/twilioCredentials";
 import { emitCrmActivity } from "./sse";
 import twilio from "twilio";
 import { getWebhookBase } from "../lib/webhookBase";
+import { twilioWebhookMiddleware } from "../lib/twilioWebhookMiddleware";
 
 const router: IRouter = Router();
+
+// ── Twilio Signature Validation Middleware ──
+const twilioAuth = twilioWebhookMiddleware();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -655,7 +659,7 @@ router.post("/twilio/voice/power-dial/call-status", async (req, res) => {
 // Human  → cancel all sister calls in batch, bridge this call to agent.
 // Machine/fax → hangup, decrement activeCalls, increment voicemail counter.
 
-router.post("/twilio/voice/power-dial/amd-handler", async (req, res) => {
+router.post("/twilio/voice/power-dial/amd-handler", twilioAuth, async (req, res) => {
   const twiml = (xml: string) =>
     res.set("Content-Type", "text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response>${xml}</Response>`);
 

@@ -382,8 +382,12 @@ router.post("/", crmAuth, async (req, res) => {
     const arv = parseMoney(data.arv);
     const erc = parseMoney(data.estimatedRepairCost);
     const conditionForMao = data.condition != null ? Number(data.condition) : null;
-    const maoOverride = data.maoDiscountOverride != null ? parseMoney(data.maoDiscountOverride) : null;
-    const mao = arv !== null && erc !== null ? calculateMao(arv, erc, conditionForMao, maoOverride) : parseMoney(data.mao);
+    const maoOverride = data.maoDiscountOverride != null ? Number(data.maoDiscountOverride) : null;
+    const arvNum = arv; // local var for cleaner line
+    const ercNum = erc;
+    const mao = arvNum !== null && ercNum !== null
+      ? calculateMao(arvNum, ercNum, conditionForMao, maoOverride)
+      : parseMoney(data.mao);
 
     const [lead] = await db.insert(crmLeads).values({
       campaignId: campaignId || (data.campaignId ? parseInt(data.campaignId) : null),
@@ -760,10 +764,12 @@ router.patch("/:id", crmAuth, async (req, res) => {
     const erc = data.estimatedRepairCost !== undefined ? parseMoney(data.estimatedRepairCost) : parseMoney(existing.estimatedRepairCost);
     const conditionForMao = data.condition != null ? Number(data.condition) : (existing.condition ?? null);
     const maoOverride = data.maoDiscountOverride !== undefined
-      ? parseMoney(data.maoDiscountOverride)
-      : parseMoney(existing.maoDiscountOverride);
-    const mao = arv !== null && erc !== null
-      ? calculateMao(arv, erc, conditionForMao, maoOverride)
+      ? (data.maoDiscountOverride != null ? Number(data.maoDiscountOverride) : null)
+      : (existing.maoDiscountOverride != null ? Number(existing.maoDiscountOverride) : null);
+    const arvNum = arv;
+    const ercNum = erc;
+    const mao = arvNum !== null && ercNum !== null
+      ? calculateMao(arvNum, ercNum, conditionForMao, maoOverride)
       : (data.mao !== undefined ? parseMoney(data.mao) : parseMoney(existing.mao));
 
     const updates: any = { updatedAt: new Date() };

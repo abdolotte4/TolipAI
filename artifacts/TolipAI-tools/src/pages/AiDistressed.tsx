@@ -58,6 +58,11 @@ export default function AiDistressed() {
     }
     pollRef.current = setInterval(async () => {
       const res = await fetch(`/api/tools/distressed/status/${jobId}`, { headers: { "X-Tools-Pin": pin || "" } });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("TolipAI_tools_pin");
+        window.location.href = "/";
+        return;
+      }
       if (!res.ok) return;
       const data = await res.json();
       setJob(data);
@@ -84,6 +89,11 @@ export default function AiDistressed() {
         headers: { "Content-Type": "application/json", "X-Tools-Pin": pin || "" },
         body: JSON.stringify({ zip: zip.trim() || undefined, city: city.trim() || undefined, county: county.trim() || undefined, state: state.trim().toUpperCase(), categories: selected }),
       });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("TolipAI_tools_pin");
+        window.location.href = "/";
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({} as any));
         throw new Error(err.error || `Failed (HTTP ${res.status})`);

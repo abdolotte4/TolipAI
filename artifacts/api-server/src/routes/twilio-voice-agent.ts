@@ -33,8 +33,12 @@ import { scoreCallTranscript, formatScoreNotes } from "../services/callScoring";
 import { logger } from "../lib/logger";
 import twilio from "twilio";
 import { getWebhookBase } from "../lib/webhookBase";
+import { twilioWebhookMiddleware } from "../lib/twilioWebhookMiddleware";
 
 export const agentRouter: IRouter = Router();
+
+// ── Twilio Signature Validation Middleware ──
+const twilioAuth = twilioWebhookMiddleware();
 
 // ── In-memory session store (keyed by Twilio CallSid) ────────────────────────
 
@@ -546,7 +550,7 @@ export function handleAgentStream(
 // Configure this URL in your Twilio console or set it as the Voice URL for
 // your Twilio phone number (or use Auto-Configure Webhooks in TwilioConnect).
 
-agentRouter.post("/twilio/voice/inbound-agent", async (req, res) => {
+agentRouter.post("/twilio/voice/inbound-agent", twilioAuth, async (req, res) => {
   res.set("Content-Type", "text/xml");
 
   const callSid:   string = req.body?.CallSid  || "";
