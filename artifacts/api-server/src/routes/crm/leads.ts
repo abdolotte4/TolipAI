@@ -1583,6 +1583,7 @@ const allAiComps: any[] = parsed?.comps ?? [];
         salePrice: c.salePrice.toString(),
         soldDate: c.soldDate ?? null,
         adjustedPrice: adjustedPrice.toString(),
+        source: "ai",
         notes: "AI-estimated comp (PropertyAPI credits exhausted — for reference only)",
       }).returning();
       adjustedPrices.push(adjustedPrice);
@@ -1639,7 +1640,7 @@ async function fetchCompsViaScraperEngine(
   try {
     const res = await fetch(`${scraperUrl}/scrape/comps`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": process.env.SCRAPER_API_KEY || "" },
+      headers: { "Content-Type": "application/json", "X-API-Key": process.env.WEBSCRAPER_API_KEY || process.env.SCRAPER_API_KEY || "" },
       body: JSON.stringify({ address, radius_miles: radiusMiles, max_results: 12 }),
       signal: AbortSignal.timeout(120_000),
     });
@@ -1659,7 +1660,7 @@ async function fetchCompsViaScraperEngine(
   try {
     const res = await fetch(`${scraperUrl}/scrape/propwire/comps`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": process.env.SCRAPER_API_KEY || "" },
+      headers: { "Content-Type": "application/json", "X-API-Key": process.env.WEBSCRAPER_API_KEY || process.env.SCRAPER_API_KEY || "" },
       body: JSON.stringify({ query: address }),
       signal: AbortSignal.timeout(120_000),
     });
@@ -2168,6 +2169,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
     await db.insert(crmNotes).values({
       leadId: id,
       userId: crmUser.userId,
+      noteType: "audit",
       content:
         `🤖 AI condition assessment: ${cond}/10 (${parsed.confidence ?? "—"} confidence). ` +
         `MAO discount factor set to ${Math.round(discount * 100)}%. ` +

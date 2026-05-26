@@ -123,41 +123,42 @@ router.post("/tools/distressed/search", requirePin, async (req: Request, res: Re
       progress: 0,
     });
   } catch (err: any) {
-    if (err instanceof ScraperEngineUnavailable) {
-      // ── ATTOM fallback: when engine is unavailable but ATTOM key is configured ──
-      if (hasAttomKey()) {
-        const { zip, categories } = req.body || {};
-        const searchZip = String(zip || "").trim();
-        if (searchZip) {
-          const jobId = `attom_${randomUUID().slice(0, 8)}`;
-          const createdAt = new Date().toISOString();
-          _attomDistressedJobs.set(jobId, { status: "queued", progress: 0, result: null, error: null, createdAt });
-          distressedJobIds.push({ jobId, createdAt });
+    // ── ATTOM fallback: on ANY error (unavailable, 401 auth, etc.) try ATTOM if key configured ──
+    if (hasAttomKey()) {
+      const { zip, categories } = req.body || {};
+      const searchZip = String(zip || "").trim();
+      if (searchZip) {
+        logger.warn({ errMsg: err?.message }, "[tools] Scraper engine error — falling back to ATTOM");
+        const jobId = `attom_${randomUUID().slice(0, 8)}`;
+        const createdAt = new Date().toISOString();
+        _attomDistressedJobs.set(jobId, { status: "queued", progress: 0, result: null, error: null, createdAt });
+        distressedJobIds.push({ jobId, createdAt });
 
-          // Run ATTOM search in background (non-blocking)
-          setImmediate(async () => {
-            _attomDistressedJobs.set(jobId, { status: "running", progress: 10, result: null, error: null, createdAt });
-            try {
-              const listings = await fetchDistressedViaAttom(searchZip, categories || [], 100);
-              _attomDistressedJobs.set(jobId, {
-                status: "done", progress: 100,
-                result: { count: listings.length, listings, source: "ATTOM" },
-                error: null, createdAt,
-              });
-              logger.info({ jobId, count: listings.length, zip: searchZip }, "[tools] ATTOM distressed fallback completed");
-            } catch (attomErr: any) {
-              _attomDistressedJobs.set(jobId, {
-                status: "failed", progress: 0, result: null,
-                error: attomErr?.message || "ATTOM search failed", createdAt,
-              });
-              logger.warn({ jobId, err: attomErr?.message }, "[tools] ATTOM distressed fallback failed");
-            }
-          });
+        // Run ATTOM search in background (non-blocking)
+        setImmediate(async () => {
+          _attomDistressedJobs.set(jobId, { status: "running", progress: 10, result: null, error: null, createdAt });
+          try {
+            const listings = await fetchDistressedViaAttom(searchZip, categories || [], 100);
+            _attomDistressedJobs.set(jobId, {
+              status: "done", progress: 100,
+              result: { count: listings.length, listings, source: "ATTOM" },
+              error: null, createdAt,
+            });
+            logger.info({ jobId, count: listings.length, zip: searchZip }, "[tools] ATTOM distressed fallback completed");
+          } catch (attomErr: any) {
+            _attomDistressedJobs.set(jobId, {
+              status: "failed", progress: 0, result: null,
+              error: attomErr?.message || "ATTOM search failed", createdAt,
+            });
+            logger.warn({ jobId, err: attomErr?.message }, "[tools] ATTOM distressed fallback failed");
+          }
+        });
 
-          res.json({ jobId, id: jobId, jobIds: [jobId], status: "queued", progress: 0, source: "attom" });
-          return;
-        }
+        res.json({ jobId, id: jobId, jobIds: [jobId], status: "queued", progress: 0, source: "attom" });
+        return;
       }
+    }
+    if (err instanceof ScraperEngineUnavailable) {
       res.status(503).json({ error: err.message });
     } else {
       res.status(500).json({ error: err?.message || "Failed to start distressed search" });

@@ -472,7 +472,7 @@ router.all("/scraper-engine/{*path}", crmAuth, async (req: Request, res: Respons
   const isBodyMethod = !["GET", "HEAD", "DELETE"].includes(req.method.toUpperCase());
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 180_000);
-  const apiKey = process.env.SCRAPER_API_KEY;
+  const apiKey = process.env.WEBSCRAPER_API_KEY || process.env.SCRAPER_API_KEY;
   try {
     const upstream = await fetch(`${_ENGINE_URL}${subPath}`, {
       method: req.method,
