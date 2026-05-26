@@ -23,6 +23,8 @@
     "typescript": "~5.9.2"
   },
   "dependencies": {
+    "@aws-sdk/client-ecs": "^3.1053.0",
+    "@aws-sdk/client-secrets-manager": "^3.1053.0",
     "@types/papaparse": "^5.5.2",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",

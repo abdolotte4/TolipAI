@@ -15,7 +15,7 @@
   "containerDefinitions": [
     {
       "name": "scraper",
-      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/tolipai-scraper:latest",
+      "image": "583299526161.dkr.ecr.us-east-1.amazonaws.com/tolipai-scraper:latest",
       "essential": true,
       "portMappings": [
         {
@@ -80,10 +80,6 @@
         {
           "name": "ENABLE_PROPERTYAPI",
           "value": "true"
-        },
-        {
-          "name": "S3_CACHE_BUCKET",
-          "value": ""
         }
       ],
       "secrets": [
@@ -92,32 +88,12 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/database-url"
         },
         {
-          "name": "REDIS_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/redis-url"
-        },
-        {
           "name": "SCRAPER_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/api-key"
         },
         {
-          "name": "OPENROUTER_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/openrouter-key"
-        },
-        {
-          "name": "GROQ_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/groq-key"
-        },
-        {
-          "name": "MOONSHOT_KIMI_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/moonshot-key"
-        },
-        {
-          "name": "NVIDIA_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/nvidia-key"
-        },
-        {
-          "name": "CEREBRAS_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/cerebras-key"
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/openai-key"
         },
         {
           "name": "ATTOM_API_KEY",
@@ -134,10 +110,6 @@
         {
           "name": "BRIGHTDATA_PASSWORD",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/brightdata-password"
-        },
-        {
-          "name": "BRIGHTDATA_API",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/brightdata-api"
         },
         {
           "name": "OXYLABS_USERNAME",

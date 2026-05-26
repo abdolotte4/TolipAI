@@ -1,10 +1,92 @@
 # TolipAI Platform — Codebase Audit
-**Version:** 2.1.0
-**Audit Date:** May 22, 2026
-**Auditor:** Agent Full-Scan (6 parallel subagents — exhaustive line-by-line)
-**Previous Audit:** May 17, 2026 (v2.0.0, score 95/100)
-**Total files scanned:** ~200 TypeScript/TSX + shared schema + config
-**Overall Score:** 95/100 (maintained — new features shipped; new issues identified and catalogued)
+**Version:** 2.2.0
+**Audit Date:** May 26, 2026
+**Auditor:** Agent Full-Scan
+**Previous Audit:** May 22, 2026 (v2.1.0, score 95/100)
+**Total files scanned:** ~200 TypeScript/TSX + shared schema + config + AWS infrastructure
+**Overall Score:** 96/100 (improved — ECS crash loop resolved; health dashboard added; ATTOM + OpenAI secrets provisioned)
+
+---
+
+## Patch Notes — May 26, 2026
+
+### 🔴 Critical Fix: ECS Scraper Engine Crash Loop Resolved
+
+The ECS service (`tolipai-scraper-engine-service-xop`) was stuck in a deployment crash loop due to `ResourceInitializationError` — the Fargate task could not start because several secrets referenced in the Task Definition did not exist in AWS Secrets Manager.
+
+**Root cause:** The Task Definition (revision ≤38) referenced 9 secrets that were either deleted providers or never created:
+
+| Secret ARN | Issue |
+|---|---|
+| `TolipAI/scraper/attom-key` | **Did not exist in Secrets Manager** |
+| `TolipAI/scraper/attom-key-2` | **Did not exist in Secrets Manager** |
+| `TolipAI/scraper/openrouter-key` | Provider removed from `config.py` |
+| `TolipAI/scraper/groq-key` | Provider removed from `config.py` |
+| `TolipAI/scraper/moonshot-key` | Provider removed from `config.py` |
+| `TolipAI/scraper/nvidia-key` | Provider removed from `config.py` |
+| `TolipAI/scraper/cerebras-key` | Provider removed from `config.py` |
+| `TolipAI/scraper/brightdata-api` | Not used in `config.py` |
+| `TolipAI/scraper/redis-url` | Removed from `config.py` |
+
+**Additionally**, `OPENAI_API_KEY` was **missing** from the Task Definition entirely, meaning all LLM calls failed silently (engine used no AI).
+
+**Actions taken:**
+1. ✅ Created 3 missing AWS Secrets Manager entries: `openai-key`, `attom-key`, `attom-key-2` — populated from Replit secrets
+2. ✅ Cleaned Task Definition — removed 9 dead/non-existent secret references
+3. ✅ Added `OPENAI_API_KEY` secret reference pointing to new `TolipAI/scraper/openai-key`
+4. ✅ Registered new Task Definition revision **:39** in ECS
+5. ✅ Force-deployed ECS service `tolipai-scraper-engine-service-xop` to revision :39
+6. ✅ Removed hard-coded `ACCOUNT_ID` placeholder from image URI — replaced with actual account ID `583299526161`
+
+### ✅ New Feature: System Health Dashboard
+
+Added a real-time health-check dashboard accessible to super admins at `/admin/health`.
+
+**API:** `GET /api/crm/admin/system-health` (super admin only)
+- Runs 6 parallel service checks with 5–6 s timeouts each
+- Returns structured `{ status, latencyMs, detail, checkedAt }` per service
+- Fetches circuit-breaker states and metrics from the scraper engine when available
+
+**Services monitored:**
+- PostgreSQL Database (live `SELECT 1` probe)
+- OpenAI (calls `/models` endpoint — validates key + reachability)
+- Groq (calls `/models` endpoint — validates key + rate-limit state)
+- Twilio (calls Twilio Accounts API — validates SID + token, reports account status)
+- AWS Scraper Engine (hits `/health` endpoint — reports version + LLM state)
+- ATTOM Data API (test property lookup — validates key + quota)
+
+**Files added:**
+- `artifacts/api-server/src/routes/crm/systemHealth.ts`
+- `artifacts/api-server/src/routes/crm/healthHelpers.ts`
+- `artifacts/TolipAI-crm/src/pages/admin/SystemHealth.tsx`
+
+**Files modified:**
+- `artifacts/api-server/src/routes/crm/index.ts` — registered `systemHealthRouter`
+- `artifacts/TolipAI-crm/src/App.tsx` — added `/admin/health` route (SuperAdminRoute guarded)
+- `artifacts/TolipAI-crm/src/components/layout/AppLayout.tsx` — added "System Health" nav item to super admin section
+
+### ✅ Live Scraper Engine Test Results (May 26, 2026)
+
+Tests run directly against `http://tolip-scraper-url-323311724.us-east-1.elb.amazonaws.com:8765`:
+
+| Test | Result | Latency | Notes |
+|---|---|---|---|
+| `GET /health` | ✅ PASS (200) | 1633ms | Engine alive, cold start |
+| `GET /admin/circuit-breakers` | ✅ PASS (200) | 52ms | All circuits closed |
+| `GET /metrics` | ✅ PASS (200) | 22ms | Prometheus metrics OK |
+| `POST /scrape/cash-buyers` | ✅ PASS (200) | 39ms | Job queued: `48d8b5aeb45d` |
+| `POST /scrape/skip-trace` | ✅ PASS (200) | ~9.8s | SEC Edgar results returned |
+| LLM state (pre-fix) | ⚠️ OpenAI: unconfigured; Groq: 429 | — | Fixed in revision :39 |
+
+**Findings from live tests:**
+- Engine is reachable and serving traffic via ALB
+- All circuit breakers closed (no cascading failures)
+- Job queuing works correctly (cash buyers pipeline operational)
+- Skip-trace returns real results via SEC Edgar fallback (PropertyAPI not yet configured)
+- OpenAI was unconfigured on the running task — **resolved in revision :39**
+- Groq hitting rate limits (429) — Groq not used in scraper engine (already removed from config.py)
+
+---
 
 ---
 
@@ -524,5 +606,7 @@ Several pages access APIs without the `/api` prefix or use different conventions
 
 ---
 
-*End of CODEBASE_AUDIT.md — TolipAI Platform, May 22, 2026*
-*Next scheduled audit: after Priority 1 + 2 fixes are merged*
+---
+
+*End of CODEBASE_AUDIT.md — TolipAI Platform, May 26, 2026 (v2.2.0)*
+*Next scheduled audit: after Priority 2 remaining items (B5, B7) are merged*
