@@ -890,10 +890,13 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
       campaignId,
       leadId: leadId ? Number(leadId) : null,
       userId: crmUser.userId ?? crmUser.id,
-      mosScore: analytics?.mos ? String(analytics.mos) : null,
-      jitterMs: analytics?.jitter ? String(analytics.jitter) : null,
-      packetLossPct: analytics?.packetLoss ? String(analytics.packetLoss) : null,
       updatedAt: now,
+      // Only include MOS/quality columns when the client actually sends them.
+      // Omitting null-valued numeric columns prevents failures if the production
+      // DB schema is behind the Drizzle schema (column not yet migrated).
+      ...(analytics?.mos != null ? { mosScore: String(analytics.mos) } : {}),
+      ...(analytics?.jitter != null ? { jitterMs: String(analytics.jitter) } : {}),
+      ...(analytics?.packetLoss != null ? { packetLossPct: String(analytics.packetLoss) } : {}),
     };
 
     let logId: number | null = null;

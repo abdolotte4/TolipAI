@@ -88,31 +88,45 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
         await page.wait_for_selector(email_sel, timeout=15000)
 
-    # Explicitly click then fill — React needs focus events to fire onChange handlers
+    # Fill email — use triple-click + type to trigger React's synthetic onChange events.
+    # plain fill() sets the value directly and may not fire onChange in some React builds,
+    # leaving the submit button disabled.
     email_el = page.locator(email_sel).first
     await email_el.click()
-    await page.wait_for_timeout(300)
-    await email_el.fill(email)
+    await page.wait_for_timeout(400)
+    await email_el.triple_click()
     await page.wait_for_timeout(200)
+    await email_el.type(email, delay=60)
+    await page.wait_for_timeout(300)
 
     pw_el = page.locator(pw_sel).first
     await pw_el.click()
-    await page.wait_for_timeout(300)
-    await pw_el.fill(password)
-    await page.wait_for_timeout(300)
+    await page.wait_for_timeout(400)
+    await pw_el.triple_click()
+    await page.wait_for_timeout(200)
+    await pw_el.type(password, delay=60)
+    await page.wait_for_timeout(500)
 
-    # Submit — check all common button text variants (including all-caps "SIGN IN")
+    # Submit — try clicking the button, then fall back to Enter key
     btn = page.locator(
         'button[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign In"), '
         'button:has-text("Sign in"), button:has-text("LOG IN"), button:has-text("Log In"), '
         'button:has-text("Log in"), button:has-text("Login"), input[type="submit"]'
     ).first
-    if await btn.count():
-        await btn.click()
+    btn_count = await btn.count()
+    if btn_count:
+        # If the button is disabled (React validation not satisfied), fall back to Enter
+        is_disabled = await btn.is_disabled() if btn_count else True
+        if is_disabled:
+            log.warning("Propelio: submit button is disabled — submitting via Enter key")
+            await pw_el.press("Enter")
+        else:
+            await btn.click()
     else:
         await pw_el.press("Enter")
 
-    # Wait for navigation AWAY from /login — accept ANY URL that is not the login page
+    # Wait for navigation AWAY from /login — accept ANY URL that is not the login page.
+    # Use a two-stage wait: URL-based first (fast), networkidle fallback (thorough).
     try:
         await page.wait_for_function(
             "() => !window.location.href.includes('/login')",
@@ -120,7 +134,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         )
     except Exception:
         try:
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            await page.wait_for_load_state("networkidle", timeout=20000)
         except Exception:
             pass
 

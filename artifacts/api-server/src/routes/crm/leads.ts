@@ -816,7 +816,11 @@ router.patch("/:id", crmAuth, async (req, res) => {
     // Write audit notes and notify followers
     if (auditEntries.length > 0) {
       const auditContent = auditEntries.join("\n");
-      await db.insert(crmNotes).values({ leadId: id, userId: crmUser.userId, content: auditContent, noteType: "audit" });
+      try {
+        await db.insert(crmNotes).values({ leadId: id, userId: crmUser.userId ?? crmUser.id, content: auditContent, noteType: "audit" });
+      } catch (noteErr) {
+        logger.warn(noteErr, "leads PATCH: audit note insert failed (non-fatal)");
+      }
       await notifyFollowers(id, crmUser.userId, `${actorName} updated lead: ${lead.address}`, "update");
     }
 
@@ -2173,17 +2177,6 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
     if (newMao != null) updates.mao = newMao.toString();
     await db.update(crmLeads).set(updates).where(eq(crmLeads.id, id));
 
-    // Log to activity so users can see the AI's reasoning.
-    await db.insert(crmNotes).values({
-      leadId: id,
-      userId: crmUser.userId,
-      noteType: "audit",
-      content:
-        `🤖 AI condition assessment: ${cond}/10 (${parsed.confidence ?? "—"} confidence). ` +
-        `MAO discount factor set to ${Math.round(discount * 100)}%. ` +
-        `Reason: ${parsed.rationale ?? "no rationale provided"}`,
-    });
-
     res.json({
       condition: cond,
       rationale: parsed.rationale ?? null,
@@ -2191,6 +2184,21 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
       discountFactor: discount,
       mao: newMao,
     });
+
+    // Log to activity AFTER responding so a note-insert failure never kills the response.
+    try {
+      await db.insert(crmNotes).values({
+        leadId: id,
+        userId: crmUser.userId ?? crmUser.id,
+        noteType: "audit",
+        content:
+          `🤖 AI condition assessment: ${cond}/10 (${parsed.confidence ?? "—"} confidence). ` +
+          `MAO discount factor set to ${Math.round(discount * 100)}%. ` +
+          `Reason: ${parsed.rationale ?? "no rationale provided"}`,
+      });
+    } catch (noteErr) {
+      logger.warn(noteErr, "AI detect-condition: note insert failed (non-fatal)");
+    }
   } catch (err) {
     aiBreaker.recordFailure();
     logger.error(err, "AI detect-condition error");

@@ -1506,24 +1506,54 @@ class SatelliteDFDRequest(BaseModel):
 
 @app.post("/ai/satellite-dfd")
 async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
-    """SkyDrive-style AI distress scan for an area.
+    """SkyDrive-style AI distress scan — starts a background job and returns immediately.
 
-    Returns properties ranked by distress score (0-100) with coordinates,
-    reasoning, and optional satellite + street view imagery URLs (when GOOGLE_MAPS_API_KEY set).
+    Returns {"job_id": "...", "status": "queued"} so the caller can poll
+    GET /jobs/{job_id} for progress/result.  This prevents Railway's 60s HTTP
+    timeout from killing long-running scans.
     """
     if not (req.zip or (req.city and req.state)):
         raise HTTPException(status_code=400, detail="Provide zip or city+state")
+    params = {
+        "zip": req.zip,
+        "city": req.city,
+        "state": req.state,
+        "min_score": req.min_score,
+        "max_results": req.max_results,
+        "use_ai_scoring": req.use_ai_scoring,
+    }
+    job_id = _new_job("satellite_dfd", params)
+    asyncio.create_task(_run_satellite_dfd(job_id, params), name=f"satellite_dfd_{job_id}")
+    return {"job_id": job_id, "status": "queued"}
+
+
+async def _run_satellite_dfd(job_id: str, params: Dict[str, Any]) -> None:
+    """Background worker for satellite DFD scans."""
+    register_job(job_id)
     try:
-        return await satellite_dfd.scan_area(
-            zip_code=req.zip,
-            city=req.city,
-            state=req.state,
-            min_score=req.min_score,
-            max_results=req.max_results,
-            use_ai_scoring=req.use_ai_scoring,
+        _set_status(job_id, "running", progress=5)
+        result = await asyncio.wait_for(
+            satellite_dfd.scan_area(
+                zip_code=params.get("zip", ""),
+                city=params.get("city", ""),
+                state=params.get("state", ""),
+                min_score=params.get("min_score", 30),
+                max_results=params.get("max_results", 50),
+                use_ai_scoring=params.get("use_ai_scoring", True),
+            ),
+            timeout=300,  # 5-minute hard cap
         )
+        _set_status(job_id, "done", progress=100, result=result)
+        await job_store.set_job(job_id, _jobs[job_id])
+    except asyncio.TimeoutError:
+        _set_status(job_id, "failed", error="Scan timed out after 5 minutes")
+        await job_store.set_job(job_id, _jobs[job_id])
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        log.error("satellite_dfd job %s failed: %s", job_id, str(e)[:200])
+        _set_status(job_id, "failed", error=str(e))
+        await job_store.set_job(job_id, _jobs[job_id])
+    finally:
+        unregister_job(job_id)
 
 
 # ─── Google Maps / Google Search / Bulk lead-scraper endpoints ───────────────

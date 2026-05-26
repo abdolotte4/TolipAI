@@ -166,7 +166,7 @@ async function checkAttom(): Promise<ServiceResult> {
   }
   try {
     const res = await withTimeout(async () =>
-      fetch("https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/basicprofile?address=4529+Winona+Court&postalcode=80212", {
+      fetch("https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/basicprofile?address1=4529+Winona+Court&address2=Denver+CO+80212", {
         headers: { apikey: keys[0]!, Accept: "application/json" },
         signal: AbortSignal.timeout(5000),
       }),

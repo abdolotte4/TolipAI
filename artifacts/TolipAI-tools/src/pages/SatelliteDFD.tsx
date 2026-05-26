@@ -328,9 +328,11 @@ export default function SatelliteDFD() {
     setLoading(true);
     abortRef.current?.abort();
     abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
 
     try {
-      const resp = await fetch(`${API_BASE}/ai/satellite-dfd`, {
+      // Step 1: Start the job — returns immediately with {job_id, status: "queued"}
+      const startResp = await fetch(`${API_BASE}/ai/satellite-dfd`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -344,14 +346,50 @@ export default function SatelliteDFD() {
           max_results: maxResults,
           use_ai_scoring: true,
         }),
-        signal: abortRef.current.signal,
+        signal,
       });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(err.detail || `HTTP ${resp.status}`);
+      if (!startResp.ok) {
+        const err = await startResp.json().catch(() => ({ detail: startResp.statusText }));
+        throw new Error(err.detail || `HTTP ${startResp.status}`);
       }
-      const data: ScanResult = await resp.json();
-      setResult(data);
+      const startData = await startResp.json();
+
+      // If the engine returned a full scan result directly (legacy), use it as-is.
+      if (startData.results) {
+        setResult(startData as ScanResult);
+        return;
+      }
+
+      // Step 2: Poll /jobs/{job_id} until done or failed (up to 5 min)
+      const jobId: string = startData.job_id;
+      if (!jobId) throw new Error("Engine did not return a job_id");
+
+      const POLL_INTERVAL_MS = 4_000;
+      const POLL_TIMEOUT_MS  = 5 * 60 * 1_000;
+      const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+      while (Date.now() < deadline) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+        const pollResp = await fetch(`${API_BASE}/jobs/${jobId}`, {
+          headers: { "X-Tools-Pin": pin || "" },
+          signal,
+        });
+        if (!pollResp.ok) continue; // transient error — keep polling
+        const job = await pollResp.json();
+
+        if (job.status === "done" || job.status === "completed") {
+          setResult(job.result as ScanResult);
+          return;
+        }
+        if (job.status === "failed") {
+          throw new Error(job.error || "Scan failed");
+        }
+        // still queued/running — keep polling
+      }
+      throw new Error("Scan timed out after 5 minutes");
     } catch (e: any) {
       if (e.name !== "AbortError") setError(e.message || "Scan failed");
     } finally {
