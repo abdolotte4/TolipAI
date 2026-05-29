@@ -1,8 +1,9 @@
 - [Twilio webhook base URL](twilio-webhook-base.md) — API_BASE_URL always first; REPLIT_DEV_DOMAIN removed entirely; tolipai.com is sole production domain.
 - [Twilio TwiML transcribe attr](twilio-twiml-transcribe.md) — transcribe/transcribeCallback on <Conference> causes Error 12200 unless TWILIO_VOICE_INTELLIGENCE_SID is set; attr is now conditional.
 - [Frontend app directories](frontend-dirs.md) — Real code is under artifacts/TolipAI-crm, TolipAI-tools, TolipAI-website; vite ports: website=3000, crm=3001, tools=3002.
-- [Scraper engine auth chain](scraper-engine-auth.md) — Fargate validates X-API-Key against SCRAPER_API_KEY env var (← TolipAI/scraper/api-key secret). Express sends WEBSCRAPER_API_KEY. Both must match. Task def rev 32 is current.
-- [Scraper engine AWS infra](scraper-engine-aws.md) — Cluster: TolipAI-scraper-cluster; service: tolipai-scraper-engine-service-xop; ELB on port 8765. Task def must not reference deleted secrets or container fails to start.
+- [Scraper engine auth chain](scraper-engine-auth.md) — Fargate validates X-API-Key against SCRAPER_API_KEY env var (← TolipAI/scraper/api-key secret). Express sends WEBSCRAPER_API_KEY. ⚠️ scraperEngineClient.ts comment says SCRAPER_API_KEY but env var is WEBSCRAPER_API_KEY — code is correct, comment is wrong.
+- [Scraper engine AWS infra](scraper-engine-aws.md) — Cluster: TolipAI-scraper-cluster; service: tolipai-scraper-engine-service-xop; ELB on port 8765. Deploy via `bash deploy.sh` (GitHub Actions). Task def must not reference deleted secrets or container fails to start.
+- [Scraper engine critical fixes](scraper-engine-critical-fixes.md) — 13 fixes applied: timeouts, health probe, SSL verify=False for county sites (Fix 13), OpenAI-only llm.py (Fix 12), Dockerfile, job eviction, CloudWatch metrics.
 - [handleEngineError status propagation](handle-engine-error.md) — propagates (err as any).status so 404/422/etc from Fargate reach the client correctly (was always 500).
 - [AI_MODEL env var routing](ai-model-env-routing.md) — AI_MODEL secret = llama-3.3-70b-versatile (Groq model). getChatModel() guards against sending it to OpenAI via NON_OPENAI_MODEL_PATTERNS. getGroqModel() picks it up correctly.
 - [Twilio webhook security](twilio-webhook-security.md) — All public Twilio webhook routes use twilioWebhookMiddleware (lib/twilioWebhookMiddleware.ts); hard-fails if TWILIO_AUTH_TOKEN missing; validates X-Twilio-Signature.
@@ -11,3 +12,5 @@
 - [Tools session storage key](tools-session-key.md) — Canonical localStorage key is tolipai_tools_pin (lowercase). Any use of TolipAI_tools_pin is a bug.
 - [Inbound call toNumber bug](inbound-call-tonumber.md) — /voice/log POST must NOT overwrite toNumber/fromNumber with null; use conditional patch so existing values from /voice/inbound are preserved.
 - [Crawl4AI ProxyConfig](crawl4ai-proxyconfig.md) — Newer crawl4ai (>=0.4) requires ProxyConfig object not a plain dict for proxy_config in BrowserConfig; try import ProxyConfig, fall back to dict.
+- [Call log campaignId phone-number fallback](call-campaign-id-fallback.md) — /voice/answer pre-inserts and /voice/log fall back to digit-regex matching callerId/fromNumber against crmCampaigns.twilioPhoneNumber when accountSid lookup fails. Fixes calls not creating conversations in Manual Dialer.
+- [Conversations include null-campaign call logs](conversations-null-campaign.md) — All conversation list/thread queries use or(eq(campaignId,X), isNull(campaignId)) so pre-inserted logs with null campaignId remain visible. or + isNull must be imported from drizzle-orm.

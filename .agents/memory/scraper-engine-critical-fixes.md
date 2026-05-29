@@ -1,6 +1,6 @@
 ---
 name: Scraper Engine Critical Fixes
-description: All 12 fixes from TolipAI_Scraper_Engine_Critical_Fixes.md applied to the Python scraper engine.
+description: All 13 fixes applied to the Python scraper engine (12 original + Fix 13 SSL).
 ---
 
 All fixes applied to `artifacts/TolipAI-scraper-engine/`.
@@ -31,4 +31,6 @@ All fixes applied to `artifacts/TolipAI-scraper-engine/`.
 
 **config.py has_llm()**: now checks only `openai_api_key` (was checking groq/cerebras/etc. but not openai).
 
-**Why:** Free-tier providers (Groq, Cerebras) were causing runaway 429s and credit bleeding. /health probes were burning tokens on every load balancer check. Jobs were hanging indefinitely without timeouts.
+**Fix 13 — SSL verify=False for county/government sites**: `http_client.py` passes `verify=False` to httpx for the main `fetch_page()` call and `verify_ssl=False` to the aiohttp `fetch_direct()` call. Government/county sites routinely use self-signed or expired certs; without this, every scrape request to those domains raised `SSLCertVerificationError` and returned 0 results. The `_ssl_ctx(verify=False)` helper creates an SSL context with `CERT_NONE`. Note: Fix 6's `verify=True` change only affects the `/debug/proxy*` endpoints — the main scraping paths are correctly set to `verify=False`.
+
+**Why:** Free-tier providers (Groq, Cerebras) were causing runaway 429s and credit bleeding. /health probes were burning tokens on every load balancer check. Jobs were hanging indefinitely without timeouts. SSL verification failures were silently returning 0 results on all county property sites.

@@ -3,7 +3,8 @@
  *
  * The engine URL is configured via SCRAPER_ENGINE_URL.  All calls fail soft —
  * if the engine is unreachable, callers get a 503 with a clear message instead of a 500.
- * Requests are authenticated via SCRAPER_API_KEY (X-API-Key header).
+ * Requests are authenticated via WEBSCRAPER_API_KEY (Replit env var) sent as X-API-Key header.
+ * The Fargate container validates against SCRAPER_API_KEY (from AWS secret TolipAI/scraper/api-key).
  */
 import { logger } from "../lib/logger";
 
