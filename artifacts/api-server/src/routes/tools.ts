@@ -457,7 +457,8 @@ router.get("/tools/arv/config", requirePin, (_req, res) => {
 router.post("/tools/arv/calculate", requirePin, async (req: Request, res: Response) => {
   try {
     const {
-      street,
+      street: _streetArv,
+      address: _addressArv,
       city,
       state,
       zip,
@@ -465,7 +466,8 @@ router.post("/tools/arv/calculate", requirePin, async (req: Request, res: Respon
       maxComps = 8,
       miles = 0.5,
     } = (req.body || {}) as {
-      street: string;
+      street?: string;
+      address?: string;
       city?: string;
       state?: string;
       zip?: string;
@@ -473,6 +475,7 @@ router.post("/tools/arv/calculate", requirePin, async (req: Request, res: Respon
       maxComps?: number;
       miles?: number;
     };
+    const street = _streetArv || _addressArv || "";
 
     if (!street) { res.status(400).json({ error: "street is required" }); return; }
     if (!hasAttomKey()) { res.status(503).json({ error: "ATTOM API key not configured" }); return; }
@@ -667,9 +670,10 @@ router.post("/tools/arv/calculate-manual", requirePin, (req: Request, res: Respo
 
 router.post("/tools/property-lookup/search", requirePin, async (req: Request, res: Response) => {
   try {
-    const { street, city, state, zip } = (req.body || {}) as {
-      street: string; city?: string; state?: string; zip?: string;
+    const { street: _streetLookup, address: _addressLookup, city, state, zip } = (req.body || {}) as {
+      street?: string; address?: string; city?: string; state?: string; zip?: string;
     };
+    const street = _streetLookup || _addressLookup || "";
 
     if (!street) { res.status(400).json({ error: "street is required" }); return; }
     if (!hasAttomKey()) { res.status(503).json({ error: "ATTOM API key not configured" }); return; }
@@ -823,14 +827,15 @@ router.post("/tools/property-lookup/search", requirePin, async (req: Request, re
 router.post("/tools/property", requirePin, async (req: Request, res: Response) => {
   try {
     const {
-      street, city, state, zip,
+      street: _streetProp, address: _addressProp, city, state, zip,
       repairCost = 0,
       radiusMiles = 0.5,
       maxComps = 8,
     } = (req.body || {}) as {
-      street: string; city?: string; state?: string; zip?: string;
+      street?: string; address?: string; city?: string; state?: string; zip?: string;
       repairCost?: number; radiusMiles?: number; maxComps?: number;
     };
+    const street = _streetProp || _addressProp || "";
 
     if (!street) { res.status(400).json({ error: "street is required" }); return; }
     if (!hasAttomKey()) { res.status(503).json({ error: "ATTOM API key not configured" }); return; }

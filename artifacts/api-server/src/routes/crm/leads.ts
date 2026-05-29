@@ -2550,4 +2550,10 @@ router.post("/:id/rentcast-valuation", crmAuth, async (req, res) => {
 });
 
 
+// ─── GET /crm/leads/:id/appointments ──────────────────────────────────────────
+// Appointments feature is not yet implemented (BUG-043).
+router.get("/:id/appointments", crmAuth, (_req, res) => {
+  res.status(501).json({ error: "Appointments feature not yet implemented.", appointments: [] });
+});
+
 export default router;

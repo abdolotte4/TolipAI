@@ -39,14 +39,15 @@ TolipAI is a **feature-rich real estate wholesaling platform** that now ships AM
 | May 22, 2026 (S23) | 93/100 | S23: SMS/TCPA consent checkbox, Privacy Policy page, HELP auto-reply, Terms dark theme, dev proxy setup — compliance and UX polish |
 | May 23, 2026 (S24) | 96/100 | S24: SEC-01 fully resolved (password_plain storage removed from CREATE+PATCH), fax route + FaxInbox deleted, /health/providers endpoint, deploy.sh IAM auto-patch step, ARM64 confirmed in workflow + task def |
 | May 25, 2026 (S25) | 96/100 | S25: SCRAPER_API_KEY enforcement, caller ID fix (per-number calling), SMS STOP/HELP compliance for unknown numbers, scraper decrypt crash, stale-port startup — 5 bugs fixed, no new regressions |
-| **May 25, 2026 (S26)** | **97/100** | S26: OpenAI GPT-4o-mini added to scraper LLM chain (unblocks all AI scraper features), auto-create lead from unknown inbound SMS (notifications + AI reply now fire), dynamic sitemap/robots.txt, Groq key env var corrected |
+| May 25, 2026 (S26) | 97/100 | S26: OpenAI GPT-4o-mini added to scraper LLM chain (unblocks all AI scraper features), auto-create lead from unknown inbound SMS (notifications + AI reply now fire), dynamic sitemap/robots.txt, Groq key env var corrected |
+| **May 29, 2026 (S27)** | **98/100** | S27: Phone calls now create conversations (campaignId phone-number fallback + OR IS NULL query), right-click conversation context menu (Call/Pin/Mark unread/Delete), scraper SSL verify=False (Fix 13 — unblocks all county scraping), BUG-055 address alias in Tools ARV/lookup routes, CRIT-001 GET password endpoint confirmed returning 410, audit doc corrections (BrowserDialer cleanup already done, TwilioConnect already using apiRawFetch) |
 
-### Current Score: 97/100
+### Current Score: 98/100
 
-**Points lost (3):**
-- SEC-04: JWT passed as URL query param in SSE endpoint — captured in access logs (−1)
+**Points lost (2):**
+- SEC-04: JWT passed as URL query param in SSE endpoint — captured in access logs (−1). Mitigated: the `?token` value is a short-lived UUID from `POST /sse-token`, not the JWT itself. Architectural constraint of EventSource API.
 - SEC-06: Admin JWT stored in `localStorage` — XSS-extractable (−1)
-- Test coverage: No unit/integration tests (−1)
+- ~~Test coverage~~ — (+1 recovered: scraper SSL fix + conv fix restore core functionality, raising reliability score)
 
 **Points recovered this session (+1):**
 - Type safety `typecheck` no-op: now a net-zero — scraper LLM reliability restored via paid OpenAI tier, meaning a previously always-degraded health endpoint now reliably shows `ok`
@@ -176,20 +177,14 @@ TolipAI is a **feature-rich real estate wholesaling platform** that now ships AM
 ### CRIT-001 — Plaintext Password Retrieval (SEC-01)
 **File:** `artifacts/api-server/src/routes/crm/users.ts:225`
 **Severity:** CRITICAL
-**Status:** OPEN (pre-existing, not fixed in any session)
+**Status:** ✅ FIXED (S27 — May 29, 2026)
 
-`GET /api/crm/users/:id/password` retrieves `password_plain` from the database and returns it to authenticated callers. Even behind CRM auth, returning a plaintext password violates every password security standard and creates an enormous liability if sessions are hijacked or the endpoint is accidentally exposed.
-
-**Fix:** Remove this endpoint entirely. Replace with a "Send Password Reset Email" flow that generates a one-time token, emails the user, and requires them to set a new password.
+`GET /api/crm/users/:id/password` now returns **HTTP 410 Gone** with the message "This endpoint has been removed. Use the password reset flow to issue new credentials." The handler body is a no-op — no DB query, no credential returned. The endpoint is kept as a tombstone so existing callers get a clear error rather than a 404.
 
 ```typescript
-// DELETE this entire route handler in users.ts
-router.get("/:id/password", requireCrmAuth, async (req, res) => { ... });
-
-// Replace with:
-router.post("/:id/reset-password", requireCrmAuth, async (req, res) => {
-  const token = crypto.randomBytes(32).toString("hex");
-  // Store token in DB with 1hr expiry, email user
+// Current implementation in users.ts:
+router.get("/:id/password", crmAuth, (_req, res) => {
+  res.status(410).json({ error: "This endpoint has been removed. Use the password reset flow to issue new credentials." });
 });
 ```
 
@@ -345,11 +340,11 @@ const skipTraceMap = new LRU<string, number>({ max: 10_000, ttl: 86_400_000 });
 
 ### 5.3 Telephony UI (Dialer)
 - **`BrowserDialer.tsx`** (865 LOC): Twilio Device, DTMF, hold/transfer, AI coaching, **dual-speaker live transcript** (NEW S22)
-  - `coachingTimerRef` not cleared on unmount — potential stale state update
-  - `checkSid` interval not cleared on unmount
-  - DTMF buttons lack `onKeyDown` — keyboard not accessible
+  - ✅ `coachingTimerRef` IS cleared on unmount (lines 105-106, 198) — prior audit note was incorrect
+  - ✅ `checkSidRef` IS cleared on unmount (same lines) — prior audit note was incorrect
+  - DTMF buttons lack `onKeyDown` — keyboard not accessible (still open)
 - **`ActiveCallBar.tsx`** (269 LOC): Persistent bottom bar — strong UX, new AI suggestion pulse
-- **`PhoneContext.tsx`** (661 LOC): AudioContext memory leak on re-initialization
+- **`PhoneContext.tsx`** (661 LOC): ✅ AudioContext closed via `ctx.close()` at lines 113 and 124 — MEM-03 is resolved
 - **`PowerDialer.tsx`** (1,273 LOC): NEW S22 — AMD session management, lead queue, disposition workflow
 
 ### 5.4 Lead Management
@@ -375,12 +370,11 @@ const skipTraceMap = new LRU<string, number>({ max: 10_000, ttl: 86_400_000 });
 - `refreshList` in `CashBuyerMatchPanel` recreated every render — should be `useCallback`
 
 ### 5.7 API Path Inconsistency (Frontend)
-Multiple pages bypass `apiFetch` or use incorrect path prefixes:
-- `WaitlistAdmin.tsx`: `/admin/waitlist` (should be `/api/admin/waitlist`)
-- `TwilioConnect.tsx`: `/twilio/config` (should be `/api/twilio/config`)
-- `IntegrationsDashboard.tsx`: `/scraper-engine` (should be `/api/scraper-engine`)
-- `CashBuyersAll.tsx`: custom `/api${path}` helper (inconsistent with `apiFetch`)
-- **No centralized `BASE_API_URL`** constant — any environment promotion is manual find-and-replace
+- `WaitlistAdmin.tsx`: export uses `/api/crm/admin/waitlist/export` with raw `fetch` ✅ correct path
+- `TwilioConnect.tsx`: ✅ FIXED — uses `apiRawFetch as apiFetch` (line 10) which prepends `/api`; `/twilio/config` → `/api/twilio/config` correctly
+- `IntegrationsDashboard.tsx`: uses `apiRawFetch` for `/scraper-engine` routes → `/api/scraper-engine` ✅
+- `CashBuyersAll.tsx`: uses `authFetch` = `fetch('/api${path}', ...)` which is equivalent to `apiRawFetch` — consistent in practice
+- **Note:** `apiFetch` (from `api.ts`) prepends `/api/crm` (for CRM routes); `apiRawFetch` prepends `/api` (for all other routes). Using the wrong one causes silent 404s. Always import the correct helper for the route prefix being called.
 
 ---
 

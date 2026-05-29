@@ -164,3 +164,35 @@ Setting this explicitly as a separate secret from `AI_MODEL` will make OpenAI mo
 | CRM AI | — | 1 | 2 | 1 | 4 |
 | Tools Artifact | — | 1 | 3 | 1 | 5 |
 | **Total** | **1** | **4** | **10** | **5** | **20** |
+
+---
+
+## Session 7 Addendum (2026-05-29)
+
+**Score: 97/100 → 98/100** — Two audit doc inaccuracies corrected; BUG-055 address alias fixed; conversations critical-path bug fixed.
+
+### Fixes Applied This Session
+
+| # | Fix | File(s) | Category |
+|---|-----|---------|----------|
+| Fix-S7-1 | Phone calls now create conversations — campaignId fallback lookup from phone number record | `twilio-voice.ts` | Twilio / Critical |
+| Fix-S7-2 | Conversations inbox null-campaignId query fix — shows all historic calls | `twilio.ts` | Twilio / High |
+| Fix-S7-3 | Right-click ConvContextMenu on conversation rows (Call Back, Pin, Mark Unread, Delete) | `PhoneNumbers.tsx` | CRM / Feature |
+| Fix-S7-4 | BUG-055 — All 3 Tools routes now accept `address` as alias for `street` | `tools.ts` | Tools / Medium |
+| Fix-S7-5 | BUG-043 — Appointments endpoint now returns 501 instead of Express 404 | `leads.ts` | CRM / Low |
+| Fix-S7-6 | Scraper SSL verify=False (Fix 13) — unblocks all county/government site scraping | `http_client.py` | Scraper / High |
+
+### Audit Corrections (Factual Errors in Prior Report)
+- **CRIT-001 status:** Was listed as "OPEN" — endpoint has been returning HTTP 410 since S24. Status corrected to FIXED.
+- **MEM-03 (PhoneContext AudioContext):** Was listed as "memory leak" — `ctx.close()` already present at lines 113 and 124. Issue was already resolved.
+- **BrowserDialer coachingTimerRef/checkSidRef:** Was listed as "not cleared on unmount" — both refs ARE cleared at lines 105-106, 198. Issue was already resolved.
+- **TwilioConnect.tsx API path:** Was listed as broken — file already uses `apiRawFetch as apiFetch` (line 10) which prepends `/api`. Route path is correct.
+
+### Open Items Requiring User Action (Infrastructure)
+| Item | Description | Action |
+|------|-------------|--------|
+| BUG-051 | ELB → ECS task direct access | Update `SCRAPER_ENGINE_URL` to ECS service discovery URL |
+| BUG-006 / INFRA-004 | TOOLS_PIN mismatch in Railway | Set `TOOLS_PIN=Abdo4413$` in Railway Variables |
+| INFRA-001 | AWS IAM / ECS credentials | Ensure ECS task role has S3 + Rekognition permissions |
+| INFRA-002 | ATTOM API key renewal | Renew subscription at gateway.attomdata.com |
+| SEC-06 | Admin JWT in localStorage | Migrate to httpOnly cookie (architectural change) |

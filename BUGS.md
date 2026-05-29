@@ -1,6 +1,6 @@
 # TolipAI CRM — Bug Tracker
 
-> Last updated: 2026-05-25 (Session 5 — SCRAPER_API_KEY, caller ID, SMS compliance, scraper tests)
+> Last updated: 2026-05-29 (Session 7 — Conversations fix, context menu, BUG-055 address alias, audit corrections)
 > Status legend: 🔴 Open | 🟡 In-Progress | 🟢 Fixed | ⚪ Needs-Test
 
 ---
@@ -208,9 +208,9 @@ Also confirmed: `GET /api/crm/analytics/campaigns` (7 campaigns), `GET /api/crm/
 **Impact:** All ATTOM-dependent features broken: ARV calculation, property lookup, comps, fetch-property-data.  
 **Fix:** Renew ATTOM subscription at gateway.attomdata.com and update both keys in Railway + Replit Secrets.
 
-### INFRA-003 — Scraper engine GROQ_API_KEY in ECS 🔴 Open
-**Required:** ECS task definition needs `GROQ_API_KEY` for AI research endpoints (satellite-dfd, hedge fund markets, distressed AI scoring).  
-**Note:** All 20 secrets ARE present in AWS Secrets Manager — verify that ECS task definition references them.
+### INFRA-003 — Scraper engine GROQ_API_KEY in ECS 🟢 Resolved
+**Status:** Groq was removed from `llm.py` as part of Fix 12 (S26). The scraper now uses **OpenAI GPT-4o-mini only** (plus Bedrock opt-in). `GROQ_API_KEY` is no longer referenced in Python scraper code.
+**Required ECS secrets (current):** Only `OPENAI_API_KEY` + `SCRAPER_API_KEY` + `DATABASE_URL` + `REDIS_URL` are mandatory. All others are optional feature credentials (BrightData, Propelio, Propwire, Google Maps, ATTOM).
 
 ### INFRA-004 — TOOLS_PIN mismatch in Railway 🔴 Open
 **Fix:** Set `TOOLS_PIN=Abdo4413$` in Railway API service Variables.  
@@ -305,11 +305,11 @@ The sequence reset at startup silently skips these tables.
 **Impact:** No functional issue — sequences are still managed by PostgreSQL. IDs will not reset.
 **Fix (optional):** Migrate columns to identity columns: `ALTER TABLE crm_call_logs ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY`.
 
-### BUG-043 — Lead appointments endpoint returns 404 🔴 Open
+### BUG-043 — Lead appointments endpoint not implemented 🟡 In-Progress
 **Endpoint:** `GET /api/crm/leads/:id/appointments`
-**Result:** `Not found` (Express default 404)
-**Cause:** Route may not be registered or the appointments feature is not yet implemented.
-**Fix required:** Check route registration in `artifacts/api-server/src/routes/index.ts`.
+**Previous result:** `Not found` (Express default 404 — no handler)
+**Current result:** HTTP 501 `{"error":"Appointments feature not yet implemented.","appointments":[]}` — proper stub added in S27.
+**Fix required:** Implement appointments DB table + CRUD routes. No `crm_appointments` table exists in schema yet.
 
 ### BUG-044 — Twilio campaign-health shows campaigns without valid Twilio auth 🟡 Low
 **Note:** `/api/twilio/phone-numbers` returns `"warning": "Twilio API unreachable"`.
@@ -383,11 +383,33 @@ Twilio SID/auth token may be configured but the account is not reachable from Re
 **Symptom:** Empty response body.  
 **Cause:** GROQ rate limited + possibly Playwright needed to fetch market data.
 
-### BUG-055 — Tools property lookup requires `street` not `address` field 🔴 Open (needs fix or docs)
-**Endpoints:** `POST /api/tools/arv/calculate`, `POST /api/tools/property-lookup/search`  
-**Symptom:** Returns `{"error":"street is required"}` when using `{"address":"...","city":"...","state":"...","zip":"..."}`  
-**Correct payload:** `{"street":"4529 Winona Court","city":"Denver","state":"CO","zip":"80212","bedrooms":3,"bathrooms":2,"sqft":1500}`  
-**Fix required:** Either update frontend to send `street` field, or add `address` as alias in route handler.
+### BUG-055 — Tools property lookup requires `street` not `address` field 🟢 Fixed (S27)
+**Endpoints:** `POST /api/tools/arv/calculate`, `POST /api/tools/property-lookup/search`, `POST /api/tools/property`
+**Fix:** All 3 route handlers now accept either `street` or `address` field — `const street = req.body.street || req.body.address`. Both payloads now work:
+- `{"street":"4529 Winona Court","city":"Denver","state":"CO","zip":"80212"}`
+- `{"address":"4529 Winona Court","city":"Denver","state":"CO","zip":"80212"}`
+
+---
+
+## SESSION 7 FIXES (2026-05-29 — Conversations, Context Menu, BUG-055 Address Alias, Audit Corrections)
+
+### BUG-079 — Phone calls not creating conversations 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/twilio-voice.ts`
+**Root cause:** `campaignId` was read from the TwiML webhook body, but Twilio outbound call webhooks don't replay `customParameters` on status callbacks. The route now falls back to looking up `campaignId` from the matching phone number record.
+**Fix:** Added phone-number-to-campaign fallback lookup in `handleVoiceStatus`.
+
+### BUG-080 — Conversations inbox missing call logs with null campaignId 🟢 Fixed
+**File:** `artifacts/api-server/src/routes/twilio.ts`
+**Root cause:** The conversations union query had `eq(t.campaignId, campaignId)` with no null guard. Calls where `campaignId IS NULL` (pre-fix legacy data) were silently excluded.
+**Fix:** Added `or(eq(t.campaignId, campaignId), isNull(t.campaignId))` — now shows all historic calls.
+
+### BUG-081 — No right-click context menu on conversation rows 🟢 Fixed (Feature)
+**File:** `artifacts/TolipAI-crm/src/pages/phone/PhoneNumbers.tsx`
+**Detail:** Added `ConvContextMenu` component (right-click on any conversation row) with actions: Call Back, Pin/Unpin, Mark as Unread, Delete. Matches OpenPhone UX pattern.
+
+### BUG-082 — Appointments endpoint returns Express default 404 🟢 Fixed (S27)
+**Endpoint:** `GET /api/crm/leads/:id/appointments`
+**Fix:** Added proper 501 stub in `leads.ts` returning `{"error":"Appointments feature not yet implemented.","appointments":[]}`. Feature needs DB table + CRUD to complete (see BUG-043).
 
 ---
 
