@@ -25,7 +25,7 @@ import twilio from "twilio";
 import { crmAuth, crmAdminOnly } from "./crm/middleware";
 import { db, pool } from "@workspace/db";
 import { crmCampaigns, crmOpenPhoneMessages, crmLeads, crmUsers, crmNotifications, crmSmsOptOuts, crmSmsConversations, crmCallLogs, crmCampaignPhoneNumbers } from "@workspace/db/schema";
-import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
+import { eq, desc, and, sql, isNotNull, or, isNull } from "drizzle-orm";
 import { toE164, digitsOnly } from "../services/coreCalculations";
 import { encryptPassword, decryptPassword } from "./crm/crypto-util";
 import {
@@ -1227,7 +1227,9 @@ router.get("/twilio/phone-numbers/:number/conversations", crmAuth, async (req, r
         OR RIGHT(REGEXP_REPLACE(crm_call_logs.to_number, '[^0-9]', '', 'g'), 10) = ${ownedDigits})`,
     ];
     if (!isSuperAdmin && crmUser.campaignId) {
-      callConditions.push(eq(crmCallLogs.campaignId, crmUser.campaignId));
+      callConditions.push(
+        or(eq(crmCallLogs.campaignId, crmUser.campaignId), isNull(crmCallLogs.campaignId))!
+      );
     }
 
     const smsConditions: any[] = [
@@ -1428,7 +1430,7 @@ router.get("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, asyn
     const crmLeadsTable = crmLeads;
     const callCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
       ? sql`TRUE`
-      : eq(crmCallLogs.campaignId, crmUser.campaignId);
+      : or(eq(crmCallLogs.campaignId, crmUser.campaignId), isNull(crmCallLogs.campaignId));
     const smsCampaignFilter: any = isSuperAdmin || !crmUser.campaignId
       ? sql`TRUE`
       : eq(crmOpenPhoneMessages.campaignId, crmUser.campaignId);
@@ -1514,6 +1516,75 @@ router.post("/twilio/phone-numbers/:number/conversations/:contact/read", crmAuth
     res.json({ ok: true });
   } catch (err: any) {
     logger.error(err, "[phone-numbers/read] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/twilio/phone-numbers/:number/conversations/:contact/unread ─────
+// Marks a conversation as unread by resetting the read receipt timestamp to epoch
+// so all subsequent inbound SMS appear as new.
+router.post("/twilio/phone-numbers/:number/conversations/:contact/unread", crmAuth, async (req, res) => {
+  const { number, contact } = req.params;
+  const crmUser = req.crmUser!;
+  if (!crmUser.campaignId) {
+    res.json({ ok: true });
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO crm_phone_read_receipts (campaign_id, owned_number, contact, last_read_at)
+       VALUES ($1, $2, $3, '2000-01-01'::timestamp)
+       ON CONFLICT (campaign_id, owned_number, contact)
+       DO UPDATE SET last_read_at = '2000-01-01'::timestamp`,
+      [crmUser.campaignId, number, contact]
+    );
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.error(err, "[phone-numbers/unread] error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/twilio/phone-numbers/:number/conversations/:contact ───────────
+// Permanently deletes all call logs and SMS messages in this conversation.
+router.delete("/twilio/phone-numbers/:number/conversations/:contact", crmAuth, async (req, res) => {
+  const { number, contact } = req.params;
+  const crmUser = req.crmUser!;
+  try {
+    const isSuperAdmin = crmUser.role === "super_admin";
+    const numDigits = number.replace(/\D/g, "").slice(-10);
+    const ctDigits = contact.replace(/\D/g, "").slice(-10);
+
+    const callCampaignCond: any = isSuperAdmin || !crmUser.campaignId
+      ? sql`TRUE`
+      : or(eq(crmCallLogs.campaignId, crmUser.campaignId), isNull(crmCallLogs.campaignId));
+
+    const smsCampaignCond: any = isSuperAdmin || !crmUser.campaignId
+      ? sql`TRUE`
+      : eq(crmOpenPhoneMessages.campaignId, crmUser.campaignId);
+
+    const pairSql = (fromCol: any, toCol: any) => sql`(
+      (RIGHT(REGEXP_REPLACE(${fromCol}, '[^0-9]', '', 'g'), 10) = ${numDigits}
+        AND RIGHT(REGEXP_REPLACE(${toCol}, '[^0-9]', '', 'g'), 10) = ${ctDigits})
+      OR
+      (RIGHT(REGEXP_REPLACE(${fromCol}, '[^0-9]', '', 'g'), 10) = ${ctDigits}
+        AND RIGHT(REGEXP_REPLACE(${toCol}, '[^0-9]', '', 'g'), 10) = ${numDigits})
+    )`;
+
+    await Promise.all([
+      db.delete(crmCallLogs).where(and(callCampaignCond, pairSql(crmCallLogs.fromNumber, crmCallLogs.toNumber))),
+      db.delete(crmOpenPhoneMessages).where(and(smsCampaignCond, pairSql(crmOpenPhoneMessages.fromNumber, crmOpenPhoneMessages.toNumber))),
+      crmUser.campaignId
+        ? pool.query(
+            `DELETE FROM crm_phone_read_receipts WHERE campaign_id = $1 AND RIGHT(REGEXP_REPLACE(owned_number, '[^0-9]', '', 'g'), 10) = $2 AND RIGHT(REGEXP_REPLACE(contact, '[^0-9]', '', 'g'), 10) = $3`,
+            [crmUser.campaignId, numDigits, ctDigits]
+          )
+        : Promise.resolve(),
+    ]);
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.error(err, "[phone-numbers/conversations/delete] error");
     res.status(500).json({ error: err.message });
   }
 });

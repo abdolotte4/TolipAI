@@ -368,6 +368,13 @@ router.post("/twilio/voice/answer", twilioAuth, async (req, res) => {
               .where(eq(crmCampaigns.twilioAccountSid, accountSidFromTwilio)).limit(1);
             campaignId = camp?.id ?? null;
           }
+          if (!campaignId && callerId) {
+            const callerDigits = callerId.replace(/\D/g, "").slice(-10);
+            const [campByPhone] = await db.select({ id: crmCampaigns.id }).from(crmCampaigns)
+              .where(sql`regexp_replace(${crmCampaigns.twilioPhoneNumber}, '[^0-9]', '', 'g') LIKE ${"%" + callerDigits}`)
+              .limit(1);
+            campaignId = campByPhone?.id ?? null;
+          }
           let leadId: number | null = null;
           if (to) {
             const digits10 = to.replace(/\D/g, "").slice(-10);
@@ -432,6 +439,13 @@ router.post("/twilio/voice/answer", twilioAuth, async (req, res) => {
             const [camp] = await db.select({ id: crmCampaigns.id }).from(crmCampaigns)
               .where(eq(crmCampaigns.twilioAccountSid, accountSidFromTwilio)).limit(1);
             campaignId = camp?.id ?? null;
+          }
+          if (!campaignId && callerId) {
+            const callerDigits = callerId.replace(/\D/g, "").slice(-10);
+            const [campByPhone] = await db.select({ id: crmCampaigns.id }).from(crmCampaigns)
+              .where(sql`regexp_replace(${crmCampaigns.twilioPhoneNumber}, '[^0-9]', '', 'g') LIKE ${"%" + callerDigits}`)
+              .limit(1);
+            campaignId = campByPhone?.id ?? null;
           }
           let leadId: number | null = null;
           if (to) {
@@ -875,6 +889,13 @@ router.post("/twilio/voice/log", crmAuth, async (req, res) => {
         .where(eq(crmLeads.id, Number(leadId)))
         .limit(1);
       campaignId = leadRow?.campaignId ?? null;
+    }
+    if (!campaignId && fromNumber) {
+      const fromDigits = fromNumber.replace(/\D/g, "").slice(-10);
+      const [campByPhone] = await db.select({ id: crmCampaigns.id }).from(crmCampaigns)
+        .where(sql`regexp_replace(${crmCampaigns.twilioPhoneNumber}, '[^0-9]', '', 'g') LIKE ${"%" + fromDigits}`)
+        .limit(1);
+      campaignId = campByPhone?.id ?? null;
     }
 
     // UPDATE-then-INSERT: avoids ON CONFLICT constraint dependency on schema migrations.

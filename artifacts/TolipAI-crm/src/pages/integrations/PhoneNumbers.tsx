@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -6,6 +6,7 @@ import {
   PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed,
   Hash, RefreshCw, User, Search, Play, Pause, Square, ExternalLink,
   Delete, Plus, Send, Keyboard, X, ChevronLeft,
+  BellOff, CheckCheck, Pin, Clipboard, Trash2,
 } from "lucide-react";
 import { apiRawFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -348,8 +349,14 @@ function DialPad({
 // ─── Conversation List Item ────────────────────────────────────────────────────
 
 function ConversationItem({
-  conv, selected, onClick,
-}: { conv: Conversation; selected: boolean; onClick: () => void }) {
+  conv, selected, onClick, onContextMenu, pinned,
+}: {
+  conv: Conversation;
+  selected: boolean;
+  onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent, conv: Conversation) => void;
+  pinned?: boolean;
+}) {
   const isSmsOnly = conv.totalCalls === 0 && conv.totalSms > 0;
   const isMixed = conv.totalCalls > 0 && conv.totalSms > 0;
   const lastTs = conv.lastActivity || conv.lastCall;
@@ -374,12 +381,18 @@ function ConversationItem({
   return (
     <button
       onClick={onClick}
+      onContextMenu={e => { e.preventDefault(); onContextMenu?.(e, conv); }}
       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-secondary/60 ${selected ? "bg-primary/5 border-r-2 border-primary" : ""}`}
     >
       <div className="relative w-10 h-10 flex-shrink-0">
         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary/20 to-accent/20 border border-border flex items-center justify-center">
           <User className="w-5 h-5 text-muted-foreground" />
         </div>
+        {pinned && (
+          <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary/80 flex items-center justify-center">
+            <Pin className="w-2.5 h-2.5 text-primary-foreground" />
+          </span>
+        )}
         {hasUnread && !selected && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-[9px] font-bold text-white flex items-center justify-center leading-none">
             {conv.unreadCount! > 99 ? "99+" : conv.unreadCount}
@@ -410,6 +423,82 @@ function ConversationItem({
         </div>
       </div>
     </button>
+  );
+}
+
+// ─── Conversation Context Menu ─────────────────────────────────────────────────
+
+function ConvContextMenu({
+  conv, pos, onClose, onCall, onMarkRead, onMarkUnread, onPin, onDelete, isPinned,
+}: {
+  conv: Conversation;
+  pos: { x: number; y: number };
+  onClose: () => void;
+  onCall: () => void;
+  onMarkRead: () => void;
+  onMarkUnread: () => void;
+  onPin: () => void;
+  onDelete: () => void;
+  isPinned: boolean;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", onMouseDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const item = (icon: React.ReactNode, label: string, action: () => void, danger = false) => (
+    <button
+      key={label}
+      onClick={() => { action(); onClose(); }}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left rounded-lg transition-colors ${
+        danger ? "text-red-400 hover:bg-red-500/10" : "text-foreground hover:bg-secondary"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
+  const adjustedPos = {
+    x: Math.min(pos.x, window.innerWidth - 220),
+    y: Math.min(pos.y, window.innerHeight - 280),
+  };
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 bg-popover border border-border rounded-xl shadow-2xl py-1.5 px-1 w-52"
+      style={{ left: adjustedPos.x, top: adjustedPos.y }}
+      onContextMenu={e => e.preventDefault()}
+    >
+      {item(<Phone className="w-4 h-4 text-emerald-400" />, `Call ${fmtPhone(conv.contact)}`, onCall)}
+      <div className="h-px bg-border my-1" />
+      {item(<CheckCheck className="w-4 h-4" />, "Mark as done", onMarkRead)}
+      {item(<BellOff className="w-4 h-4" />, "Mark as unread", onMarkUnread)}
+      {item(
+        <Pin className={`w-4 h-4 ${isPinned ? "text-primary" : ""}`} />,
+        isPinned ? "Unpin conversation" : "Pin conversation",
+        onPin
+      )}
+      <div className="h-px bg-border my-1" />
+      {item(
+        <Clipboard className="w-4 h-4" />,
+        "Copy number",
+        () => navigator.clipboard.writeText(conv.contact).catch(() => {})
+      )}
+      <div className="h-px bg-border my-1" />
+      {item(<Trash2 className="w-4 h-4" />, "Delete conversation", onDelete, true)}
+    </div>
   );
 }
 
@@ -458,6 +547,13 @@ export default function ManualDialerPage() {
   const [search, setSearch] = useState("");
   const [composeText, setComposeText] = useState("");
   const [showDialPad, setShowDialPad] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ conv: Conversation; x: number; y: number } | null>(null);
+  const [pinnedConvs, setPinnedConvs] = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem("crm_pinned_convs");
+      return new Set(s ? JSON.parse(s) : []);
+    } catch { return new Set(); }
+  });
   const threadEndRef = useRef<HTMLDivElement>(null);
   const prevPhoneStatus = useRef(phone.status);
 
@@ -614,6 +710,41 @@ export default function ManualDialerPage() {
     },
   });
 
+  const markUnreadMutation = useMutation({
+    mutationFn: ({ number, contact }: { number: string; contact: string }) =>
+      apiRawFetch(
+        `/twilio/phone-numbers/${encodeURIComponent(number)}/conversations/${encodeURIComponent(contact)}/unread`,
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["phone-number-convs", selectedNumber?.number] });
+      toast({ title: "Marked as unread" });
+    },
+  });
+
+  const deleteConvMutation = useMutation({
+    mutationFn: ({ number, contact }: { number: string; contact: string }) =>
+      apiRawFetch(
+        `/twilio/phone-numbers/${encodeURIComponent(number)}/conversations/${encodeURIComponent(contact)}`,
+        { method: "DELETE" }
+      ),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["phone-number-convs", selectedNumber?.number] });
+      if (selectedContact === vars.contact) setSelectedContact(null);
+      toast({ title: "Conversation deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
+  });
+
+  const togglePin = useCallback((contact: string) => {
+    setPinnedConvs(prev => {
+      const next = new Set(prev);
+      if (next.has(contact)) next.delete(contact); else next.add(contact);
+      try { localStorage.setItem("crm_pinned_convs", JSON.stringify([...next])); } catch { }
+      return next;
+    });
+  }, []);
+
   const sendSmsMutation = useMutation({
     mutationFn: ({ to, content }: { to: string; content: string }) =>
       apiRawFetch("/twilio/messages", {
@@ -638,9 +769,16 @@ export default function ManualDialerPage() {
   const conversations = convsData?.conversations ?? [];
   const thread = historyData?.thread ?? [];
 
-  const filteredConvs = search
-    ? conversations.filter(c => c.contact.includes(search.replace(/\D/g, "")))
-    : conversations;
+  const filteredConvs = useMemo(() => {
+    const list = search
+      ? conversations.filter(c => c.contact.includes(search.replace(/\D/g, "")))
+      : conversations;
+    return [...list].sort((a, b) => {
+      const ap = pinnedConvs.has(a.contact) ? 0 : 1;
+      const bp = pinnedConvs.has(b.contact) ? 0 : 1;
+      return ap !== bp ? ap - bp : 0;
+    });
+  }, [conversations, search, pinnedConvs]);
 
   const handleSelectNumber = useCallback((num: PhoneNumber) => {
     setSelectedNumber(num);
@@ -818,6 +956,8 @@ export default function ManualDialerPage() {
                       conv={conv}
                       selected={!showDialPad && selectedContact === conv.contact}
                       onClick={() => handleSelectContact(conv.contact)}
+                      pinned={pinnedConvs.has(conv.contact)}
+                      onContextMenu={(e, c) => setContextMenu({ conv: c, x: e.clientX, y: e.clientY })}
                     />
                   ))}
                 </div>
@@ -1012,6 +1152,28 @@ export default function ManualDialerPage() {
           )}
         </AnimatePresence>
       </div>
+
+      {contextMenu && selectedNumber && (
+        <ConvContextMenu
+          conv={contextMenu.conv}
+          pos={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          isPinned={pinnedConvs.has(contextMenu.conv.contact)}
+          onCall={() => handleCall(contextMenu.conv.contact)}
+          onMarkRead={() => {
+            markReadMutation.mutate({ number: selectedNumber.number, contact: contextMenu.conv.contact });
+          }}
+          onMarkUnread={() => {
+            markUnreadMutation.mutate({ number: selectedNumber.number, contact: contextMenu.conv.contact });
+          }}
+          onPin={() => togglePin(contextMenu.conv.contact)}
+          onDelete={() => {
+            if (confirm(`Delete all history with ${fmtPhone(contextMenu.conv.contact)}?`)) {
+              deleteConvMutation.mutate({ number: selectedNumber.number, contact: contextMenu.conv.contact });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
