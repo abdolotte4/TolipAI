@@ -48,6 +48,31 @@ async function runDbStartupTasks(): Promise<void> {
     logger.error({ err }, "[startup] crm_phone_read_receipts migration failed");
   }
 
+  // Idempotent migration: ensure crm_appointments table exists (BUG-043)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_appointments (
+        id           SERIAL       PRIMARY KEY,
+        lead_id      INTEGER      NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
+        campaign_id  INTEGER      REFERENCES crm_campaigns(id),
+        title        TEXT         NOT NULL,
+        scheduled_at TIMESTAMPTZ  NOT NULL,
+        duration_mins INTEGER     NOT NULL DEFAULT 30,
+        location     TEXT,
+        notes        TEXT,
+        status       TEXT         NOT NULL DEFAULT 'scheduled',
+        created_by   INTEGER      REFERENCES crm_users(id),
+        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS crm_appointments_lead_id_idx ON crm_appointments (lead_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS crm_appointments_campaign_id_idx ON crm_appointments (campaign_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS crm_appointments_scheduled_at_idx ON crm_appointments (scheduled_at)`);
+  } catch (err: unknown) {
+    logger.error({ err }, "[startup] crm_appointments migration failed");
+  }
+
   // Idempotent migration: ensure crm_waitlist table exists
   try {
     await pool.query(`

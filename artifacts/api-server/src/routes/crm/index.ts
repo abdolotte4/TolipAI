@@ -1,8 +1,20 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { crmSubmissionLinks, crmLeads, crmCampaigns } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "../../lib/logger";
+
+const _submitRlMap = new Map<string, { count: number; resetAt: number }>();
+function publicSubmitRateLimit(req: Request, res: Response, next: NextFunction) {
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() || req.ip || "unknown";
+  const now = Date.now();
+  const entry = _submitRlMap.get(ip);
+  if (!entry || now > entry.resetAt) { _submitRlMap.set(ip, { count: 1, resetAt: now + 3_600_000 }); return next(); }
+  if (entry.count >= 10) { res.status(429).json({ error: "Too many submissions. Please try again later." }); return; }
+  entry.count++;
+  next();
+}
+setInterval(() => { const now = Date.now(); for (const [k, v] of _submitRlMap) if (now > v.resetAt) _submitRlMap.delete(k); }, 30 * 60 * 1000);
 import authRouter from "./auth";
 import campaignsRouter from "./campaigns";
 import leadsRouter from "./leads";
@@ -83,7 +95,7 @@ function parseAddressComponents(full: string): { address: string; city: string |
 }
 
 // Public lead submission: POST /crm/public/submit/:token
-router.post("/crm/public/submit/:token", async (req, res) => {
+router.post("/crm/public/submit/:token", publicSubmitRateLimit, async (req, res) => {
   const { token } = req.params;
   try {
     const [link] = await db.select().from(crmSubmissionLinks).where(eq(crmSubmissionLinks.token, token)).limit(1);

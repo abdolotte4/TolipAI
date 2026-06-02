@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers, crmNotifications, crmComps, crmCallLogs } from "@workspace/db/schema";
+import { crmLeads, crmUsers, crmNotes, crmTasks, crmCampaigns, crmLeadFollowers, crmNotifications, crmComps, crmCallLogs, crmAppointments } from "@workspace/db/schema";
 import { eq, desc, ilike, and, or, sql, ne, inArray } from "drizzle-orm";
 import { crmAuth, crmAdminOnly } from "./middleware";
 import { logger } from "../../lib/logger";
@@ -318,24 +318,13 @@ router.get("/", crmAuth, async (req, res) => {
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [[{ count }], rows] = await Promise.all([
+    const [[{ count }], leadRows] = await Promise.all([
       db.select({ count: sql<number>`count(*)::int` }).from(crmLeads).where(where),
       db
         .select({
           lead: crmLeads,
           assignedToName: crmUsers.name,
           campaignName: crmCampaigns.name,
-          // Most recent MOS score for this lead — shown as a quality badge on the Kanban card
-          lastCallMos: sql<string | null>`(
-            SELECT mos_score FROM crm_call_logs
-            WHERE lead_id = ${crmLeads.id} AND mos_score IS NOT NULL
-            ORDER BY created_at DESC LIMIT 1
-          )`,
-          lastCallAt: sql<string | null>`(
-            SELECT created_at FROM crm_call_logs
-            WHERE lead_id = ${crmLeads.id}
-            ORDER BY created_at DESC LIMIT 1
-          )`,
         })
         .from(crmLeads)
         .leftJoin(crmUsers, eq(crmLeads.assignedTo, crmUsers.id))
@@ -346,16 +335,38 @@ router.get("/", crmAuth, async (req, res) => {
         .offset(offset),
     ]);
 
+    // Batch-fetch last call info for all leads on this page in ONE query
+    // (avoids 2N correlated subqueries that were causing multi-second loads)
+    const leadIds = leadRows.map(r => r.lead.id);
+    const lastCallMap = new Map<number, { mosScore: string | null; createdAt: string | null }>();
+    if (leadIds.length > 0) {
+      const lastCalls = await db.execute(
+        sql`SELECT DISTINCT ON (lead_id) lead_id, mos_score, created_at
+            FROM crm_call_logs
+            WHERE lead_id = ANY(${leadIds}::int[])
+            ORDER BY lead_id, created_at DESC`
+      );
+      for (const row of lastCalls.rows as any[]) {
+        lastCallMap.set(Number(row.lead_id), {
+          mosScore: row.mos_score ?? null,
+          createdAt: row.created_at ? String(row.created_at) : null,
+        });
+      }
+    }
+
     res.json({
-      leads: rows.map(r => ({
-        ...formatLeadSummary(
-          r.lead,
-          r.assignedToName ? { name: r.assignedToName } : null,
-          r.campaignName ?? null,
-        ),
-        lastCallMos: r.lastCallMos != null ? parseFloat(String(r.lastCallMos)) : null,
-        lastCallAt: r.lastCallAt ?? null,
-      })),
+      leads: leadRows.map(r => {
+        const callInfo = lastCallMap.get(r.lead.id);
+        return {
+          ...formatLeadSummary(
+            r.lead,
+            r.assignedToName ? { name: r.assignedToName } : null,
+            r.campaignName ?? null,
+          ),
+          lastCallMos: callInfo?.mosScore != null ? parseFloat(String(callInfo.mosScore)) : null,
+          lastCallAt: callInfo?.createdAt ?? null,
+        };
+      }),
       total: count,
       page: pageNum,
       limit: limitNum,
@@ -2550,10 +2561,101 @@ router.post("/:id/rentcast-valuation", crmAuth, async (req, res) => {
 });
 
 
-// ─── GET /crm/leads/:id/appointments ──────────────────────────────────────────
-// Appointments feature is not yet implemented (BUG-043).
-router.get("/:id/appointments", crmAuth, (_req, res) => {
-  res.status(501).json({ error: "Appointments feature not yet implemented.", appointments: [] });
+// ─── Appointments CRUD (/crm/leads/:id/appointments) ──────────────────────────
+
+router.get("/:id/appointments", crmAuth, async (req, res) => {
+  const leadId = parseInt(req.params.id);
+  if (isNaN(leadId)) { res.status(400).json({ error: "Invalid lead ID" }); return; }
+  try {
+    const rows = await db
+      .select({ appointment: crmAppointments, createdByName: crmUsers.name })
+      .from(crmAppointments)
+      .leftJoin(crmUsers, eq(crmAppointments.createdBy, crmUsers.id))
+      .where(eq(crmAppointments.leadId, leadId))
+      .orderBy(desc(crmAppointments.scheduledAt));
+    res.json({
+      appointments: rows.map(r => ({
+        id: r.appointment.id,
+        leadId: r.appointment.leadId,
+        title: r.appointment.title,
+        scheduledAt: r.appointment.scheduledAt instanceof Date ? r.appointment.scheduledAt.toISOString() : String(r.appointment.scheduledAt),
+        durationMins: r.appointment.durationMins,
+        location: r.appointment.location ?? null,
+        notes: r.appointment.notes ?? null,
+        status: r.appointment.status,
+        createdBy: r.appointment.createdBy ?? null,
+        createdByName: r.createdByName ?? null,
+        createdAt: r.appointment.createdAt instanceof Date ? r.appointment.createdAt.toISOString() : String(r.appointment.createdAt),
+        updatedAt: r.appointment.updatedAt instanceof Date ? r.appointment.updatedAt.toISOString() : String(r.appointment.updatedAt),
+      })),
+    });
+  } catch (err) {
+    logger.error(err, "GET appointments error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:id/appointments", crmAuth, async (req, res) => {
+  const leadId = parseInt(req.params.id);
+  if (isNaN(leadId)) { res.status(400).json({ error: "Invalid lead ID" }); return; }
+  const crmUser = req.crmUser!;
+  const { title, scheduledAt, durationMins, location, notes } = req.body;
+  if (!title || !scheduledAt) { res.status(400).json({ error: "title and scheduledAt are required" }); return; }
+  try {
+    const [apt] = await db.insert(crmAppointments).values({
+      leadId,
+      campaignId: crmUser.campaignId ?? null,
+      title: String(title),
+      scheduledAt: new Date(scheduledAt),
+      durationMins: durationMins ? parseInt(durationMins) : 30,
+      location: location || null,
+      notes: notes || null,
+      status: "scheduled",
+      createdBy: crmUser.userId,
+    }).returning();
+    res.status(201).json({ appointment: apt });
+  } catch (err) {
+    logger.error(err, "POST appointment error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/:id/appointments/:aptId", crmAuth, async (req, res) => {
+  const leadId = parseInt(req.params.id);
+  const aptId = parseInt(req.params.aptId);
+  if (isNaN(leadId) || isNaN(aptId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const { title, scheduledAt, durationMins, location, notes, status } = req.body;
+  const updates: Partial<typeof crmAppointments.$inferInsert> = { updatedAt: new Date() };
+  if (title) updates.title = String(title);
+  if (scheduledAt) updates.scheduledAt = new Date(scheduledAt);
+  if (durationMins != null) updates.durationMins = parseInt(durationMins);
+  if (location !== undefined) updates.location = location || null;
+  if (notes !== undefined) updates.notes = notes || null;
+  if (status) updates.status = String(status);
+  try {
+    const [apt] = await db.update(crmAppointments)
+      .set(updates)
+      .where(and(eq(crmAppointments.id, aptId), eq(crmAppointments.leadId, leadId)))
+      .returning();
+    if (!apt) { res.status(404).json({ error: "Appointment not found" }); return; }
+    res.json({ appointment: apt });
+  } catch (err) {
+    logger.error(err, "PATCH appointment error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/:id/appointments/:aptId", crmAuth, async (req, res) => {
+  const leadId = parseInt(req.params.id);
+  const aptId = parseInt(req.params.aptId);
+  if (isNaN(leadId) || isNaN(aptId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  try {
+    await db.delete(crmAppointments).where(and(eq(crmAppointments.id, aptId), eq(crmAppointments.leadId, leadId)));
+    res.json({ success: true });
+  } catch (err) {
+    logger.error(err, "DELETE appointment error");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;

@@ -10,6 +10,25 @@ import {
   AdminMarkContactReadResponse,
 } from "@workspace/api-zod";
 
+const _loginRlMap = new Map<string, { count: number; lockedUntil: number }>();
+function adminLoginRateLimit(req: Request, res: Response, next: NextFunction) {
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() || req.ip || "unknown";
+  const now = Date.now();
+  const entry = _loginRlMap.get(ip);
+  if (entry && now < entry.lockedUntil) {
+    res.status(429).json({ error: "Too many failed login attempts. Try again in 15 minutes." }); return;
+  }
+  if (!entry || now >= entry.lockedUntil) { _loginRlMap.set(ip, { count: 0, lockedUntil: 0 }); }
+  next();
+}
+function recordLoginFailure(ip: string) {
+  const entry = _loginRlMap.get(ip) ?? { count: 0, lockedUntil: 0 };
+  entry.count++;
+  if (entry.count >= 5) entry.lockedUntil = Date.now() + 15 * 60 * 1000;
+  _loginRlMap.set(ip, entry);
+}
+setInterval(() => { const now = Date.now(); for (const [k, v] of _loginRlMap) if (now >= v.lockedUntil && v.count < 5) _loginRlMap.delete(k); }, 30 * 60 * 1000);
+
 const router: IRouter = Router();
 
 function getJwtSecret(): string {
@@ -34,7 +53,7 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
 }
 
 // POST /api/admin/login
-router.post("/admin/login", async (req, res) => {
+router.post("/admin/login", adminLoginRateLimit, async (req: Request, res: Response) => {
   const parseResult = AdminLoginBody.safeParse(req.body);
   if (!parseResult.success) {
     res.status(400).json({ error: "Invalid credentials format" });
@@ -50,11 +69,14 @@ router.post("/admin/login", async (req, res) => {
   }
 
   if (username !== adminUser || password !== adminPass) {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() || req.ip || "unknown";
+    recordLoginFailure(ip);
     res.status(401).json({ error: "Invalid username or password" });
     return;
   }
 
-  const token = jwt.sign({ role: "admin", username }, getJwtSecret(), { expiresIn: "24h" });
+  const expiresIn = process.env.ADMIN_JWT_EXPIRY || "8h";
+  const token = jwt.sign({ role: "admin", username }, getJwtSecret(), { expiresIn } as any);
   res.json({ token, message: "Login successful" });
 });
 

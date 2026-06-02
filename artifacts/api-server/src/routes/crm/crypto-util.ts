@@ -8,7 +8,7 @@ import {
 } from "crypto";
 
 function getKey(): Buffer {
-  const secret = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+  const secret = process.env.ENCRYPTION_KEY;
   if (!secret) {
     throw new Error("ENCRYPTION_KEY environment variable is not set — cannot encrypt/decrypt values");
   }

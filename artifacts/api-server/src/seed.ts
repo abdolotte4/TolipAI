@@ -27,6 +27,11 @@ async function ensureIndexes() {
     ["idx_crm_seq_logs_dedup",          "CREATE INDEX IF NOT EXISTS idx_crm_seq_logs_dedup ON crm_sequence_logs(lead_id, sequence_id, step_id) WHERE step_id IS NOT NULL"],
     // Full-text search: lead address + city + seller name (enables fast GIN search vs slow ILIKE)
     ["idx_crm_leads_fts",               "CREATE INDEX IF NOT EXISTS idx_crm_leads_fts ON crm_leads USING gin(to_tsvector('english', coalesce(address,'') || ' ' || coalesce(city,'') || ' ' || coalesce(seller_name,'')))"],
+    // Email and zip indexes — search and lookup performance (PERF)
+    ["idx_crm_leads_email",             "CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads(email)"],
+    ["idx_crm_leads_zip",               "CREATE INDEX IF NOT EXISTS idx_crm_leads_zip ON crm_leads(zip)"],
+    // scraper_jobs campaign lookup
+    ["idx_scraper_jobs_campaign_id",    "CREATE INDEX IF NOT EXISTS idx_scraper_jobs_campaign_id ON scraper_jobs(campaign_id)"],
   ];
   for (const [name, ddl] of indexes) {
     try {

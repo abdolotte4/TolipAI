@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 const PROPERTY_TYPES = ["Single Family", "Multi-Family", "Condo/Townhouse", "Mobile Home", "Land/Lot", "Commercial", "Other"];
 const OCCUPANCY_OPTIONS = ["Owner Occupied", "Vacant", "Tenant Occupied", "Rented", "Unknown"];
@@ -33,6 +34,7 @@ function authHeaders() {
 export default function NewLead() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const qc = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({
@@ -92,6 +94,7 @@ export default function NewLead() {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Failed to create lead");
+      await qc.invalidateQueries({ queryKey: ["/api/crm/leads"] });
       toast({ title: "Lead created successfully!" });
       setLocation(`/leads/${data.id}`);
     } catch (err: any) {

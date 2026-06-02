@@ -122,6 +122,9 @@ export const crmLeads = pgTable("crm_leads", {
   index("crm_leads_created_at_idx").on(t.createdAt),
   // Phone index — critical for SMS webhook lookup (was doing full-table scan + JS find before)
   index("crm_leads_phone_idx").on(t.phone),
+  // Email and zip indexes for search and lookup performance
+  index("crm_leads_email_idx").on(t.email),
+  index("crm_leads_zip_idx").on(t.zip),
   // Composite: most common query is "active leads for a campaign ordered by date"
   index("crm_leads_campaign_archived_created_idx").on(t.campaignId, t.archived, t.createdAt),
 ]);
@@ -368,6 +371,7 @@ export const scraperJobs = pgTable("scraper_jobs", {
   completedAt: timestamp("completed_at"),
 }, (t) => [
   index("scraper_jobs_lead_id_idx").on(t.leadId),
+  index("scraper_jobs_campaign_id_idx").on(t.campaignId),
   index("scraper_jobs_status_idx").on(t.status),
   index("scraper_jobs_type_idx").on(t.jobType),
   index("scraper_jobs_created_at_idx").on(t.createdAt),
@@ -699,6 +703,28 @@ export const crmCampaignPhoneNumbers = pgTable("crm_campaign_phone_numbers", {
   createdAt:   timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (t) => [
   index("crm_campaign_phone_numbers_campaign_idx").on(t.campaignId),
+]);
+
+// ── crm_appointments ─────────────────────────────────────────────────────────
+// Scheduled appointments with sellers (walkthroughs, calls, signings, etc.)
+export const crmAppointments = pgTable("crm_appointments", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
+  campaignId: integer("campaign_id").references(() => crmCampaigns.id),
+  title: text("title").notNull(),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  durationMins: integer("duration_mins").notNull().default(30),
+  location: text("location"),
+  notes: text("notes"),
+  status: text("status").notNull().default("scheduled"), // scheduled | completed | cancelled | no_show
+  createdBy: integer("created_by").references(() => crmUsers.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("crm_appointments_lead_id_idx").on(t.leadId),
+  index("crm_appointments_campaign_id_idx").on(t.campaignId),
+  index("crm_appointments_scheduled_at_idx").on(t.scheduledAt),
+  index("crm_appointments_status_idx").on(t.status),
 ]);
 
 // ── crm_waitlist ─────────────────────────────────────────────────────────────

@@ -13,8 +13,8 @@ import { logger } from "../lib/logger";
 function verifyOpenPhoneSignature(req: Request): boolean {
   const secret = process.env.OPENPHONE_WEBHOOK_SECRET;
   if (!secret) {
-    logger.warn("[openphone] OPENPHONE_WEBHOOK_SECRET not configured — webhook signature NOT verified");
-    return true; // fail-open with loud warning until secret is configured
+    logger.error("[openphone] OPENPHONE_WEBHOOK_SECRET not configured — rejecting webhook to prevent injection");
+    return false; // fail-closed: reject all webhooks until secret is configured
   }
   const signature = req.headers["openphone-signature"] as string | undefined;
   if (!signature) {

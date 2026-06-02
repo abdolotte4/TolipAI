@@ -97,6 +97,14 @@ router.post("/demo/call", async (req: Request, res: Response) => {
     return;
   }
 
+  // Reject premium-rate, toll-fraud, and non-geographic numbers
+  const digits10 = phone.replace(/\D/g, "").slice(-10);
+  const premiumPrefixes = ["900", "976", "970", "550", "540", "535", "520", "500"];
+  if (premiumPrefixes.some(p => digits10.startsWith(p))) {
+    res.status(400).json({ error: "Premium-rate numbers are not permitted for demo calls." });
+    return;
+  }
+
   const ip =
     (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() ||
     req.ip ||

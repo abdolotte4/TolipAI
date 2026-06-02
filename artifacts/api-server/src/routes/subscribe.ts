@@ -1,9 +1,21 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import * as ZodSchemas from "@workspace/api-zod";
 const { SubmitSubscribeBody, SubmitSubscribeResponse } = ZodSchemas;
 import { db, subscribersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import nodemailer from "nodemailer";
+
+const _rlMap = new Map<string, { count: number; resetAt: number }>();
+function subscribeRateLimit(req: Request, res: Response, next: NextFunction) {
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() || req.ip || "unknown";
+  const now = Date.now();
+  const entry = _rlMap.get(ip);
+  if (!entry || now > entry.resetAt) { _rlMap.set(ip, { count: 1, resetAt: now + 3_600_000 }); return next(); }
+  if (entry.count >= 3) { res.status(429).json({ error: "Too many requests. Please try again later." }); return; }
+  entry.count++;
+  next();
+}
+setInterval(() => { const now = Date.now(); for (const [k, v] of _rlMap) if (now > v.resetAt) _rlMap.delete(k); }, 30 * 60 * 1000);
 
 const router: IRouter = Router();
 
@@ -19,7 +31,7 @@ function createTransporter() {
   });
 }
 
-router.post("/subscribe", async (req, res) => {
+router.post("/subscribe", subscribeRateLimit, async (req, res) => {
   const parseResult = SubmitSubscribeBody.safeParse(req.body);
   if (!parseResult.success) {
     res.status(400).json({ error: "Invalid request data." });

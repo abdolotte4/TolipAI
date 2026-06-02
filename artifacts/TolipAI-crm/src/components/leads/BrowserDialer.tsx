@@ -509,6 +509,7 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
                 <button
                   key={key}
                   onMouseDown={(e) => { e.preventDefault(); phone.sendDTMF(key); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); phone.sendDTMF(key); } }}
                   className="h-10 rounded-xl text-sm font-semibold bg-background/50 hover:bg-secondary border border-white/5 hover:border-white/15 transition-colors active:scale-95"
                 >
                   {key}
