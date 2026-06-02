@@ -340,10 +340,11 @@ router.get("/", crmAuth, async (req, res) => {
     const leadIds = leadRows.map(r => r.lead.id);
     const lastCallMap = new Map<number, { mosScore: string | null; createdAt: string | null }>();
     if (leadIds.length > 0) {
+      const inClause = sql.join(leadIds.map(id => sql`${id}`), sql`, `);
       const lastCalls = await db.execute(
         sql`SELECT DISTINCT ON (lead_id) lead_id, mos_score, created_at
             FROM crm_call_logs
-            WHERE lead_id = ANY(${leadIds}::int[])
+            WHERE lead_id IN (${inClause})
             ORDER BY lead_id, created_at DESC`
       );
       for (const row of lastCalls.rows as any[]) {
