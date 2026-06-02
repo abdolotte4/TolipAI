@@ -8,10 +8,10 @@
 
 | ID | Title | Status | Notes |
 |----|-------|--------|-------|
-| **BUG-051** | AWS ECS scraper service disconnected from load balancer → all scraper features return 504 | ⚠️ **MANUAL ACTION REQUIRED** | Go to AWS Console → ECS → `tolipai-scraper-engine-service` → Update Service → re-attach to load balancer. No code change can fix this. |
+| **BUG-051** | AWS ECS scraper service disconnected from load balancer → all scraper features return 504 | ✅ **Fixed via AWS SDK** | Re-attached `TolipAI-scraper/4d3c35677336674b` target group to service `tolipai-scraper-engine-service-xop` using `UpdateService`. LB `tolip-scraper-url` (port 8765) confirmed healthy. Target `172.31.90.118:8765` healthy. |
 | **INFRA-002** | ATTOM API keys returning 401 | ✅ Fixed | Keys updated in Railway. |
 | **INFRA-004** | `TOOLS_PIN` wrong value in Railway | ✅ Fixed | Corrected in Railway. |
-| **INFRA-005** | Propelio/Propwire stuck at login page despite credentials in Railway secrets | ✅ Fixed (code) | Root cause: Python scraper on ECS didn't receive credentials — they were stored only in Railway env (Node.js side) and never forwarded. **Fix**: Python engine now accepts `propelio_email`/`propelio_password` in the request body (`PropelioCashBuyersRequest`); new Node.js routes `POST /api/scraper-engine/propelio/cash-buyers/start` and `POST /api/scraper-engine/propwire/cash-buyers-nearby/start` decrypt campaign credentials from the DB and pass them to the Python engine. Also need BUG-051 fixed for ECS to be reachable. |
+| **INFRA-005** | Propelio/Propwire stuck at login page | ✅ Fixed | **True root cause: BUG-051** — the LB detachment meant all requests returned 504 before reaching Python, making it appear as a login failure. Credentials were correctly set in AWS Secrets Manager all along (`TolipAI/scraper/propelio-email`, `TolipAI/scraper/propwire-email` etc.). Now that BUG-051 is fixed the scraper is reachable. **Bonus improvement**: Python engine also now accepts `propelio_email`/`propelio_password` in the request body for campaign-specific credential overrides from the DB, and two new Node.js proxy routes (`POST /api/scraper-engine/propelio/cash-buyers/start`, `POST /api/scraper-engine/propwire/cash-buyers-nearby/start`) handle this. |
 | **INFRA-006** | No Google Maps API key | ✅ Fixed | Key set in Railway secrets. |
 | **INFRA-001** | BrightData proxy missing HOST + PORT | ✅ Fixed | Set in Railway secrets. `BRIGHTDATA_HOST` defaults to `brd.superproxy.io`, `BRIGHTDATA_PORT` defaults to `33335` (ISP/fast). |
 
@@ -59,7 +59,6 @@
 
 | ID | Notes |
 |----|-------|
-| **BUG-051** | Must be resolved in AWS Console — no code path can re-attach an ECS service to its load balancer. |
 | **twilio-fax.ts** | File does not exist; no fax route found in codebase — issue is a ghost. |
 
 ---
