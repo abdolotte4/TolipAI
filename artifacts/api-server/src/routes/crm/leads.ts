@@ -429,6 +429,7 @@ router.post("/", crmAuth, async (req, res) => {
       notes: data.notes || null,
       status: data.status || "new",
       assignedTo: data.assignedTo || null,
+      archived: false,
     }).returning();
     // Fire automation: auto-task creation, email notifications, in-app notifications
     if (lead.campaignId) {
