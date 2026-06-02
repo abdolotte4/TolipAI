@@ -31,7 +31,7 @@ interface Stats {
   totalSubscribers: number; recentContacts: Contact[];
 }
 
-function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
+function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -45,11 +45,12 @@ function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
       const res = await fetch(`${API_BASE}/api/admin/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
-      onLogin(data.token);
+      onLogin();
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {
@@ -122,7 +123,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
   );
 }
 
-function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
+function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<"overview" | "contacts" | "subscribers">("overview");
   const [stats, setStats] = useState<Stats | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -131,33 +132,36 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [loading, setLoading] = useState(false);
   const [expandedContact, setExpandedContact] = useState<number | null>(null);
 
-  const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+  const apiFetch = useCallback((path: string, init?: RequestInit) =>
+    fetch(`${API_BASE}${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...init }),
+    []);
 
   const fetchStats = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/admin/stats`, { headers });
+    const res = await apiFetch("/api/admin/stats");
     if (res.ok) setStats(await res.json());
-  }, [token]);
+    else if (res.status === 401) onLogout();
+  }, [apiFetch, onLogout]);
 
   const fetchContacts = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`${API_BASE}/api/admin/contacts?limit=50`, { headers });
+    const res = await apiFetch("/api/admin/contacts?limit=50");
     if (res.ok) { const d = await res.json(); setContacts(d.contacts); }
     setLoading(false);
-  }, [token]);
+  }, [apiFetch]);
 
   const fetchStripeSubscriptions = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`${API_BASE}/api/stripe/subscriptions`, { headers });
+    const res = await apiFetch("/api/stripe/subscriptions");
     if (res.ok) {
       const d = await res.json();
       setStripeSubscribers(d.subscriptions);
       setStripeTotal(d.total);
     }
     setLoading(false);
-  }, [token]);
+  }, [apiFetch]);
 
   const markRead = async (id: number) => {
-    await fetch(`${API_BASE}/api/admin/contacts/${id}/read`, { method: "PATCH", headers });
+    await apiFetch(`/api/admin/contacts/${id}/read`, { method: "PATCH" });
     setContacts(prev => prev.map(c => c.id === id ? { ...c, read: true } : c));
     fetchStats();
   };
@@ -399,7 +403,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 }
 
 export default function Admin() {
-  // Prevent search engines from indexing the admin page
   useEffect(() => {
     const meta = document.createElement("meta");
     meta.name = "robots";
@@ -408,18 +411,26 @@ export default function Admin() {
     return () => { document.head.removeChild(meta); };
   }, []);
 
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("tolipai_admin_token"));
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
-  const handleLogin = (t: string) => {
-    localStorage.setItem("tolipai_admin_token", t);
-    setToken(t);
-  };
+  useEffect(() => {
+    fetch(`${API_BASE}/api/admin/me`, { credentials: "include" })
+      .then(r => setLoggedIn(r.ok))
+      .catch(() => setLoggedIn(false));
+  }, []);
+
+  const handleLogin = () => setLoggedIn(true);
 
   const handleLogout = () => {
-    localStorage.removeItem("tolipai_admin_token");
-    setToken(null);
+    fetch(`${API_BASE}/api/admin/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+    setLoggedIn(false);
   };
 
-  if (!token) return <LoginPage onLogin={handleLogin} />;
-  return <Dashboard token={token} onLogout={handleLogout} />;
+  if (loggedIn === null) return (
+    <div className="min-h-screen bg-[#0a0e1a] flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-[#d4af37] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+  if (!loggedIn) return <LoginPage onLogin={handleLogin} />;
+  return <Dashboard onLogout={handleLogout} />;
 }

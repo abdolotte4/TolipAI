@@ -38,13 +38,14 @@ function getJwtSecret(): string {
 }
 
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith("Bearer ")) {
+  const cookieToken = (req as any).cookies?.["tolipai_admin_session"];
+  const authHeader = req.headers.authorization;
+  const token = cookieToken || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
+  if (!token) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
   try {
-    const token = auth.slice(7);
     jwt.verify(token, getJwtSecret());
     next();
   } catch {
@@ -77,7 +78,26 @@ router.post("/admin/login", adminLoginRateLimit, async (req: Request, res: Respo
 
   const expiresIn = process.env.ADMIN_JWT_EXPIRY || "8h";
   const token = jwt.sign({ role: "admin", username }, getJwtSecret(), { expiresIn } as any);
-  res.json({ token, message: "Login successful" });
+  const maxAgeMs = expiresIn === "8h" ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  res.cookie("tolipai_admin_session", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: maxAgeMs,
+    path: "/api/admin",
+  });
+  res.json({ message: "Login successful" });
+});
+
+// POST /api/admin/logout
+router.post("/admin/logout", (_req: Request, res: Response) => {
+  res.clearCookie("tolipai_admin_session", { path: "/api/admin" });
+  res.json({ message: "Logged out" });
+});
+
+// GET /api/admin/me — lets the frontend verify the session cookie is valid
+router.get("/admin/me", authMiddleware, (_req: Request, res: Response) => {
+  res.json({ ok: true });
 });
 
 // GET /api/admin/contacts

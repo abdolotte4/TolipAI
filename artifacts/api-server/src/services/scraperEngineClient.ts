@@ -208,6 +208,8 @@ export const scraperEngine = {
     leadId?: number;
     campaignId?: number;
     persist?: boolean;
+    propelioEmail?: string;
+    propelioPassword?: string;
   }) {
     return request<JobResponse>("/scrape/propelio/cash-buyers", {
       method: "POST",
@@ -222,6 +224,8 @@ export const scraperEngine = {
         lead_id: req.leadId,
         campaign_id: req.campaignId,
         persist: req.persist ?? true,
+        ...(req.propelioEmail ? { propelio_email: req.propelioEmail } : {}),
+        ...(req.propelioPassword ? { propelio_password: req.propelioPassword } : {}),
       }),
       timeoutMs: 30_000,
     });
@@ -260,6 +264,8 @@ export const scraperEngine = {
     leadId?: number;
     campaignId?: number;
     persist?: boolean;
+    propwireEmail?: string;
+    propwirePassword?: string;
   }) {
     return request<JobResponse>("/scrape/propwire/cash-buyers-nearby", {
       method: "POST",
@@ -271,6 +277,8 @@ export const scraperEngine = {
         lead_id: req.leadId,
         campaign_id: req.campaignId,
         persist: req.persist ?? true,
+        ...(req.propwireEmail ? { propwire_email: req.propwireEmail } : {}),
+        ...(req.propwirePassword ? { propwire_password: req.propwirePassword } : {}),
       }),
       timeoutMs: 90_000,
     });

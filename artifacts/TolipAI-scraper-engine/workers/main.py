@@ -615,6 +615,8 @@ async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
                     flippers=params.get("flippers", True),
                     max_results=params.get("max_results", 500),
                     progress_cb=cb,
+                    email=params.get("propelio_email") or None,
+                    password=params.get("propelio_password") or None,
                 ),
                 timeout=900,
             )
@@ -677,6 +679,8 @@ async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
                     min_properties=params.get("min_properties", 3),
                     max_results=params.get("max_results", 200),
                     progress_cb=cb,
+                    email=params.get("propwire_email") or None,
+                    password=params.get("propwire_password") or None,
                 ),
                 timeout=900,
             )
@@ -1408,6 +1412,8 @@ class PropelioCashBuyersRequest(BaseModel):
     lead_id: Optional[int] = None
     campaign_id: Optional[int] = None
     persist: bool = True
+    propelio_email: Optional[str] = None
+    propelio_password: Optional[str] = None
 
 
 @app.post("/scrape/propelio/cash-buyers")
@@ -1440,6 +1446,8 @@ class PropwireCashBuyersNearbyRequest(BaseModel):
     lead_id: Optional[int] = None
     campaign_id: Optional[int] = None
     persist: bool = True
+    propwire_email: Optional[str] = None
+    propwire_password: Optional[str] = None
 
 
 @app.post("/scrape/propwire/property")

@@ -22,6 +22,7 @@ import os
 import re
 from typing import Any, Dict, List
 
+from functools import partial
 from ._browser_session import browser_context, invalidate_session, _nav_with_fallback
 from ._utils import _safe_num, _parse_buyer_card
 
@@ -191,7 +192,7 @@ async def _intercept_json(page, url_pattern: re.Pattern, timeout_ms: int = 25000
 # ─── Public API ──────────────────────────────────────────────────────────────
 
 
-async def search_property(address: str) -> Dict[str, Any]:
+async def search_property(address: str, *, login_fn=None) -> Dict[str, Any]:
     """Search Propelio for an address and return basic property metadata.
 
     Returns: {address, property_id, url, raw} where property_id is the
@@ -200,7 +201,7 @@ async def search_property(address: str) -> Dict[str, Any]:
     if not address:
         return {"address": "", "property_id": None}
 
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn or _do_login) as ctx:
         page = await ctx.new_page()
         try:
             await _nav_with_fallback(page, SEARCH_URL, log, SERVICE)
@@ -245,13 +246,14 @@ async def fetch_comps(
     *,
     radius_miles: float = 0.5,
     max_results: int = 25,
+    login_fn=None,
 ) -> List[Dict[str, Any]]:
     """Pull comparable-sales rows for a property already opened in Propelio."""
     if not property_id:
         return []
     url = f"{PROPELIO_BASE}/search/{property_id}/comparable-sales"
 
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn or _do_login) as ctx:
         page = await ctx.new_page()
         comps: List[Dict[str, Any]] = []
         try:
@@ -326,6 +328,7 @@ async def fetch_cash_buyers(
     flippers: bool = True,
     max_results: int = 500,
     progress_cb=None,
+    login_fn=None,
 ) -> List[Dict[str, Any]]:
     """Scrape Propelio's cash-buyers panel (the 5523-result view).
 
@@ -339,7 +342,7 @@ async def fetch_cash_buyers(
     buyers: List[Dict[str, Any]] = []
     api_pat = re.compile(r"cash[-_]?buyers?|/buyers", re.IGNORECASE)
 
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn or _do_login) as ctx:
         page = await ctx.new_page()
         # ── Register XHR capture BEFORE navigation so first-page results aren't missed ──
         pending_xhr: List[Dict[str, Any]] = []
@@ -545,9 +548,17 @@ async def cash_buyers_for_address(
     flippers: bool = True,
     max_results: int = 500,
     progress_cb=None,
+    email: str | None = None,
+    password: str | None = None,
 ) -> Dict[str, Any]:
-    """One-shot: find a property by address then scrape its cash-buyer list."""
-    prop = await search_property(address)
+    """One-shot: find a property by address then scrape its cash-buyer list.
+
+    When `email`/`password` are provided they override the PROPELIO_EMAIL /
+    PROPELIO_PASSWORD env vars so the Node.js API can pass campaign-specific
+    credentials from the encrypted DB record instead of relying on container env.
+    """
+    login_fn = partial(_do_login, email=email, password=password) if (email or password) else _do_login
+    prop = await search_property(address, login_fn=login_fn)
     if not prop.get("property_id"):
         return {"address": address, "buyers": [], "count": 0}
     buyers = await fetch_cash_buyers(
@@ -559,6 +570,7 @@ async def cash_buyers_for_address(
         flippers=flippers,
         max_results=max_results,
         progress_cb=progress_cb,
+        login_fn=login_fn,
     )
     return {
         "address": address,

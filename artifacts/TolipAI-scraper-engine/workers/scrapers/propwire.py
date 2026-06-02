@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 from ._browser_session import browser_context, invalidate_session, _nav_with_fallback
@@ -471,9 +472,16 @@ async def fetch_cash_buyers_nearby(
     min_properties: int = 3,
     max_results: int = 200,
     progress_cb=None,
+    email: str | None = None,
+    password: str | None = None,
 ) -> List[Dict[str, Any]]:
-    """Propwire's nearby cash-buyer / investor list around a property."""
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+    """Propwire's nearby cash-buyer / investor list around a property.
+
+    When `email`/`password` are provided they override PROPWIRE_EMAIL /
+    PROPWIRE_PASSWORD env vars so Node.js can pass campaign credentials from DB.
+    """
+    login_fn = partial(_do_login, email=email, password=password) if (email or password) else _do_login
+    async with browser_context(SERVICE, login_fn=login_fn) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         # Propwire's nearby-buyers tab URL pattern can vary; try a few.
         candidates = [

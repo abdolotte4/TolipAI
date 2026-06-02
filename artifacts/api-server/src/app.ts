@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import pinoHttp from "pino-http";
 import compression from "compression";
+import cookieParser from "cookie-parser";
 import path from "path";
 import fs from "fs";
 import router from "./routes";
@@ -23,6 +24,7 @@ if (process.env.SENTRY_DSN) {
 const app: Express = express();
 
 app.use(compression());
+app.use(cookieParser());
 
 app.set("etag", false);
 

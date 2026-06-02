@@ -259,6 +259,100 @@ router.post(
   },
 );
 
+// ─── Propelio/Propwire credential-aware start routes ─────────────────────────
+// These routes fetch campaign credentials from the encrypted DB record and
+// pass them to the Python engine so the scraper never has to read env vars
+// for credentials — fixing INFRA-005 where creds exist on Railway but not ECS.
+
+router.post(
+  "/scraper-engine/propelio/cash-buyers/start",
+  crmAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.crmUser as CrmTokenPayload;
+      const campaignId =
+        user.role === "super_admin"
+          ? Number(req.body.campaignId ?? user.campaignId ?? 1)
+          : user.campaignId;
+      const { address, distanceMiles, activeWithin, minProperties, landlords, flippers, maxResults, leadId, persist } = req.body;
+      if (!address) { res.status(400).json({ error: "address is required" }); return; }
+
+      let propelioEmail: string | undefined;
+      let propelioPassword: string | undefined;
+      if (campaignId) {
+        const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);
+        if (campaign?.scraperProperioEmail) {
+          try { propelioEmail = decryptPassword(campaign.scraperProperioEmail); } catch { /* use env */ }
+        }
+        if (campaign?.scraperProperioPassword) {
+          try { propelioPassword = decryptPassword(campaign.scraperProperioPassword); } catch { /* use env */ }
+        }
+      }
+
+      const result = await scraperEngine.startPropelioCashBuyers({
+        address,
+        distanceMiles: distanceMiles ? Number(distanceMiles) : 10,
+        activeWithin: activeWithin ?? "ANY_TIME",
+        minProperties: minProperties ? Number(minProperties) : 3,
+        landlords: landlords !== false,
+        flippers: flippers !== false,
+        maxResults: maxResults ? Number(maxResults) : 500,
+        leadId: leadId ? Number(leadId) : undefined,
+        campaignId: campaignId ?? undefined,
+        persist: persist !== false,
+        propelioEmail,
+        propelioPassword,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      handleEngineError(err, res);
+    }
+  },
+);
+
+router.post(
+  "/scraper-engine/propwire/cash-buyers-nearby/start",
+  crmAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.crmUser as CrmTokenPayload;
+      const campaignId =
+        user.role === "super_admin"
+          ? Number(req.body.campaignId ?? user.campaignId ?? 1)
+          : user.campaignId;
+      const { query, radiusMiles, minProperties, maxResults, leadId, persist } = req.body;
+      if (!query) { res.status(400).json({ error: "query is required" }); return; }
+
+      let propwireEmail: string | undefined;
+      let propwirePassword: string | undefined;
+      if (campaignId) {
+        const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);
+        if (campaign?.scraperPropwireEmail) {
+          try { propwireEmail = decryptPassword(campaign.scraperPropwireEmail); } catch { /* use env */ }
+        }
+        if (campaign?.scraperPropwirePassword) {
+          try { propwirePassword = decryptPassword(campaign.scraperPropwirePassword); } catch { /* use env */ }
+        }
+      }
+
+      const result = await scraperEngine.startPropwireCashBuyers({
+        query,
+        radiusMiles: radiusMiles ? Number(radiusMiles) : 1.0,
+        minProperties: minProperties ? Number(minProperties) : 3,
+        maxResults: maxResults ? Number(maxResults) : 200,
+        leadId: leadId ? Number(leadId) : undefined,
+        campaignId: campaignId ?? undefined,
+        persist: persist !== false,
+        propwireEmail,
+        propwirePassword,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      handleEngineError(err, res);
+    }
+  },
+);
+
 // ─── Cash Buyer DB routes (query local DB, not the Python engine) ─────────────
 
 async function _buyerLeadIds(user: CrmTokenPayload): Promise<number[] | null> {
