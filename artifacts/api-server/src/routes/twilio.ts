@@ -623,10 +623,14 @@ router.post("/twilio/reconfigure-twiml-app", crmAuth, crmAdminOnly, async (req, 
 
   try {
     const voiceCfg = await resolveVoiceConfig(targetCampaignId, isSuperAdmin);
-    // Always use the server that handled THIS request — not API_BASE_URL (which may point to a different env).
-    // x-forwarded-host is set by Replit/Railway proxies and carries the public hostname.
-    const ownHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "localhost:8080";
-    const ownBase = `https://${ownHost.split(",")[0].trim()}/api`;
+    // Use API_BASE_URL (authoritative production domain) so the TwiML App Voice URL
+    // always matches the URL configured in Twilio — not an internal proxy hostname.
+    const apiBaseUrl = process.env.API_BASE_URL?.replace(/\/$/, "")
+      ?? (() => {
+        const host = (req.headers["x-forwarded-host"] as string)?.split(",")[0].trim() || req.headers.host || "localhost:8080";
+        return `https://${host}`;
+      })();
+    const ownBase = `${apiBaseUrl}/api`;
     const voiceUrl = `${ownBase}/twilio/voice/answer`;
 
     const auth = Buffer.from(`${voiceCfg.apiKeySid}:${voiceCfg.apiKeySecret}`).toString("base64");
@@ -657,7 +661,15 @@ router.post("/twilio/reconfigure-twiml-app", crmAuth, crmAdminOnly, async (req, 
     res.json({ success: true, voiceUrl, appSid: data.sid, friendlyName: data.friendly_name });
   } catch (err: any) {
     logger.error(err, "[twilio/reconfigure-twiml-app] error");
-    res.status(err.status || 500).json({ error: err.message });
+    // Never propagate external Twilio API 401/403 as a client 401 — that would
+    // trigger the frontend logout guard. Map external auth failures to 502.
+    const httpStatus = (err.status && err.status < 500 && err.status !== 400 && err.status !== 422)
+      ? 502
+      : (err.status || 500);
+    const userMessage = err.status === 401 || err.status === 403
+      ? `Twilio rejected the request (${err.status}). Check your API Key SID and Secret in campaign settings.`
+      : err.message;
+    res.status(httpStatus).json({ error: userMessage });
   }
 });
 
@@ -668,12 +680,14 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const creds = await resolveSmsCreds(crmUser.campaignId, false);
-    // Derive URLs from THIS request's host so webhooks always point to the server
-    // that is actually handling traffic — never to a stale API_BASE_URL env var.
-    const ownHostWH = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim()
-      || (req.headers.host as string | undefined)
-      || "localhost:8080";
-    const apiBase = `https://${ownHostWH.replace(/:\d+$/, "")}/api`;
+    // Use API_BASE_URL so webhook URLs always point to the canonical production domain
+    // (tolipai.com) — not an internal Railway/proxy hostname from forwarded headers.
+    const apiBaseUrl = process.env.API_BASE_URL?.replace(/\/$/, "")
+      ?? (() => {
+        const host = (req.headers["x-forwarded-host"] as string)?.split(",")[0].trim() || req.headers.host || "localhost:8080";
+        return `https://${host.replace(/:\d+$/, "")}`;
+      })();
+    const apiBase = `${apiBaseUrl}/api`;
     const smsWebhook = `${apiBase}/twilio/webhook`;
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers: any[] = data.incoming_phone_numbers || [];
@@ -706,7 +720,16 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
     );
     res.json({ configured: results.length, results });
   } catch (err: any) {
-    res.status(err.status || 500).json({ error: err.message });
+    logger.error(err, "[twilio/setup-webhooks] error");
+    // Never propagate external Twilio API 401/403 as a client 401 — that would
+    // trigger the frontend logout guard. Map external auth failures to 502.
+    const httpStatus = (err.status && err.status < 500 && err.status !== 400 && err.status !== 422)
+      ? 502
+      : (err.status || 500);
+    const userMessage = err.status === 401 || err.status === 403
+      ? `Twilio rejected the request (${err.status}). Check your Account SID and Auth Token in campaign settings.`
+      : err.message;
+    res.status(httpStatus).json({ error: userMessage });
   }
 });
 

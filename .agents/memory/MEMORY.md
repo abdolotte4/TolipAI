@@ -1,4 +1,5 @@
-- [Twilio webhook base URL](twilio-webhook-base.md) — API_BASE_URL always first; REPLIT_DEV_DOMAIN removed entirely; tolipai.com is sole production domain.
+- [Twilio webhook base URL](twilio-webhook-base.md) — API_BASE_URL always first; twilioWebhookMiddleware uses API_BASE_URL for signature validation URL (not x-forwarded-host which carries internal Railway hostnames).
+- [Twilio external 401 logout bug](twilio-external-401.md) — External Twilio API 401/403 must never be forwarded as HTTP 401 to client; map to 502 in catch blocks or frontend logout guard fires.
 - [Twilio TwiML transcribe attr](twilio-twiml-transcribe.md) — transcribe/transcribeCallback on <Conference> causes Error 12200 unless TWILIO_VOICE_INTELLIGENCE_SID is set; attr is now conditional.
 - [Frontend app directories](frontend-dirs.md) — Real code is under artifacts/TolipAI-crm, TolipAI-tools, TolipAI-website; vite ports: website=3000, crm=3001, tools=3002.
 - [Scraper engine auth chain](scraper-engine-auth.md) — Fargate validates X-API-Key against SCRAPER_API_KEY env var (← TolipAI/scraper/api-key secret). Express sends WEBSCRAPER_API_KEY. ⚠️ scraperEngineClient.ts comment says SCRAPER_API_KEY but env var is WEBSCRAPER_API_KEY — code is correct, comment is wrong.
