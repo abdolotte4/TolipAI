@@ -311,21 +311,40 @@ logger.info("SCRAPER_BLOCK", extra={
 
 ---
 
-## 10. Conclusion — Refactor Complete
+## 10. Conclusion — Refactor Complete (All Phases)
 
-This codebase has **excellent infrastructure** (job queues, retry logic, browser pools, circuit breakers, Fargate deployment) and the data extraction layer has now been fully refactored.
+This codebase has **excellent infrastructure** (job queues, retry logic, browser pools, circuit breakers, Fargate deployment) and the data extraction layer has been fully refactored across all audit phases.
 
-**What was done:**
+**Phase A–B (prior session):** Core LLM removal + docs
+**Phase C–D (current session):** Residual violations fixed
+
+### All completed work:
+
 1. ✅ All 4 LLM extraction functions removed from `llm.py`.
 2. ✅ 10 per-county Playwright scrapers created in `workers/scrapers/counties/`.
-3. ✅ `workers/models.py` Pydantic schemas created and enforced pre-return.
+3. ✅ `workers/models.py` — `DistressedListing`, `CashBuyer`, `CountyDeed`, `validate_deed()`, `validate_listing()`, `validate_listings()`.
 4. ✅ `distressed.py` generic LLM pipeline replaced with county-specific dispatch.
 5. ✅ `workers/captcha_solver.py` created with 2Captcha API for RealForeclose FL counties.
 6. ✅ Rule-based buyer classification and match scoring replace all LLM calls.
 7. ✅ People-search scrapers removed; skip-trace requires licensed API.
 8. ✅ Proxy skip logic removed — all requests go through proxy pool.
-9. ✅ Tests created for schema validation and county scraper compliance.
+9. ✅ Tests extended: `test_distressed_pipeline.py` now covers county registry, dispatcher, AI research, batch_extract stub, and `CountyDeed` model (25 test methods).
 10. ✅ `completed_no_results` status used for empty job results instead of `failed`.
+
+**Phase C residual fixes (this session):**
+
+| File | Violation | Fix Applied |
+|------|-----------|-------------|
+| `ai_research.py` | `discover_trustees()` called LLM to hallucinate URLs (Rule #2) | Replaced with `TRUSTEE_REGISTRY` — 25 verified HTTPS entries across TX, FL, AZ, NV, CA, IL, GA, NC, OH, PA |
+| `scrapers/propelio.py` | `fetch_comps()` / `estimate_arv()` used LLM for comp extraction (Rule #1) | Replaced with stubs returning `[]`; docstring directs to `propelio_v2.py` / `propwire.py` |
+| `llm_cache.py` | `batch_extract_profiles()` used LLM to extract investor profiles from HTML (Rule #1) | Replaced with stub returning `{"buyer_type": "unknown"}` per input; logs deprecation warning |
+| `scrapers/county.py` | `list_supported_counties()` read from old distressed_sources registry | Now reads from `COUNTY_SCRAPERS` — returns only counties with real scrapers |
+| `scrapers/county.py` | `scrape_county()` fetched HTML just to return `[]` (wasted network) | Now dispatches to real scraper if key is registered; returns `[]` immediately otherwise |
+
+**Permitted remaining LLM usages (classification only — compliant):**
+- `satellite_dfd._ai_distress_score()` — classifies already-extracted signals (not extraction)
+- `ai_research.hedge_fund_markets()` — general market analysis, no structured data extraction
+- `ai_research.research()` — general freeform research queries, no structured data extraction
 
 **Remaining known issues (next iteration):**
 - playwright-extra-stealth not yet integrated (government portals generally don't need it)

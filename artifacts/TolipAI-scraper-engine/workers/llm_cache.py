@@ -1,48 +1,45 @@
-"""LLM cost optimizer — caching, model tiering, HTML stripping, batching.
+"""LLM cost optimizer — caching, model tiering, HTML stripping.
+
+AUDIT COMPLIANCE:
+  batch_extract_profiles() previously extracted investor profiles from raw HTML
+  using LLM batch calls (Rule #1 violation). It has been replaced with a stub
+  that returns empty profiles and logs a deprecation warning.
+
+  cached_extract_investor_profile() and cached_score_buyer_match() are also
+  stubs — use llm.classify_buyer_type() and llm.score_buyer_match_rule_based().
+
+  PERMITTED LLM uses in this codebase:
+    - satellite_dfd._ai_distress_score() — classifying already-extracted signals
+    - ai_research.hedge_fund_markets() — general market analysis
+    - ai_research.research() — general freeform research queries
 
 Caching
 ───────
   Every (messages + call kwargs) combination is SHA256-hashed and stored in
-  the dual-layer cache (Redis → S3 → memory).  Default TTL is 7 days because
-  real-estate property data changes slowly.
+  the dual-layer cache (Redis → S3 → memory).  Default TTL is 7 days.
 
 Model tiering
 ─────────────
   complexity="fast"  → caps max_tokens at 400
   complexity="smart" → full token budget
 
-  Recommended mapping:
-    score_buyer_match         → "fast"   (simple JSON, < 300 tokens)
-    extract_investor_profile  → "smart"  (complex structured extraction)
-    suggest_distressed_sources → "smart" + bypass_cache=True (discovery)
-
 HTML stripping
 ──────────────
   strip_html(html) removes all tags and collapses whitespace before the text
-  is sent to the LLM.  A typical 50 KB listing page shrinks to ~5 KB —
-  roughly 90% fewer tokens and proportionally lower cost.
-
-Batching
-────────
-  batch_extract_profiles(texts) packs up to BATCH_SIZE property chunks into
-  a single prompt instead of making one LLM call per property.
-  10 properties per batch → ~90% reduction in API call count.
+  is sent to the LLM.  A typical 50 KB listing page shrinks to ~5 KB.
 
 Usage
 ─────
-    from .llm_cache import cached_chat, tiered_chat, strip_html, batch_extract_profiles
+    from .llm_cache import cached_chat, tiered_chat, strip_html
 
     # Drop-in replacement for llm._chat():
     raw = await cached_chat(messages, json_mode=True, max_tokens=900)
 
-    # Cheaper route for simple tasks:
+    # Cheaper route for simple tasks (distress scoring, classification):
     raw = await tiered_chat(messages, complexity="fast")
 
     # HTML → plain text before sending:
     text = strip_html(raw_html)
-
-    # Batch multiple properties in one LLM call:
-    profiles = await batch_extract_profiles(html_list, source="propelio")
 """
 from __future__ import annotations
 
@@ -190,7 +187,7 @@ async def tiered_chat(
     )
 
 
-# ── Batch extraction ──────────────────────────────────────────────────────────
+# ── Batch extraction — REMOVED ────────────────────────────────────────────────
 
 async def batch_extract_profiles(
     texts: List[str],
@@ -199,68 +196,23 @@ async def batch_extract_profiles(
     batch_size: int = _BATCH_SIZE,
     strip: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Extract investor profiles for multiple raw texts in batched LLM calls.
+    """REMOVED — LLM batch investor-profile extraction violated Rule #1.
 
-    Sends up to `batch_size` text chunks in one prompt instead of making a
-    separate LLM call per property.  10 items per batch → ~90% fewer calls.
+    Replacement: use llm.classify_buyer_type() after data is already parsed
+    from a real DOM scraper (county deeds, propelio_v2, propwire).
 
-    Args:
-        texts:      List of raw HTML or plain-text strings, one per property.
-        source:     Label included in the prompt for context (e.g. "propelio").
-        batch_size: Max items per LLM call (default 10).
-        strip:      Strip HTML tags before sending (default True).
-
-    Returns:
-        List of profile dicts in the same order as `texts`.
+    This stub returns empty profile dicts so callers that haven't been updated
+    yet do not raise ImportError or TypeError.
     """
-    sys_prompt = (
-        "You extract real-estate investor data from multiple scraped text chunks. "
-        "Return strictly JSON with key 'profiles': an array, one object per chunk "
-        "in input order. Each object: buyer_name (str), llc_name (str|null), "
-        "principals (array of {name, role}), city, state, zip, mailing_address, "
-        "phones (array of strings), emails (array of strings), "
-        "buyer_type (flipper|landlord|hedge_fund|lender|wholesaler|unknown), "
-        "classification_reason (1-sentence), portfolio_size (int|null), "
-        "portfolio_value (number|null), avg_purchase_price (number|null), "
-        "last_purchase_date (str|null). Use null for unknown fields."
+    log.warning(
+        "batch_extract_profiles() is deprecated (LLM extraction removed). "
+        "Use classify_buyer_type() on already-parsed buyer data. "
+        "Source was: %s, texts count: %d",
+        source,
+        len(texts),
     )
-
     _empty: Dict[str, Any] = {"buyer_name": "Unknown", "buyer_type": "unknown"}
-    results: List[Dict[str, Any]] = []
-
-    for i in range(0, len(texts), batch_size):
-        chunk = texts[i : i + batch_size]
-        processed = [strip_html(t) if strip else t[:_MAX_HTML_CHARS] for t in chunk]
-        user_content = "\n\n---CHUNK_SEPARATOR---\n\n".join(
-            f"[{j + 1}] {t}" for j, t in enumerate(processed)
-        )
-        token_budget = min(900 * len(chunk), 6000)
-
-        raw = await cached_chat(
-            [
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": f"Source: {source}\n\n{user_content}"},
-            ],
-            json_mode=True,
-            max_tokens=token_budget,
-            temperature=0.1,
-        )
-
-        try:
-            data = json.loads(raw)
-            profiles: List[Dict[str, Any]] = data.get("profiles") or []
-            # Pad with empty records if the LLM returned fewer than expected
-            while len(profiles) < len(chunk):
-                profiles.append(dict(_empty))
-            results.extend(profiles[: len(chunk)])
-        except Exception:
-            log.warning(
-                "llm_cache.batch_extract_profiles: non-JSON for batch %d",
-                i // batch_size,
-            )
-            results.extend([dict(_empty) for _ in chunk])
-
-    return results
+    return [dict(_empty) for _ in texts]
 
 
 # ── Convenience: cached versions of the public llm helpers ───────────────────

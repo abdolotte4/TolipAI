@@ -109,6 +109,63 @@ class CashBuyer(BaseModel):
         return list(dict.fromkeys(out))
 
 
+class CountyDeed(BaseModel):
+    """A deed transfer record from a county recorder's office."""
+
+    grantor: str = Field(..., min_length=2, description="Seller / transferring party")
+    grantee: str = Field(..., min_length=2, description="Buyer / receiving party")
+    address: str = Field(..., min_length=5)
+    city: Optional[str] = None
+    state: str = Field(..., min_length=2, max_length=2)
+    zip: Optional[str] = Field(None, pattern=r"^\d{5}(-\d{4})?$")
+    county: str = Field(..., min_length=2)
+
+    parcel_id: Optional[str] = None
+    recorded_date: Optional[str] = None
+    instrument_number: Optional[str] = None
+    deed_type: Optional[str] = None
+
+    sale_price: Optional[float] = Field(None, ge=0)
+    is_arms_length: Optional[bool] = None
+    is_cash_purchase: Optional[bool] = None
+
+    mailing_address: Optional[str] = None
+    is_investor: Optional[bool] = None
+
+    source_url: str
+    scraped_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    raw_data: Optional[Dict[str, Any]] = None
+
+    @field_validator("state")
+    @classmethod
+    def state_uppercase(cls, v: str) -> str:
+        return v.upper().strip()
+
+    @field_validator("grantor", "grantee", "city", "county")
+    @classmethod
+    def strip_whitespace(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else v
+
+    @model_validator(mode="after")
+    def check_investor_signal(self) -> "CountyDeed":
+        if self.mailing_address and self.address:
+            mailing_norm = re.sub(r"\s+", " ", self.mailing_address.lower().strip())
+            addr_norm = re.sub(r"\s+", " ", self.address.lower().strip())
+            if mailing_norm and mailing_norm != addr_norm:
+                object.__setattr__(self, "is_investor", True)
+        return self
+
+
+def validate_deed(raw: Dict[str, Any]) -> Optional[CountyDeed]:
+    """Validate a raw dict against CountyDeed. Returns None on failure."""
+    try:
+        return CountyDeed(**raw)
+    except Exception as exc:
+        import logging
+        logging.getLogger("models").warning("Deed validation failed: %s — data: %s", exc, str(raw)[:200])
+        return None
+
+
 def validate_listing(raw: Dict[str, Any]) -> Optional[DistressedListing]:
     """Validate a raw dict against DistressedListing. Returns None on failure."""
     try:

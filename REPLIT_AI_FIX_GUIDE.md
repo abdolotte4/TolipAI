@@ -24,13 +24,19 @@
 | 3 | CAPTCHA solver | ✅ Done — workers/captcha_solver.py with 2Captcha API integration |
 | 4.1 | playwright-extra-stealth | ⚠️ Known issue — government portals generally don't require stealth; tracked for next iteration |
 | 4.2 | Fix proxy strategy | ✅ Done — _PROXY_BLOCKED_DOMAINS and _should_skip_proxy() removed from http_client.py; proxy always applied |
-| 5.1 | Pydantic models.py | ✅ Done — workers/models.py with DistressedListing, CashBuyer, CountyDeed, validate_listing() |
+| 5.1 | Pydantic models.py | ✅ Done — workers/models.py: DistressedListing, CashBuyer, CountyDeed, validate_listing(), validate_deed(), validate_listings() |
 | 5.2 | DB validation layer | ✅ Done — validate_listing() used in distressed.py dispatch; invalid listings skipped with warning |
 | 6 | County-specific dispatch in distressed.py | ✅ Done — dispatches by {county_snake}_{state_lower} key; zero results → completed_no_results |
 | 7 | camelot-py for PDFs | ⚠️ Partial — PDF county sources redirect to dedicated scrapers in counties/ (no generic PDF+LLM pipeline) |
-| 8 | Tests | ✅ Done — workers/tests/test_schema.py and workers/tests/test_counties.py |
+| 8 | Tests | ✅ Done — test_schema.py, test_counties.py, test_distressed_pipeline.py (25 test methods) |
 | 9 | Structured logging | ⚠️ Existing CloudWatch logging retained; per-scraper log context added via log.info/warning |
 | 10 | SOURCES.md | ⚠️ Not created — county scraper metadata() method on each class documents the source |
+| C.1 | Fix ai_research.discover_trustees() LLM URL hallucination | ✅ Done — replaced with TRUSTEE_REGISTRY (25 verified HTTPS entries; TX/FL/AZ/NV/CA/IL/GA/NC/OH/PA) |
+| C.2 | Fix scrapers/propelio.py LLM comp extraction | ✅ Done — fetch_comps() / estimate_arv() are stubs; not called by any endpoint |
+| C.3 | Fix llm_cache.batch_extract_profiles() LLM extraction | ✅ Done — stub returns {"buyer_type":"unknown"} per input; logs deprecation |
+| C.4 | Fix scrapers/county.list_supported_counties() | ✅ Done — reads COUNTY_SCRAPERS, not distressed_sources; only counties with real scrapers returned |
+| C.5 | Fix scrapers/county.scrape_county() wasted HTTP fetch | ✅ Done — dispatches to real scraper or returns [] immediately; no network for unregistered keys |
+| C.6 | Extend test_distressed_pipeline.py | ✅ Done — 25 test methods covering COUNTY_SCRAPERS registry, dispatcher, TRUSTEE_REGISTRY, batch_extract stub, CountyDeed model |
 
 
 
