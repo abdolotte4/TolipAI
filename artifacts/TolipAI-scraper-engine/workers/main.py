@@ -571,8 +571,22 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
                 completed=True,
             )
         else:
-            _set_status(job_id, "failed", error="No listings found")
-            await db.update_job(job_id, status="failed", error="No listings found", completed=True)
+            _set_status(job_id, "completed_no_results", progress=100)
+            await db.update_job(
+                job_id,
+                status="completed_no_results",
+                progress=100,
+                result_count=0,
+                completed=True,
+            )
+            log.info(
+                "distressed job %s: no listings found for state=%s county=%s zip=%s — "
+                "county may not be in COUNTY_SCRAPERS registry yet",
+                job_id,
+                params.get("state", ""),
+                params.get("county_key", ""),
+                params.get("zip", ""),
+            )
         return {"count": len(listings)}
 
     except Exception as e:

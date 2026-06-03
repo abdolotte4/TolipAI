@@ -265,51 +265,39 @@ async def batch_extract_profiles(
 
 # ── Convenience: cached versions of the public llm helpers ───────────────────
 
-async def cached_extract_investor_profile(
+def cached_extract_investor_profile(
     text: str,
     *,
     source: str = "",
     is_html: bool = False,
 ) -> Dict[str, Any]:
-    """Cached + HTML-stripping wrapper around llm.extract_investor_profile."""
-    cleaned = strip_html(text) if is_html else text[:8000]
-    profiles = await batch_extract_profiles([cleaned], source=source, strip=False)
-    return profiles[0] if profiles else {"buyer_name": "Unknown", "buyer_type": "unknown"}
+    """REMOVED — LLM investor profile extraction has been replaced with rule-based
+    classification via llm.classify_buyer_type(). This stub exists so callers that
+    have not yet been updated do not raise ImportError.
+
+    Use workers.llm.classify_buyer_type() instead.
+    """
+    import logging
+    logging.getLogger("llm_cache").warning(
+        "cached_extract_investor_profile() is deprecated — use classify_buyer_type(). "
+        "Returning empty profile."
+    )
+    return {"buyer_name": "Unknown", "buyer_type": "unknown"}
 
 
-async def cached_score_buyer_match(
+def cached_score_buyer_match(
     buyer: Dict[str, Any],
     lead: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Cached wrapper around llm.score_buyer_match (complexity=fast)."""
-    sys_prompt = (
-        "You score how well a real-estate cash buyer matches a wholesaler's lead. "
-        "Output JSON: { match_score: 0-100 integer, match_reasons: 2-4 short bullet strings }."
+    """REMOVED — LLM match scoring has been replaced with rule-based scoring via
+    llm.score_buyer_match_rule_based(). This stub exists so callers that have not
+    yet been updated do not raise ImportError.
+
+    Use workers.llm.score_buyer_match_rule_based() instead.
+    """
+    import logging
+    logging.getLogger("llm_cache").warning(
+        "cached_score_buyer_match() is deprecated — use score_buyer_match_rule_based(). "
+        "Returning zero score."
     )
-    payload = {
-        "buyer": {k: buyer.get(k) for k in (
-            "buyer_name", "llc_name", "buyer_type", "city", "state", "zip",
-            "portfolio_size", "avg_purchase_price",
-        )},
-        "lead": {k: lead.get(k) for k in (
-            "address", "city", "state", "zip", "beds", "baths", "sqft",
-            "year_built", "current_value", "asking_price", "arv", "condition",
-        )},
-    }
-    raw = await tiered_chat(
-        [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user",   "content": json.dumps(payload, default=str)},
-        ],
-        complexity="fast",
-        max_tokens=300,
-        temperature=0.3,
-    )
-    try:
-        data = json.loads(raw)
-        return {
-            "match_score":   max(0, min(100, int(data.get("match_score") or 0))),
-            "match_reasons": data.get("match_reasons") or [],
-        }
-    except Exception:
-        return {"match_score": 0, "match_reasons": []}
+    return {"match_score": 0, "match_reasons": []}

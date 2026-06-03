@@ -49,31 +49,6 @@ def _browser_sem() -> asyncio.Semaphore:
     return _BROWSER_SEM
 
 
-# Government / county sites that block residential proxies
-_PROXY_BLOCKED_DOMAINS = (
-    "treasurer.cuyahoga",
-    "auditor.cuyahoga",
-    "probate.cuyahoga",
-    "cuyahogacounty.us",
-    "sheriffsaleauction.ohio.gov",
-    ".state.oh.us",
-    ".state.nc.us",
-    ".state.tx.us",
-    ".state.fl.us",
-    "hctax.net",
-    "lacounty.gov",
-    "ttc.lacounty",
-    "cclerk.hctx",
-    "octaxcol.com",
-    "broward.county-taxes",
-)
-
-
-def _should_skip_proxy(url: str) -> bool:
-    u = url.lower()
-    return any(d in u for d in _PROXY_BLOCKED_DOMAINS)
-
-
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -198,17 +173,16 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us", is_
     Returns HTML text or raw PDF bytes.
     """
     errors: list[str] = []
-    gov_site = _should_skip_proxy(url)
 
     try:
-        return await fetch_direct(url, use_proxy=not gov_site, verify_ssl=False)
+        return await fetch_direct(url, use_proxy=True, verify_ssl=False)
     except Exception as e:
         errors.append(f"direct: {e}")
         log.debug("Direct fetch failed for %s: %s", url, e)
 
     if render:
         try:
-            return await fetch_crawl4ai(url, use_proxy=not gov_site)
+            return await fetch_crawl4ai(url, use_proxy=True)
         except Exception as e:
             errors.append(f"crawl4ai: {e}")
             log.info("Crawl4AI failed for %s: %s", url, e)

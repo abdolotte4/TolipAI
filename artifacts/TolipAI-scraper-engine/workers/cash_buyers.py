@@ -6,10 +6,18 @@ Workflow per lead:
   3. Group by buyer (mailing address ≠ property address ⇒ likely investor).
      Each unique buyer becomes a candidate.
   4. Skip-trace each candidate (LLC → officers → phones/emails).
-  5. Use OpenAI (gpt-4o-mini) to classify each candidate (flipper/landlord/
-     hedge_fund/lender/wholesaler) based on portfolio behaviour.
-  6. Use OpenAI to score how well each buyer matches THIS lead.
+  5. Rule-based buyer type classification (purchase volume, LLC name, avg price).
+  6. Rule-based match scoring (geographic + price bracket + volume).
   7. Persist matches sorted by score.
+
+AUDIT COMPLIANCE:
+  Removed LLM calls:
+    ✗ extract_investor_profile() — was scraping people-search sites + LLM
+    ✗ score_buyer_match()        — was sending buyer+lead data to LLM for scoring
+
+  Added data-driven replacements:
+    ✓ classify_buyer_type()             — rule-based from purchase history
+    ✓ score_buyer_match_rule_based()    — geographic + price bracket scoring
 """
 from __future__ import annotations
 
@@ -19,7 +27,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from . import db
-from .llm import extract_investor_profile, score_buyer_match
+from .llm import classify_buyer_type, score_buyer_match_rule_based
 from .scrapers import zillow, redfin
 from .scrapers.county_deeds import fetch_recent_deeds
 from .skip_trace import trace as skip_trace
@@ -55,7 +63,7 @@ def _aggregate_by_buyer(properties: List[Dict[str, Any]]) -> Dict[str, Dict[str,
         if p.get("price"):
             try:
                 b["prices"].append(float(str(p["price"]).replace("$", "").replace(",", "")))
-            except Exception as exc:  # noqa: BLE001
+            except Exception:
                 pass
         if p.get("sold_date") and (not b["last_purchase_date"] or p["sold_date"] > b["last_purchase_date"]):
             b["last_purchase_date"] = p["sold_date"]
@@ -114,7 +122,7 @@ async def find_cash_buyers(
                 }
             )
         log.info("County deeds: %d records with real buyer names", len(sold_deeds))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.info("County deed scrape failed, continuing: %s", e)
 
     # ── Tier 3: free scrape (Zillow + Redfin) — always run as backfill ────
@@ -179,62 +187,62 @@ async def find_cash_buyers(
     if progress_cb:
         await progress_cb(50, f"Classifying {len(candidates)} candidate buyers…")
 
-    # Semaphore caps concurrent LLM + skip-trace calls so we don't hammer
-    # free-tier rate limits when processing large candidate lists.
+    # Semaphore caps concurrent skip-trace calls so we don't hammer free-tier rate limits.
     _sem = asyncio.Semaphore(int(os.getenv("BUYER_CONCURRENCY", "5")))
 
     async def _profile_one(cand: Dict[str, Any]) -> Dict[str, Any]:
         async with _sem:
-            sample_text = (
-                f"Buyer: {cand['buyer_name']} ({cand['city']}, {cand['state']} {cand['zip']})\n"
-                f"Recent purchases: {len(cand['purchases'])}\n"
-                + "\n".join(
-                    f"- {p.get('address')} {p.get('city')} ${p.get('price')} "
-                    f"sold {p.get('sold_date')} {p.get('beds')}bd/{p.get('baths')}ba {p.get('sqft')}sqft"
-                    for p in cand["purchases"][:8]
-                )
+            prices = cand.get("prices") or []
+            avg_price = sum(prices) / len(prices) if prices else None
+            purchase_count = len(cand["purchases"])
+
+            # ── Rule-based classification (replaces LLM extract_investor_profile) ──
+            classification = classify_buyer_type(
+                buyer_name=cand["buyer_name"],
+                purchase_count=purchase_count,
+                avg_price=avg_price,
+                prices=prices,
             )
 
-            try:
-                profile = await extract_investor_profile(sample_text, source="aggregated_sales")
-            except Exception as e:  # noqa: BLE001
-                log.warning("LLM profile extract failed for %s: %s", cand["buyer_name"], e)
-                profile = {"buyer_name": cand["buyer_name"], "buyer_type": "unknown"}
+            profile: Dict[str, Any] = {
+                "buyer_name": cand["buyer_name"],
+                "buyer_type": classification["buyer_type"],
+                "classification_reason": classification["classification_reason"],
+                "city": cand.get("city"),
+                "state": cand.get("state"),
+                "zip": cand.get("zip"),
+                "portfolio_size": purchase_count,
+                "portfolio_value": sum(prices) if prices else None,
+                "avg_purchase_price": avg_price,
+                "last_purchase_date": cand.get("last_purchase_date"),
+                "phones": [],
+                "emails": [],
+                "principals": [],
+                "mailing_address": None,
+            }
 
+            # ── Skip-trace via SOS / OpenCorporates / SEC EDGAR / PropertyAPI ──
             try:
+                llc_name = cand["buyer_name"] if cand["buyer_name"].upper().endswith(("LLC", "INC", "CORP", "LP", "LLP", "LTD")) else None
                 traced = await skip_trace(
-                    profile.get("buyer_name") or cand["buyer_name"],
-                    llc=profile.get("llc_name"),
+                    cand["buyer_name"],
+                    llc=llc_name,
                     state=cand.get("state"),
                 )
-                profile["phones"] = list(set((profile.get("phones") or []) + traced.get("phones", [])))
-                profile["emails"] = list(set((profile.get("emails") or []) + traced.get("emails", [])))
+                profile["phones"] = list(set(traced.get("phones", [])))
+                profile["emails"] = list(set(traced.get("emails", [])))
                 if traced.get("principals"):
                     profile["principals"] = traced["principals"]
-                if traced.get("addresses") and not profile.get("mailing_address"):
+                if traced.get("addresses"):
                     profile["mailing_address"] = traced["addresses"][0]
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 log.info("Skip-trace failed for %s: %s", cand["buyer_name"], e)
 
-            try:
-                scoring = await score_buyer_match(profile, lead)
-            except Exception as e:  # noqa: BLE001
-                log.info("Match-scoring failed: %s", e)
-                scoring = {
-                    "match_score": len(cand["purchases"]) * 5,
-                    "match_reasons": [f"{len(cand['purchases'])} recent purchases in ZIP"],
-                }
+            # ── Rule-based match scoring (replaces LLM score_buyer_match) ──
+            scoring = score_buyer_match_rule_based(profile, lead)
 
-            prices = cand.get("prices") or []
             return {
                 **profile,
-                "portfolio_size": profile.get("portfolio_size") or len(cand["purchases"]),
-                "portfolio_value": profile.get("portfolio_value") or (sum(prices) if prices else None),
-                "avg_purchase_price": profile.get("avg_purchase_price") or (sum(prices) / len(prices) if prices else None),
-                "last_purchase_date": profile.get("last_purchase_date") or cand.get("last_purchase_date"),
-                "city": profile.get("city") or cand.get("city"),
-                "state": profile.get("state") or cand.get("state"),
-                "zip": profile.get("zip") or cand.get("zip"),
                 "match_score": scoring["match_score"],
                 "match_reasons": scoring["match_reasons"],
                 "raw_data": {"purchases": cand["purchases"][:8]},

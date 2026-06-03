@@ -1,22 +1,28 @@
-"""Skip-trace orchestrator — enterprise-optimized.
+"""Skip-trace orchestrator — public record and licensed API sources only.
 
 Strategy ladder (cheapest, most legal, most accurate first):
 
-  0. OSINT people-finder scrapers (FastPeopleSearch, CyberBackgroundChecks)
-  1. Secretary of State business-entity search (official portals)
+  1. Secretary of State business-entity search (FL: sunbiz; other states: stub)
   2. OpenCorporates API (free tier)
-  3. SEC EDGAR (investment entities)
+  3. SEC EDGAR (investment entities — regex extraction, no LLM)
   4. PropertyAPI.co skip-trace (paid fallback)
-  5. Google site-dorking (disabled by default)
 
-Enhancements:
-  - Confidence scoring per source
-  - Correlation across multiple sources
-  - Deduplication + normalization
+REMOVED (AUDIT COMPLIANCE):
+  ✗ Tier 0 — FastPeopleSearch scraper (violates ToS + FCRA)
+  ✗ Tier 0 — CyberBackgroundChecks scraper (violates ToS + FCRA)
+  ✗ Tier 5 — Google site-dorking with LLM extraction (hallucination risk)
+  ✗ LLM calls in _sos_lookup() and _sec_edgar_lookup() (replaced with regex)
+
+All contact data now comes from official sources only:
+  - FL Secretary of State (Sunbiz) — official state portal
+  - OpenCorporates — licensed aggregator
+  - SEC EDGAR — official federal disclosure database
+  - PropertyAPI.co — licensed skip-trace provider
 """
 
 from __future__ import annotations
 import logging
+import re
 from urllib.parse import quote as _url_quote
 
 import httpx
@@ -25,7 +31,6 @@ from bs4 import BeautifulSoup
 
 from .config import settings
 from .http_client import fetch_html
-from .llm import extract_investor_profile
 from .scrapers import sunbiz
 
 log = logging.getLogger("skip_trace")
@@ -51,49 +56,64 @@ OPENCORPORATES_API = "https://api.opencorporates.com/v0.4/companies/search"
 SEC_EDGAR_SEARCH = "https://www.sec.gov/cgi-bin/browse-edgar"
 USER_AGENT = "TolipAI/1.0 (skip-trace; contact: ops@tolipai.com)"
 
-
-# ─── Tier 0: OSINT People-Finder ────────────────────────────────────────────
-async def _fastpeople_lookup(name: str, state: str) -> Dict[str, Any]:
-    """Scrape FastPeopleSearch for phones/emails."""
-    try:
-        url = f"https://www.fastpeoplesearch.com/name/{_url_quote(name.replace(' ', '-'), safe='')}/{_url_quote(state.lower(), safe='')}"
-        html = await fetch_html(url, render=False)
-        text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
-        prof = await extract_investor_profile(text, source="fastpeople")
-        return {
-            "phones": prof.get("phones") or [],
-            "emails": prof.get("emails") or [],
-            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
-            "principals": prof.get("principals") or [],
-            "jurisdiction": f"osint_fastpeople_{state.lower()}",
-        }
-    except Exception as e:
-        log.info("FastPeopleSearch failed: %s", e)
-        return {}
+# Regex helpers for non-LLM extraction from SOS/EDGAR pages
+_PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}")
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+_ADDRESS_RE = re.compile(
+    r"\d{1,5}\s+[A-Za-z0-9\s,\.#]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct|Place|Pl)[,\s]+[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}",
+    re.IGNORECASE,
+)
+_NAME_LABEL_RE = re.compile(
+    r"(?:Registered Agent|Principal|Officer|President|Manager|Member)[:\s]+([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)",
+    re.IGNORECASE,
+)
 
 
-async def _cyberbackground_lookup(name: str, state: str) -> Dict[str, Any]:
-    """Scrape CyberBackgroundChecks for phones/emails."""
-    try:
-        url = f"https://www.cyberbackgroundchecks.com/people/{_url_quote(name.replace(' ', '-'), safe='')}/{_url_quote(state.lower(), safe='')}"
-        html = await fetch_html(url, render=False)
-        text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
-        prof = await extract_investor_profile(text, source="cyberbackground")
-        return {
-            "phones": prof.get("phones") or [],
-            "emails": prof.get("emails") or [],
-            "addresses": [prof.get("mailing_address")] if prof.get("mailing_address") else [],
-            "principals": prof.get("principals") or [],
-            "jurisdiction": f"osint_cyber_{state.lower()}",
-        }
-    except Exception as e:
-        log.info("CyberBackgroundChecks failed: %s", e)
-        return {}
+def _extract_phones(text: str) -> List[str]:
+    seen: set[str] = set()
+    result = []
+    for m in _PHONE_RE.finditer(text):
+        digits = re.sub(r"\D", "", m.group())
+        if len(digits) == 10:
+            num = f"+1{digits}"
+        elif len(digits) == 11 and digits.startswith("1"):
+            num = f"+{digits}"
+        else:
+            continue
+        if num not in seen:
+            seen.add(num)
+            result.append(num)
+    return result
+
+
+def _extract_emails(text: str) -> List[str]:
+    seen: set[str] = set()
+    result = []
+    for m in _EMAIL_RE.finditer(text):
+        email = m.group().lower()
+        if email not in seen and not email.endswith((".png", ".jpg", ".gif", ".css", ".js")):
+            seen.add(email)
+            result.append(email)
+    return result
+
+
+def _extract_named_principals(text: str) -> List[str]:
+    """Extract names from labeled SOS/EDGAR HTML (no LLM required)."""
+    seen: set[str] = set()
+    result = []
+    for m in _NAME_LABEL_RE.finditer(text):
+        name = m.group(1).strip()
+        if name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
 
 
 # ─── Tier 1: Secretary of State ─────────────────────────────────────────────
 async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
     state = state.upper()
+
+    # FL: use the real Sunbiz scraper (no LLM — sunbiz.py uses structured HTML parsing)
     if state == "FL":
         try:
             hits = await sunbiz.search_llc(llc_name)
@@ -109,21 +129,39 @@ async def _sos_lookup(llc_name: str, state: str) -> Dict[str, Any]:
         except Exception as e:
             log.info("Sunbiz lookup failed: %s", e)
         return {}
+
+    # Other states: fetch SOS page and extract with regex (no LLM)
     if state not in SOS_URLS:
+        log.debug("No SOS URL configured for state %s", state)
         return {}
+
     try:
-        url = f"{SOS_URLS[state]}?searchTerm={llc_name.replace(' ', '+')}"
+        url = f"{SOS_URLS[state]}?searchTerm={_url_quote(llc_name)}"
         html = await fetch_html(url, render=True)
-        text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
-        prof = await extract_investor_profile(text, source=f"sos_{state.lower()}")
+        soup = BeautifulSoup(html, "lxml")
+        text = soup.get_text("\n", strip=True)
+
+        principals = _extract_named_principals(text)
+        phones = _extract_phones(text)
+        emails = _extract_emails(text)
+
+        # Try to extract mailing address
+        address_matches = _ADDRESS_RE.findall(text)
+        address = address_matches[0] if address_matches else None
+
+        if not principals and not phones and not emails and not address:
+            log.debug("SOS lookup for %s/%s: no structured data found", llc_name, state)
+            return {}
+
         return {
-            "principals": prof.get("principals") or [],
-            "registered_agent": prof.get("registered_agent"),
-            "address": prof.get("mailing_address"),
+            "principals": principals,
+            "address": address,
+            "phones": phones,
+            "emails": emails,
             "jurisdiction": f"us_{state.lower()}",
         }
     except Exception as e:
-        log.info("SOS lookup failed: %s", e)
+        log.info("SOS lookup failed for %s/%s: %s", llc_name, state, e)
         return {}
 
 
@@ -160,8 +198,11 @@ async def _opencorporates_lookup(name: str, state: str) -> Dict[str, Any]:
         return {}
 
 
-# ─── Tier 3: SEC EDGAR ──────────────────────────────────────────────────────
+# ─── Tier 3: SEC EDGAR (regex extraction — no LLM) ──────────────────────────
 async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
+    """Query SEC EDGAR for the entity and extract structured data with regex.
+    Only useful for large investment companies that file 13-F/10-K with the SEC.
+    """
     try:
         async with httpx.AsyncClient(timeout=20) as cli:
             r = await cli.get(
@@ -177,11 +218,20 @@ async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
             )
         if r.status_code != 200:
             return {}
-        text = BeautifulSoup(r.text, "lxml").get_text("\n", strip=True)[:6000]
-        prof = await extract_investor_profile(text, source="sec_edgar")
+
+        soup = BeautifulSoup(r.text, "lxml")
+        text = soup.get_text("\n", strip=True)
+
+        principals = _extract_named_principals(text)
+        address_matches = _ADDRESS_RE.findall(text)
+        address = address_matches[0] if address_matches else None
+
+        if not principals and not address:
+            return {}
+
         return {
-            "principals": prof.get("principals") or [],
-            "address": prof.get("mailing_address"),
+            "principals": principals,
+            "address": address,
             "jurisdiction": "sec_filings",
         }
     except Exception as e:
@@ -216,49 +266,6 @@ async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[st
     return {}
 
 
-# ─── Tier 5: Google site-dorking ────────────────────────────────────────────
-async def _google_dork_lookup(name: str, state: str) -> Dict[str, Any]:
-    if not settings.enable_google_dorks or "google_dork" in _dead_sources:
-        return {}
-
-    queries: List[str] = [
-        f'"{name}" "registered agent" {state}',
-        f'"{name}" "phone" "email" LLC',
-    ]
-    if state:
-        queries.insert(1, f'"{name}" site:sos.{state.lower()}.gov')
-
-    aggregated: Dict[str, Any] = {
-        "phones": [],
-        "emails": [],
-        "principals": [],
-        "addresses": [],
-    }
-    for q in queries:
-        try:
-            html = await fetch_html(
-                f"https://www.google.com/search?q={q.replace(' ', '+')}",
-                render=False,
-                is_google=True,
-            )
-            text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)[:6000]
-            prof = await extract_investor_profile(text, source="google_dork")
-            for k in ("phones", "emails", "principals"):
-                aggregated[k].extend(prof.get(k) or [])
-            if prof.get("mailing_address"):
-                aggregated["addresses"].append(prof["mailing_address"])
-            if aggregated["phones"] or aggregated["emails"]:
-                break
-        except Exception as e:
-            err = str(e).lower()
-            if "400" in err or "custom_google" in err:
-                _dead_sources.add("google_dork")
-                log.warning("Google dork disabled: %s", e)
-                break
-            log.info("Google dork failed for query '%s': %s", q, e)
-    return aggregated
-
-
 # ─── Public orchestrator ────────────────────────────────────────────────────
 async def trace(
     name: str,
@@ -267,7 +274,12 @@ async def trace(
     address: Optional[str] = None,
     state: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Return enriched contact data for a person / LLC."""
+    """Return enriched contact data for a person / LLC.
+
+    Sources (in order): SOS → OpenCorporates → SEC EDGAR → PropertyAPI.
+    OSINT people-search scrapers (FastPeopleSearch, CyberBackgroundChecks) have
+    been permanently removed — they violate ToS and FCRA requirements.
+    """
     out: Dict[str, Any] = {
         "name": name,
         "llc": llc,
@@ -280,22 +292,13 @@ async def trace(
     target = llc or name
     state_u = (state or "").upper()
 
-    # 0. OSINT people-finder
-    fp = await _fastpeople_lookup(name, state_u)
-    cb = await _cyberbackground_lookup(name, state_u)
-    for src, label in [(fp, "fastpeople"), (cb, "cyberbackground")]:
-        if src:
-            out["phones"].extend(src.get("phones") or [])
-            out["emails"].extend(src.get("emails") or [])
-            out["addresses"].extend(src.get("addresses") or [])
-            out["principals"].extend(src.get("principals") or [])
-            out["sources"].append(label)
-
-    # 1. Secretary of State
+    # 1. Secretary of State (FL: full; other states: regex-extracted)
     if llc and state_u:
         sos = await _sos_lookup(llc, state_u)
         if sos:
             out["principals"].extend(sos.get("principals") or [])
+            out["phones"].extend(sos.get("phones") or [])
+            out["emails"].extend(sos.get("emails") or [])
             if sos.get("address"):
                 out["addresses"].append(sos["address"])
             out["sources"].append(f"sos:{state_u.lower()}")
@@ -309,7 +312,7 @@ async def trace(
                 out["addresses"].append(oc["address"])
             out["sources"].append("opencorporates")
 
-    # 3. SEC EDGAR
+    # 3. SEC EDGAR (investment companies only)
     if not out["principals"]:
         sec = await _sec_edgar_lookup(target)
         if sec:
@@ -324,15 +327,6 @@ async def trace(
         out["phones"].extend(papi.get("phones") or [])
         out["emails"].extend(papi.get("emails") or [])
         out["sources"].append("propertyapi")
-
-    # 5. Google dork
-    if not out["phones"] and not out["emails"]:
-        gd = await _google_dork_lookup(target, state_u)
-        out["phones"].extend(gd.get("phones") or [])
-        out["emails"].extend(gd.get("emails") or [])
-        out["addresses"].extend(gd.get("addresses") or [])
-        if gd.get("phones") or gd.get("emails"):
-            out["sources"].append("google_dork")
 
     # Dedup + normalize
     out["phones"] = sorted({p.strip() for p in out["phones"] if p})

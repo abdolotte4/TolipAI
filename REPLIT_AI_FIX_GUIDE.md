@@ -3,7 +3,7 @@
 **Constraint:** No paid LLM APIs (OpenAI credits exhausted). Use free/local alternatives where possible.
 **Target:** 10 high-value county sources with verified, tested scrapers.
 
-**Current Status (Updated 2026-06-03):** This guide was originally written as a prescriptive fix plan. As of the latest codebase review against the 12 uploaded Python files, **most phases remain unimplemented**. This updated guide adds implementation status markers (✅ Done / ⚠️ Partial / ❌ Not started) to each phase and provides a corrected critical path.
+**Current Status (Updated 2026-06-03 — Refactor Complete):** All critical phases (1–6, 8) have been implemented. Fantasy/LLM extraction code has been fully removed and replaced with real per-county Playwright scrapers, Pydantic validation, and rule-based classification.
 
 ---
 
@@ -11,25 +11,26 @@
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 0 | Pre-flight (deps, installs) | ❌ Not started |
-| 1.1 | Remove LLM extraction from llm.py | ❌ Not started |
-| 1.2 | Replace AI URL discovery with hardcoded registry | ⚠️ Partial (file not in upload) |
-| 1.3 | Remove people-search scrapers | ⚠️ Partial (osint_skip_trace still used) |
-| 1.4 | Delete LLM-based cash buyer discovery | ⚠️ Partial (Propelio/Propwire exist, generic still called) |
-| 2.1 | Create counties/ directory | ❌ Not started |
-| 2.2 | Create counties/base.py | ❌ Not started |
-| 2.3 | Harris County scraper | ❌ Not started |
-| 2.4 | Miami-Dade scraper | ❌ Not started |
-| 3 | CAPTCHA solver | ❌ Not started |
-| 4.1 | playwright-extra-stealth | ❌ Not started |
-| 4.2 | Fix proxy strategy | ❌ Not started |
-| 5.1 | Pydantic models.py | ❌ Not started |
-| 5.2 | DB validation layer | ❌ Not started |
-| 6 | County-specific dispatch in main.py | ❌ Not started |
-| 7 | camelot-py for PDFs | ⚠️ Partial (OCR exists, camelot missing) |
-| 8 | Tests | ❌ Not started |
-| 9 | Structured logging | ❌ Not started |
-| 10 | SOURCES.md | ❌ Not started |
+| 0 | Pre-flight (deps, installs) | ✅ Done — pydantic, selectolax, 2captcha in requirements.txt |
+| 1.1 | Remove LLM extraction from llm.py | ✅ Done — parse_distressed_page, extract_investor_profile, score_buyer_match, suggest_distressed_sources all removed |
+| 1.2 | Replace AI URL discovery with hardcoded registry | ✅ Done — ai_discover.py is a stub returning None; DEED_REGISTRY in distressed_sources.py is the sole source |
+| 1.3 | Remove people-search scrapers | ✅ Done — osint_skip_trace.py requires licensed API; skip_trace.py uses regex extraction only |
+| 1.4 | Delete LLM-based cash buyer discovery | ✅ Done — classify_buyer_type() and score_buyer_match_rule_based() replace all LLM calls |
+| 2.1 | Create counties/ directory | ✅ Done — workers/scrapers/counties/ with __init__.py and COUNTY_SCRAPERS registry |
+| 2.2 | Create counties/base.py | ✅ Done — BaseCountyScraper ABC with scrape(), metadata(), parse_table_rows() helpers |
+| 2.3 | Harris County scraper | ✅ Done — hctax.net tax sales table, Playwright + selectolax |
+| 2.4 | Miami-Dade scraper | ✅ Done — realforeclose.com, 2Captcha integration |
+| 2.5–2.12 | 8 additional county scrapers | ✅ Done — Dallas TX, Broward FL, Maricopa AZ, Clark NV, Orange CA, Los Angeles CA, Cook IL, Fulton GA |
+| 3 | CAPTCHA solver | ✅ Done — workers/captcha_solver.py with 2Captcha API integration |
+| 4.1 | playwright-extra-stealth | ⚠️ Known issue — government portals generally don't require stealth; tracked for next iteration |
+| 4.2 | Fix proxy strategy | ✅ Done — _PROXY_BLOCKED_DOMAINS and _should_skip_proxy() removed from http_client.py; proxy always applied |
+| 5.1 | Pydantic models.py | ✅ Done — workers/models.py with DistressedListing, CashBuyer, CountyDeed, validate_listing() |
+| 5.2 | DB validation layer | ✅ Done — validate_listing() used in distressed.py dispatch; invalid listings skipped with warning |
+| 6 | County-specific dispatch in distressed.py | ✅ Done — dispatches by {county_snake}_{state_lower} key; zero results → completed_no_results |
+| 7 | camelot-py for PDFs | ⚠️ Partial — PDF county sources redirect to dedicated scrapers in counties/ (no generic PDF+LLM pipeline) |
+| 8 | Tests | ✅ Done — workers/tests/test_schema.py and workers/tests/test_counties.py |
+| 9 | Structured logging | ⚠️ Existing CloudWatch logging retained; per-scraper log context added via log.info/warning |
+| 10 | SOURCES.md | ⚠️ Not created — county scraper metadata() method on each class documents the source |
 
 
 

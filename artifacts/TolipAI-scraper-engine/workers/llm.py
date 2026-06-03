@@ -8,6 +8,16 @@ Provider: OpenAI (gpt-4o-mini default, configurable via OPENAI_MODEL env var).
 Circuit breaker: permanently skips on fatal errors (auth/suspended/deprecated).
 Rate-limit: exponential backoff up to _MAX_RATE_HITS before cooling down.
 Concurrency: global semaphore (LLM_CONCURRENCY, default 2) caps concurrent calls.
+
+AUDIT COMPLIANCE:
+  Removed fantasy LLM-based extraction functions:
+    ✗ extract_investor_profile()   — was scraping people-search sites + LLM
+    ✗ score_buyer_match()          — was sending buyer+lead to LLM for scoring
+    ✗ parse_distressed_page()      — was sending raw HTML to LLM for structured extraction
+    ✗ suggest_distressed_sources() — was asking LLM to hallucinate URLs
+
+  Added data-driven helper:
+    ✓ classify_buyer_type()        — rule-based classification from purchase history
 """
 from __future__ import annotations
 
@@ -240,180 +250,138 @@ INVESTOR_TYPES = [
     "hedge_fund",
     "lender",
     "wholesaler",
+    "developer",
     "unknown",
 ]
 
 
-async def extract_investor_profile(text: str, *, source: str = "") -> Dict[str, Any]:
-    """Turn a chunk of scraped page text into a structured investor profile."""
-    sys = (
-        "You extract real-estate investor data from messy web/HTML text. "
-        "Return strictly JSON with keys: buyer_name (string), llc_name (string|null), "
-        "principals (array of {name, role}), city, state, zip, mailing_address, "
-        "phones (array of strings), emails (array of strings), "
-        "buyer_type (one of: flipper, landlord, hedge_fund, lender, wholesaler, unknown), "
-        "classification_reason (1-sentence string), portfolio_size (int|null), "
-        "portfolio_value (number|null), avg_purchase_price (number|null), "
-        "last_purchase_date (string|null). Use null for unknown fields."
-    )
-    user = f"Source: {source}\n\nTEXT:\n{text[:8000]}"
-    raw = await _chat(
-        [{"role": "system", "content": sys}, {"role": "user", "content": user}],
-        json_mode=True,
-        max_tokens=900,
-    )
-    try:
-        data = json.loads(raw)
-    except Exception:
-        log.warning("LLM returned non-JSON: %s", raw[:200])
-        return {
-            "buyer_name": "Unknown",
-            "buyer_type": "unknown",
-            "raw_data": {"text": text[:1000]},
-        }
-    if data.get("buyer_type") not in INVESTOR_TYPES:
-        data["buyer_type"] = "unknown"
-    return data
+def classify_buyer_type(
+    buyer_name: str,
+    purchase_count: int,
+    avg_price: Optional[float],
+    prices: Optional[List[float]] = None,
+) -> Dict[str, Any]:
+    """Rule-based buyer classification from purchase history data.
+
+    This replaces the removed extract_investor_profile() + score_buyer_match() LLM calls.
+    Classification is deterministic, auditable, and zero-cost.
+
+    Rules:
+      - LLC with "fund", "capital", "asset", "reit" → hedge_fund
+      - LLC with "lending", "mortgage", "fund" → lender
+      - LLC with "wholesale", "deals", "solutions" → wholesaler
+      - LLC with "development", "builder", "construction" → developer
+      - ≥15 purchases → likely hedge_fund or landlord (depends on avg price)
+      - ≥5 purchases with avg price < $200k → flipper
+      - ≥5 purchases with avg price ≥ $200k → landlord
+      - < 5 purchases → unknown (not enough data)
+    """
+    name_lower = (buyer_name or "").lower()
+
+    fund_keywords = ["fund", "capital", "asset management", "reit", "equity", "holdings llc"]
+    lending_keywords = ["lending", "mortgage", "loan", "credit", "financial"]
+    wholesale_keywords = ["wholesale", "solutions", "deals", "properties llc", "investments llc"]
+    dev_keywords = ["development", "builder", "construction", "realty group"]
+
+    # Name-based heuristics (strongest signal for LLCs)
+    if any(kw in name_lower for kw in fund_keywords) and purchase_count >= 10:
+        buyer_type = "hedge_fund"
+        reason = f"Name pattern '{name_lower}' + {purchase_count} purchases"
+    elif any(kw in name_lower for kw in lending_keywords):
+        buyer_type = "lender"
+        reason = f"Name pattern '{name_lower}'"
+    elif any(kw in name_lower for kw in dev_keywords):
+        buyer_type = "developer"
+        reason = f"Name pattern '{name_lower}'"
+    elif any(kw in name_lower for kw in wholesale_keywords) and purchase_count < 10:
+        buyer_type = "wholesaler"
+        reason = f"Name pattern '{name_lower}'"
+    # Volume + price heuristics
+    elif purchase_count >= 15:
+        buyer_type = "hedge_fund" if (avg_price or 0) > 300_000 else "landlord"
+        reason = f"{purchase_count} purchases avg ${avg_price:,.0f}" if avg_price else f"{purchase_count} purchases"
+    elif purchase_count >= 5:
+        buyer_type = "flipper" if (avg_price or 0) < 200_000 else "landlord"
+        reason = f"{purchase_count} purchases avg ${avg_price:,.0f}" if avg_price else f"{purchase_count} purchases"
+    else:
+        buyer_type = "unknown"
+        reason = f"Insufficient data ({purchase_count} purchases)"
+
+    return {"buyer_type": buyer_type, "classification_reason": reason}
 
 
-async def score_buyer_match(buyer: Dict[str, Any], lead: Dict[str, Any]) -> Dict[str, Any]:
-    """Return {match_score: 0-100, match_reasons: [str]} for a buyer vs a lead."""
-    sys = (
-        "You score how well a real-estate cash buyer matches a wholesaler's lead. "
-        "Output JSON: { match_score: 0-100 integer, match_reasons: 2-4 short bullet strings }. "
-        "Higher score when: buyer's recent purchases are in the same ZIP/county, "
-        "buyer's avg purchase price brackets the lead's likely sale price, "
-        "buyer type fits property condition (flipper for distressed, landlord for rentable, "
-        "hedge_fund for portfolio-sized, lender for owner-financed deals)."
-    )
-    payload = {
-        "buyer": {
-            k: buyer.get(k)
-            for k in (
-                "buyer_name",
-                "llc_name",
-                "buyer_type",
-                "city",
-                "state",
-                "zip",
-                "portfolio_size",
-                "portfolio_value",
-                "avg_purchase_price",
-            )
-        },
-        "lead": {
-            k: lead.get(k)
-            for k in (
-                "address",
-                "city",
-                "state",
-                "zip",
-                "beds",
-                "baths",
-                "sqft",
-                "year_built",
-                "current_value",
-                "asking_price",
-                "arv",
-                "condition",
-            )
-        },
+def score_buyer_match_rule_based(
+    buyer: Dict[str, Any],
+    lead: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Rule-based match scoring — replaces the removed score_buyer_match() LLM call.
+
+    Score 0-100 based on:
+      - Geographic match (same ZIP = 40pts, same city = 25pts, same state = 10pts)
+      - Price bracket match (buyer avg within 50% of lead price = 30pts)
+      - Purchase volume (≥10 = 20pts, ≥5 = 10pts, ≥1 = 5pts)
+      - Buyer type fit (flipper on distressed = 10pts bonus)
+    """
+    score = 0
+    reasons: List[str] = []
+
+    # Geographic match
+    lead_zip = (lead.get("zip") or "").strip()
+    lead_city = (lead.get("city") or "").lower().strip()
+    lead_state = (lead.get("state") or "").upper().strip()
+
+    buyer_zip = (buyer.get("zip") or "").strip()
+    buyer_city = (buyer.get("city") or "").lower().strip()
+    buyer_state = (buyer.get("state") or "").upper().strip()
+
+    if lead_zip and buyer_zip and lead_zip == buyer_zip:
+        score += 40
+        reasons.append(f"Buys in same ZIP ({lead_zip})")
+    elif lead_city and buyer_city and lead_city == buyer_city:
+        score += 25
+        reasons.append(f"Buys in same city ({lead_city.title()})")
+    elif lead_state and buyer_state and lead_state == buyer_state:
+        score += 10
+        reasons.append(f"Active in {lead_state}")
+
+    # Price bracket match
+    avg_price = buyer.get("avg_purchase_price")
+    lead_price = lead.get("asking_price") or lead.get("current_value") or lead.get("arv")
+    if avg_price and lead_price:
+        try:
+            ratio = float(avg_price) / float(lead_price)
+            if 0.5 <= ratio <= 2.0:
+                score += 30
+                reasons.append(f"Price range match (avg ${avg_price:,.0f})")
+            elif 0.25 <= ratio <= 4.0:
+                score += 15
+                reasons.append(f"Moderate price range match (avg ${avg_price:,.0f})")
+        except (TypeError, ZeroDivisionError):
+            pass
+
+    # Purchase volume
+    portfolio_size = buyer.get("portfolio_size") or 0
+    if portfolio_size >= 10:
+        score += 20
+        reasons.append(f"High-volume buyer ({portfolio_size} purchases)")
+    elif portfolio_size >= 5:
+        score += 10
+        reasons.append(f"Active buyer ({portfolio_size} purchases)")
+    elif portfolio_size >= 1:
+        score += 5
+        reasons.append(f"{portfolio_size} known purchase(s)")
+
+    # Buyer type fit
+    buyer_type = buyer.get("buyer_type", "unknown")
+    condition = (lead.get("condition") or "").lower()
+    if buyer_type == "flipper" and condition in ("distressed", "poor", "fair"):
+        score += 10
+        reasons.append("Flipper matched to distressed property")
+    elif buyer_type == "landlord" and condition in ("good", "excellent", "rentable"):
+        score += 10
+        reasons.append("Landlord matched to rentable property")
+
+    return {
+        "match_score": min(score, 100),
+        "match_reasons": reasons[:4],
     }
-    raw = await _chat(
-        [
-            {"role": "system", "content": sys},
-            {"role": "user", "content": json.dumps(payload, default=str)},
-        ],
-        json_mode=True,
-        max_tokens=300,
-        temperature=0.3,
-    )
-    try:
-        data = json.loads(raw)
-        return {
-            "match_score": max(0, min(100, int(data.get("match_score") or 0))),
-            "match_reasons": data.get("match_reasons") or [],
-        }
-    except Exception:
-        return {"match_score": 0, "match_reasons": []}
-
-
-async def parse_distressed_page(text: str, *, source: str) -> List[Dict[str, Any]]:
-    """Extract distressed property records from a scraped trustee/auction page."""
-    sys = (
-        "You extract distressed real-estate listings from scraped text "
-        "(trustee sales, foreclosure auctions, tax liens). "
-        "Return JSON {listings: [...]} where each listing has: "
-        "address, city, state, zip, county, parcel_id, owner_name, sale_date "
-        "(ISO if possible), opening_bid (number|null), estimated_value (number|null), "
-        "mortgage_balance (number|null), distress_type "
-        "(trustee_sale|auction|preforeclosure|tax_lien|code_violation|probate|fsbo|expired), "
-        "source_url (string|null). Be conservative — drop rows you can't verify."
-    )
-    raw = await _chat(
-        [
-            {"role": "system", "content": sys},
-            {"role": "user", "content": f"Source: {source}\n\nTEXT:\n{text[:9000]}"},
-        ],
-        json_mode=True,
-        max_tokens=1500,
-        temperature=0.1,
-    )
-    try:
-        data = json.loads(raw)
-        listings = data.get("listings") or []
-        return [lst for lst in listings if isinstance(lst, dict) and lst.get("address")]
-    except Exception:
-        log.warning("LLM distressed parse returned non-JSON")
-        return []
-
-
-async def suggest_distressed_sources(
-    *, state: str, category: str, county: str = "", city: str = ""
-) -> List[Dict[str, Any]]:
-    """Suggest fallback source URLs for a state/category when registry coverage is thin."""
-    sys = (
-        "You discover free public-record or public-web distressed-property sources in the United States. "
-        "Return strictly JSON {sources:[...]} with 3-5 items. Each item must include: "
-        "name, url, render (boolean), notes, category, state, key. "
-        "Prefer official county clerk, trustee, assessor, probate, or state foreclosure pages. "
-        "If the exact county page is unknown, use the main metro county for the state. "
-        "Do not invent private paid services."
-    )
-    user = {
-        "state": state.upper(),
-        "category": category,
-        "county": county,
-        "city": city,
-    }
-    raw = await _chat(
-        [
-            {"role": "system", "content": sys},
-            {"role": "user", "content": json.dumps(user)},
-        ],
-        json_mode=True,
-        max_tokens=900,
-        temperature=0.2,
-    )
-    try:
-        data = json.loads(raw)
-        sources = data.get("sources") or []
-        out: List[Dict[str, Any]] = []
-        for idx, src in enumerate(sources):
-            if not isinstance(src, dict) or not src.get("url"):
-                continue
-            out.append(
-                {
-                    "key": src.get("key") or f"{state.lower()}-{category}-{idx+1}",
-                    "category": src.get("category") or category,
-                    "state": src.get("state") or state.upper(),
-                    "name": src.get("name") or src.get("url"),
-                    "url": src["url"],
-                    "render": bool(src.get("render", True)),
-                    "notes": src.get("notes") or "",
-                }
-            )
-        return out[:5]
-    except Exception:
-        log.warning("LLM source discovery returned non-JSON")
-        return []

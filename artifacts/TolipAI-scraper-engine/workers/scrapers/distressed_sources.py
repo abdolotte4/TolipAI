@@ -2282,14 +2282,14 @@ async def sources_for_request_ai(
     county: str = "",
     city: str = "",
 ) -> List[Dict[str, Any]]:
-    out = sources_for_request(categories=categories, state=state)
-    requested_state = state.upper() if state else ""
-    if requested_state and not any(src.get("state") == requested_state for src in out):
-        from ..llm import suggest_distressed_sources
+    """Return static sources for the requested state/categories.
 
-        for c in categories or list(CATEGORY_META.keys()):
-            out.extend(await suggest_distressed_sources(state=requested_state, category=c, county=county, city=city))
-    return out
+    NOTE: AI URL discovery (suggest_distressed_sources) has been permanently removed.
+    This function now behaves identically to sources_for_request() — it returns only
+    statically registered sources. County dispatch is handled by COUNTY_SCRAPERS in
+    workers/scrapers/counties/.
+    """
+    return sources_for_request(categories=categories, state=state)
 
 
 # ─── Deed Registry (curated stable sources) ──────────────────────────────────

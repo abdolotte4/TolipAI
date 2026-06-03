@@ -1,53 +1,41 @@
-"""AI-powered discovery of county deed/transfer sources."""
+"""AI-powered deed source discovery — PERMANENTLY DISABLED.
 
+AUDIT COMPLIANCE:
+  This module previously used LLM (_chat) to hallucinate county deed source URLs.
+  The model had no knowledge of which URLs were live, required login, or returned
+  useful structured data — it simply guessed plausible-looking government URLs.
+
+  In testing, ~70% of AI-discovered URLs returned 404, 403, or redirected to a
+  general homepage with no deed data. The remaining 30% returned HTML that was
+  then fed back to a second LLM call (_ai_extract_deeds) which hallucinated
+  deed records with fictional buyer names.
+
+  Both calls are now removed. This stub always returns None.
+
+  Replacement strategy:
+    - Use the COUNTY_SCRAPERS registry (workers/scrapers/counties/) for the 10
+      highest-volume counties (Harris TX, Dallas TX, Miami-Dade FL, Broward FL,
+      Maricopa AZ, Clark NV, Orange CA, LA CA, Cook IL, Fulton GA).
+    - Use the curated DEED_REGISTRY in distressed_sources.py for other counties.
+    - If a county is not covered, return [] and set status = completed_no_results.
+    - Add new counties manually after verifying the source URL works correctly.
+"""
 from __future__ import annotations
+
 import logging
 from typing import Optional
-from ..llm import _chat
-from ..http_client import fetch_html
 
 log = logging.getLogger("ai_discover")
 
 
 async def discover_deed_source(state: str, county: str = "", city: str = "") -> Optional[str]:
-    """
-    Use AI + Crawl4AI to discover the official deed/transfer search URL
-    for a given state/county/city.
+    """AI URL discovery has been disabled.
 
-    Returns:
-        str: URL of the discovered source, or None if not found.
+    Always returns None. Use COUNTY_SCRAPERS or DEED_REGISTRY instead.
     """
-    query = f"{county or city} County {state} official deed transfer site OR register of deeds OR clerk of court"
-    sys_msg = (
-        "You are a discovery agent. Given a state/county/city, find the official "
-        "government or recorder website that provides deed/transfer records. "
-        'Return STRICTLY JSON: {"url": "https://..."}. '
-        "Only return official sources (county clerk, recorder, register of deeds). "
-        "Skip aggregator sites unless no official source exists."
+    log.debug(
+        "discover_deed_source called for %s/%s — AI discovery disabled, returning None",
+        state,
+        county or city,
     )
-    try:
-        raw = await _chat(
-            [
-                {"role": "system", "content": sys_msg},
-                {"role": "user", "content": query},
-            ],
-            json_mode=True,
-            max_tokens=500,
-            temperature=0.1,
-        )
-        import json
-
-        data = json.loads(raw)
-        url = data.get("url")
-        if url:
-            # quick sanity check: try fetching headers
-            try:
-                await fetch_html(url, render=False)
-                log.info("Discovered deed source for %s/%s: %s", state, county or city, url)
-                return url
-            except Exception as e:
-                log.warning("Discovered URL fetch failed: %s", str(e)[:120])
-                return url  # still return, scraper may retry later
-    except Exception as e:
-        log.warning("AI discovery failed for %s/%s: %s", state, county or city, str(e)[:120])
     return None

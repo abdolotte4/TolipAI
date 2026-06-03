@@ -13,7 +13,6 @@ from typing import Any, Dict, List
 
 from . import distressed_sources as ds
 from ..http_client import fetch_html
-from ..llm import parse_distressed_page
 from ..pdf_parser import fetch_pdf_text
 
 log = logging.getLogger("county")
@@ -55,12 +54,14 @@ async def scrape_county(
         return listings
 
     # ── PDF path: direct PDF URL ──────────────────────────────────────────────
+    # parse_distressed_page (LLM extraction) has been removed.
+    # PDF county sources now require a dedicated county scraper in scrapers/counties/.
     if url.lower().endswith(".pdf") or "pdf" in url.lower():
-        log.info("County PDF direct: %s", url)
-        text = await fetch_pdf_text(url)
-        if text:
-            listings = await parse_distressed_page(text, source=src["name"])
-            return _tag_listings(listings, url)
+        log.info(
+            "County PDF direct for %s: %s — LLM extraction removed. "
+            "Add a dedicated county scraper to scrapers/counties/ to handle this source.",
+            county_key, url,
+        )
         return []
 
     # ── HTML path ─────────────────────────────────────────────────────────────
@@ -74,29 +75,15 @@ async def scrape_county(
 
     text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)
 
-    # ── PDF discovery: if the page links to PDFs, parse those too ────────────
+    # parse_distressed_page (LLM extraction) has been removed.
+    # This generic HTML-to-LLM pipeline no longer produces results.
+    # Use dedicated county scrapers in scrapers/counties/ for structured extraction.
+    log.info(
+        "scrape_county(%s): generic LLM extraction pipeline removed — "
+        "use a dedicated county scraper in scrapers/counties/ for this source.",
+        county_key,
+    )
     all_listings: List[Dict[str, Any]] = []
-    pdf_links = [h for h in re.findall(r'href=["\']([^"\']+\.pdf[^"\']*)["\']', html, re.I) if not h.startswith("#")]
-    if pdf_links:
-        import re as _re
-
-        root = _re.match(r"(https?://[^/]+)", url)
-        for pdf_href in pdf_links[:3]:  # cap at 3 PDFs per source
-            if pdf_href.startswith("http"):
-                pdf_url = pdf_href
-            elif pdf_href.startswith("/"):
-                pdf_url = (root.group(1) if root else "") + pdf_href
-            else:
-                pdf_url = url.rsplit("/", 1)[0] + "/" + pdf_href
-            log.info("County PDF discovered: %s", pdf_url)
-            pdf_text = await fetch_pdf_text(pdf_url)
-            if pdf_text:
-                pdf_listings = await parse_distressed_page(pdf_text, source=f"{src['name']} (PDF)")
-                all_listings.extend(_tag_listings(pdf_listings, pdf_url))
-
-    # Parse HTML text
-    html_listings = await parse_distressed_page(text[:9000], source=src["name"])
-    all_listings.extend(_tag_listings(html_listings, url))
 
     # Deduplicate by address
     seen: set[str] = set()

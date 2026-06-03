@@ -1,17 +1,35 @@
-"""Generic County deed-transfer scraper — real grantee (buyer) names."""
+"""County deed-transfer scraper — real grantee (buyer) names.
+
+Fetches recent deed transfers from the curated DEED_REGISTRY only.
+No AI extraction, no AI URL discovery, no fallback guessing.
+
+If a state/county is not in the registry, this function returns [] and logs
+"Source not implemented" — the caller should set status = completed_no_results.
+
+To add a new county:
+  1. Verify the source URL returns a real HTML table with grantee names
+  2. Add it to DEED_REGISTRY in distressed_sources.py
+  3. Optionally add a dedicated county scraper to scrapers/counties/
+  4. Write a test in tests/test_counties.py
+
+AUDIT COMPLIANCE:
+  Removed:
+    ✗ _ai_extract_deeds()     — was feeding raw HTML to LLM to hallucinate deed records
+    ✗ _propertyshark_deeds()  — was scraping a paid aggregator + LLM extraction
+    ✗ discover_deed_source()  — AI URL hallucination
+"""
 
 from __future__ import annotations
-import json
+
 import logging
 import re
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
+
 from bs4 import BeautifulSoup
+
 from ..http_client import fetch_html
-from ..llm import _chat
-from .ai_discover import discover_deed_source  # AI discovery module
-from .distressed_sources import DEED_REGISTRY  # curated registry
-from .pdf_utils import extract_text_from_pdf  # PDF parsing utility
+from .distressed_sources import DEED_REGISTRY
 
 log = logging.getLogger("county_deeds")
 
@@ -56,94 +74,83 @@ def _recent_date(days: int = 180) -> str:
     return (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
-# ─── AI deed extractor ───────────────────────────────────────────────────────
-async def _ai_extract_deeds(
-    text: str, *, state: str, city: str, zip_code: str = "", source: str
-) -> List[Dict[str, Any]]:
-    if not text or len(text) < 100:
+def _parse_deed_table(html: str, *, state: str, city: str, zip_code: str = "", source: str) -> List[Dict[str, Any]]:
+    """Parse a deed-transfer HTML table into normalised deed records.
+    Uses BeautifulSoup with heuristic column matching — no LLM required.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    tables = soup.find_all("table")
+    if not tables:
         return []
-    sys_msg = (
-        "Extract deed transfer records. Return JSON: "
-        '{"deeds": [{"grantee":...,"grantor":...,"address":...,'
-        '"price":...,"date":...,"parcel":...}]} Only actual transfers.'
-    )
-    try:
-        raw = await _chat(
-            [
-                {"role": "system", "content": sys_msg},
-                {
-                    "role": "user",
-                    "content": f"State: {state}, City: {city}\n\n{text[:5000]}",
-                },
-            ],
-            json_mode=True,
-            max_tokens=1500,
-            temperature=0.1,
+
+    deeds: List[Dict[str, Any]] = []
+
+    for table in tables:
+        headers_raw = [th.get_text(strip=True).lower() for th in table.find_all("th")]
+        if not headers_raw:
+            first_row = table.find("tr")
+            if first_row:
+                headers_raw = [td.get_text(strip=True).lower() for td in first_row.find_all("td")]
+
+        if not headers_raw:
+            continue
+
+        # Heuristic column mapping
+        grantee_col = next(
+            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("grantee", "buyer", "purchaser", "owner"))),
+            None,
         )
-        data = json.loads(raw)
-        deeds = data.get("deeds") or []
-        return [
-            _deed(
-                grantee=d.get("grantee", ""),
-                grantor=d.get("grantor", ""),
-                address=d.get("address", ""),
+        grantor_col = next(
+            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("grantor", "seller", "granto"))),
+            None,
+        )
+        address_col = next(
+            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("address", "situs", "location", "property"))),
+            None,
+        )
+        price_col = next(
+            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("price", "amount", "consideration", "sale_price", "sold"))),
+            None,
+        )
+        date_col = next(
+            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("date", "recorded", "filed", "transfer"))),
+            None,
+        )
+        parcel_col = next(
+            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("parcel", "apn", "pin", "account"))),
+            None,
+        )
+
+        if grantee_col is None and address_col is None:
+            continue  # not a deed table
+
+        rows = table.find_all("tr")[1:]  # skip header row
+        for tr in rows:
+            cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+            if not cells:
+                continue
+
+            def cell(idx: Optional[int]) -> str:
+                return cells[idx].strip() if idx is not None and idx < len(cells) else ""
+
+            grantee = cell(grantee_col)
+            if not grantee:
+                continue  # need a buyer name
+
+            deeds.append(_deed(
+                grantee=grantee,
+                grantor=cell(grantor_col),
+                address=cell(address_col),
                 city=city,
                 state=state,
                 zip_code=zip_code,
-                price=_safe_price(d.get("price")),
-                date_str=d.get("date", ""),
-                parcel=d.get("parcel", ""),
+                price=_safe_price(cell(price_col)),
+                date_str=cell(date_col),
+                parcel=cell(parcel_col),
                 source=source,
-            )
-            for d in deeds
-            if d.get("grantee")
-        ]
-    except Exception as e:
-        log.warning("AI deed extract failed: %s", str(e)[:120])
-        return []
+            ))
 
-
-# ─── Generic fetcher ─────────────────────────────────────────────────────────
-async def _fetch_deeds_from_url(
-    url: str,
-    *,
-    state: str,
-    city: str,
-    zip_code: str = "",
-    source: str,
-    render: bool = True,
-    max_results: int = 100,
-) -> List[Dict[str, Any]]:
-    """Fetch deeds from a given URL using AI extraction or PDF parsing."""
-    try:
-        html_or_bytes = await fetch_html(url, render=render)
-    except Exception as e:
-        log.warning("Fetch failed for %s: %s", url, str(e)[:120])
-        return []
-
-    # Detect PDF responses
-    if isinstance(html_or_bytes, (bytes, bytearray)) or url.lower().endswith(".pdf"):
-        text = extract_text_from_pdf(html_or_bytes if isinstance(html_or_bytes, (bytes, bytearray)) else b"")
-    else:
-        soup = BeautifulSoup(html_or_bytes, "lxml")
-        text = soup.get_text("\n", strip=True)[:8000]
-
-    return await _ai_extract_deeds(text, state=state, city=city, zip_code=zip_code, source=source)
-
-
-# ─── PropertyShark fallback ───────────────────────────────────────────────────
-async def _propertyshark_deeds(city: str, state: str, max_results: int = 100) -> List[Dict[str, Any]]:
-    """Best-effort PropertyShark public search for recent deed transfers."""
-    slug = f"{city.lower().replace(' ', '-')}-{state.lower()}"
-    url = f"https://www.propertyshark.com/Real-Estate-Reports/deed-transfers/{slug}/"
-    try:
-        html = await fetch_html(url, render=False)
-        soup = BeautifulSoup(html, "lxml")
-        text = soup.get_text("\n", strip=True)[:8000]
-        return await _ai_extract_deeds(text, state=state, city=city, source=f"propertyshark_{slug}")
-    except Exception as e:
-        log.debug("PropertyShark fallback failed for %s, %s: %s", city, state, str(e)[:120])
-        return []
+    return deeds
 
 
 # ─── Public entrypoint ────────────────────────────────────────────────────────
@@ -155,60 +162,53 @@ async def fetch_recent_deeds(
     zip_code: str = "",
     max_results: int = 100,
 ) -> List[Dict[str, Any]]:
-    """
-    Fetch recent deed transfers for a given area.
+    """Fetch recent deed transfers for a given area from the curated registry.
 
-    Workflow:
-      1. Check curated registry (DEED_REGISTRY).
-      2. If missing, call AI discovery to find source URL.
-      3. Scrape with Crawl4AI + AI extraction.
-      4. Fallback: PropertyShark if city/state supported.
+    Returns [] if the state/county is not in the registry.
+    No AI discovery, no LLM extraction — registry + structured HTML parsing only.
     """
     state = state.upper().strip()
     city_key = (city or county or "").lower().strip()
     county_key = county.lower().strip() if county else city_key
 
-    # 1. Registry lookup
+    # Registry lookup only
     source_url = DEED_REGISTRY.get((state, county_key)) or DEED_REGISTRY.get((state, city_key))
-    if source_url:
-        results = await _fetch_deeds_from_url(
+
+    if not source_url:
+        log.info(
+            "Source not implemented for %s/%s — no entry in DEED_REGISTRY. "
+            "To add this county, verify the URL and add it to distressed_sources.DEED_REGISTRY.",
+            state,
+            county_key or city_key,
+        )
+        return []
+
+    # Fetch and parse
+    try:
+        html = await fetch_html(source_url, render=False)
+    except Exception as e:
+        log.warning("Fetch failed for %s: %s", source_url, str(e)[:120])
+        return []
+
+    if isinstance(html, (bytes, bytearray)):
+        log.info("Deed source %s returned PDF/binary — skipping (add PDF parser to handle)", source_url)
+        return []
+
+    results = _parse_deed_table(
+        html,
+        state=state,
+        city=city or county,
+        zip_code=zip_code,
+        source=f"{state}_{county_key}",
+    )
+
+    if results:
+        log.info("Registry deeds (%s/%s): %d records from %s", state, county_key, len(results), source_url)
+    else:
+        log.info(
+            "Registry deed source %s returned no parseable rows — "
+            "the site structure may have changed. Inspect and update _parse_deed_table().",
             source_url,
-            state=state,
-            city=city or county,
-            zip_code=zip_code,
-            source=f"{state}_{county_key}",
-            max_results=max_results,
         )
-        if results:
-            log.info("Registry deeds (%s/%s): %d records", state, county_key, len(results))
-            return results
 
-    # 2. AI discovery
-    discovered_url = await discover_deed_source(state=state, county=county, city=city)
-    if discovered_url:
-        results = await _fetch_deeds_from_url(
-            discovered_url,
-            state=state,
-            city=city or county,
-            zip_code=zip_code,
-            source=f"{state}_{county_key}_discover",
-            max_results=max_results,
-        )
-        if results:
-            log.info(
-                "AI-discovered deeds (%s/%s): %d records",
-                state,
-                county_key,
-                len(results),
-            )
-            return results
-
-    # 3. PropertyShark fallback
-    if city:
-        results = await _propertyshark_deeds(city, state, max_results)
-        if results:
-            log.info("PropertyShark deeds (%s, %s): %d records", city, state, len(results))
-            return results
-
-    log.warning("No deed handler for %s/%s — returning empty", state, county_key)
-    return []
+    return results[:max_results]
