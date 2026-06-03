@@ -63,6 +63,8 @@ function DistressedJobRow({ jobId }: { jobId: string }) {
       case "completed":
       case "done":
         return <Badge variant="default" className="bg-green-500/10 text-green-600 border-green-500/20"><CheckCircle2 className="w-3 h-3 mr-1" /> Completed</Badge>;
+      case "completed_no_results":
+        return <Badge variant="outline" className="bg-gray-500/10 text-gray-500 border-gray-500/20"><Info className="w-3 h-3 mr-1" /> No Results</Badge>;
       case "partial_success":
         return <Badge variant="default" className="bg-amber-500/10 text-amber-600 border-amber-500/20"><CheckCircle2 className="w-3 h-3 mr-1" /> Partial Results</Badge>;
       case "running":

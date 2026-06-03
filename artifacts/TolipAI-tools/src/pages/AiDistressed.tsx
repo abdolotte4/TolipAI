@@ -51,7 +51,8 @@ export default function AiDistressed() {
 
   useEffect(() => {
     if (!jobId) return;
-    if (job?.status === "completed" || job?.status === "failed") {
+    const _isTerminal = (s?: string) => ["completed", "failed", "completed_no_results", "done"].includes(s || "");
+    if (_isTerminal(job?.status)) {
       if (pollRef.current) clearInterval(pollRef.current);
       setFinished(true);
       return;
@@ -67,7 +68,7 @@ export default function AiDistressed() {
       const data = await res.json();
       setJob(data);
       setListings(normalizeListings(data));
-      if (data.status === "completed" || data.status === "failed") {
+      if (_isTerminal(data.status)) {
         if (pollRef.current) clearInterval(pollRef.current);
         setFinished(true);
       }
@@ -102,7 +103,7 @@ export default function AiDistressed() {
       setJobId(data.jobId || data.id);
       setJob({ id: data.jobId || data.id, status: data.status || "queued", progress: 0 });
       setListings(normalizeListings(data));
-      setFinished(data.status === "completed" || data.status === "failed");
+      setFinished(["completed", "failed", "completed_no_results", "done"].includes(data.status));
     } catch (e: any) { setError(e?.message || "Could not start."); }
     finally { setStarting(false); }
   };

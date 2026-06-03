@@ -388,6 +388,12 @@ class GoogleSearchRequest(BaseModel):
     maxResults: int = 50
 
 
+class CompsRequest(BaseModel):
+    address: str = Field(..., description="Full property address for comp lookup")
+    radius_miles: float = Field(0.5, ge=0.1, le=10.0)
+    max_results: int = Field(12, ge=1, le=50)
+
+
 class BulkRequest(BaseModel):
     tool: str = "google-maps"
     keywords: List[str] = Field(default_factory=list)
@@ -1471,6 +1477,47 @@ async def scrape_propwire_property(req: PropwireQueryRequest) -> Dict[str, Any]:
         return await propwire.fetch_property(req.query)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)[:300])
+
+
+@app.post("/scrape/comps")
+async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
+    """Fetch comparable sales for an address.
+
+    Source priority:
+      1. Propelio V2 (authenticated) — if PROPELIO_EMAIL + PROPELIO_PASSWORD are set
+      2. Propwire (authenticated) — fallback if Propelio is unconfigured or returns nothing
+
+    Returns: { address, count, comps, source }
+    """
+    comps: List[Dict[str, Any]] = []
+
+    # 1. Try Propelio V2 ───────────────────────────────────────────────────────
+    propelio_email = os.getenv("PROPELIO_EMAIL")
+    propelio_password = os.getenv("PROPELIO_PASSWORD")
+    if propelio_email and propelio_password:
+        try:
+            prop = await propelio_v2.search_property(req.address)
+            property_id = prop.get("property_id") if prop else None
+            if property_id:
+                comps = await propelio_v2.fetch_comps(
+                    property_id, radius_miles=req.radius_miles
+                )
+                if comps:
+                    log.info("scrape_comps: Propelio returned %d comps for %s", len(comps), req.address[:60])
+                    return {"address": req.address, "count": len(comps), "comps": comps, "source": "propelio"}
+        except Exception as e:
+            log.warning("scrape_comps: Propelio V2 failed for %s: %s", req.address[:60], str(e)[:200])
+
+    # 2. Propwire fallback ─────────────────────────────────────────────────────
+    try:
+        comps = await propwire.fetch_comps(req.address, max_results=req.max_results)
+        if comps:
+            log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
+        return {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
+    except Exception as e:
+        log.warning("scrape_comps: Propwire also failed for %s: %s", req.address[:60], str(e)[:200])
+
+    return {"address": req.address, "count": 0, "comps": [], "source": "none"}
 
 
 @app.post("/scrape/propwire/comps")

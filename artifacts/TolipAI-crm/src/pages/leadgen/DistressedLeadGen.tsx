@@ -143,15 +143,25 @@ export default function DistressedLeadGen() {
             const status = await statusRes.json();
             if (typeof status.progress === "number") setProgress(status.progress);
             if (status.message) setStatusMsg(status.message);
-            if (status.status === "completed" || status.status === "done") {
+            const isTerminal = ["completed", "done", "completed_no_results"].includes(status.status);
+            if (isTerminal) {
               clearInterval(pollRef.current!);
-              const raw = status.result;
-              finalListings = Array.isArray(raw) ? raw : (raw?.listings || raw?.results || []);
-              setResults(finalListings);
-              setProgress(100);
-              setStatusMsg(`Done — ${finalListings.length} lead(s) found`);
-              qc.invalidateQueries();
-              resolve();
+              if (status.status === "completed_no_results") {
+                finalListings = [];
+                setResults([]);
+                setProgress(100);
+                setStatusMsg("No distressed listings found in this area — try a different county or state.");
+                qc.invalidateQueries();
+                resolve();
+              } else {
+                const raw = status.result;
+                finalListings = Array.isArray(raw) ? raw : (raw?.listings || raw?.results || []);
+                setResults(finalListings);
+                setProgress(100);
+                setStatusMsg(`Done — ${finalListings.length} lead(s) found`);
+                qc.invalidateQueries();
+                resolve();
+              }
             } else if (status.status === "failed") {
               clearInterval(pollRef.current!);
               reject(new Error(status.error || "Scrape job failed"));

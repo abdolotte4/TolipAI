@@ -72,11 +72,16 @@ export interface JobResponse {
 export interface JobStatus {
   id: string;
   type: string;
-  status: "queued" | "running" | "done" | "failed";
+  status: "queued" | "running" | "done" | "completed" | "failed" | "completed_no_results" | "partial_success";
   progress: number;
   message?: string;
   result?: any;
   error?: string | null;
+}
+
+/** True for any terminal (non-polling) job status. */
+export function isJobTerminal(status: JobStatus["status"]): boolean {
+  return ["done", "completed", "failed", "completed_no_results", "partial_success"].includes(status);
 }
 
 export const scraperEngine = {
