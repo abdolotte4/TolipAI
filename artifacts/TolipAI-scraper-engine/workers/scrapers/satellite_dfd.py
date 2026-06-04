@@ -9,10 +9,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
+import urllib.parse
 
 import httpx
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # ─── Google Cloud Vision availability ────────────────────────────────────────
 _GCV_API_KEY: Optional[str] = None
@@ -102,6 +104,20 @@ def _category(score: int) -> str:
     return "severe" if score >= 70 else "high" if score >= 50 else "medium" if score >= 30 else "low"
 
 
+# ─── Numeric helper ──────────────────────────────────────────────────────────
+def _safe_numeric(v: Any) -> Optional[float]:
+    """Coerce v to a clean finite numeric value; returns None on failure/NaN/Inf."""
+    if v is None:
+        return None
+    try:
+        f = float(str(v).replace("$", "").replace(",", "").strip())
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except (ValueError, TypeError):
+        return None
+
+
 # ─── Google Maps Static API URLs ──────────────────────────────────────────────
 def _google_key() -> Optional[str]:
     return os.getenv("GOOGLE_MAPS_API_KEY") or None
@@ -127,6 +143,31 @@ def _streetview_url(lat: float, lon: float, heading: int = 0, pitch: int = 0) ->
         f"?size=640x400&location={lat},{lon}"
         f"&heading={heading}&pitch={pitch}&fov=90&key={key}"
     )
+
+
+async def _geocode_address(address: str, key: str) -> Tuple[Optional[float], Optional[float]]:
+    """Geocode an address string using Google Maps Geocoding API.
+
+    Returns (latitude, longitude) or (None, None) on failure.
+    Used as a fallback when a listing doesn't include coordinates.
+    """
+    if not address or not key:
+        return None, None
+    try:
+        encoded = urllib.parse.quote(address)
+        url = f"https://maps.googleapis.com/maps/api/geocode/json?address={encoded}&key={key}"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return None, None
+            data = r.json()
+            results = data.get("results", [])
+            if results:
+                loc = results[0]["geometry"]["location"]
+                return float(loc["lat"]), float(loc["lng"])
+    except Exception as exc:
+        log.debug("Geocoding failed for %r: %s", address, exc)
+    return None, None
 
 
 async def _download_image(url: str, fname: str) -> Optional[str]:
@@ -418,28 +459,49 @@ async def scan_area(
             continue
         total_above += 1
 
+        # ── Coordinates — use listing coords or geocode as fallback ──────────
+        lat_raw = p.get("latitude")
+        lon_raw = p.get("longitude")
+        lat: Optional[float] = None
+        lon: Optional[float] = None
+        if lat_raw and lon_raw:
+            try:
+                lat = float(lat_raw)
+                lon = float(lon_raw)
+            except (TypeError, ValueError):
+                pass
+
+        # Geocode when the listing source didn't include coordinates and we
+        # have a Google Maps API key. This is common for HomeHarvest listings
+        # from sources that strip lat/lon from the public data.
+        if has_google and (lat is None or lon is None):
+            address_str = p.get("address") or ""
+            if address_str:
+                geo_lat, geo_lon = await _geocode_address(address_str, _google_key() or "")
+                if geo_lat and geo_lon:
+                    lat, lon = geo_lat, geo_lon
+                    log.debug("DFD geocoded %r → (%s, %s)", address_str, lat, lon)
+
         # ── Google Maps image URLs ────────────────────────────────────────────
-        lat = p.get("latitude")
-        lon = p.get("longitude")
         sat_url: Optional[str] = None
         sv_url: Optional[str] = None
         if has_google and lat and lon:
-            sat_url = _satellite_url(float(lat), float(lon))
-            sv_url = _streetview_url(float(lat), float(lon))
+            sat_url = _satellite_url(lat, lon)
+            sv_url = _streetview_url(lat, lon)
 
         # ── Visual distress detection via Google Cloud Vision ────────────────
-        visual_sigs: Dict[str, bool] = {}
+        yolo_sigs: Dict[str, bool] = {}
         _run_visual = (base_score >= 40) and _has_gcv
         if _run_visual and sat_url:
-            visual_sigs = await _visual_signals(sat_url)
+            yolo_sigs = await _visual_signals(sat_url)
             # Each confirmed visual signal bumps score by 5 pts (cap at +20)
-            visual_boost = min(20, sum(5 for v in visual_sigs.values() if v))
+            visual_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
             base_score = min(100, base_score + visual_boost)
 
         # ── AI reasoning ─────────────────────────────────────────────────────
         if use_ai_scoring:
             async with _get_ai_sem():
-                scored = await _ai_distress_score(p.get("address", ""), signals, base_score, visual_sigs)
+                scored = await _ai_distress_score(p.get("address", ""), signals, base_score, yolo_sigs)
         else:
             scored = {
                 "score": base_score,
@@ -450,8 +512,16 @@ async def scan_area(
         if scored["score"] < min_score:
             continue
 
-        # ── Normalise value field ─────────────────────────────────────────────
-        estimated_value = p.get("estimated_value") or p.get("zestimate") or p.get("price")
+        # ── Normalise value field — always int or None, never NaN/Inf ────────
+        # Try all common price keys; _safe_numeric() strips $, commas, rejects NaN.
+        raw_value = (
+            p.get("estimated_value")
+            or p.get("zestimate")
+            or p.get("price")
+            or p.get("list_price")
+        )
+        ev = _safe_numeric(raw_value)
+        estimated_value: Optional[int] = int(ev) if ev else None
 
         candidates.append(
             {
@@ -474,7 +544,7 @@ async def scan_area(
                 "year_built": year_built,
                 "source": p.get("source", "zillow"),
                 "signals": signals,
-                "visual_signals": visual_sigs,
+                "yolo_signals": yolo_sigs,
             }
         )
 
@@ -492,7 +562,7 @@ async def scan_area(
         "total_above_threshold": total_above,
         "min_score_filter": min_score,
         "google_imagery": has_google,
-        "gcv_available": _has_gcv,
+        "yolo_available": _has_gcv,
         "results": top,
         "count": len(top),
     }

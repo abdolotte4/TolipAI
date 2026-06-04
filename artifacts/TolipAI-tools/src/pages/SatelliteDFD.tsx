@@ -152,11 +152,18 @@ function PropertyCard({ p }: { p: DFDProperty }) {
         )}
 
         {/* Estimated value — prominent */}
-        {p.estimated_value && (
-          <p className="text-lg font-bold text-foreground mt-2">
-            Est. ${Number(p.estimated_value).toLocaleString()}
-          </p>
-        )}
+        {(() => {
+          const raw = p.estimated_value;
+          if (raw === null || raw === undefined) return null;
+          // Strip any accidental $ / comma formatting, guard against NaN/Inf
+          const n = parseFloat(String(raw).replace(/[$,]/g, "").trim());
+          if (!isFinite(n) || n <= 0) return null;
+          return (
+            <p className="text-lg font-bold text-foreground mt-2">
+              Est. ${Math.round(n).toLocaleString()}
+            </p>
+          );
+        })()}
 
         {/* Property details row */}
         <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
