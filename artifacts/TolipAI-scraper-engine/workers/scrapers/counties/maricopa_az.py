@@ -33,12 +33,12 @@ class MaricopaScraper(CountyScraper):
             from workers.scrapers._browser_session import browser_context, _nav_with_fallback
 
         try:
-            async with browser_context("maricopa_az", headless=True) as ctx:
+            async with browser_context("maricopa_az", headless=True, no_proxy=True) as ctx:
                 page = await ctx.new_page()
                 await _nav_with_fallback(page, self.source_url, log, "maricopa_az")
 
                 try:
-                    await page.wait_for_selector("table, .tax-sale-list, a[href$='.pdf']", timeout=15000)
+                    await page.wait_for_selector("table, .tax-sale-list, a[href$='.pdf']", timeout=30000)
                 except Exception:
                     self.log_block(self.source_url, "no_content")
                     return []

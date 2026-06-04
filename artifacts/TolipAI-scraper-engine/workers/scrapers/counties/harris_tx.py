@@ -31,14 +31,14 @@ class HarrisCountyScraper(CountyScraper):
             from workers.scrapers._browser_session import browser_context, _nav_with_fallback
 
         try:
-            async with browser_context("harris_tx", headless=True) as ctx:
+            async with browser_context("harris_tx", headless=True, no_proxy=True) as ctx:
                 page = await ctx.new_page()
                 await _nav_with_fallback(page, self.source_url, log, "harris_tx")
 
                 try:
-                    await page.wait_for_selector("table", timeout=15000)
+                    await page.wait_for_selector("table, .content, #main, body", timeout=30000)
                 except Exception:
-                    self.log_block(self.source_url, "no_table", "Table not found within 15s")
+                    self.log_block(self.source_url, "no_table", "Table not found within 30s")
                     return []
 
                 html = await page.content()

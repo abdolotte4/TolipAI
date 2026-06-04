@@ -50,7 +50,7 @@ class BrowardScraper(CountyScraper):
             from workers.scrapers._browser_session import browser_context, _nav_with_fallback
 
         try:
-            async with browser_context("broward_fl", headless=True) as ctx:
+            async with browser_context("broward_fl", headless=True, no_proxy=True) as ctx:
                 page = await ctx.new_page()
 
                 await _nav_with_fallback(page, _LOGIN_URL, log, "broward_fl")
@@ -73,7 +73,7 @@ class BrowardScraper(CountyScraper):
 
                 await page.click("button[type='submit'], input[type='submit']")
                 try:
-                    await page.wait_for_url("**/index.cfm**", timeout=15000)
+                    await page.wait_for_url("**/index.cfm**", timeout=30000)
                 except Exception:
                     self.log_block(_LOGIN_URL, "login_failed")
                     return []
@@ -83,7 +83,7 @@ class BrowardScraper(CountyScraper):
                 page_num = 1
                 while True:
                     try:
-                        await page.wait_for_selector("table, .AUCTION_ITEM", timeout=15000)
+                        await page.wait_for_selector("table, .AUCTION_ITEM", timeout=30000)
                     except Exception:
                         break
 

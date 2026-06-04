@@ -33,7 +33,7 @@ class LosAngelesCountyScraper(CountyScraper):
             from workers.scrapers._browser_session import browser_context, _nav_with_fallback
 
         try:
-            async with browser_context("los_angeles_ca", headless=True) as ctx:
+            async with browser_context("los_angeles_ca", headless=True, no_proxy=True) as ctx:
                 page = await ctx.new_page()
                 await _nav_with_fallback(page, self.source_url, log, "los_angeles_ca")
 

@@ -31,14 +31,14 @@ class DallasCountyScraper(CountyScraper):
             from workers.scrapers._browser_session import browser_context, _nav_with_fallback
 
         try:
-            async with browser_context("dallas_tx", headless=True) as ctx:
+            async with browser_context("dallas_tx", headless=True, no_proxy=True) as ctx:
                 page = await ctx.new_page()
                 await _nav_with_fallback(page, self.source_url, log, "dallas_tx")
 
                 try:
-                    await page.wait_for_selector("table, .foreclosure-list, ul.listings", timeout=15000)
+                    await page.wait_for_selector("table, .foreclosure-list, ul.listings, body", timeout=30000)
                 except Exception:
-                    self.log_block(self.source_url, "no_content", "No listing content found within 15s")
+                    self.log_block(self.source_url, "no_content", "No listing content found within 30s")
                     return []
 
                 html = await page.content()

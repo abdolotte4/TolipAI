@@ -310,51 +310,60 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
 
-  // Helper: build a synthetic entry from the configured phone number so the page
+  // Helper: build synthetic entries from all configured phone numbers so the page
   // always shows something useful even when the Twilio REST API is unavailable.
-  // Queries the phone number directly — does NOT require credentials to be set.
+  // Checks BOTH the primary twilioPhoneNumber field AND the crmCampaignPhoneNumbers
+  // table so all numbers (including secondary ones) are shown.
   const dbFallback = async (): Promise<any[]> => {
     try {
-      let phone: string | null | undefined = null;
+      const allNumbers: string[] = [];
+
       if (crmUser.campaignId) {
-        // Direct query for the phone number only — skips credential validation
+        // Primary number from campaign settings
         const [camp] = await db
           .select({ phone: crmCampaigns.twilioPhoneNumber })
           .from(crmCampaigns)
           .where(eq(crmCampaigns.id, crmUser.campaignId))
           .limit(1);
-        phone = camp?.phone;
+        if (camp?.phone) allNumbers.push(camp.phone);
+
+        // Secondary numbers from crm_campaign_phone_numbers table
+        const extras = await db
+          .select({ phoneNumber: crmCampaignPhoneNumbers.phoneNumber })
+          .from(crmCampaignPhoneNumbers)
+          .where(eq(crmCampaignPhoneNumbers.campaignId, crmUser.campaignId));
+        for (const e of extras) {
+          if (e.phoneNumber && !allNumbers.includes(e.phoneNumber)) {
+            allNumbers.push(e.phoneNumber);
+          }
+        }
       }
+
       // Fall back to global env var for super admins
-      if (!phone && isSuperAdmin) {
-        phone = getGlobalSmsCreds()?.phoneNumber || process.env.TWILIO_VOICE_CALLER_ID || null;
+      if (allNumbers.length === 0 && isSuperAdmin) {
+        const gp = getGlobalSmsCreds()?.phoneNumber || process.env.TWILIO_VOICE_CALLER_ID || null;
+        if (gp) allNumbers.push(gp);
       }
       // Super admin last resort: scan ALL campaigns for any configured phone number
-      if (!phone && isSuperAdmin) {
+      if (allNumbers.length === 0 && isSuperAdmin) {
         const camps = await db
           .select({ phone: crmCampaigns.twilioPhoneNumber })
           .from(crmCampaigns)
           .where(isNotNull(crmCampaigns.twilioPhoneNumber))
           .limit(20);
-        const phones = camps.filter(c => c.phone);
-        if (phones.length > 0) {
-          return phones.map(c => ({
-            id: c.phone!,
-            sid: "configured",
-            number: c.phone!,
-            name: `${c.phone} (configured)`,
-            capabilities: { voice: true, sms: true, mms: false },
-          }));
+        for (const c of camps) {
+          if (c.phone && !allNumbers.includes(c.phone)) allNumbers.push(c.phone);
         }
       }
-      if (!phone) return [];
-      return [{
+
+      if (allNumbers.length === 0) return [];
+      return allNumbers.map(phone => ({
         id: phone,
         sid: "configured",
         number: phone,
         name: `${phone} (configured)`,
         capabilities: { voice: true, sms: true, mms: false },
-      }];
+      }));
     } catch { return []; }
   };
 
@@ -377,10 +386,11 @@ router.get("/twilio/phone-numbers", crmAuth, async (req, res) => {
       for (const camp of campaigns) {
         if (!camp.accountSid || !camp.authToken) continue;
         try {
-          const { safeDec } = await import("../lib/encryption");
+          const { decryptPassword } = await import("./crm/crypto-util");
+          const rawToken = camp.authToken!;
           const campCreds = {
             accountSid: camp.accountSid,
-            authToken: safeDec(camp.authToken),
+            authToken: rawToken.includes(":") ? decryptPassword(rawToken) : rawToken,
             phoneNumber: camp.phoneNumber || "",
           };
           const data = await twilioFetch(campCreds as any, "/IncomingPhoneNumbers.json");

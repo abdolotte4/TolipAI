@@ -20,7 +20,7 @@ Template for a new county scraper:
             async with browser_context("my_county_tx") as ctx:
                 page = await ctx.new_page()
                 await page.goto(self.source_url)
-                await page.wait_for_selector("table", timeout=15000)
+                await page.wait_for_selector("table", timeout=30000)
                 html = await page.content()
             raw_rows = self.parse_table(html, "table")
             results = []

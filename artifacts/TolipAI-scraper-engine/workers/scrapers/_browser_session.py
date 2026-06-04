@@ -253,8 +253,27 @@ if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get
 
 
 async def _apply_stealth(ctx: Any) -> None:
-    """Apply the comprehensive stealth init script to a Playwright BrowserContext."""
+    """Apply stealth patches to a Playwright BrowserContext.
+
+    Fix 4.1: Uses playwright-stealth (maintained library covering 50+ fingerprint
+    vectors) when installed.  Falls back to the hand-rolled _STEALTH_SCRIPT so the
+    engine stays functional even if the package isn't present in the image.
+    """
+    try:
+        from playwright_stealth import StealthConfig
+        config = StealthConfig()
+        scripts = list(config.enabled_scripts)
+        if scripts:
+            for script in scripts:
+                await ctx.add_init_script(script)
+            log.debug("[stealth] applied playwright-stealth (%d scripts)", len(scripts))
+            return
+    except Exception as _e:
+        log.debug("[stealth] playwright-stealth not available (%s) — using fallback", _e)
+
+    # Fallback: hand-rolled comprehensive stealth script
     await ctx.add_init_script(_STEALTH_SCRIPT)
+    log.debug("[stealth] applied hand-rolled stealth script")
 
 
 async def _nav_with_fallback(page: Any, url: str, logger: Any, service: str, timeout_ms: int = 45000) -> None:
@@ -349,11 +368,16 @@ async def browser_context(
     login_fn: Optional[Callable[[Any], Awaitable[None]]] = None,
     headless: bool = True,
     user_agent: Optional[str] = None,
+    no_proxy: bool = False,
 ) -> AsyncIterator[Any]:
     """Yield an authenticated Playwright context for `service`.
 
     If a saved storage_state exists we reuse it. Otherwise (or if it's expired)
     we call `login_fn(page)` to populate cookies, then save state for next time.
+
+    Args:
+        no_proxy: When True, skip the proxy entirely (useful for public government
+                  sites that don't need a proxy and may block known proxy IPs).
     """
     try:
         from playwright.async_api import async_playwright
@@ -385,7 +409,7 @@ async def browser_context(
 
     pw = await async_playwright().start()
 
-    proxy_cfg: Optional[ProxySettings] = _proxy_settings(service)  # type: ignore[assignment]
+    proxy_cfg: Optional[ProxySettings] = None if no_proxy else _proxy_settings(service)  # type: ignore[assignment]
 
     # Prefer the full Chromium binary over the headless shell.
     # The headless shell (chromium_headless_shell-*) requires libgbm.so.1 from
