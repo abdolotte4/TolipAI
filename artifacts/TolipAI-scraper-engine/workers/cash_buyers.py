@@ -223,7 +223,7 @@ async def find_cash_buyers(
 
             # ── Skip-trace via SOS / OpenCorporates / SEC EDGAR / PropertyAPI ──
             try:
-                llc_name = cand["buyer_name"] if cand["buyer_name"].upper().endswith(("LLC", "INC", "CORP", "LP", "LLP", "LTD")) else None
+                llc_name = cand["buyer_name"] if str(cand["buyer_name"]).upper().endswith(("LLC", "INC", "CORP", "LP", "LLP", "LTD")) else None
                 traced = await skip_trace(
                     cand["buyer_name"],
                     llc=llc_name,

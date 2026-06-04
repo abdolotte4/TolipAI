@@ -283,7 +283,7 @@ def classify_buyer_type(
       - ≥5 purchases with avg price ≥ $200k → landlord
       - < 5 purchases → unknown (not enough data)
     """
-    name_lower = (buyer_name or "").lower()
+    name_lower = str(buyer_name or "").lower()
 
     fund_keywords = ["fund", "capital", "asset management", "reit", "equity", "holdings llc"]
     lending_keywords = ["lending", "mortgage", "loan", "credit", "financial"]

@@ -89,23 +89,21 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
         await page.wait_for_selector(email_sel, timeout=15000)
 
-    # Fill email — use triple-click + type to trigger React's synthetic onChange events.
-    # plain fill() sets the value directly and may not fire onChange in some React builds,
-    # leaving the submit button disabled.
+    # Fill email — triple-click (via click_count=3) + press_sequentially to trigger
+    # React's synthetic onChange events.  plain fill() sets the value directly and may
+    # not fire onChange in some React builds, leaving the submit button disabled.
+    # NOTE: triple_click() and type() were removed in Playwright 1.51+; use
+    #       click(click_count=3) and press_sequentially() instead.
     email_el = page.locator(email_sel).first
-    await email_el.click()
-    await page.wait_for_timeout(400)
-    await email_el.triple_click()
+    await email_el.click(click_count=3)
     await page.wait_for_timeout(200)
-    await email_el.type(email, delay=60)
+    await email_el.press_sequentially(email, delay=60)
     await page.wait_for_timeout(300)
 
     pw_el = page.locator(pw_sel).first
-    await pw_el.click()
-    await page.wait_for_timeout(400)
-    await pw_el.triple_click()
+    await pw_el.click(click_count=3)
     await page.wait_for_timeout(200)
-    await pw_el.type(password, delay=60)
+    await pw_el.press_sequentially(password, delay=60)
     await page.wait_for_timeout(500)
 
     # Submit — try clicking the button, then fall back to Enter key
