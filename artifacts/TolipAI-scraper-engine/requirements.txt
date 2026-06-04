@@ -2,15 +2,17 @@
 # Optimised for ARM64 (Graviton3) Fargate tasks.
 # Install: pip install -r requirements.txt
 #
-# Compatibility contract — verified against crawl4ai==0.8.9:
+# Compatibility contract — verified against crawl4ai==0.8.9 (PyPI requires_dist):
 #   crawl4ai==0.8.9 requires:
-#     psutil>=6.1.1        — do NOT pin psutil < 6.1.1
-#     lxml>=6.1            — 6.x now required (was ~=5.3 for crawl4ai 0.6.x)
-#     pillow>=12.0         — 12.x supported (was <11 for crawl4ai 0.6.x)
+#     lxml~=5.3            — still requires lxml 5.x (<6); do NOT upgrade lxml to 6.x
+#     pillow>=10.4         — no upper bound; Pillow 12.x is fine ✅
+#     beautifulsoup4~=4.12 — >=4.12,<5; 4.14.x is within range ✅
 #     pydantic>=2.10       — ✅ our pin satisfies this
-#     playwright>=1.52.0   — ✅ our pin satisfies this
+#     playwright>=1.49.0   — ✅ our pin satisfies this
+#     playwright-stealth>=2.0.0 — ✅ our pin satisfies this
 #     aiohttp>=3.11.11     — ✅ our pin satisfies this
 #     httpx>=0.27.2        — ✅ our pin satisfies this
+#     psutil>=6.1.1        — do NOT pin psutil < 6.1.1
 
 # ── Web framework ─────────────────────────────────────────────────────────────
 fastapi==0.136.3
@@ -44,7 +46,7 @@ openai>=2.0,<3                  # v2 SDK; <3 guards next major break
 # ── Data processing ───────────────────────────────────────────────────────────
 pydantic==2.13.4
 beautifulsoup4==4.14.3
-lxml>=6.1.0,<7                  # crawl4ai 0.8.9 requires >=6.1; upper bound prevents silent breakage
+lxml>=5.3.1,<6                  # crawl4ai 0.8.9 requires ~=5.3 (>=5.3,<6); do NOT upgrade to lxml 6.x
 
 # ── PDF + OCR ─────────────────────────────────────────────────────────────────
 PyMuPDF==1.27.2.3
