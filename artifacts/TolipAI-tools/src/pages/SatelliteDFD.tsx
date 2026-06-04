@@ -35,7 +35,7 @@ type DFDProperty = {
   year_built: number | null;
   source: string;
   signals: Record<string, any>;
-  yolo_signals?: Record<string, boolean>;
+  gcv_signals?: Record<string, boolean>;
 };
 
 type ScanResult = {
@@ -46,7 +46,7 @@ type ScanResult = {
   total_above_threshold: number;
   min_score_filter: number;
   google_imagery: boolean;
-  yolo_available: boolean;
+  gcv_available: boolean;
   results: DFDProperty[];
 };
 
@@ -86,7 +86,7 @@ function PropertyCard({ p }: { p: DFDProperty }) {
 
   const heroUrl = p.streetview_url || p.satellite_url;
   const hasImages = !!(p.streetview_url || p.satellite_url);
-  const yoloFlags = Object.entries(p.yolo_signals ?? {}).filter(([, v]) => v);
+  const gcvFlags = Object.entries(p.gcv_signals ?? {}).filter(([, v]) => v);
 
   return (
     <Card className="border-border bg-card hover:border-primary/40 transition-colors overflow-hidden">

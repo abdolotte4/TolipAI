@@ -97,12 +97,17 @@ async def _chat(
     json_mode: bool = True,
     temperature: float = 0.2,
     max_tokens: int = 1500,
+    model: Optional[str] = None,
 ) -> str:
     """Run a chat completion through OpenAI with circuit breaker + rate-limit backoff.
 
     Uses a global semaphore to cap concurrent calls.  On fatal errors the provider
     is permanently skipped for this process lifetime.  On rate limits, exponential
     backoff is applied before giving up and entering cooldown.
+
+    Pass ``model`` to override the default OPENAI_MODEL env var for a single call
+    (e.g. use gpt-4o for high-value distress scoring while cheaper calls stay on
+    gpt-4o-mini).
     """
     async with _get_sem():
         return await _chat_inner(
@@ -110,6 +115,7 @@ async def _chat(
             json_mode=json_mode,
             temperature=temperature,
             max_tokens=max_tokens,
+            model=model,
         )
 
 
@@ -119,6 +125,7 @@ async def _chat_inner(
     json_mode: bool = True,
     temperature: float = 0.2,
     max_tokens: int = 1500,
+    model: Optional[str] = None,
 ) -> str:
     # ── Amazon Bedrock short-circuit (USE_BEDROCK=1) ──────────────────────────
     if settings.use_bedrock:
@@ -192,7 +199,7 @@ async def _chat_inner(
     for attempt in range(2):
         try:
             kwargs: Dict[str, Any] = {
-                "model": settings.openai_model,
+                "model": model or settings.openai_model,
                 "messages": messages,
                 "temperature": temperature,
                 "max_tokens": max_tokens,

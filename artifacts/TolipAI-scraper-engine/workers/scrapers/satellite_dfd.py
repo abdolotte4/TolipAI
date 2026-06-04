@@ -1,7 +1,7 @@
 """Satellite Drive-For-Dollars engine.
 
-Fuses property signals + Google Maps imagery + Google Cloud Vision detections +
-LLM reasoning to score property distress 0-100.
+Fuses property signals + Google Maps imagery + Google Cloud Vision (GOOGLE_CLOUD_API_KEY)
+detections + GPT-4o reasoning (OPENAI_API_KEY) to score property distress 0–100.
 """
 
 from __future__ import annotations
@@ -271,19 +271,25 @@ async def _visual_signals(image_url: Optional[str]) -> Dict[str, bool]:
 
 
 # ─── AI distress reasoning ───────────────────────────────────────────────────
+# Model used for stress-sign analysis — defaults to gpt-4o for higher accuracy.
+# Override per-deployment with DFD_OPENAI_MODEL env var.
+_DFD_MODEL: str = os.getenv("DFD_OPENAI_MODEL", "gpt-4o")
+
+
 async def _ai_distress_score(
     address: str,
     signals: Dict[str, Any],
     base_score: int,
-    visual_signals: Dict[str, bool],
+    gcv_signals: Dict[str, bool],
 ) -> Dict[str, Any]:
+    """Score property distress using GPT-4o + GCV visual signals."""
     sys_msg = (
         "You are a real estate distress analyst. Score property distress 0-100. "
         'Return JSON: {"score": int, "rationale": str, "category": str} '
         "where category is one of: low, medium, high, severe."
     )
     sig_lines = "\n".join(f"- {k}: {v}" for k, v in signals.items() if v)
-    vis_lines = "\n".join(f"- VISUAL: {k}" for k, v in visual_signals.items() if v)
+    vis_lines = "\n".join(f"- VISUAL (Google Cloud Vision): {k}" for k, v in gcv_signals.items() if v)
     user_msg = f"Property: {address}\nBase score: {base_score}\n" f"Signals:\n{sig_lines}" + (
         f"\nVisual detections:\n{vis_lines}" if vis_lines else ""
     )
@@ -296,6 +302,7 @@ async def _ai_distress_score(
             json_mode=True,
             max_tokens=180,
             temperature=0.2,
+            model=_DFD_MODEL,
         )
         data = json.loads(raw)
         score = max(0, min(100, int(data.get("score", base_score))))
@@ -490,18 +497,18 @@ async def scan_area(
             sv_url = _streetview_url(lat, lon)
 
         # ── Visual distress detection via Google Cloud Vision ────────────────
-        yolo_sigs: Dict[str, bool] = {}
+        gcv_sigs: Dict[str, bool] = {}
         _run_visual = (base_score >= 40) and _has_gcv
         if _run_visual and sat_url:
-            yolo_sigs = await _visual_signals(sat_url)
-            # Each confirmed visual signal bumps score by 5 pts (cap at +20)
-            visual_boost = min(20, sum(5 for v in yolo_sigs.values() if v))
+            gcv_sigs = await _visual_signals(sat_url)
+            # Each confirmed GCV signal bumps score by 5 pts (cap at +20)
+            visual_boost = min(20, sum(5 for v in gcv_sigs.values() if v))
             base_score = min(100, base_score + visual_boost)
 
-        # ── AI reasoning ─────────────────────────────────────────────────────
+        # ── GPT-4o reasoning ─────────────────────────────────────────────────
         if use_ai_scoring:
             async with _get_ai_sem():
-                scored = await _ai_distress_score(p.get("address", ""), signals, base_score, yolo_sigs)
+                scored = await _ai_distress_score(p.get("address", ""), signals, base_score, gcv_sigs)
         else:
             scored = {
                 "score": base_score,
@@ -544,7 +551,7 @@ async def scan_area(
                 "year_built": year_built,
                 "source": p.get("source", "zillow"),
                 "signals": signals,
-                "yolo_signals": yolo_sigs,
+                "gcv_signals": gcv_sigs,
             }
         )
 
@@ -562,7 +569,7 @@ async def scan_area(
         "total_above_threshold": total_above,
         "min_score_filter": min_score,
         "google_imagery": has_google,
-        "yolo_available": _has_gcv,
+        "gcv_available": _has_gcv,
         "results": top,
         "count": len(top),
     }
