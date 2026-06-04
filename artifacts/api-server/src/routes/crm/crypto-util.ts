@@ -15,14 +15,29 @@ function getKey(): Buffer {
   return createHash("sha256").update(secret).digest();
 }
 
+/** True when ENCRYPTION_KEY is configured and encryption is available. */
+export function encryptionAvailable(): boolean {
+  return !!process.env.ENCRYPTION_KEY;
+}
+
 /**
  * Encrypt a plaintext string using AES-256-GCM (authenticated encryption).
  * Output format: "gcm:<iv_hex>:<tag_hex>:<ciphertext_hex>"
  *
  * The "gcm:" prefix distinguishes new values from legacy AES-CBC values so
  * decryptPassword can handle both transparently.
+ *
+ * When ENCRYPTION_KEY is not set the value is stored as plaintext so that
+ * credential saves do not fail hard.  decryptPassword / safeDec already
+ * return plaintext values unchanged, so round-trips work correctly.
+ * Set the ENCRYPTION_KEY secret to enable proper AES-256-GCM encryption.
  */
 export function encryptPassword(plaintext: string): string {
+  if (!process.env.ENCRYPTION_KEY) {
+    // No key configured — store plaintext so saves are not blocked.
+    // safeDec() and decryptPassword() both handle non-prefixed values safely.
+    return plaintext;
+  }
   const key = getKey();
   const iv  = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv) as CipherGCM;
