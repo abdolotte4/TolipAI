@@ -1,8 +1,8 @@
 """AWS Rekognition back-end for the satellite Drive-For-Dollars scorer.
 
 Activated when USE_REKOGNITION=1 is set in the Lambda/ECS environment.
-Replaces local YOLO + Google Cloud Vision with Amazon Rekognition
-DetectLabels, so no on-instance GPU or large model weights are needed.
+Replaces Google Cloud Vision with Amazon Rekognition DetectLabels,
+so no on-instance GPU or large model weights are needed.
 
 The public API surface is identical to satellite_dfd.scan_area() so the
 lambda_handler can swap in this module transparently.
@@ -113,7 +113,7 @@ async def run_rekognition_dfd(
 
     Falls back to satellite_dfd.scan_area() for the non-visual scoring
     components (property data fetching, text-based signals, scoring math).
-    The visual_signals dict from YOLO/GCV is replaced with Rekognition output.
+    The visual_signals dict from GCV is replaced with Rekognition output.
     """
     # Delegate the full pipeline to satellite_dfd; we only override the
     # visual analysis step via the rekognition flag in the environment.

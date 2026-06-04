@@ -181,10 +181,10 @@ function PropertyCard({ p }: { p: DFDProperty }) {
           )}
         </div>
 
-        {/* YOLO visual signals as badges */}
-        {yoloFlags.length > 0 && (
+        {/* Google Cloud Vision visual signals as badges */}
+        {gcvFlags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
-            {yoloFlags.map(([k]) => (
+            {gcvFlags.map(([k]) => (
               <Badge key={k} variant="outline"
                 className="text-[9px] bg-orange-500/10 text-orange-300 border-orange-500/30 flex items-center gap-0.5">
                 <Camera className="w-2.5 h-2.5" />
@@ -235,12 +235,12 @@ function PropertyCard({ p }: { p: DFDProperty }) {
                 </div>
               ) : null
             )}
-            {yoloFlags.map(([k]) => (
-              <div key={`yolo-${k}`} className="flex justify-between text-xs">
+            {gcvFlags.map(([k]) => (
+              <div key={`gcv-${k}`} className="flex justify-between text-xs">
                 <span className="text-muted-foreground capitalize flex items-center gap-1">
                   <Camera className="w-3 h-3 text-orange-400" /> {k.replace(/_/g, " ")}
                 </span>
-                <span className="text-orange-300 text-[10px]">visual</span>
+                <span className="text-orange-300 text-[10px]">vision</span>
               </div>
             ))}
           </div>
@@ -427,9 +427,10 @@ export default function SatelliteDFD() {
         <Info className="w-4 h-4 text-primary" />
         <AlertDescription className="text-xs text-muted-foreground">
           Scores fuse property age, days listed, FSBO status, price reductions, equity, tax status,
-          ownership duration, plus YOLOv8 visual detections on street-view imagery.{" "}
-          <code className="text-primary">GOOGLE_MAPS_API_KEY</code> unlocks satellite &amp; street
-          view thumbnails. Higher score = more distressed.
+          ownership duration, plus Google Cloud Vision detections on satellite imagery. GPT-4o
+          interprets all signals to produce a final distress score.{" "}
+          <code className="text-primary">GOOGLE_MAPS_API_KEY</code> + <code className="text-primary">GOOGLE_CLOUD_API_KEY</code> unlock
+          imagery &amp; visual analysis. Higher score = more distressed.
         </AlertDescription>
       </Alert>
 
@@ -543,11 +544,11 @@ export default function SatelliteDFD() {
                 <Camera className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div>
                   <p className="text-xl font-bold">
-                    {result.google_imagery ? (result.yolo_available ? "Full" : "Img") : "Off"}
+                    {result.google_imagery ? (result.gcv_available ? "Full" : "Img") : "Off"}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     {result.google_imagery
-                      ? result.yolo_available ? "YOLO + Imagery" : "Imagery only"
+                      ? result.gcv_available ? "Vision + Imagery" : "Imagery only"
                       : "No Google key"}
                   </p>
                 </div>
