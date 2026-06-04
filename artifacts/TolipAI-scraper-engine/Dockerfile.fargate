@@ -13,7 +13,7 @@
 # Regenerate lockfile (run on x86 host, then commit requirements.lock):
 #   uv pip compile requirements.in -o requirements.lock --no-header
 
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.13-slim-bookworm AS builder
 
 WORKDIR /build
 
@@ -50,7 +50,7 @@ RUN playwright install chromium --with-deps 2>/dev/null || \
 
 
 # ── Final image ───────────────────────────────────────────────────────────────
-FROM python:3.11-slim-bookworm
+FROM python:3.13-slim-bookworm
 
 LABEL org.opencontainers.image.title="TolipAI-scraper-engine"
 LABEL org.opencontainers.image.description="TolipAI scraper engine — AWS Fargate Spot"

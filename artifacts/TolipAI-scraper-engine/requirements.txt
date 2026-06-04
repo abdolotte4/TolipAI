@@ -2,68 +2,68 @@
 # Optimised for ARM64 (Graviton3) Fargate tasks.
 # Install: pip install -r requirements.txt
 #
-# Compatibility contract (do not break these bounds):
-#   crawl4ai==0.6.3 requires:
+# Compatibility contract — verified against crawl4ai==0.8.9:
+#   crawl4ai==0.8.9 requires:
 #     psutil>=6.1.1        — do NOT pin psutil < 6.1.1
-#     lxml~=5.3            — do NOT upgrade lxml to 6.x
-#     pillow~=10.4         — do NOT upgrade Pillow to 11.x; must stay >=10.4,<11
+#     lxml>=6.1            — 6.x now required (was ~=5.3 for crawl4ai 0.6.x)
+#     pillow>=12.0         — 12.x supported (was <11 for crawl4ai 0.6.x)
 #     pydantic>=2.10       — ✅ our pin satisfies this
-#     playwright>=1.49.0   — ✅ our pin satisfies this
+#     playwright>=1.52.0   — ✅ our pin satisfies this
 #     aiohttp>=3.11.11     — ✅ our pin satisfies this
 #     httpx>=0.27.2        — ✅ our pin satisfies this
 
 # ── Web framework ─────────────────────────────────────────────────────────────
-fastapi==0.115.12
-uvicorn[standard]==0.34.0
-uvloop==0.21.0           # faster event loop on Linux/ARM64
-httptools==0.6.4
+fastapi==0.136.3
+uvicorn[standard]==0.49.0
+uvloop==0.22.1           # faster event loop on Linux/ARM64
+httptools==0.8.0
 
 # ── Database ──────────────────────────────────────────────────────────────────
-asyncpg==0.30.0
-python-dotenv==1.0.1
+asyncpg==0.31.0
+python-dotenv==1.2.2
 
 # ── HTTP clients ──────────────────────────────────────────────────────────────
-httpx[http2]>=0.27.2,<1      # crawl4ai requires >=0.27.2; pin <1 for stability
-tenacity==9.0.0
-aiohttp==3.11.18  # CVE-2024-23334, CVE-2024-52304 patched in >=3.10.11; 3.11.18 is safe
+httpx[http2]>=0.28.1,<1      # crawl4ai requires >=0.27.2; pin <1 for stability
+tenacity==9.1.4
+aiohttp==3.14.0
 
 # ── Browser automation (pre-installed in image, listed for version pinning) ──
-playwright==1.51.0
-playwright-stealth>=1.0.0   # Fix 4.1 — replaces hand-rolled stealth with maintained library
-crawl4ai==0.6.3
+playwright==1.60.0
+playwright-stealth>=2.0.0    # maintained library, replaces hand-rolled stealth
+crawl4ai==0.8.9
 
 # ── Redis (job store + retry queue + cache) ───────────────────────────────────
-redis[hiredis]==5.2.1     # includes hiredis for speed on ARM64
+redis[hiredis]==8.0.0     # includes hiredis for speed on ARM64
 
 # ── S3 cache (optional — only used when S3_CACHE_BUCKET is set) ──────────────
-aioboto3==13.4.0
+aioboto3==15.5.0
 
 # ── AI / LLM ──────────────────────────────────────────────────────────────────
-openai>=1.32,<2                 # crawl4ai pulls litellm which needs openai; <2 guards major break
+openai>=2.0,<3                  # v2 SDK; <3 guards next major break
 
 # ── Data processing ───────────────────────────────────────────────────────────
-pydantic==2.11.3
-beautifulsoup4==4.13.3          # crawl4ai requires ~=4.12 (>=4.12,<5); 4.13.x is within range
-lxml>=5.3.1,<6                  # crawl4ai requires ~=5.3 (>=5.3,<6); upper bound prevents silent breakage
+pydantic==2.13.4
+beautifulsoup4==4.14.3
+lxml>=6.1.0,<7                  # crawl4ai 0.8.9 requires >=6.1; upper bound prevents silent breakage
 
 # ── PDF + OCR ─────────────────────────────────────────────────────────────────
-PyMuPDF==1.25.5
-pdfplumber==0.11.5
+PyMuPDF==1.27.2.3
+pdfplumber==0.11.9
 pytesseract==0.3.13
-Pillow>=10.4.0,<11              # crawl4ai requires ~=10.4 (>=10.4,<11); do NOT upgrade to Pillow 11.x
+Pillow>=12.2.0                  # crawl4ai 0.8.9 supports Pillow 12.x
 
 # ── Geo / maps ────────────────────────────────────────────────────────────────
 geopy==2.4.1
-shapely==2.1.0
+shapely==2.1.2
 
 # ── Structured logging ────────────────────────────────────────────────────────
-python-json-logger==3.3.0
+python-json-logger==4.1.0
 
 # ── Crypto (AES-256-CBC credential decrypt — matches Node.js crypto-util.ts) ──
-cryptography==44.0.2
+cryptography==48.0.0
 
 # ── Misc utils ────────────────────────────────────────────────────────────────
-cachetools==5.5.2
-python-multipart==0.0.20  # CVE-2024-53498 patched in >=0.0.12; 0.0.20 is safe
-orjson==3.10.16
-psutil==6.1.1              # crawl4ai==0.6.3 requires >=6.1.1; do NOT downgrade below 6.1.1
+cachetools==7.1.4
+python-multipart==0.0.31  # CVE-2024-53498 patched in >=0.0.12; 0.0.31 is safe
+orjson==3.11.9
+psutil==7.2.2              # crawl4ai==0.8.9 requires >=6.1.1

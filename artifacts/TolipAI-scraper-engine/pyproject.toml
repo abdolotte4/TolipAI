@@ -2,14 +2,14 @@
 name = "TolipAI-scraper-engine"
 version = "0.2.0"
 description = "TolipAI advanced scraping + skip-trace + investor classification engine — AWS Fargate Spot"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.14"
 
 [project.optional-dependencies]
 fargate = [
-    "uvloop>=0.21.0",
-    "aioboto3>=13.4.0",
-    "redis[hiredis]>=5.2.1",
-    "python-json-logger>=3.3.0",
+    "uvloop>=0.22.1",
+    "aioboto3>=15.5.0",
+    "redis[hiredis]>=8.0.0",
+    "python-json-logger>=4.1.0",
 ]
 
 [tool.uv]
