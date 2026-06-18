@@ -333,9 +333,21 @@ if (!BASE) {
       headers: { "X-Twilio-Signature": sig },
       body: new URLSearchParams(voiceParams).toString(),
     });
-    assert(answerWithSig.status !== 403,
-      "POST /twilio/voice/answer (valid sig) → not 403 (signature accepted)",
-      "got: " + answerWithSig.status + " " + answerWithSig.text.slice(0, 100));
+    const sigAccepted = answerWithSig.status !== 403;
+    if (sigAccepted) {
+      ok("POST /twilio/voice/answer (valid sig) → not 403 (signature accepted — new code deployed)");
+    } else {
+      // 403 here means the server is still validating against the wrong URL.
+      // This is EXPECTED before the fix is deployed to Railway.
+      // Once deployed, this test will pass.
+      fail(
+        "POST /twilio/voice/answer (valid sig) → still 403",
+        "EXPECTED if Railway has not deployed the fix yet.\n" +
+        "       The server is still reconstructing https://tolipai.com/api/api/twilio/voice/answer\n" +
+        "       (double /api) so our correct signature for /api/twilio/voice/answer doesn't match.\n" +
+        "       \u2192 Deploy to Railway, then re-run this test — it should pass."
+      );
+    }
   } else {
     console.log("  \u23E9  TWILIO_AUTH_TOKEN not set — skipping valid-signature probe");
   }
