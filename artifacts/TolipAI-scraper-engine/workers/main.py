@@ -15,6 +15,7 @@ import os
 import re
 import signal
 import uuid
+import weakref
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
@@ -76,6 +77,9 @@ _shutting_down: bool = False
 # Job state — aliased to job_store._memory so sync helpers (_set_status,
 # _new_job) work unchanged while async paths also persist to Redis.
 _jobs: Dict[str, Dict[str, Any]] = job_store._memory
+
+# WeakSet to hold references to persist tasks so they aren't GC'd mid-flight.
+_persist_tasks: "weakref.WeakSet[asyncio.Task]" = weakref.WeakSet()
 
 # ─── Structured Metrics ──────────────────────────────────────────────────────
 METRICS = {
@@ -396,6 +400,10 @@ class CompsRequest(BaseModel):
     address: str = Field(..., description="Full property address for comp lookup")
     radius_miles: float = Field(0.5, ge=0.1, le=10.0)
     max_results: int = Field(12, ge=1, le=50)
+    propelio_email: Optional[str] = None
+    propelio_password: Optional[str] = None
+    propwire_email: Optional[str] = None
+    propwire_password: Optional[str] = None
 
 
 class BulkRequest(BaseModel):
@@ -463,7 +471,8 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
                 await job_store.set_job(job_id, _jobs[job_id])
             except Exception as e:
                 log.debug("Redis persist failed for job %s: %s", job_id, str(e)[:80])
-        loop.create_task(_persist())
+        task = loop.create_task(_persist())
+        _persist_tasks.add(task)
     except RuntimeError:
         log.debug("No running event loop — skipping Redis persist for job %s", job_id)
 
@@ -563,12 +572,12 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
                     campaign_id=params.get("campaign_id"),
                     progress_cb=cb,
                 ),
-                timeout=480,
+                timeout=900,
             )
         except asyncio.TimeoutError:
-            log.warning("distressed job %s: timeout after 480s", job_id)
-            _set_status(job_id, "failed", error="Timeout: exceeded 8 minutes")
-            await db.update_job(job_id, status="failed", error="Timeout: exceeded 8 minutes", completed=True)
+            log.warning("distressed job %s: timeout after 900s", job_id)
+            _set_status(job_id, "failed", error="Timeout: exceeded 15 minutes")
+            await db.update_job(job_id, status="failed", error="Timeout: exceeded 15 minutes", completed=True)
             return {"count": 0}
 
         if listings:
@@ -1235,24 +1244,22 @@ async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _decrypt_password(ciphertext: str) -> str:
-    """AES-256-CBC decrypt — matches Node.js crypto-util.ts exactly.
-
-    Key   = sha256(ENCRYPTION_KEY or JWT_SECRET) → 32 bytes
-    Format: ivHex ":" encryptedHex
-    Padding: PKCS7 (same as Node's default for AES-CBC)
-    """
+    """AES-256-CBC decrypt — matches Node.js crypto-util.ts exactly."""
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import padding as crypto_padding
 
-    secret = os.getenv("ENCRYPTION_KEY") or os.getenv("JWT_SECRET")
-    if not secret:
-        raise ValueError("ENCRYPTION_KEY or JWT_SECRET env var is required for credential decryption")
-
-    # If ciphertext is plain text (no ":" separator), return as-is.
-    # Encrypted format is ivHex ":" encryptedHex from Node crypto-util.ts.
+    # If ciphertext is plain text (no ":" separator), return as-is immediately.
+    # This allows request-body credentials to work without ENCRYPTION_KEY.
     if ":" not in ciphertext:
         return ciphertext
+
+    secret = os.getenv("ENCRYPTION_KEY") or os.getenv("JWT_SECRET")
+    if not secret:
+        raise ValueError(
+            "ENCRYPTION_KEY or JWT_SECRET env var is required for credential decryption. "
+            "Pass plaintext credentials (no ':' in value) or set ENCRYPTION_KEY."
+        )
 
     try:
         key = hashlib.sha256(secret.encode()).digest()
@@ -1504,7 +1511,7 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
     """Fetch comparable sales for an address.
 
     Source priority:
-      1. Propelio V2 (authenticated) — if PROPELIO_EMAIL + PROPELIO_PASSWORD are set
+      1. Propelio V2 (authenticated) — if credentials provided or PROPELIO_EMAIL + PROPELIO_PASSWORD are set
       2. Propwire (authenticated) — fallback if Propelio is unconfigured or returns nothing
 
     Returns: { address, count, comps, source }
@@ -1512,15 +1519,17 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
     comps: List[Dict[str, Any]] = []
 
     # 1. Try Propelio V2 ───────────────────────────────────────────────────────
-    propelio_email = os.getenv("PROPELIO_EMAIL")
-    propelio_password = os.getenv("PROPELIO_PASSWORD")
+    propelio_email = req.propelio_email or os.getenv("PROPELIO_EMAIL")
+    propelio_password = req.propelio_password or os.getenv("PROPELIO_PASSWORD")
     if propelio_email and propelio_password:
         try:
-            prop = await propelio_v2.search_property(req.address)
+            from functools import partial
+            login_fn = partial(propelio_v2._do_login, email=propelio_email, password=propelio_password)
+            prop = await propelio_v2.search_property(req.address, login_fn=login_fn)
             property_id = prop.get("property_id") if prop else None
             if property_id:
                 comps = await propelio_v2.fetch_comps(
-                    property_id, radius_miles=req.radius_miles
+                    property_id, radius_miles=req.radius_miles, login_fn=login_fn
                 )
                 if comps:
                     log.info("scrape_comps: Propelio returned %d comps for %s", len(comps), req.address[:60])
@@ -1529,13 +1538,35 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
             log.warning("scrape_comps: Propelio V2 failed for %s: %s", req.address[:60], str(e)[:200])
 
     # 2. Propwire fallback ─────────────────────────────────────────────────────
+    propwire_email = req.propwire_email or os.getenv("PROPWIRE_EMAIL")
+    propwire_password = req.propwire_password or os.getenv("PROPWIRE_PASSWORD")
+    if propwire_email and propwire_password:
+        try:
+            from functools import partial
+            login_fn = partial(propwire._do_login, email=propwire_email, password=propwire_password)
+            prop = await propwire.search_property(req.address, login_fn=login_fn)
+            property_id = prop.get("property_id") if prop else None
+            if property_id:
+                comps = await propwire.fetch_comps(
+                    property_id, radius_miles=req.radius_miles, login_fn=login_fn
+                )
+                if comps:
+                    log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
+                    return {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
+        except Exception as e:
+            log.warning("scrape_comps: Propwire failed for %s: %s", req.address[:60], str(e)[:200])
+
+    # 3. HomeHarvest (no auth required) ────────────────────────────────────────
     try:
-        comps = await propwire.fetch_comps(req.address, max_results=req.max_results)
-        if comps:
-            log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
-        return {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
+        result = await homeharvest_scraper.scrape_comps(
+            req.address, radius_miles=req.radius_miles, max_results=req.max_results
+        )
+        if result and result.get("comps"):
+            comps = result["comps"]
+            log.info("scrape_comps: HomeHarvest returned %d comps for %s", len(comps), req.address[:60])
+            return {"address": req.address, "count": len(comps), "comps": comps, "source": "homeharvest"}
     except Exception as e:
-        log.warning("scrape_comps: Propwire also failed for %s: %s", req.address[:60], str(e)[:200])
+        log.warning("scrape_comps: HomeHarvest failed for %s: %s", req.address[:60], str(e)[:200])
 
     return {"address": req.address, "count": 0, "comps": [], "source": "none"}
 
