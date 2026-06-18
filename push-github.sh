@@ -17,6 +17,15 @@ MSG="${1:-"chore: sync from Replit [$(date '+%Y-%m-%d %H:%M')]"}"
 MONO_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
 WORKER_URL="https://${TOKEN}@github.com/Agawish24/Python-Worker.git"
 
+# Replit sets GIT_ASKPASS=replit-git-askpass which intercepts every push and
+# prompts for a password even when credentials are embedded in the URL.
+# Clearing GIT_ASKPASS + GIT_TERMINAL_PROMPT and disabling the credential helper
+# lets git use the token in the URL directly without any interactive prompt.
+export GIT_ASKPASS=""
+export GIT_TERMINAL_PROMPT=0
+
+GIT="git -c credential.helper="
+
 echo "=== Staging all changes ==="
 git add -A
 
@@ -29,13 +38,13 @@ fi
 
 echo ""
 echo "=== Pushing monorepo → Agawish24/TolipAI (main) ==="
-git push "${MONO_URL}" main
+$GIT push "${MONO_URL}" main
 echo "✓ Monorepo push complete."
 
 echo ""
 echo "=== Splitting subtree: artifacts/TolipAI-scraper-engine → Python-Worker (main) ==="
 SHA=$(git subtree split --prefix=artifacts/TolipAI-scraper-engine main)
-git push "${WORKER_URL}" "${SHA}:main" --force
+$GIT push "${WORKER_URL}" "${SHA}:main" --force
 echo "✓ Subtree push complete."
 
 echo ""
