@@ -29,28 +29,7 @@
 import { Request, Response, NextFunction } from "express";
 import twilio from "twilio";
 import { logger } from "./logger";
-
-function buildWebhookUrl(req: Request): string {
-  if (process.env.API_BASE_URL) {
-    const base = process.env.API_BASE_URL.replace(/\/+$/, ""); // e.g. "https://tolipai.com/api"
-    // req.originalUrl already starts with the same path prefix (e.g. /api/twilio/voice/answer).
-    // Extract that prefix so we don't double it: strip the pathname of API_BASE_URL from
-    // the front of req.originalUrl before re-appending it.
-    try {
-      const basePath = new URL(base).pathname.replace(/\/+$/, ""); // "/api"
-      const reqPath = basePath && req.originalUrl.startsWith(basePath)
-        ? req.originalUrl.slice(basePath.length)
-        : req.originalUrl;
-      return `${base}${reqPath}`;
-    } catch {
-      return `${base}${req.originalUrl}`;
-    }
-  }
-  // Fallback for local dev (no API_BASE_URL set)
-  const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0].trim() || req.protocol || "https";
-  const host = (req.headers["x-forwarded-host"] as string)?.split(",")[0].trim() || req.headers.host || "localhost";
-  return `${proto}://${host}${req.originalUrl}`;
-}
+import { buildTwilioWebhookUrl } from "./webhookBase";
 
 export function twilioWebhookMiddleware(authToken?: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -61,7 +40,7 @@ export function twilioWebhookMiddleware(authToken?: string) {
       return;
     }
 
-    const url = buildWebhookUrl(req);
+    const url = buildTwilioWebhookUrl(req);
     const params = req.body as Record<string, string>;
 
     // ── 1. Explicit token (when middleware is instantiated with a specific token) ──

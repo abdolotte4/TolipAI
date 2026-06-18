@@ -41,7 +41,7 @@ import { sendSms } from "../services/smsService";
 import { validateBody } from "../lib/validate";
 import { z } from "zod";
 import { emitCrmActivity } from "./sse";
-import { getWebhookBase } from "../lib/webhookBase";
+import { getWebhookBase, buildTwilioWebhookUrl } from "../lib/webhookBase";
 import { twilioWebhookMiddleware } from "../lib/twilioWebhookMiddleware";
 
 const router: IRouter = Router();
@@ -783,10 +783,10 @@ async function validateTwilioSignature(req: any): Promise<boolean> {
 
   if (!authToken) return false;
 
-  // Reconstruct the full URL Twilio signed
-  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
-  const host = (req.headers["x-forwarded-host"] as string) || req.headers.host || "localhost";
-  const url = `${proto}://${host}${req.originalUrl}`;
+  // Reconstruct the exact public URL that Twilio signed.
+  // Uses API_BASE_URL (priority) to avoid Railway internal hostnames in
+  // x-forwarded-host causing a mismatch and silently dropping all inbound SMS.
+  const url = buildTwilioWebhookUrl(req);
 
   const params = req.body as Record<string, string>;
 
