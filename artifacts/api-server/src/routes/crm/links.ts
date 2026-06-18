@@ -9,7 +9,8 @@ const router = Router();
 
 function getBaseUrl(): string {
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
-  throw new Error("PUBLIC_URL is required");
+  if (process.env.API_BASE_URL) return process.env.API_BASE_URL.replace(/\/api\/?$/, "").replace(/\/$/, "");
+  return "";
 }
 
 function formatLink(link: typeof crmSubmissionLinks.$inferSelect, baseUrl: string) {

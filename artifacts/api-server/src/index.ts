@@ -73,6 +73,27 @@ async function runDbStartupTasks(): Promise<void> {
     logger.error({ err }, "[startup] crm_appointments migration failed");
   }
 
+  // Idempotent migration: ensure crm_submission_links table exists
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crm_submission_links (
+        id                SERIAL      PRIMARY KEY,
+        campaign_id       INTEGER     REFERENCES crm_campaigns(id),
+        token             TEXT        NOT NULL UNIQUE,
+        label             TEXT,
+        lead_source       TEXT,
+        active            BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_by        INTEGER     REFERENCES crm_users(id),
+        submissions_count INTEGER     NOT NULL DEFAULT 0,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS crm_submission_links_campaign_id_idx ON crm_submission_links (campaign_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS crm_submission_links_active_idx ON crm_submission_links (active)`);
+  } catch (err: unknown) {
+    logger.error({ err }, "[startup] crm_submission_links migration failed");
+  }
+
   // Idempotent migration: ensure crm_waitlist table exists
   try {
     await pool.query(`
@@ -178,7 +199,7 @@ async function runDbStartupTasks(): Promise<void> {
   logger.info("DB indexes verified.");
 
   // ── Sequence / identity health-check ──────────────────────────────────────
-  const seqTables = ["crm_call_logs", "crm_users", "crm_leads"];
+  const seqTables = ["crm_call_logs", "crm_users", "crm_leads", "crm_comps", "crm_submission_links"];
   for (const table of seqTables) {
     try {
       const seqRes = await pool.query(

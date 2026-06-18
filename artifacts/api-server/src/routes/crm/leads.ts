@@ -1505,11 +1505,11 @@ router.post("/:id/comp-address-lookup", crmAuth, async (req, res) => {
 // estimated comparable sales based on the subject property's market knowledge.
 
 /**
- * Filter comps to match standard wholesaling criteria:
- * - Same beds (exact, if both known)
- * - Same baths ±0.5 (if both known)
- * - ±200 sqft (if both known)
- * - ±10 years built (if both known)
+ * Filter comps to match wholesaling criteria with progressive relaxation.
+ * Round 1: exact beds, baths ±1, sqft ±20%/300, year ±15 → need ≥3 results
+ * Round 2: beds ±1, baths ±1.5, sqft ±25%/400, year ±20 → need ≥2 results
+ * Round 3: only sqft ±30%/600 filter
+ * Round 4: no filters (return all)
  */
 function filterCompsBySubject<T extends {
   beds?: number | null;
@@ -1520,13 +1520,36 @@ function filterCompsBySubject<T extends {
   comps: T[],
   subject: { beds: number | null; baths: number | null; sqft: number | null; yearBuilt: number | null },
 ): T[] {
-  return comps.filter(c => {
-    if (subject.beds != null && c.beds != null && c.beds !== subject.beds) return false;
-    if (subject.baths != null && c.baths != null && Math.abs(c.baths - subject.baths) > 0.5) return false;
-    if (subject.sqft != null && c.sqft != null && Math.abs(c.sqft - subject.sqft) > 200) return false;
-    if (subject.yearBuilt != null && c.yearBuilt != null && Math.abs(c.yearBuilt - subject.yearBuilt) > 10) return false;
+  // Progressive relaxation: try tightest criteria first, widen if nothing matches.
+  const passes = (c: T, sqftTol: number, bathTol: number, yearTol: number, strictBeds: boolean) => {
+    if (strictBeds && subject.beds != null && c.beds != null && c.beds !== subject.beds) return false;
+    if (subject.baths != null && c.baths != null && Math.abs(c.baths - subject.baths) > bathTol) return false;
+    if (subject.sqft != null && c.sqft != null && Math.abs(c.sqft - subject.sqft) > sqftTol) return false;
+    if (subject.yearBuilt != null && c.yearBuilt != null && Math.abs(c.yearBuilt - subject.yearBuilt) > yearTol) return false;
     return true;
+  };
+
+  const sqftTol = subject.sqft != null ? Math.max(300, subject.sqft * 0.2) : 500;
+
+  // Round 1: exact beds, baths ±1, sqft ±20% or 300, year ±15
+  let result = comps.filter(c => passes(c, sqftTol, 1.0, 15, true));
+  if (result.length >= 3) return result;
+
+  // Round 2: relax beds by ±1, baths ±1.5, sqft ±25%, year ±20
+  const looseSqftTol = subject.sqft != null ? Math.max(400, subject.sqft * 0.25) : 700;
+  result = comps.filter(c => {
+    if (subject.beds != null && c.beds != null && Math.abs(c.beds - subject.beds) > 1) return false;
+    return passes(c, looseSqftTol, 1.5, 20, false);
   });
+  if (result.length >= 2) return result;
+
+  // Round 3: ignore beds/baths/year filters entirely, only sqft ±30%
+  const wideSqftTol = subject.sqft != null ? Math.max(600, subject.sqft * 0.3) : 1000;
+  result = comps.filter(c => passes(c, wideSqftTol, 99, 99, false));
+  if (result.length > 0) return result;
+
+  // Round 4: no filters — return all comps
+  return comps;
 }
 
 async function fetchCompsViaAI(lead: any, leadId: number, subjectProp: {
@@ -1576,8 +1599,8 @@ const content = stripJsonMarkdown(raw);
 const parsed = JSON.parse(content);
 const allAiComps: any[] = parsed?.comps ?? [];
 
-    // Post-filter AI comps to the same criteria as real comps
-    const rawComps = filterCompsBySubject(allAiComps, subjectProp);
+    // AI was prompted to generate matching comps — use all of them (skip strict filter)
+    const rawComps = allAiComps.filter(c => c.salePrice && c.salePrice > 0);
 
     if (!rawComps.length) return { added: 0, comps: [], arv: null, mao: null };
 
