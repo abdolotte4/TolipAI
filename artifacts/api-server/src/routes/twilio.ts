@@ -633,14 +633,7 @@ router.post("/twilio/reconfigure-twiml-app", crmAuth, crmAdminOnly, async (req, 
 
   try {
     const voiceCfg = await resolveVoiceConfig(targetCampaignId, isSuperAdmin);
-    // Use API_BASE_URL (authoritative production domain) so the TwiML App Voice URL
-    // always matches the URL configured in Twilio — not an internal proxy hostname.
-    const apiBaseUrl = process.env.API_BASE_URL?.replace(/\/$/, "")
-      ?? (() => {
-        const host = (req.headers["x-forwarded-host"] as string)?.split(",")[0].trim() || req.headers.host || "localhost:8080";
-        return `https://${host}`;
-      })();
-    const ownBase = `${apiBaseUrl}/api`;
+    const ownBase = getWebhookBase(req);
     const voiceUrl = `${ownBase}/twilio/voice/answer`;
 
     const auth = Buffer.from(`${voiceCfg.apiKeySid}:${voiceCfg.apiKeySecret}`).toString("base64");
@@ -690,14 +683,7 @@ router.post("/twilio/setup-webhooks", crmAuth, crmAdminOnly, async (req, res) =>
   if (!crmUser.campaignId) { res.status(400).json({ error: "No campaign assigned" }); return; }
   try {
     const creds = await resolveSmsCreds(crmUser.campaignId, false);
-    // Use API_BASE_URL so webhook URLs always point to the canonical production domain
-    // (tolipai.com) — not an internal Railway/proxy hostname from forwarded headers.
-    const apiBaseUrl = process.env.API_BASE_URL?.replace(/\/$/, "")
-      ?? (() => {
-        const host = (req.headers["x-forwarded-host"] as string)?.split(",")[0].trim() || req.headers.host || "localhost:8080";
-        return `https://${host.replace(/:\d+$/, "")}`;
-      })();
-    const apiBase = `${apiBaseUrl}/api`;
+    const apiBase = getWebhookBase(req);
     const smsWebhook = `${apiBase}/twilio/webhook`;
     const data = await twilioFetch(creds, "/IncomingPhoneNumbers.json");
     const numbers: any[] = data.incoming_phone_numbers || [];
