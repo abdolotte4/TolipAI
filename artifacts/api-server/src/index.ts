@@ -90,8 +90,45 @@ async function runDbStartupTasks(): Promise<void> {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS crm_submission_links_campaign_id_idx ON crm_submission_links (campaign_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS crm_submission_links_active_idx ON crm_submission_links (active)`);
+    // Ensure column defaults exist (may be missing if table predates Drizzle push)
+    await pool.query(`ALTER TABLE crm_submission_links ALTER COLUMN created_at SET DEFAULT NOW()`);
+    await pool.query(`ALTER TABLE crm_submission_links ALTER COLUMN active SET DEFAULT TRUE`);
+    await pool.query(`ALTER TABLE crm_submission_links ALTER COLUMN submissions_count SET DEFAULT 0`);
+    // Backfill any rows with null created_at
+    await pool.query(`UPDATE crm_submission_links SET created_at = NOW() WHERE created_at IS NULL`);
   } catch (err: unknown) {
     logger.error({ err }, "[startup] crm_submission_links migration failed");
+  }
+
+  // ── Sequence repair for SERIAL tables whose sequences may be missing ─────────
+  // Some tables were created without a proper SERIAL sequence (e.g. via an
+  // older migration path). Ensure each table's id column has a working sequence.
+  const serialRepairs = [
+    "crm_comps",
+    "crm_submission_links",
+    "crm_appointments",
+  ];
+  for (const table of serialRepairs) {
+    try {
+      const seqName = `${table}_id_seq`;
+      // Create the sequence if it doesn't exist
+      await pool.query(`CREATE SEQUENCE IF NOT EXISTS ${seqName}`);
+      // Attach it as the column default (idempotent — IF NOT EXISTS not supported
+      // for SET DEFAULT, but the error is safe to swallow)
+      await pool.query(
+        `ALTER TABLE ${table} ALTER COLUMN id SET DEFAULT nextval('${seqName}')`
+      );
+      // Set sequence ownership so it drops with the table
+      await pool.query(
+        `ALTER SEQUENCE ${seqName} OWNED BY ${table}.id`
+      );
+      // Advance the sequence past any existing max id
+      await pool.query(
+        `SELECT setval('${seqName}', GREATEST(COALESCE((SELECT MAX(id) FROM ${table}), 0) + 1, 1), false)`
+      );
+    } catch (e: any) {
+      logger.warn({ table, err: e?.message }, "[startup] serial sequence repair warning");
+    }
   }
 
   // Idempotent migration: ensure crm_waitlist table exists

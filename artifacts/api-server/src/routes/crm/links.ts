@@ -22,7 +22,7 @@ function formatLink(link: typeof crmSubmissionLinks.$inferSelect, baseUrl: strin
     leadSource: link.leadSource,
     active: link.active,
     submissionsCount: link.submissionsCount,
-    createdAt: link.createdAt.toISOString(),
+    createdAt: link.createdAt ? link.createdAt.toISOString() : new Date().toISOString(),
     url: `${baseUrl}/crm/submit/${link.token}`,
   };
 }
