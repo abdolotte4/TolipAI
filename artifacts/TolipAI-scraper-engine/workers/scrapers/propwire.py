@@ -506,8 +506,13 @@ async def _scrape_property_dom(page) -> Dict[str, Any]:
     return {"property": out}
 
 
-async def fetch_comps(query_or_url: str, *, max_results: int = 50) -> List[Dict[str, Any]]:
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+async def fetch_comps(
+    query_or_url: str,
+    *,
+    max_results: int = 50,
+    login_fn=None,
+) -> List[Dict[str, Any]]:
+    async with browser_context(SERVICE, login_fn=login_fn or _do_login) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         comps_url = base.rstrip("/") + "/comparable-sales"
         page = await ctx.new_page()

@@ -130,15 +130,29 @@ export const scraperEngine = {
     );
   },
 
-  async fetchComps(req: { address: string; radiusMiles?: number; maxResults?: number }) {
+  async fetchComps(req: {
+    address: string;
+    radiusMiles?: number;
+    maxResults?: number;
+    propelioEmail?: string;
+    propelioPassword?: string;
+    propwireEmail?: string;
+    propwirePassword?: string;
+  }) {
+    const body: Record<string, any> = {
+      address: req.address,
+      radius_miles: req.radiusMiles ?? 0.5,
+      max_results: req.maxResults ?? 12,
+    };
+    if (req.propelioEmail) body.propelio_email = req.propelioEmail;
+    if (req.propelioPassword) body.propelio_password = req.propelioPassword;
+    if (req.propwireEmail) body.propwire_email = req.propwireEmail;
+    if (req.propwirePassword) body.propwire_password = req.propwirePassword;
+
     return request<any>("/scrape/comps", {
       method: "POST",
-      body: JSON.stringify({
-        address: req.address,
-        radius_miles: req.radiusMiles ?? 0.5,
-        max_results: req.maxResults ?? 12,
-      }),
-      timeoutMs: 60_000,
+      body: JSON.stringify(body),
+      timeoutMs: 120_000,
     });
   },
 

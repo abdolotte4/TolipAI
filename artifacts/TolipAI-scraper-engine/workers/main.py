@@ -1544,25 +1544,21 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
         try:
             from functools import partial
             login_fn = partial(propwire._do_login, email=propwire_email, password=propwire_password)
-            prop = await propwire.search_property(req.address, login_fn=login_fn)
-            property_id = prop.get("property_id") if prop else None
-            if property_id:
-                comps = await propwire.fetch_comps(
-                    property_id, radius_miles=req.radius_miles, login_fn=login_fn
-                )
-                if comps:
-                    log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
-                    return {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
+            comps = await propwire.fetch_comps(
+                req.address, max_results=req.max_results, login_fn=login_fn
+            )
+            if comps:
+                log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
+                return {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
         except Exception as e:
             log.warning("scrape_comps: Propwire failed for %s: %s", req.address[:60], str(e)[:200])
 
     # 3. HomeHarvest (no auth required) ────────────────────────────────────────
     try:
-        result = await homeharvest_scraper.scrape_comps(
-            req.address, radius_miles=req.radius_miles, max_results=req.max_results
+        comps = await homeharvest_scraper.scrape_comps(
+            req.address, max_results=req.max_results
         )
-        if result and result.get("comps"):
-            comps = result["comps"]
+        if comps:
             log.info("scrape_comps: HomeHarvest returned %d comps for %s", len(comps), req.address[:60])
             return {"address": req.address, "count": len(comps), "comps": comps, "source": "homeharvest"}
     except Exception as e:

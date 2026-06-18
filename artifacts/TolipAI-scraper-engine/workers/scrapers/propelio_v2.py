@@ -39,12 +39,29 @@ SERVICE = "propelio"
 
 
 async def _do_login(page, email: str | None = None, password: str | None = None) -> None:
+    """Authenticate with Propelio via the /login page.
+
+    Robust login flow with:
+    - Multiple navigation strategies (commit → domcontentloaded → networkidle)
+    - Screenshot capture at every step for remote debugging
+    - Console error capture to diagnose JS issues
+    - Retry loop for transient failures
+    - Proxy-aware timeouts (longer waits for slow proxy routes)
+    - Detection of bot-block pages, CAPTCHAs, and session redirects
+    """
     email = email or os.getenv("PROPELIO_EMAIL")
     password = password or os.getenv("PROPELIO_PASSWORD")
     if not (email and password):
         raise RuntimeError("PROPELIO_EMAIL / PROPELIO_PASSWORD not set")
 
-    log.info("Propelio: navigating to login page")
+    # ── Debug screenshot paths ──
+    _ss_dir = "/tmp"
+    _ss_nav = f"{_ss_dir}/propelio_login_01_nav.png"
+    _ss_form = f"{_ss_dir}/propelio_login_02_form.png"
+    _ss_filled = f"{_ss_dir}/propelio_login_03_filled.png"
+    _ss_submit = f"{_ss_dir}/propelio_login_04_submit.png"
+    _ss_final = f"{_ss_dir}/propelio_login_05_final.png"
+
     email_sel = (
         'input[type="email"], input[name="email"], input[name="username"], '
         'input[autocomplete="email"], input[id*="email" i], input[placeholder*="email" i]'
@@ -54,46 +71,162 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         'input[autocomplete="current-password"], input[autocomplete="password"]'
     )
 
-    # Use "commit" (fires as soon as the server starts sending bytes) instead of
-    # "domcontentloaded" — the latter waits for the full DOM parse which can
-    # time out on slow proxy routes.  We then wait explicitly for the email input.
-    for attempt in range(2):
-        try:
-            await page.goto(LOGIN_URL, wait_until="commit", timeout=30000)
-            break
-        except Exception as nav_err:
-            if attempt == 0:
-                log.warning("Propelio: first navigation attempt failed (%s), retrying…", nav_err)
-                await page.wait_for_timeout(2000)
-            else:
-                # Last resort: try domcontentloaded with shorter budget
-                log.warning("Propelio: fallback navigation with domcontentloaded")
-                await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=20000)
+    # Capture JS console errors to help diagnose rendering/login issues
+    _console_errors: list[str] = []
 
-    # Capture a screenshot for debug if something goes wrong later
-    _screenshot_path = "/tmp/propelio_login_debug.png"
+    def _on_console(msg):
+        if msg.type in ("error", "warning"):
+            _console_errors.append(f"[{msg.type}] {msg.text[:200]}")
 
-    # Form selectors — try multiple variants in case Propelio updates their markup
-    try:
-        await page.wait_for_selector(email_sel, timeout=20000)
-    except Exception:
+    page.on("console", _on_console)
+
+    # Capture network responses during login to detect auth API failures
+    _login_api_responses: list[str] = []
+
+    def _on_response(resp):
+        url = resp.url
+        # Capture auth-related API responses
+        if any(kw in url.lower() for kw in ("auth", "login", "signin", "session", "token", "api")):
+            status = resp.status
+            if status >= 400:
+                _login_api_responses.append(f"API {status}: {url[:120]}")
+
+    page.on("response", _on_response)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 1: Navigate to login page
+    # ═══════════════════════════════════════════════════════════════════════════
+    log.info("Propelio: navigating to login page (email=%s)", email[:3] + "***@***" + email.split("@")[-1][3:])
+
+    # Check if we're already logged in (session redirect)
+    current_url = page.url
+    if "/search" in current_url or "/lists" in current_url:
+        log.info("Propelio: already on authenticated page (%s), skipping login", current_url)
+        page.remove_listener("console", _on_console)
         try:
-            await page.screenshot(path=_screenshot_path)
-            log.warning(
-                "Propelio: email selector not found — screenshot saved to %s",
-                _screenshot_path,
-            )
+            page.remove_listener("response", _on_response)
         except Exception:
             pass
-        # One more navigation attempt
-        await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
-        await page.wait_for_selector(email_sel, timeout=15000)
+        return
 
-    # Fill email — triple-click (via click_count=3) + press_sequentially to trigger
-    # React's synthetic onChange events.  plain fill() sets the value directly and may
-    # not fire onChange in some React builds, leaving the submit button disabled.
-    # NOTE: triple_click() and type() were removed in Playwright 1.51+; use
-    #       click(click_count=3) and press_sequentially() instead.
+    nav_ok = False
+    for strategy, timeout in [("commit", 30000), ("domcontentloaded", 30000), ("load", 25000)]:
+        try:
+            await page.goto(LOGIN_URL, wait_until=strategy, timeout=timeout)  # type: ignore[arg-type]
+            nav_ok = True
+            log.info("Propelio: navigation OK with strategy=%s, url=%s", strategy, page.url)
+            break
+        except Exception as nav_err:
+            log.warning("Propelio: navigation failed (strategy=%s): %s", strategy, str(nav_err)[:120])
+            await page.wait_for_timeout(1500)
+
+    if not nav_ok:
+        try:
+            await page.screenshot(path=_ss_nav)
+        except Exception:
+            pass
+        page.remove_listener("console", _on_console)
+        try:
+            page.remove_listener("response", _on_response)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Propelio: all navigation strategies failed for {LOGIN_URL}. "
+            f"Console errors: {_console_errors[:5] or 'none'}"
+        )
+
+    # Check for bot-block / challenge pages immediately after navigation
+    title = (await page.title()).lower()
+    body_text = ""
+    try:
+        body_text = (await page.locator("body").inner_text(timeout=5000)).lower()[:300]
+    except Exception:
+        pass
+
+    bot_keywords = ("just a moment", "cloudflare", "access denied", "blocked", "captcha", "challenge")
+    if any(kw in title for kw in bot_keywords) or any(kw in body_text for kw in bot_keywords):
+        await page.screenshot(path=_ss_nav)
+        page.remove_listener("console", _on_console)
+        try:
+            page.remove_listener("response", _on_response)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Propelio: bot-block page detected (title={title!r}, body={body_text[:100]!r}). "
+            f"Screenshot: {_ss_nav}"
+        )
+
+    # If we were redirected away from /login (already authenticated), we're done
+    if "/login" not in page.url:
+        log.info("Propelio: redirected to %s (already authenticated)", page.url)
+        page.remove_listener("console", _on_console)
+        try:
+            page.remove_listener("response", _on_response)
+        except Exception:
+            pass
+        return
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 2: Wait for login form to render (React SPA)
+    # ═══════════════════════════════════════════════════════════════════════════
+    form_ready = False
+    for wait_attempt in range(3):
+        try:
+            await page.wait_for_selector(email_sel, timeout=30000)
+            form_ready = True
+            log.info("Propelio: login form rendered (attempt %d)", wait_attempt + 1)
+            break
+        except Exception:
+            # React may still be mounting — check how many inputs exist
+            input_count = await page.locator("input").count()
+            log.warning(
+                "Propelio: email input not found (attempt %d, %d total inputs on page). "
+                "Console errors: %s",
+                wait_attempt + 1,
+                input_count,
+                _console_errors[-3:] or "none",
+            )
+            if wait_attempt == 0:
+                # Screenshot for debugging + retry navigation
+                try:
+                    await page.screenshot(path=_ss_form)
+                    log.warning("Propelio: screenshot saved to %s", _ss_form)
+                except Exception:
+                    pass
+                # Force a reload — sometimes the React bundle stalls on proxy
+                try:
+                    await page.reload(wait_until="domcontentloaded", timeout=20000)
+                except Exception:
+                    pass
+            elif wait_attempt == 1:
+                # Hard refresh with cache clear
+                try:
+                    await page.reload(wait_until="domcontentloaded", timeout=20000)
+                    await page.wait_for_timeout(3000)
+                except Exception:
+                    pass
+            else:
+                # Last attempt — take final screenshot and fail
+                try:
+                    await page.screenshot(path=_ss_form)
+                except Exception:
+                    pass
+                page.remove_listener("console", _on_console)
+                try:
+                    page.remove_listener("response", _on_response)
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f"Propelio: login form never rendered after 3 attempts. "
+                    f"URL={page.url}, title={title!r}, inputs={input_count}, "
+                    f"screenshot={_ss_form}, console_errors={_console_errors[-5:] or 'none'}"
+                )
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 3: Fill the form (trigger React onChange events)
+    # ═══════════════════════════════════════════════════════════════════════════
+    log.info("Propelio: filling login form")
+
     email_el = page.locator(email_sel).first
     await email_el.click(click_count=3)
     await page.wait_for_timeout(200)
@@ -106,59 +239,197 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     await pw_el.press_sequentially(password, delay=60)
     await page.wait_for_timeout(500)
 
-    # Submit — try clicking the button, then fall back to Enter key
+    # Verify values were actually entered
+    entered_email = await email_el.input_value()
+    entered_pw = await pw_el.input_value()
+    if not entered_email or not entered_pw:
+        try:
+            await page.screenshot(path=_ss_filled)
+        except Exception:
+            pass
+        page.remove_listener("console", _on_console)
+        try:
+            page.remove_listener("response", _on_response)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Propelio: form values not set (email_empty={not entered_email}, pw_empty={not entered_pw}). "
+            f"Screenshot: {_ss_filled}"
+        )
+
+    log.info("Propelio: form filled, email=%s...", entered_email[:5])
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 4: Submit the form
+    # ═══════════════════════════════════════════════════════════════════════════
     btn = page.locator(
         'button[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign In"), '
         'button:has-text("Sign in"), button:has-text("LOG IN"), button:has-text("Log In"), '
         'button:has-text("Log in"), button:has-text("Login"), input[type="submit"]'
     ).first
     btn_count = await btn.count()
+
     if btn_count:
-        # If the button is disabled (React validation not satisfied), fall back to Enter
-        is_disabled = await btn.is_disabled() if btn_count else True
+        is_disabled = await btn.is_disabled()
         if is_disabled:
-            log.warning("Propelio: submit button is disabled — submitting via Enter key")
+            log.warning("Propelio: submit button disabled — using Enter key")
+            # Screenshot to debug why button is disabled
+            try:
+                await page.screenshot(path=_ss_filled)
+            except Exception:
+                pass
             await pw_el.press("Enter")
         else:
             await btn.click()
+            log.info("Propelio: clicked submit button")
     else:
+        log.warning("Propelio: no submit button found — using Enter key")
         await pw_el.press("Enter")
 
-    # Wait for navigation AWAY from /login — accept ANY URL that is not the login page.
-    # Use a two-stage wait: URL-based first (fast), networkidle fallback (thorough).
-    try:
-        await page.wait_for_function(
-            "() => !window.location.href.includes('/login')",
-            timeout=40000,
-        )
-    except Exception:
+    await page.wait_for_timeout(1000)  # brief pause for submission to start
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 5: Wait for navigation / auth response
+    # ═══════════════════════════════════════════════════════════════════════════
+    nav_away = False
+    for nav_strategy, nav_timeout in [
+        ("function", 45000),   # wait_for_function
+        ("networkidle", 25000),  # networkidle fallback
+    ]:
         try:
-            await page.wait_for_load_state("networkidle", timeout=20000)
+            if nav_strategy == "function":
+                await page.wait_for_function(
+                    "() => !window.location.href.includes('/login')",
+                    timeout=nav_timeout,
+                )
+            else:
+                await page.wait_for_load_state("networkidle", timeout=nav_timeout)
+            nav_away = True
+            log.info("Propelio: navigation detected (strategy=%s)", nav_strategy)
+            break
+        except Exception as e:
+            log.warning("Propelio: nav wait failed (strategy=%s): %s", nav_strategy, str(e)[:100])
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 6: Verify login result
+    # ═══════════════════════════════════════════════════════════════════════════
+    final_url = page.url
+    log.info("Propelio: post-submit URL: %s", final_url)
+
+    # If navigated away from login page → success
+    if "/login" not in final_url:
+        page.remove_listener("console", _on_console)
+        try:
+            page.remove_listener("response", _on_response)
         except Exception:
             pass
+        log.info("Propelio: login OK, now at %s", final_url)
+        return
 
-    if "/login" in page.url:
-        # Capture any visible error message to help diagnose
-        try:
-            err_el = page.locator('[role="alert"], .error, .alert, [class*="error" i]').first
-            err_text = (await err_el.inner_text(timeout=3000)).strip() if await err_el.count() else ""
-        except Exception:
-            err_text = ""
-        raise RuntimeError(f"Propelio login failed (still on /login). " f"Page error: {err_text or 'none detected'}")
+    # ── Still on /login → diagnose why ──
+    try:
+        await page.screenshot(path=_ss_final)
+    except Exception:
+        pass
 
-    log.info("Propelio: login OK, now at %s", page.url)
+    # Try to extract any visible error message
+    err_text = ""
+    try:
+        err_el = page.locator('[role="alert"], .error, .alert, [class*="error" i], .chakra-alert').first
+        if await err_el.count():
+            err_text = (await err_el.inner_text(timeout=3000)).strip()
+    except Exception:
+        pass
+
+    # Check the page body for common error patterns
+    body_text = ""
+    try:
+        body_text = (await page.locator("body").inner_text(timeout=3000)).strip()[:500]
+    except Exception:
+        pass
+
+    # Check for specific error patterns
+    error_patterns = {
+        "invalid": "Invalid email or password",
+        "incorrect": "Invalid email or password",
+        "unauthorized": "Authentication failed",
+        "verify": "Please verify your email",
+        "suspended": "Account suspended",
+        "locked": "Account locked",
+        "mfa": "Two-factor authentication required",
+        "2fa": "Two-factor authentication required",
+        "captcha": "CAPTCHA verification required",
+    }
+    detected_error = err_text
+    if not detected_error:
+        body_lower = body_text.lower()
+        for pattern, meaning in error_patterns.items():
+            if pattern in body_lower:
+                detected_error = meaning
+                break
+
+    page.remove_listener("console", _on_console)
+
+    # Clean up network listener
+    try:
+        page.remove_listener("response", _on_response)
+    except Exception:
+        pass
+
+    raise RuntimeError(
+        f"Propelio login failed (still on /login). "
+        f"Detected error: {detected_error or 'none detected'}. "
+        f"Final URL: {final_url}. "
+        f"Screenshot: {_ss_final}. "
+        f"Console errors: {_console_errors[-5:] or 'none'}. "
+        f"API failures: {_login_api_responses[-5:] or 'none'}. "
+        f"Body snippet: {body_text[:200]!r}"
+    )
 
 
 # ─── Test helper ─────────────────────────────────────────────────────────────
 
 
-async def test_login_credentials(email: str, password: str) -> None:
-    """Test login with explicit credentials without caching or mutating env vars."""
+async def test_login_credentials(email: str, password: str) -> Dict[str, Any]:
+    """Test login with explicit credentials without caching or mutating env vars.
+
+    Returns a dict with {ok: bool, url: str, error: str, screenshots: list}
+    so the caller can diagnose issues remotely.
+    """
     from functools import partial
+    import time
+
+    result: Dict[str, Any] = {"ok": False, "url": "", "error": "", "screenshots": [], "timestamp": time.time()}
     login_fn = partial(_do_login, email=email, password=password)
-    async with browser_context(SERVICE, login_fn=login_fn) as ctx:
-        page = await ctx.new_page()
-        await page.close()
+
+    try:
+        async with browser_context(SERVICE, login_fn=login_fn) as ctx:
+            page = await ctx.new_page()
+            try:
+                # Navigate to the search page to verify the session is valid
+                await page.goto(f"{PROPELIO_BASE}/search", wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(3000)
+                result["url"] = page.url
+
+                if "/login" in page.url:
+                    result["error"] = "Session invalid — redirected to login"
+                    # Capture diagnostic screenshot
+                    ss_path = f"/tmp/propelio_test_login_{int(time.time())}.png"
+                    try:
+                        await page.screenshot(path=ss_path)
+                        result["screenshots"].append(ss_path)
+                    except Exception:
+                        pass
+                else:
+                    result["ok"] = True
+                    result["error"] = ""
+            finally:
+                await page.close()
+    except Exception as e:
+        result["error"] = str(e)
+        log.error("Propelio test_login_credentials failed: %s", str(e)[:200])
+
+    return result
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────

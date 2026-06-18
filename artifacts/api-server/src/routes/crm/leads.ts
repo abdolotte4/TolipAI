@@ -1660,8 +1660,9 @@ const allAiComps: any[] = parsed?.comps ?? [];
   }
 }
 
-// ─── Scraper-Engine Comps Fallback (Propelio → Propwire) ─────────────────────
+// ─── Scraper-Engine Comps Fallback (Propelio → Propwire → HomeHarvest) ──────
 // Called when ATTOM comps fail. Returns AttomComp-shaped objects (or empty array).
+// The unified /scrape/comps endpoint handles source priority internally.
 async function fetchCompsViaScraperEngine(
   address: string,
   radiusMiles: number,
@@ -1670,7 +1671,7 @@ async function fetchCompsViaScraperEngine(
   if (!scraperUrl) return [];
 
   function normalizeComp(c: any): import("../../services/attomApi").AttomComp | null {
-    const price = Number(c.sold_price ?? c.salePrice ?? c.price ?? 0);
+    const price = Number(c.sold_price ?? c.salePrice ?? c.price ?? c.list_price ?? 0);
     if (!price) return null;
     return {
       address: c.address || "",
@@ -1684,7 +1685,6 @@ async function fetchCompsViaScraperEngine(
     };
   }
 
-  // 1) Try Propelio (forward credentials from env so scraper engine can log in)
   try {
     const res = await fetch(`${scraperUrl}/scrape/comps`, {
       method: "POST",
@@ -1695,31 +1695,6 @@ async function fetchCompsViaScraperEngine(
         max_results: 12,
         propelio_email: process.env.PROPELIO_EMAIL || undefined,
         propelio_password: process.env.PROPELIO_PASSWORD || undefined,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
-    if (res.ok) {
-      const data = await res.json() as any;
-      const comps = (data.comps ?? []).map(normalizeComp).filter(Boolean) as import("../../services/attomApi").AttomComp[];
-      if (comps.length > 0) {
-        logger.info(`[scraper-engine comps] Propelio returned ${comps.length} comps for "${address}"`);
-        return comps;
-      }
-    } else {
-      const errText = await res.text().catch(() => "");
-      logger.warn({ status: res.status, errText }, "[scraper-engine comps] Propelio non-OK response");
-    }
-  } catch (e) {
-    logger.warn({ err: e }, "[scraper-engine comps] Propelio request failed");
-  }
-
-  // 2) Try Propwire as second fallback (forward credentials)
-  try {
-    const res = await fetch(`${scraperUrl}/scrape/propwire/comps`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": process.env.WEBSCRAPER_API_KEY || "" },
-      body: JSON.stringify({
-        query: address,
         propwire_email: process.env.PROPWIRE_EMAIL || undefined,
         propwire_password: process.env.PROPWIRE_PASSWORD || undefined,
       }),
@@ -1728,13 +1703,17 @@ async function fetchCompsViaScraperEngine(
     if (res.ok) {
       const data = await res.json() as any;
       const comps = (data.comps ?? []).map(normalizeComp).filter(Boolean) as import("../../services/attomApi").AttomComp[];
+      const source = data.source || "unknown";
       if (comps.length > 0) {
-        logger.info(`[scraper-engine comps] Propwire returned ${comps.length} comps for "${address}"`);
+        logger.info(`[scraper-engine comps] ${source} returned ${comps.length} comps for "${address}"`);
         return comps;
       }
+    } else {
+      const errText = await res.text().catch(() => "");
+      logger.warn({ status: res.status, errText }, "[scraper-engine comps] non-OK response");
     }
   } catch (e) {
-    logger.warn({ err: e }, "[scraper-engine comps] Propwire request failed");
+    logger.warn({ err: e }, "[scraper-engine comps] request failed");
   }
 
   return [];

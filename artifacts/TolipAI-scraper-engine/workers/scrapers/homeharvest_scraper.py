@@ -348,3 +348,64 @@ async def scrape_multi_site(
 
     log.info("HomeHarvest multi-site (legacy): %d unique listings", len(deduped))
     return deduped
+
+
+# ─── Comparable Sales (Comps) ────────────────────────────────────────────────
+
+
+async def scrape_comps(
+    address: str,
+    *,
+    max_results: int = 12,
+) -> List[Dict[str, Any]]:
+    """Fetch recently-sold comparable properties near an address via HomeHarvest.
+
+    Uses listing_type="sold" to pull recent sales data.  The `address` is
+    passed as the location — HomeHarvest resolves city/state from it.
+    Returns a list of normalised comp dicts with the same fields that
+    Propelio/Propwire produce so callers get a uniform shape regardless
+    of source.
+    """
+    if not address or not address.strip():
+        return []
+
+    # Extract city/state from the address for best HomeHarvest results
+    # HomeHarvest works best with "City, ST" as the location
+    location = address.strip()
+    # Remove extra whitespace
+    location = " ".join(location.split())
+
+    listings = await scrape_foreclosures(
+        city=location,
+        state="",
+        listing_type="sold",
+        limit=max_results,
+    )
+
+    # Transform listings into comp-normalised format
+    comps: List[Dict[str, Any]] = []
+    for li in listings:
+        # Skip non-sold listings just in case
+        status = (li.get("status") or "").lower()
+        if status and "sold" not in status:
+            continue
+
+        comps.append({
+            "address": li.get("address") or li.get("street"),
+            "city": li.get("city"),
+            "state": li.get("state"),
+            "zip": li.get("zip") or li.get("zip_code"),
+            "sold_price": li.get("list_price") or li.get("zestimate") or li.get("estimated_value"),
+            "sold_date": None,
+            "beds": li.get("beds"),
+            "baths": li.get("baths"),
+            "sqft": li.get("sqft"),
+            "lot_sqft": li.get("lot_sqft"),
+            "year_built": li.get("year_built"),
+            "property_type": li.get("property_type") or li.get("style"),
+            "source": "homeharvest",
+            "raw": li,
+        })
+
+    log.info("HomeHarvest scrape_comps: %d comps for %r", len(comps), address[:60])
+    return comps
