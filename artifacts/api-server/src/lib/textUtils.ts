@@ -16,7 +16,9 @@ export function stripJsonMarkdown(raw: string): string {
  * contains commas, double-quotes, or newlines.
  */
 export function csvCell(v: unknown): string {
-  const s = String(v ?? "");
+  let s = String(v ?? "");
+  // Prevent CSV formula injection
+  if (/^[+=@-]/.test(s)) s = "'" + s;
   if (s.includes(",") || s.includes('"') || s.includes("\n")) {
     return `"${s.replace(/"/g, '""')}"`;
   }

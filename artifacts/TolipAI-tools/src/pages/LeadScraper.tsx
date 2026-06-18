@@ -422,7 +422,7 @@ export default function LeadScraper() {
         body: JSON.stringify({ keywords: mapsKeywords, locations: mapsLocations, maxResults: Number(mapsMax) }),
       });
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("TolipAI_tools_pin");
+        localStorage.removeItem("tolipai_tools_pin");
         window.location.href = "/";
         return;
       }
@@ -448,7 +448,7 @@ export default function LeadScraper() {
         body: JSON.stringify({ keywords: searchKeywords, locations: searchLocations, maxResults: Number(searchMax) }),
       });
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("TolipAI_tools_pin");
+        localStorage.removeItem("tolipai_tools_pin");
         window.location.href = "/";
         return;
       }
@@ -474,7 +474,7 @@ export default function LeadScraper() {
         body: JSON.stringify({ state: narState, city: narCity, maxResults: Number(narMax) }),
       });
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("TolipAI_tools_pin");
+        localStorage.removeItem("tolipai_tools_pin");
         window.location.href = "/";
         return;
       }
@@ -522,14 +522,18 @@ export default function LeadScraper() {
 
       setBulkCurrentCombo(`"${keyword}" in ${location}`);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       try {
         const res = await fetch(endpoint, {
           method: "POST",
           headers,
           body: JSON.stringify({ keywords: [keyword], locations: [location], maxResults: Number(bulkMaxPerCombo) }),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
         if (res.status === 401 || res.status === 403) {
-          localStorage.removeItem("TolipAI_tools_pin");
+          localStorage.removeItem("tolipai_tools_pin");
           window.location.href = "/";
           return;
         }
@@ -549,6 +553,7 @@ export default function LeadScraper() {
           setBulkLog(prev => [`⚠️ "${keyword}" in ${location} — ${reason}`, ...prev.slice(0, 49)]);
         }
       } catch {
+        clearTimeout(timeoutId);
         skipped++;
         setBulkSkipped(skipped);
         setBulkLog(prev => [`❌ "${keyword}" in ${location} — request failed`, ...prev.slice(0, 49)]);
@@ -585,7 +590,7 @@ export default function LeadScraper() {
         body: JSON.stringify({ mode: zillowMode, city: zillowCity, state: zillowState, maxResults: Number(zillowMax) }),
       });
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("TolipAI_tools_pin");
+        localStorage.removeItem("tolipai_tools_pin");
         window.location.href = "/";
         return;
       }

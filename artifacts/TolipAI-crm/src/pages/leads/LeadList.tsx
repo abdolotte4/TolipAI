@@ -81,7 +81,7 @@ export default function LeadList() {
   });
 
   const leads = data?.leads ?? [];
-  const totalPages = data?.total ? Math.ceil(data.total / PAGE_SIZE) : 1;
+  const totalPages = data?.total != null ? Math.ceil(data.total / PAGE_SIZE) : 1;
   const { canDeleteLeads, isSuperAdmin } = useCampaignGovernance();
   const deleteMutation = useCrmDeleteLead();
   const qc = useQueryClient();

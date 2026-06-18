@@ -16,6 +16,9 @@ async function fetchApi(endpoint: string, options: RequestInit = {}, pin: string
     window.location.href = "/";
     throw new Error("Session expired or invalid PIN — please log in again.");
   }
+  if (res.status === 503 || res.status === 504) {
+    throw new Error("Scraper engine temporarily unavailable. Please try again in a few minutes.");
+  }
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.error || `API Error: ${res.status}`);

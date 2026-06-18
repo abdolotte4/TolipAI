@@ -309,17 +309,16 @@ export default function BrowserDialer({ leadPhone, leadId, leadName, onCallLogge
 
   // ── Track when call ends for coaching + summary ─────────────────────────────
   const prevStatus = useRef(status);
-  if (prevStatus.current !== status) {
+  useEffect(() => {
     if (prevStatus.current === "in-progress" && status === "idle") {
       if (lastCallRecorded && lastCallSid) {
         autoFetchCoaching(lastCallSid);
       }
-      // Fetch summary from live transcript immediately (no wait)
       const liveText = phone.liveTranscript.map(s => s.text).join(" ");
       fetchSummary(liveText, lastCallSid);
     }
     prevStatus.current = status;
-  }
+  }, [status, lastCallRecorded, lastCallSid, phone.liveTranscript, autoFetchCoaching, fetchSummary]);
 
   return (
     <div className="rounded-2xl border border-white/5 bg-card overflow-hidden">

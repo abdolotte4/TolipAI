@@ -105,7 +105,7 @@ async def _evict_old_jobs() -> None:
     while True:
         await asyncio.sleep(300)  # every 5 minutes
         try:
-            now = time.monotonic()
+            now = time.time()
             to_evict = [
                 jid for jid, j in list(_jobs.items())
                 if j.get("status") in ("done", "failed", "partial_success")
@@ -453,7 +453,7 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
         _jobs[job_id][k] = v
     if status in ("done", "failed", "partial_success"):
         import time
-        _jobs[job_id]["_completed_at"] = time.monotonic()
+        _jobs[job_id]["_completed_at"] = time.time()
 
     # Safer fire-and-forget Redis persistence
     try:
@@ -1254,17 +1254,30 @@ def _decrypt_password(ciphertext: str) -> str:
     if ":" not in ciphertext:
         return ciphertext
 
-    key = hashlib.sha256(secret.encode()).digest()
-    iv_hex, enc_hex = ciphertext.split(":", 1)
-    iv = bytes.fromhex(iv_hex)
-    encrypted = bytes.fromhex(enc_hex)
+    try:
+        key = hashlib.sha256(secret.encode()).digest()
+        iv_hex, enc_hex = ciphertext.split(":", 1)
+        iv = bytes.fromhex(iv_hex)
+        encrypted = bytes.fromhex(enc_hex)
 
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-    decryptor = cipher.decryptor()
-    padded = decryptor.update(encrypted) + decryptor.finalize()
+        if len(iv) != 16:
+            raise ValueError(f"Invalid IV length: expected 16 bytes, got {len(iv)}")
+        if len(encrypted) == 0:
+            raise ValueError("Empty encrypted payload")
+        if len(encrypted) % 16 != 0:
+            raise ValueError("Ciphertext length must be a multiple of 16 bytes")
 
-    unpadder = crypto_padding.PKCS7(128).unpadder()
-    return (unpadder.update(padded) + unpadder.finalize()).decode("utf-8")
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        padded = decryptor.update(encrypted) + decryptor.finalize()
+
+        unpadder = crypto_padding.PKCS7(128).unpadder()
+        plaintext = (unpadder.update(padded) + unpadder.finalize()).decode("utf-8")
+        return plaintext
+    except ValueError as e:
+        raise ValueError(f"Invalid encrypted credential format: {e}")
+    except Exception as e:
+        raise ValueError(f"Credential decryption failed: {type(e).__name__}: {e}")
 
 
 @app.post("/session/propelio/test")
@@ -1418,6 +1431,8 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
                 log.exception("cash_buyers job %s failed (fatal)", job_id)
                 _set_status(job_id, "failed", error=err)
                 await db.update_job(job_id, status="failed", error=err, completed=True)
+                async with _get_metrics_lock():
+                    METRICS["cash_buyers_failed"] += 1
 
     safe_create_task(runner(), name="cash_buyers")
     return {"job_id": job_id, "status": "queued", "lead_id": req.lead_id}
@@ -1597,7 +1612,7 @@ async def satellite_dfd_scan(req: SatelliteDFDRequest) -> Dict[str, Any]:
         "use_ai_scoring": req.use_ai_scoring,
     }
     job_id = _new_job("satellite_dfd", params)
-    asyncio.create_task(_run_satellite_dfd(job_id, params), name=f"satellite_dfd_{job_id}")
+    safe_create_task(_run_satellite_dfd(job_id, params), name=f"satellite_dfd_{job_id}")
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -2157,6 +2172,8 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
                 )
                 _set_status(job_id, "retry_pending", error=err)
                 await db.update_job(job_id, status="retry_pending", error=err)
+                async with _get_metrics_lock():
+                    METRICS["distressed_failed"] += 1
             else:
                 log.exception("Distressed job %s failed (fatal)", job_id)
                 _set_status(job_id, "failed", error=err)

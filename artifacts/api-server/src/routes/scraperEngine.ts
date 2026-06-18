@@ -29,8 +29,10 @@ function crmOrPinAuth(req: Request, res: Response, next: () => void): void {
   const toolsPin = process.env.TOOLS_PIN;
   const provided = req.headers["x-tools-pin"] as string | undefined;
   if (toolsPin && provided && provided.trim() === toolsPin.trim()) {
+    (req as any).authType = "pin";
     return next();
   }
+  (req as any).authType = "jwt";
   return crmAuth(req, res, next);
 }
 
@@ -282,10 +284,14 @@ router.post(
       if (campaignId) {
         const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);
         if (campaign?.scraperProperioEmail) {
-          try { propelioEmail = decryptPassword(campaign.scraperProperioEmail); } catch { /* use env */ }
+          try { propelioEmail = decryptPassword(campaign.scraperProperioEmail); } catch (e) {
+            logger.warn({ campaignId, err: (e as Error).message }, "Failed to decrypt Propelio email");
+          }
         }
         if (campaign?.scraperProperioPassword) {
-          try { propelioPassword = decryptPassword(campaign.scraperProperioPassword); } catch { /* use env */ }
+          try { propelioPassword = decryptPassword(campaign.scraperProperioPassword); } catch (e) {
+            logger.warn({ campaignId, err: (e as Error).message }, "Failed to decrypt Propelio password");
+          }
         }
       }
 
@@ -328,10 +334,14 @@ router.post(
       if (campaignId) {
         const [campaign] = await db.select().from(crmCampaigns).where(eq(crmCampaigns.id, campaignId)).limit(1);
         if (campaign?.scraperPropwireEmail) {
-          try { propwireEmail = decryptPassword(campaign.scraperPropwireEmail); } catch { /* use env */ }
+          try { propwireEmail = decryptPassword(campaign.scraperPropwireEmail); } catch (e) {
+            logger.warn({ campaignId, err: (e as Error).message }, "Failed to decrypt Propwire email");
+          }
         }
         if (campaign?.scraperPropwirePassword) {
-          try { propwirePassword = decryptPassword(campaign.scraperPropwirePassword); } catch { /* use env */ }
+          try { propwirePassword = decryptPassword(campaign.scraperPropwirePassword); } catch (e) {
+            logger.warn({ campaignId, err: (e as Error).message }, "Failed to decrypt Propwire password");
+          }
         }
       }
 
@@ -367,6 +377,7 @@ async function _buyerLeadIds(user: CrmTokenPayload): Promise<number[] | null> {
 
 // Postgres parameter limit is ~32,767 — chunk large inArray calls to avoid it (BUG-SCRAP-01)
 function chunkedInArray(col: Parameters<typeof inArray>[0], ids: number[]): SQL {
+  if (ids.length === 0) return sql`false`;
   const CHUNK = 10_000;
   if (ids.length <= CHUNK) return inArray(col, ids);
   const chunks: SQL[] = [];
@@ -502,7 +513,7 @@ router.get(
         "Content-Disposition",
         `attachment; filename="cash-buyers-${new Date().toISOString().slice(0, 10)}.csv"`,
       );
-      res.send([header, ...lines].join("\n"));
+      res.send("\uFEFF" + [header, ...lines].join("\n"));
     } catch (err: unknown) {
       res.status(500).json({ error: toMessage(err) });
     }
@@ -590,6 +601,15 @@ interface DistressedEnrichJob {
 }
 
 const distressedEnrichJobs = new Map<string, DistressedEnrichJob>();
+const MAX_ENRICH_JOBS = 500;
+
+function setEnrichJob(id: string, job: DistressedEnrichJob) {
+  if (distressedEnrichJobs.size >= MAX_ENRICH_JOBS) {
+    const firstKey = distressedEnrichJobs.keys().next().value;
+    if (firstKey) distressedEnrichJobs.delete(firstKey);
+  }
+  distressedEnrichJobs.set(id, job);
+}
 
 setInterval(() => {
   const cutoff = Date.now() - 8 * 60 * 60 * 1000;
@@ -622,7 +642,7 @@ router.post(
         results: [],
         startedAt: new Date().toISOString(),
       };
-      distressedEnrichJobs.set(enrichJobId, enrichJob);
+      setEnrichJob(enrichJobId, enrichJob);
 
       setImmediate(async () => {
         try {
@@ -699,12 +719,26 @@ router.get(
 const _ENGINE_URL = (process.env.SCRAPER_ENGINE_URL ?? "").replace(/\/$/, "");
 
 router.all("/scraper-engine/{*path}", crmOrPinAuth, async (req: Request, res: Response) => {
+  if ((req as any).authType === "pin") {
+    // PIN auth only allowed for non-sensitive scraper engine paths
+    const sensitivePaths = ["/admin/", "/debug/", "/session/"];
+    const subPath = req.path.slice("/scraper-engine".length) || "/";
+    if (sensitivePaths.some(p => subPath.startsWith(p))) {
+      res.status(403).json({ error: "PIN auth not allowed for this endpoint" });
+      return;
+    }
+  }
   if (!_ENGINE_URL) {
     res.status(503).json({ error: "SCRAPER_ENGINE_URL is not configured" });
     return;
   }
   const subPath = req.path.slice("/scraper-engine".length) || "/";
   const isBodyMethod = !["GET", "HEAD", "DELETE"].includes(req.method.toUpperCase());
+  const bodyStr = isBodyMethod ? JSON.stringify(req.body) : undefined;
+  if (bodyStr && bodyStr.length > 10_000_000) {
+    res.status(413).json({ error: "Request body exceeds 10 MB limit" });
+    return;
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 180_000);
   const apiKey = process.env.WEBSCRAPER_API_KEY;
@@ -716,7 +750,7 @@ router.all("/scraper-engine/{*path}", crmOrPinAuth, async (req: Request, res: Re
         ...(apiKey ? { "X-API-Key": apiKey } : {}),
         ...(req.headers.authorization ? { "Authorization": req.headers.authorization } : {}),
       },
-      ...(isBodyMethod ? { body: JSON.stringify(req.body) } : {}),
+      ...(bodyStr ? { body: bodyStr } : {}),
       signal: controller.signal,
     });
     clearTimeout(timer);

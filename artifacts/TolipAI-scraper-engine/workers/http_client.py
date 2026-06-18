@@ -174,8 +174,14 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us", is_
     """
     errors: list[str] = []
 
+    # Only disable SSL for known government/county domains with self-signed certs
+    gov_domains = [".gov", ".gov.", "county-", "treasurer", "auditor", "sheriffsale",
+                   "hctax", "ttc.lacounty", "cclerk.hctx", "octaxcol", "broward.county-taxes",
+                   "public-records", "clerk.", "recorder.", "assessor."]
+    is_gov = any(d in url.lower() for d in gov_domains)
+
     try:
-        return await fetch_direct(url, use_proxy=True, verify_ssl=False)
+        return await fetch_direct(url, use_proxy=True, verify_ssl=not is_gov)
     except Exception as e:
         errors.append(f"direct: {e}")
         log.debug("Direct fetch failed for %s: %s", url, e)
@@ -339,10 +345,19 @@ async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
     try:
         proxy = settings.proxy_url() if use_proxy else None
         headers = _build_headers(url)
+
+        # Only disable SSL for known government/county domains with self-signed certs
+        gov_domains = [".gov", ".gov.", "county-", "treasurer", "auditor", "sheriffsale",
+                       "hctax", "ttc.lacounty", "cclerk.hctx", "octaxcol", "broward.county-taxes"]
+        is_gov = any(d in url.lower() for d in gov_domains)
+        verify_ssl = not is_gov
+
         if proxy is None and _persistent_client and not _persistent_client.is_closed:
-            r = await _persistent_client.get(url, headers=headers, follow_redirects=True)
+            # Don't use persistent client for PDFs - create one with proper SSL verification
+            async with httpx.AsyncClient(timeout=settings.request_timeout, verify=verify_ssl) as cli:
+                r = await cli.get(url, headers=headers, follow_redirects=True)
         else:
-            async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout) as cli:
+            async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout, verify=verify_ssl) as cli:
                 r = await cli.get(url, follow_redirects=True)
         r.raise_for_status()
         pdf_bytes = r.content
