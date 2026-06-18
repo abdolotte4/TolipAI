@@ -35,10 +35,10 @@ export function Team() {
       image: "avatar-4.jpg"
     },
     {
-      name: "Ryan Mitchell",
-      role: "Outreach Operations Specialist",
-      email: "ryan@tolipai.com",
-      description: "Specializes in high-intent outbound outreach operations, quality compliance protocols, and managed outreach program execution for real estate investors.",
+      name: "Amr Alyy",
+      role: "Head Of Finance",
+      email: "Amr.aly@tolipai.com",
+      description: "Oversees financial planning, budgeting, and compliance. Specializes in FP&A, tax audit preparation, and building robust accounting frameworks to support sustainable growth and investor confidence.",
       image: "avatar-1.jpg"
     }
   ];

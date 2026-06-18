@@ -6,9 +6,9 @@ const servicesBg = "/images/hero-bg.jpg";
 export function Services() {
   const services = [
     {
-      title: "TolipAI CRM — Real Estate CRM Software",
+      title: "Tolip Group LLC",
       icon: <BarChart3 className="w-8 h-8 text-primary" />,
-      description: "TolipAI CRM is a purpose-built real estate CRM for investors and real estate professionals. Features include lead pipeline management, ARV (After Repair Value) calculator, MAO (Maximum Allowable Offer) calculator, real estate comps analysis, task tracking, and team collaboration. Manage all high-propensity property segments from first contact to closed deal — all in one CRM."
+      description: "Tolip Group LLC is the parent company behind TolipAI, delivering a wide range of professional services across real estate, technology, and business operations. Our expertise spans real estate investment, wholesaling, buying and selling houses, and managed virtual assistant services. Beyond real estate, we provide B2B marketing, advanced data analysis, business analytics, and full‑stack programming — building websites with both backend and frontend solutions. Tolip Group LLC also offers accounting services, including tax audit support, accountant portfolios, and FP&A (Financial Planning & Analysis). We combine technical infrastructure with business strategy to help clients scale efficiently and stay compliant."
     },
     {
       title: "Virtual Assistants for Real Estate",
@@ -33,7 +33,7 @@ export function Services() {
     {
       title: "Technical CRM Infrastructure",
       icon: <Settings className="w-8 h-8 text-primary" />,
-      description: "Enterprise-grade CRM architecture and automation workflow design for real estate businesses. We implement TolipAI CRM, configure acquisition pipelines, set up automation, and build the complete technical backbone powering modern real estate marketing operations — from data ingestion to closed deals."
+      description: "TolipAI CRM is a purpose-built real estate CRM for investors and real estate professionals. Features include lead pipeline management, ARV (After Repair Value) calculator, MAO (Maximum Allowable Offer) calculator, real estate comps analysis, task tracking, and team collaboration. Manage all high-propensity property segments from first contact to closed deal — all in one CRM."
     }
   ];
 
