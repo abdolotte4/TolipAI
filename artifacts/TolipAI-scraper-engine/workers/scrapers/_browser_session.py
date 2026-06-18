@@ -249,6 +249,66 @@ try {
 try { Object.defineProperty(navigator, 'connection', { get: () => ({ effectiveType:'4g', rtt:50, downlink:10, saveData:false }), configurable:true }); } catch(e) {}
 if (window.outerWidth === 0) Object.defineProperty(window, 'outerWidth', { get: () => 1440 });
 if (window.outerHeight === 0) Object.defineProperty(window, 'outerHeight', { get: () => 900 });
+
+// ── DataDome-specific evasion ────────────────────────────────────────────
+// 1. Remove ChromeDriver / Playwright injected variables (cdc_ markers)
+try {
+  const cdcKeys = Object.keys(window).filter(k => k.startsWith('cdc_'));
+  for (const k of cdcKeys) { delete window[k]; }
+} catch(e) {}
+
+// 2. Hide automation-related properties from Detection Framework
+try {
+  Object.defineProperty(navigator, '__proto__', { get: () => ({}) });
+} catch(e) {}
+
+// 3. Protect modified function .toString() from Detection
+try {
+  const _toString = Function.prototype.toString;
+  Function.prototype.toString = function() {
+    if (this === Function.prototype.toString) return 'function toString() { [native code] }';
+    if (this === navigator.permissions.query) return 'function query() { [native code] }';
+    if (this === window.chrome.csi) return 'function csi() { [native code] }';
+    if (this === window.chrome.loadTimes) return 'function loadTimes() { [native code] }';
+    return _toString.call(this);
+  };
+} catch(e) {}
+
+// 4. Override Notification permission check (DataDome checks this)
+try {
+  if (window.Notification) {
+    Object.defineProperty(Notification, 'permission', { get: () => 'default', configurable: true });
+  }
+} catch(e) {}
+
+// 5. Prevent iframe parent / top detection of automation
+try {
+  if (window.self !== window.top) {
+    Object.defineProperty(window, 'top', { get: () => window.self });
+  }
+} catch(e) {}
+
+// 6. Fake document.documentElement attributes that DataDome probes
+try {
+  const htmlEl = document.documentElement;
+  if (htmlEl) {
+    const origGetAttribute = htmlEl.getAttribute.bind(htmlEl);
+    htmlEl.getAttribute = function(name) {
+      if (name === 'webdriver' || name === 'driver-evaluate' || name === 'selenium-evaluate') return null;
+      return origGetAttribute(name);
+    };
+  }
+} catch(e) {}
+
+// 7. Override console.debug to suppress Playwright CDP messages
+try {
+  const _origDebug = console.debug;
+  console.debug = function(...args) {
+    const msg = args.join(' ');
+    if (msg.includes(' playwright') || msg.includes(' binding ') || msg.includes('cdp')) return;
+    return _origDebug.apply(this, args);
+  };
+} catch(e) {}
 """
 
 
@@ -274,6 +334,26 @@ async def _apply_stealth(ctx: Any) -> None:
     # Fallback: hand-rolled comprehensive stealth script
     await ctx.add_init_script(_STEALTH_SCRIPT)
     log.debug("[stealth] applied hand-rolled stealth script")
+
+
+async def _humanize_mouse(page: Any) -> None:
+    """Simulate human-like mouse movements before interacting.
+
+    DataDome and similar services track mouse velocity, path curvature, and
+    timing.  Moving the mouse in a natural arc before clicking reduces the
+    automation score significantly.
+    """
+    try:
+        # Move to a few random positions within the viewport
+        import random
+        viewport = page.viewport_size or {"width": 1440, "height": 900}
+        for _ in range(3):
+            x = random.randint(200, viewport["width"] - 200)
+            y = random.randint(100, viewport["height"] - 100)
+            await page.mouse.move(x, y)
+            await page.wait_for_timeout(random.randint(150, 400))
+    except Exception:
+        pass  # Non-critical — don't fail if mouse emulation errors
 
 
 async def _nav_with_fallback(page: Any, url: str, logger: Any, service: str, timeout_ms: int = 45000) -> None:

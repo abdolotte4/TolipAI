@@ -20,7 +20,7 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional
 
-from ._browser_session import browser_context, invalidate_session, _nav_with_fallback
+from ._browser_session import browser_context, invalidate_session, _nav_with_fallback, _humanize_mouse
 from ._utils import _safe_num, _parse_buyer_card
 
 log = logging.getLogger("propwire")
@@ -30,6 +30,26 @@ LOGIN_URL = f"{PROPWIRE_BASE}/login"
 SEARCH_URL = f"{PROPWIRE_BASE}/search?filters=%7B%7D"
 
 SERVICE = "propwire"
+
+# ─── Bot-challenge detection ─────────────────────────────────────────────────
+
+_BOT_CHALLENGE_INDICATORS = [
+    "captcha-delivery.com",
+    "datadome",
+    "geo.captcha",
+    "challenge",
+    "cf-challenge",
+    "turnstile",
+    "hcaptcha",
+    "recaptcha",
+    "access denied",
+    "blocked",
+]
+
+
+def _looks_like_challenge_page(html: str) -> bool:
+    html_lower = html.lower()
+    return any(indicator in html_lower for indicator in _BOT_CHALLENGE_INDICATORS)
 
 
 # ─── Login ───────────────────────────────────────────────────────────────────
@@ -43,78 +63,264 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
 
     log.info("Propwire: navigating to login page")
 
-    # Try multiple selector variants — Propwire periodically updates markup
-    email_sel = (
-        'input[type="email"], input[name="email"], '
-        'input[autocomplete="email"], input[id*="email" i], input[placeholder*="email" i]'
-    )
-    pw_sel = 'input[type="password"], input[name="password"], ' 'input[autocomplete="current-password"]'
+    # ── Step 0: Clear any stale state that might trigger bot detection ─────
+    await page.context.clear_cookies()
+    try:
+        await page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
+    except Exception:
+        pass
 
-    # Use "commit" so navigation completes as soon as the server starts sending
-    # bytes — "domcontentloaded" can timeout on slow proxy routes.
-    _screenshot_path = "/tmp/propwire_login_debug.png"
-    for attempt in range(2):
+    # ── Step 1: Navigate with networkidle so JS SPA renders fully ──────────
+    # Propwire is a React SPA; "commit" or "domcontentloaded" may fire before
+    # the bundle downloads.  Use "networkidle" for the initial cold-start login.
+    # Fallback through lighter strategies if the proxy stalls.
+    _screenshot_dir = "/tmp"
+    nav_ok = False
+    for attempt, (strategy, timeout) in enumerate([
+        ("networkidle", 45000),
+        ("domcontentloaded", 30000),
+        ("commit", 20000),
+    ]):
         try:
-            await page.goto(LOGIN_URL, wait_until="commit", timeout=30000)
+            await page.goto(LOGIN_URL, wait_until=strategy, timeout=timeout)
+            nav_ok = True
+            log.info("Propwire: navigation succeeded with strategy=%s", strategy)
             break
         except Exception as nav_err:
-            if attempt == 0:
-                log.warning(
-                    "Propwire: navigation attempt %d failed (%s), retrying…",
-                    attempt + 1,
-                    nav_err,
-                )
-                await page.wait_for_timeout(2000)
-            else:
-                log.warning("Propwire: fallback navigation with domcontentloaded")
-                await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=20000)
-
-    try:
-        await page.wait_for_selector(email_sel, timeout=20000)
-    except Exception:
-        try:
-            await page.screenshot(path=_screenshot_path)
             log.warning(
-                "Propwire: email selector not found — screenshot at %s",
-                _screenshot_path,
+                "Propwire: nav attempt %d (%s) failed: %s",
+                attempt + 1, strategy, str(nav_err)[:120],
             )
+            if attempt < 2:
+                await page.wait_for_timeout(3000)
+
+    if not nav_ok:
+        raise RuntimeError("Propwire: all navigation strategies failed for /login")
+
+    # Wait a beat for any challenge pages to settle
+    await page.wait_for_timeout(4000)
+
+    # ── Step 2: Detect & handle bot challenge pages ────────────────────────
+    html = await page.content()
+    if _looks_like_challenge_page(html):
+        log.warning("Propwire: bot challenge page detected — saving screenshot")
+        try:
+            await page.screenshot(path=f"{_screenshot_dir}/propwire_challenge_detected.png", full_page=True)
         except Exception:
             pass
-        await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
-        await page.wait_for_selector(email_sel, timeout=15000)
 
-    # Use triple-click + press_sequentially to fire React synthetic onChange events.
-    # plain fill() sets the native value directly and may not trigger onChange in
-    # Next.js/React apps, leaving the submit button disabled.
-    email_el = page.locator(email_sel).first
+        # Strategy: wait a bit longer — DataDome sometimes auto-resolves
+        # when the browser passes fingerprint checks.
+        log.info("Propwire: waiting 15 s for challenge to auto-resolve...")
+        await page.wait_for_timeout(15000)
+
+        # Check again
+        html = await page.content()
+        if _looks_like_challenge_page(html):
+            # Try reloading once — fresh request through proxy may help
+            log.info("Propwire: challenge still present, attempting reload...")
+            await page.goto(LOGIN_URL, wait_until="networkidle", timeout=45000)
+            await page.wait_for_timeout(8000)
+            html = await page.content()
+
+        if _looks_like_challenge_page(html):
+            try:
+                await page.screenshot(path=f"{_screenshot_dir}/propwire_challenge_still_present.png", full_page=True)
+            except Exception:
+                pass
+            raise RuntimeError(
+                "Propwire: DataDome/CAPTCHA challenge is blocking login. "
+                "The bot detection could not be bypassed. "
+                "Check proxy configuration and stealth settings."
+            )
+
+    # ── Step 3: Wait for the actual login form ─────────────────────────────
+    # Propwire uses generic <input> elements without type="email" or name="email"
+    # in their React form.  Use multiple selector strategies.
+    email_selectors = [
+        # Strategy A: inputs inside fieldsets near "Email" label text
+        'fieldset:has-text("Email") input',
+        'label:has-text("Email") + input',
+        # Strategy B: first visible text input (email field comes before password)
+        'input:not([type="password"]):not([type="checkbox"])',
+        # Strategy C: all visible inputs — we filter by position
+        'input >> visible=true',
+        # Strategy D: React/Next.js generated class patterns
+        'input[class*="input" i]',
+        'input[class*="field" i]',
+        # Strategy E: broad fallback — any input that isn't checkbox/button/hidden
+        'input:not([type="checkbox"]):not([type="hidden"]):not([type="button"])',
+    ]
+
+    pw_selectors = [
+        'input[type="password"]',
+        'fieldset:has-text("Password") input',
+        'label:has-text("Password") + input',
+    ]
+
+    # Wait for the form to render (React SPA may still be loading)
+    form_visible = False
+    for wait_attempt in range(3):
+        try:
+            # Check if ANY inputs are visible
+            visible_inputs = await page.locator('input >> visible=true').count()
+            if visible_inputs >= 2:
+                form_visible = True
+                log.info("Propwire: found %d visible input(s)", visible_inputs)
+                break
+        except Exception:
+            pass
+        log.info("Propwire: waiting for form to render (attempt %d)...", wait_attempt + 1)
+        await page.wait_for_timeout(5000)
+
+    if not form_visible:
+        # Final check: maybe it's a completely different page
+        page_title = await page.title()
+        current_url = page.url
+        try:
+            await page.screenshot(path=f"{_screenshot_dir}/propwire_login_form_missing.png", full_page=True)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Propwire: login form not found after waiting. "
+            f"title={page_title}, url={current_url}, "
+            f"challenge_detected={_looks_like_challenge_page(await page.content())}. "
+            f"Check screenshot at {_screenshot_dir}/propwire_login_form_missing.png"
+        )
+
+    # ── Step 4: Humanize before interacting ────────────────────────────────
+    await _humanize_mouse(page)
+
+    # ── Step 5: Fill the form ──────────────────────────────────────────────
+    # Try to locate email and password inputs robustly
+    email_el = None
+    pw_el = None
+
+    # Strategy 1: Try label-based selectors first
+    for sel in email_selectors:
+        try:
+            el = page.locator(sel).first
+            if await el.count():
+                # Verify it looks like an email field (not password, not checkbox)
+                el_type = await el.get_attribute("type") or ""
+                if el_type != "password":
+                    email_el = el
+                    log.debug("Propwire: email field found via selector: %s", sel)
+                    break
+        except Exception:
+            continue
+
+    for sel in pw_selectors:
+        try:
+            el = page.locator(sel).first
+            if await el.count():
+                pw_el = el
+                log.debug("Propwire: password field found via selector: %s", sel)
+                break
+        except Exception:
+            continue
+
+    # Strategy 2: JavaScript fallback — enumerate all inputs and pick by attributes
+    if email_el is None or pw_el is None:
+        log.info("Propwire: using JavaScript fallback to locate inputs")
+        input_info = await page.evaluate("""
+            () => {
+                const inputs = Array.from(document.querySelectorAll('input'));
+                return inputs.map((inp, idx) => ({
+                    index: idx,
+                    type: inp.type || '',
+                    placeholder: inp.placeholder || '',
+                    id: inp.id || '',
+                    name: inp.name || '',
+                    autocomplete: inp.getAttribute('autocomplete') || '',
+                    rect: inp.getBoundingClientRect(),
+                }));
+            }
+        """)
+        log.debug("Propwire: found inputs: %s", json.dumps(input_info, default=str))
+
+        visible_inputs = [
+            i for i in input_info
+            if i["rect"]["width"] > 50 and i["rect"]["height"] > 20
+        ]
+
+        # Email = first non-password, non-checkbox visible input
+        # Password = input with type="password"
+        if email_el is None:
+            for inp in visible_inputs:
+                if inp["type"] != "password" and inp["type"] != "checkbox":
+                    email_el = page.locator("input").nth(inp["index"])
+                    log.info("Propwire: email field found via JS fallback at index %d", inp["index"])
+                    break
+
+        if pw_el is None:
+            for inp in visible_inputs:
+                if inp["type"] == "password":
+                    pw_el = page.locator("input").nth(inp["index"])
+                    log.info("Propwire: password field found via JS fallback at index %d", inp["index"])
+                    break
+
+    if email_el is None or pw_el is None:
+        raise RuntimeError(
+            f"Propwire: could not locate email or password input. "
+            f"email_el={'found' if email_el else 'MISSING'}, "
+            f"pw_el={'found' if pw_el else 'MISSING'}. "
+            f"visible_inputs_count={len(visible_inputs) if 'visible_inputs' in dir() else 'N/A'}"
+        )
+
+    # ── Fill email ──
+    await email_el.scroll_into_view_if_needed(timeout=10000)
     await email_el.click(click_count=3)
     await page.wait_for_timeout(200)
+    # Use press_sequentially to fire React synthetic onChange events
     await email_el.press_sequentially(email, delay=60)
     await page.wait_for_timeout(300)
 
-    pw_el = page.locator(pw_sel).first
+    # ── Fill password ──
+    await pw_el.scroll_into_view_if_needed(timeout=10000)
     await pw_el.click(click_count=3)
     await page.wait_for_timeout(200)
     await pw_el.press_sequentially(password, delay=60)
     await page.wait_for_timeout(500)
 
-    btn = page.locator(
-        'button[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign In"), '
-        'button:has-text("Sign in"), button:has-text("LOG IN"), button:has-text("Log In"), '
-        'button:has-text("Log in"), button:has-text("Login"), input[type="submit"]'
-    ).first
-    btn_count = await btn.count()
-    if btn_count:
-        is_disabled = await btn.is_disabled() if btn_count else True
+    # ── Step 5: Submit ──
+    submit_selectors = [
+        'button[type="submit"]',
+        'button:has-text("Log in")',
+        'button:has-text("Sign in")',
+        'button:has-text("Login")',
+        'input[type="submit"]',
+        'button[class*="submit" i]',
+        'button[class*="login" i]',
+    ]
+
+    btn = None
+    for sel in submit_selectors:
+        try:
+            el = page.locator(sel).first
+            if await el.count():
+                btn = el
+                log.debug("Propwire: submit button found via: %s", sel)
+                break
+        except Exception:
+            continue
+
+    if btn:
+        try:
+            is_disabled = await btn.is_disabled()
+        except Exception:
+            is_disabled = False
+
         if is_disabled:
             log.warning("Propwire: submit button is disabled — submitting via Enter key")
             await pw_el.press("Enter")
         else:
             await btn.click()
     else:
+        log.warning("Propwire: no submit button found — submitting via Enter key")
         await pw_el.press("Enter")
 
-    # Wait for ANY URL change away from /login
+    # ── Step 6: Wait for navigation away from /login ───────────────────────
     try:
         await page.wait_for_function(
             "() => !window.location.href.includes('/login')",
@@ -129,7 +335,11 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
             err_text = (await err_el.inner_text(timeout=3000)).strip() if await err_el.count() else ""
         except Exception:
             err_text = ""
-        raise RuntimeError(f"Propwire login failed (still on /login). " f"Page error: {err_text or 'none detected'}")
+        raise RuntimeError(
+            f"Propwire login failed (still on /login). "
+            f"Page error: {err_text or 'none detected'}. "
+            f"URL: {page.url}"
+        )
 
     log.info("Propwire: login OK, now at %s", page.url)
 
