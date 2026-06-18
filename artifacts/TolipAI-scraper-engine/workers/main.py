@@ -355,6 +355,10 @@ async def _security_middleware(request: Request, call_next):
 class CashBuyerRequest(BaseModel):
     lead_id: Optional[int] = Field(None, description="ID of crm_leads row (omit for ad-hoc / test calls)")
     address: Optional[str] = Field(None, description="Full address (used when lead_id is absent)")
+    city: Optional[str] = Field(None, description="City (used when lead_id is absent)")
+    state: Optional[str] = Field(None, description="State (used when lead_id is absent)")
+    zip: Optional[str] = Field(None, description="ZIP code (used when lead_id is absent)")
+    county_key: Optional[str] = Field(None, description="County key for deed lookup (used when lead_id is absent)")
     max_buyers: int = 50
     campaign_id: Optional[int] = None
 
@@ -1343,9 +1347,10 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
         lead = {
             "id": None,
             "address": req.address,
-            "city": "",
-            "state": "",
-            "zip": "",
+            "city": req.city or "",
+            "state": req.state or "",
+            "zip": req.zip or "",
+            "county_key": req.county_key or "",
             "beds": None,
             "baths": None,
             "sqft": None,

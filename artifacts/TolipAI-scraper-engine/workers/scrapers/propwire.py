@@ -83,26 +83,34 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         await page.goto(LOGIN_URL, wait_until="commit", timeout=20000)
         await page.wait_for_selector(email_sel, timeout=15000)
 
-    # Explicitly click then fill — Next.js/React forms need focus events for onChange
+    # Use triple-click + press_sequentially to fire React synthetic onChange events.
+    # plain fill() sets the native value directly and may not trigger onChange in
+    # Next.js/React apps, leaving the submit button disabled.
     email_el = page.locator(email_sel).first
-    await email_el.click()
-    await page.wait_for_timeout(300)
-    await email_el.fill(email)
+    await email_el.click(click_count=3)
     await page.wait_for_timeout(200)
+    await email_el.press_sequentially(email, delay=60)
+    await page.wait_for_timeout(300)
 
     pw_el = page.locator(pw_sel).first
-    await pw_el.click()
-    await page.wait_for_timeout(300)
-    await pw_el.fill(password)
-    await page.wait_for_timeout(300)
+    await pw_el.click(click_count=3)
+    await page.wait_for_timeout(200)
+    await pw_el.press_sequentially(password, delay=60)
+    await page.wait_for_timeout(500)
 
     btn = page.locator(
         'button[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign In"), '
         'button:has-text("Sign in"), button:has-text("LOG IN"), button:has-text("Log In"), '
         'button:has-text("Log in"), button:has-text("Login"), input[type="submit"]'
     ).first
-    if await btn.count():
-        await btn.click()
+    btn_count = await btn.count()
+    if btn_count:
+        is_disabled = await btn.is_disabled() if btn_count else True
+        if is_disabled:
+            log.warning("Propwire: submit button is disabled — submitting via Enter key")
+            await pw_el.press("Enter")
+        else:
+            await btn.click()
     else:
         await pw_el.press("Enter")
 

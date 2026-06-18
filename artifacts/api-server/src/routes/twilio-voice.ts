@@ -1679,7 +1679,7 @@ router.post("/twilio/voice/inbound", twilioAuth, async (req, res) => {
 <Response>
   <Say voice="Polly.Joanna">Incoming call from ${sellerName}. Please hold.</Say>
   <Dial timeout="30" action="${apiBase}/twilio/voice/inbound-no-answer" method="POST"
-        waitUrl="${apiBase}/twilio/voice/ringback" waitUrlMethod="GET">
+        waitUrl="${apiBase}/twilio/voice/ringback" waitMethod="GET">
 ${clientTags}${forwardTag}
   </Dial>
 </Response>`);

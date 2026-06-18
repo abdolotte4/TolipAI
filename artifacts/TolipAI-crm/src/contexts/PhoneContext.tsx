@@ -139,6 +139,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const analyticsRef = useRef<CallAnalytics>({ mos: null, jitter: null, packetLoss: null });
   const callerIdRef = useRef<string | null>(null);
   const speechRecognitionRef = useRef<any>(null);
+  // Guard against concurrent initDevice() calls (SSE + auto-init timer race)
+  const initializingRef = useRef<boolean>(false);
 
   const [status, setStatus] = useState<PhoneStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -199,6 +201,9 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
   const initDevice = useCallback(async (): Promise<boolean> => {
     if (deviceRef.current) return true;
+    // Prevent concurrent init calls (SSE-triggered + auto-init timer race)
+    if (initializingRef.current) return false;
+    initializingRef.current = true;
     setStatus("initializing");
     setErrorMsg("");
     try {
@@ -208,11 +213,13 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       } catch (micErr: any) {
         const name = micErr?.name || "";
         if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+          initializingRef.current = false;
           setErrorMsg("Microphone access denied. Allow microphone in your browser settings and retry.");
           setStatus("error");
           return false;
         }
         if (name === "NotFoundError" || name === "NotReadableError") {
+          initializingRef.current = false;
           setErrorMsg("No microphone found or it is in use by another app.");
           setStatus("error");
           return false;
@@ -246,9 +253,11 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
       device.on("incoming", (call: Call) => {
         pendingIncomingCallRef.current = call;
-        const phone = (call.parameters as any)?.From || "";
+        const sdkPhone = (call.parameters as any)?.From || "";
+        // Prefer SDK phone (authoritative) but fall back to SSE-populated phone
+        // so the popup doesn't flash an empty number when SDK fires before params settle.
         setIncomingCallInfo((prev) => ({
-          phone,
+          phone: sdkPhone || prev?.phone || "",
           leadName: prev?.leadName ?? null,
           leadId: prev?.leadId ?? null,
         }));
@@ -270,6 +279,10 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         }
 
         call.on("cancel", () => {
+          // Only clear the popup if this specific call is still the pending one.
+          // If acceptIncoming or declineIncoming already ran, pendingIncomingCallRef
+          // is null and we should not touch the popup state again.
+          if (pendingIncomingCallRef.current !== call) return;
           stopRing();
           pendingIncomingCallRef.current = null;
           pendingAcceptLeadIdRef.current = null;
@@ -280,10 +293,12 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
       deviceRef.current = device;
       setStatus("ready");
+      initializingRef.current = false;
       // Remember that the device was successfully initialised so we can auto-register on next load
       try { localStorage.setItem("crm_phone_auto_init", "true"); } catch { }
       return true;
     } catch (err: any) {
+      initializingRef.current = false;
       setErrorMsg(err?.message || "Failed to initialize browser dialer");
       setStatus("error");
       return false;
@@ -655,7 +670,9 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
           try {
             const d = JSON.parse(e.data);
             setIncomingCallInfo((prev) => ({
-              phone: prev?.phone ?? d.phone ?? "",
+              // Use || (not ??) so an empty-string phone from a prior event is
+              // overwritten by the actual phone from SSE or a later Device event.
+              phone: prev?.phone || d.phone || "",
               leadName: d.leadName ?? prev?.leadName ?? null,
               leadId: d.leadId ?? prev?.leadId ?? null,
             }));
