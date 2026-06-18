@@ -1,15 +1,19 @@
 import { motion } from "framer-motion";
-import { Database, MessageSquare, Settings, Users, BarChart3 } from "lucide-react";
+import { Database, MessageSquare, Settings, Users, BarChart3, Building2, Globe, Code2, Calculator } from "lucide-react";
 import { Card } from "@/components/ui/card";
 const servicesBg = "/images/hero-bg.jpg";
 
 export function Services() {
+  const pillars = [
+    { icon: <Building2 className="w-5 h-5 text-primary" />, label: "Real Estate Investment & Wholesaling" },
+    { icon: <Users className="w-5 h-5 text-primary" />, label: "Managed Virtual Assistant Services" },
+    { icon: <BarChart3 className="w-5 h-5 text-primary" />, label: "B2B Marketing & Data Analytics" },
+    { icon: <Code2 className="w-5 h-5 text-primary" />, label: "Full-Stack Software Development" },
+    { icon: <Calculator className="w-5 h-5 text-primary" />, label: "Accounting, FP&A & Tax Audit Support" },
+    { icon: <Globe className="w-5 h-5 text-primary" />, label: "Business Operations & Infrastructure" },
+  ];
+
   const services = [
-    {
-      title: "Tolip Group LLC",
-      icon: <BarChart3 className="w-8 h-8 text-primary" />,
-      description: "Tolip Group LLC is the parent company behind TolipAI, delivering a wide range of professional services across real estate, technology, and business operations. Our expertise spans real estate investment, wholesaling, buying and selling houses, and managed virtual assistant services. Beyond real estate, we provide B2B marketing, advanced data analysis, business analytics, and full‑stack programming — building websites with both backend and frontend solutions. Tolip Group LLC also offers accounting services, including tax audit support, accountant portfolios, and FP&A (Financial Planning & Analysis). We combine technical infrastructure with business strategy to help clients scale efficiently and stay compliant."
-    },
     {
       title: "Virtual Assistants for Real Estate",
       icon: <Users className="w-8 h-8 text-primary" />,
@@ -48,7 +52,41 @@ export function Services() {
         <div className="absolute inset-0 bg-gradient-to-b from-background via-transparent to-background" />
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <motion.div 
+
+        {/* ── Tolip Group LLC Identity Block ─────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ duration: 0.7 }}
+          className="mb-20"
+        >
+          <div className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-card/30 p-10 md:p-14 backdrop-blur-sm">
+            <div className="max-w-4xl">
+              <p className="text-primary text-sm font-semibold uppercase tracking-widest mb-3">Parent Company</p>
+              <h2 className="text-4xl md:text-5xl font-bold font-display text-foreground mb-5 leading-tight">
+                Tolip Group LLC
+              </h2>
+              <div className="w-16 h-1 bg-primary rounded-full mb-6" />
+              <p className="text-muted-foreground text-lg leading-relaxed mb-8 max-w-3xl">
+                Tolip Group LLC is the parent company behind TolipAI. We deliver a wide range of professional services spanning real estate investment, technology, and business operations — combining technical infrastructure with business strategy to help clients scale efficiently and stay compliant.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {pillars.map((p, i) => (
+                  <div key={i} className="flex items-center gap-3 rounded-xl bg-secondary/40 border border-border/50 px-4 py-3">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      {p.icon}
+                    </div>
+                    <span className="text-sm text-foreground font-medium leading-snug">{p.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ── Specialized Services Grid ───────────────────────────────────── */}
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}

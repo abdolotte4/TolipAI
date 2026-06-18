@@ -13,7 +13,8 @@
 
 import { Router, type IRouter } from "express";
 import { crmAuth } from "./crm/middleware";
-import { jwt as twilioJwt } from "twilio";
+import twilio from "twilio";
+const twilioJwt = twilio.jwt;
 import { db } from "@workspace/db";
 import {
   crmCampaigns,
@@ -21,7 +22,7 @@ import {
   crmLeads,
   crmUsers,
 } from "@workspace/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, or, sql, isNull } from "drizzle-orm";
 import {
   type TwilioVoiceConfig,
   resolveVoiceConfig,
@@ -653,17 +654,22 @@ router.post("/twilio/voice/recording", twilioAuth, async (req, res) => {
     const recordingUrl = req.body?.RecordingUrl as string | undefined;
     const recordingStatus = req.body?.RecordingStatus as string | undefined;
 
-    // Conference recordings send ConferenceSid but NOT ConferenceName/CallSid.
-    // Resolution order:
-    //   1. ConferenceName body field (present in some call types)
+    // Conference recordings send ConferenceSid + ConferenceName but NOT the agent's CallSid.
+    // The body's CallSid (if present) may be the DESTINATION leg — do NOT use it directly.
+    // Resolution order (most-reliable first):
+    //   1. ConferenceName body field → "conf-{agentCallSid}" → extract agentCallSid
     //   2. activeConferences reverse-lookup by ConferenceSid (in-memory)
-    //   3. Twilio REST API → FriendlyName → extract agentCallSid (handles server restarts)
+    //   3. DB lookup by conferenceSid column persisted at conference-start
+    //   4. Twilio REST API → conference FriendlyName → extract agentCallSid (handles restarts)
+    //   5. Fall back to body CallSid only if none of the above resolved (non-conference call)
     const conferenceName = req.body?.ConferenceName as string | undefined;
     const conferenceSid  = req.body?.ConferenceSid  as string | undefined;
-    if (!callSid && conferenceName?.startsWith("conf-")) {
+
+    // Step 1: ConferenceName is the most reliable source for conference recordings
+    if (conferenceName?.startsWith("conf-")) {
       callSid = conferenceName.slice(5);
     }
-    // Reverse-lookup by ConferenceSid in active map (fastest path)
+    // Step 2: Reverse-lookup by ConferenceSid in active map
     if (!callSid && conferenceSid) {
       for (const [, conf] of activeConferences.entries()) {
         if (conf.conferenceSid === conferenceSid) {
@@ -672,18 +678,16 @@ router.post("/twilio/voice/recording", twilioAuth, async (req, res) => {
         }
       }
     }
-    // DB fallback — look up agentCallSid by conferenceSid persisted at conference-start
+    // Step 3: DB lookup by conferenceSid column persisted at conference-start
     if (!callSid && conferenceSid) {
       try {
         const [cl] = await db
           .select({ callSid: crmCallLogs.callSid })
           .from(crmCallLogs)
-          .where((crmCallLogs as any).conferenceSid
-            ? eq((crmCallLogs as any).conferenceSid, conferenceSid)
-            : sql`false`)
+          .where(eq(crmCallLogs.conferenceSid, conferenceSid))
           .limit(1);
         if (cl?.callSid) callSid = cl.callSid;
-      } catch { /* column may not exist yet — non-fatal */ }
+      } catch { /* non-fatal */ }
     }
 
     // Twilio REST API fallback — handles cases where activeConferences was cleared
@@ -714,6 +718,11 @@ router.post("/twilio/voice/recording", twilioAuth, async (req, res) => {
       }
     }
 
+    // Step 5: Last-resort fallback — body CallSid for non-conference (direct dial) recordings
+    if (!callSid) {
+      callSid = req.body?.CallSid as string | undefined;
+    }
+
     if (!callSid || recordingStatus !== "completed") return;
 
     const recordSet = {
@@ -741,12 +750,12 @@ router.post("/twilio/voice/recording", twilioAuth, async (req, res) => {
       }
     }
 
-    // Fallback 2: look up by ConferenceSid stored in call log (future-proofing)
+    // Fallback 2: look up by ConferenceSid stored in call log
     if (!updated && conferenceSid) {
       const rows = await db
         .update(crmCallLogs)
         .set(recordSet)
-        .where(eq((crmCallLogs as any).conferenceSid ?? sql`'__never__'`, conferenceSid))
+        .where(eq(crmCallLogs.conferenceSid, conferenceSid))
         .returning({ id: crmCallLogs.id })
         .catch(() => [] as any[]);
       if (rows && rows.length > 0) {
@@ -1233,7 +1242,10 @@ router.get("/twilio/voice/calls", crmAuth, async (req, res) => {
   try {
     const { leadId } = req.query as Record<string, string>;
     const conditions = [];
-    if (crmUser.campaignId) conditions.push(eq(crmCallLogs.campaignId, crmUser.campaignId));
+    if (crmUser.campaignId) {
+      // Include calls with null campaignId (pre-insert race condition or super-admin calls)
+      conditions.push(or(eq(crmCallLogs.campaignId, crmUser.campaignId), isNull(crmCallLogs.campaignId))!);
+    }
     if (leadId) conditions.push(eq(crmCallLogs.leadId, Number(leadId)));
 
     const calls = await db
