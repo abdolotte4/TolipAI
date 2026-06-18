@@ -15,7 +15,7 @@ api-server proxies authenticated requests here under `/api/scraper-engine/*`.
 | GET  | `/jobs/{job_id}`          | Job status + results (also persisted to Postgres) |
 
 All long-running scrapes run as **background asyncio tasks**, so HTTP returns
-in <100ms with a `jobId` you can poll.
+in <100ms with a `jobId` you can poll...
 
 ## Stack
 

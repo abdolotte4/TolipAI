@@ -21,7 +21,8 @@
 | Unread badge counts | ✅ Implemented — amber pill badge + mark-read (Phase 2.2 complete) |
 | Active call overlay inside thread | ❌ Not implemented |
 | Sound notifications (ring, new message) | ❌ Not implemented |
-| Search across all conversations | ⚠️ Digit-only filter, no name search |
+| Search across all conversations | ⚠️ Digit-only filter, no name search..
+|
 
 ---
 
