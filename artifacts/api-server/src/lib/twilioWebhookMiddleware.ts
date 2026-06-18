@@ -6,7 +6,10 @@
  *   router.post("/my-webhook", twilioWebhookMiddleware(specificAuthToken), handler)
  *
  * URL reconstruction priority:
- *   1. API_BASE_URL env var (always correct in production — set to https://tolipai.com)
+ *   1. API_BASE_URL env var (set to https://tolipai.com/api in production).
+ *      IMPORTANT: API_BASE_URL already contains the /api path prefix. req.originalUrl
+ *      also starts with /api (e.g. /api/twilio/voice/answer). buildWebhookUrl() strips
+ *      the duplicate prefix before appending, producing the correct URL for validation.
  *   2. x-forwarded-proto + x-forwarded-host headers (fallback for local dev)
  *   3. req.protocol + req.headers.host (last resort)
  *
@@ -28,13 +31,25 @@ import twilio from "twilio";
 import { logger } from "./logger";
 
 function buildWebhookUrl(req: Request): string {
-  const apiBase = process.env.API_BASE_URL?.replace(/\/$/, "")
-    ?? (() => {
-      const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0].trim() || req.protocol || "https";
-      const host = (req.headers["x-forwarded-host"] as string)?.split(",")[0].trim() || req.headers.host || "localhost";
-      return `${proto}://${host}`;
-    })();
-  return `${apiBase}${req.originalUrl}`;
+  if (process.env.API_BASE_URL) {
+    const base = process.env.API_BASE_URL.replace(/\/+$/, ""); // e.g. "https://tolipai.com/api"
+    // req.originalUrl already starts with the same path prefix (e.g. /api/twilio/voice/answer).
+    // Extract that prefix so we don't double it: strip the pathname of API_BASE_URL from
+    // the front of req.originalUrl before re-appending it.
+    try {
+      const basePath = new URL(base).pathname.replace(/\/+$/, ""); // "/api"
+      const reqPath = basePath && req.originalUrl.startsWith(basePath)
+        ? req.originalUrl.slice(basePath.length)
+        : req.originalUrl;
+      return `${base}${reqPath}`;
+    } catch {
+      return `${base}${req.originalUrl}`;
+    }
+  }
+  // Fallback for local dev (no API_BASE_URL set)
+  const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0].trim() || req.protocol || "https";
+  const host = (req.headers["x-forwarded-host"] as string)?.split(",")[0].trim() || req.headers.host || "localhost";
+  return `${proto}://${host}${req.originalUrl}`;
 }
 
 export function twilioWebhookMiddleware(authToken?: string) {
