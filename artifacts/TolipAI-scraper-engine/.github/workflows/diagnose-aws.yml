@@ -1,0 +1,199 @@
+name: AWS ECS Diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose ECS Infrastructure
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      ECS_CLUSTER: TolipAI-scraper-cluster
+      ECS_SERVICE: tolipai-scraper-engine-service-xop
+      AWS_ACCOUNT_ID: "583299526161"
+
+    steps:
+      - name: Configure AWS Credentials (static keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS Authentication
+        run: |
+          echo "=== AWS Identity ==="
+          aws sts get-caller-identity
+
+      - name: Check ECS Cluster Status
+        run: |
+          echo "=== ECS Cluster Status ==="
+          aws ecs describe-clusters \
+            --clusters ${{ env.ECS_CLUSTER }} \
+            --include ATTACHMENTS \
+            --query 'clusters[0].{Name:clusterName,Status:status,RunningTasks:runningTasksCount,PendingTasks:pendingTasksCount,ActiveServices:activeServicesCount,RegisteredContainerInstances:registeredContainerInstancesCount,CapacityProviders:capacityProviders}'
+
+      - name: Check ECS Service Status & Events
+        run: |
+          echo "=== ECS Service Status ==="
+          aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].{Name:serviceName,Status:status,DesiredCount:desiredCount,RunningCount:runningCount,PendingCount:pendingCount,LaunchType:launchType,SchedulingStrategy:schedulingStrategy,Deployments:deployments,Events:events[:10]}'
+
+      - name: Check Active Task Definition
+        run: |
+          echo "=== Active Task Definition ==="
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Active task definition ARN: $TASK_DEF_ARN"
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition.{Family:family,Revision:revision,Status:status,NetworkMode:networkMode,Cpu:cpu,Memory:memory,ContainerDefinitions:containerDefinitions[].{Name:name,Image:image,Essential:essential,Memory:memory,PortMappings:portMappings,Secrets:secrets,Environment:environment,LogConfig:logConfiguration}}'
+
+      - name: Check Container Instances
+        run: |
+          echo "=== Container Instances ==="
+          CONTAINER_INSTANCES=$(aws ecs list-container-instances \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --query 'containerInstanceArns' --output text)
+          if [ -n "$CONTAINER_INSTANCES" ] && [ "$CONTAINER_INSTANCES" != "None" ]; then
+            aws ecs describe-container-instances \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --container-instances $CONTAINER_INSTANCES \
+              --query 'containerInstances[].{Ec2InstanceId:ec2InstanceId,Status:status,RunningTasks:runningTasksCount,PendingTasks:pendingTasksCount,AgentVersion:versionInfo.agentVersion,AgentConnected:agentConnected,RemainingResources:remainingResources,RegisteredResources:registeredResources}'
+          else
+            echo "No container instances found in cluster"
+          fi
+
+      - name: Check Recent Stopped Tasks
+        run: |
+          echo "=== Recent Stopped Tasks ==="
+          TASK_ARNS=$(aws ecs list-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --desired-status STOPPED \
+            --query 'taskArns' --output text)
+          if [ -n "$TASK_ARNS" ] && [ "$TASK_ARNS" != "None" ]; then
+            aws ecs describe-tasks \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --tasks $TASK_ARNS \
+              --query 'tasks[].{TaskArn:taskArn,LastStatus:lastStatus,StoppedReason:stoppedReason,StartedAt:startedAt,StoppedAt:stoppedAt,Containers:containers[].{Name:name,LastStatus:lastStatus,ExitCode:exitCode,Reason:reason}}'
+          else
+            echo "No stopped tasks found"
+          fi
+
+      - name: Check CloudWatch Logs for Recent Failures
+        run: |
+          echo "=== CloudWatch Logs ==="
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          LOG_CONFIG=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition.containerDefinitions[0].logConfiguration' --output json)
+          
+          LOG_GROUP=$(echo "$LOG_CONFIG" | jq -r '.options["awslogs-group"] // empty')
+          LOG_REGION=$(echo "$LOG_CONFIG" | jq -r '.options["awslogs-region"] // empty')
+          
+          if [ -n "$LOG_GROUP" ] && [ "$LOG_GROUP" != "null" ]; then
+            echo "Log group: $LOG_GROUP"
+            echo "Log region: ${LOG_REGION:-$AWS_REGION}"
+            
+            echo "Recent log streams:"
+            aws logs describe-log-streams \
+              --log-group-name "$LOG_GROUP" \
+              --order-by LastEventTime \
+              --descending \
+              --limit 5 \
+              --query 'logStreams[].{Name:logStreamName,LastEvent:lastEventTimestamp,FirstEvent:firstEventTimestamp}'
+            
+            echo "Recent ERROR logs (last 30 minutes):"
+            START_TIME=$(($(date +%s) - 1800))000
+            aws logs filter-log-events \
+              --log-group-name "$LOG_GROUP" \
+              --start-time $START_TIME \
+              --filter-pattern "ERROR" \
+              --limit 20 \
+              --query 'events[].{Time:timestamp,Message:message}' || echo "No ERROR logs found or unable to query"
+          else
+            echo "No CloudWatch log configuration found in task definition"
+          fi
+
+      - name: Check AWS Secrets Manager
+        run: |
+          echo "=== AWS Secrets Manager ==="
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          SECRET_REFS=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition.containerDefinitions[].secrets[].valueFrom' --output text)
+          
+          if [ -n "$SECRET_REFS" ] && [ "$SECRET_REFS" != "None" ]; then
+            echo "Secrets referenced in task definition:"
+            for secret in $SECRET_REFS; do
+              echo "Checking: $secret"
+              if aws secretsmanager describe-secret --secret-id "$secret" > /dev/null 2>&1; then
+                echo "  ✓ Secret exists"
+              else
+                echo "  ✗ SECRET NOT FOUND: $secret"
+              fi
+            done
+          else
+            echo "No secrets referenced in task definition"
+          fi
+          
+          echo "Secrets matching service name:"
+          aws secretsmanager list-secrets \
+            --filter Key="name",Values="${{ env.ECS_SERVICE }}" \
+            --query 'SecretList[].{Name:Name,LastChangedDate:LastChangedDate}' 2>/dev/null || echo "No secrets found matching service name"
+
+      - name: Check ECR Repositories and Images
+        run: |
+          echo "=== ECR Repositories ==="
+          aws ecr describe-repositories \
+            --query 'repositories[].{Name:repositoryName,Uri:repositoryUri,Created:createdAt}' || echo "No repositories found or access denied"
+          
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          IMAGE_URI=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition.containerDefinitions[0].image' --output text)
+          
+          echo "Image in task definition: $IMAGE_URI"
+          
+          if [ -n "$IMAGE_URI" ] && [ "$IMAGE_URI" != "None" ]; then
+            REPO_NAME=$(echo "$IMAGE_URI" | sed 's/.*\///' | cut -d':' -f1)
+            IMAGE_TAG=$(echo "$IMAGE_URI" | cut -d':' -f2)
+            echo "Repository: $REPO_NAME, Tag: $IMAGE_TAG"
+            
+            if aws ecr describe-images \
+              --repository-name "$REPO_NAME" \
+              --image-ids imageTag="$IMAGE_TAG" \
+              --query 'imageDetails[].{Tag:imageTags[0],PushedAt:imagePushedAt,Size:imageSizeInBytes}' > /dev/null 2>&1; then
+              echo "  ✓ Image found"
+              aws ecr describe-images \
+                --repository-name "$REPO_NAME" \
+                --image-ids imageTag="$IMAGE_TAG" \
+                --query 'imageDetails[].{Tag:imageTags[0],PushedAt:imagePushedAt,Size:imageSizeInBytes}'
+            else
+              echo "  ✗ IMAGE NOT FOUND: $IMAGE_URI"
+            fi
+            
+            echo "Recent images in repository:"
+            aws ecr describe-images \
+              --repository-name "$REPO_NAME" \
+              --query 'imageDetails[].{Tags:imageTags,PushedAt:imagePushedAt,Size:imageSizeInBytes}' \
+              --max-items 5 2>/dev/null || echo "Unable to list images"
+          fi

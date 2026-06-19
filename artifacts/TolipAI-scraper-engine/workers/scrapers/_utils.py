@@ -4,8 +4,11 @@ Centralises helpers that were previously duplicated across multiple scrapers.
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, Optional
+
+log = logging.getLogger("scrapers._utils")
 
 
 def _safe_num(s: Any) -> Optional[float]:
@@ -35,8 +38,10 @@ def _parse_buyer_card(text: str) -> Dict[str, Any]:
     """
     out: Dict[str, Any] = {"_raw_text": text}
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if lines:
+    if lines and len(lines[0]) >= 2:
         out["name"] = lines[0]
+    else:
+        log.warning("Empty or malformed buyer card text, name not extractable")
 
     m = re.search(r"(\d+)\s*Props?", text, re.IGNORECASE)
     if m:

@@ -1,0 +1,175 @@
+name: Setup AWS Infrastructure
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "583299526161"
+
+jobs:
+  setup:
+    name: Setup IAM Roles and Secrets Manager
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup IAM permissions for Secrets Manager
+        run: |
+          echo "=== Adding Secrets Manager permissions to GithubActionsECRPush ==="
+          aws iam put-role-policy \
+            --role-name GithubActionsECRPush \
+            --policy-name SecretsManagerAccess \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "secretsmanager:ListSecrets",
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:CreateSecret",
+                    "secretsmanager:PutSecretValue",
+                    "secretsmanager:UpdateSecret"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }' || echo "Policy may already exist"
+
+          echo "=== Adding Secrets Manager permissions to ECS Execution Role ==="
+          aws iam put-role-policy \
+            --role-name TolipAI-scraper-execution-role \
+            --policy-name SecretsManagerAccess \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "secretsmanager:GetSecretValue"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }' || echo "Policy may already exist"
+
+          echo "=== Verifying IAM permissions ==="
+          echo "GithubActionsECRPush policies:"
+          aws iam list-role-policies --role-name GithubActionsECRPush --query 'PolicyNames' --output table
+          echo ""
+          echo "TolipAI-scraper-execution-role policies:"
+          aws iam list-role-policies --role-name TolipAI-scraper-execution-role --query 'PolicyNames' --output table
+
+      - name: Create/update Secrets Manager secrets
+        run: |
+          echo "=== Creating/updating secrets in AWS Secrets Manager ==="
+
+          DATABASE_URL="postgresql://neondb_owner:npg_vGaWn3bp4COq@ep-restless-waterfall-adcwhmet.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+
+          # Function to create or update a secret
+          upsert_secret() {
+            local name="$1"
+            local value="$2"
+            local description="$3"
+            
+            echo "Processing: $name"
+            if aws secretsmanager describe-secret --secret-id "$name" > /dev/null 2>&1; then
+              aws secretsmanager put-secret-value \
+                --secret-id "$name" \
+                --secret-string "$value"
+              echo "  ✓ Updated existing secret"
+            else
+              aws secretsmanager create-secret \
+                --name "$name" \
+                --secret-string "$value" \
+                --description "$description"
+              echo "  ✓ Created new secret"
+            fi
+          }
+
+          # DATABASE_URL
+          upsert_secret "TolipAI/scraper/DATABASE_URL" \
+            "$DATABASE_URL" \
+            "Database connection URL for TolipAI scraper"
+
+          # These are required for the scraper to function. 
+          # The user must replace placeholder values with real ones after this workflow runs.
+          # Creating them with placeholders so the ECS task can at least start.
+          
+          upsert_secret "TolipAI/scraper/SCRAPER_API_KEY" \
+            "placeholder-scraper-api-key" \
+            "Scraper API key - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/JWT_SECRET" \
+            "placeholder-jwt-secret-change-me" \
+            "JWT signing secret - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/OPENAI_API_KEY" \
+            "placeholder-openai-key" \
+            "OpenAI API key - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/ATTOM_API_KEY" \
+            "placeholder-attom-key" \
+            "ATTOM API key - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/REDIS_URL" \
+            "placeholder-redis-url" \
+            "Redis URL - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/BRIGHTDATA_USERNAME" \
+            "placeholder" \
+            "BrightData username - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/BRIGHTDATA_PASSWORD" \
+            "placeholder" \
+            "BrightData password - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/PROPELIO_EMAIL" \
+            "placeholder" \
+            "Propelio email - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/PROPELIO_PASSWORD" \
+            "placeholder" \
+            "Propelio password - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/PROPWIRE_EMAIL" \
+            "placeholder" \
+            "Propwire email - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/PROPWIRE_PASSWORD" \
+            "placeholder" \
+            "Propwire password - REPLACE WITH REAL VALUE"
+
+          upsert_secret "TolipAI/scraper/GOOGLE_MAPS_API_KEY" \
+            "placeholder" \
+            "Google Maps API key - REPLACE WITH REAL VALUE"
+
+          echo ""
+          echo "=== Listing all created secrets ==="
+          aws secretsmanager list-secrets \
+            --query "SecretList[?starts_with(Name, \`TolipAI/scraper\`)].Name" \
+            --output table
+
+      - name: Summary
+        run: |
+          echo "### AWS Setup Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ IAM permissions added to GithubActionsECRPush and TolipAI-scraper-execution-role" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Secrets created in AWS Secrets Manager" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **IMPORTANT**: Some secrets were created with placeholder values." >> $GITHUB_STEP_SUMMARY
+          echo "Please update them in the AWS Secrets Manager console with your real values." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Next: Run the 'Deploy to ECS Fargate' workflow to deploy the scraper." >> $GITHUB_STEP_SUMMARY

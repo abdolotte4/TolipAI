@@ -125,13 +125,21 @@ async def find_cash_buyers(
     except Exception as e:
         log.info("County deed scrape failed, continuing: %s", e)
 
-    # ── Tier 3: free scrape (Zillow + Redfin) — always run as backfill ────
-    if progress_cb:
-        await progress_cb(22, "Scanning recent sales (Zillow)…")
-    sold_zillow = await zillow.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
-    if progress_cb:
-        await progress_cb(35, "Scanning recent sales (Redfin)…")
-    sold_redfin = await redfin.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
+    # ── Tier 3: free scrape (Zillow + Redfin) — ONLY as backfill when we have real names ──
+    # Zillow/Redfin do NOT expose buyer identities. If we use them as primary source,
+    # we get placeholder names like "Investor — 75201" which are useless for outreach.
+    # Only run if we already have real names from ATTOM or county deeds.
+    sold_zillow: List[Dict[str, Any]] = []
+    sold_redfin: List[Dict[str, Any]] = []
+    if sold_attom or sold_deeds:
+        if progress_cb:
+            await progress_cb(22, "Scanning recent sales (Zillow)…")
+        sold_zillow = await zillow.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
+        if progress_cb:
+            await progress_cb(35, "Scanning recent sales (Redfin)…")
+        sold_redfin = await redfin.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
+    else:
+        log.warning("No real buyer names from ATTOM or county deeds — skipping Zillow/Redfin backfill to avoid placeholder names")
 
     # ATTOM + County deeds first so real buyer names take priority in aggregation
     all_sales = sold_attom + sold_deeds + sold_zillow + sold_redfin
@@ -156,16 +164,20 @@ async def find_cash_buyers(
             city,
             state,
         )
-        broad_zillow = await zillow.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
-        broad_redfin = await redfin.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
-        all_sales = broad_zillow + broad_redfin
-        log.info(
-            "Broad fallback: %d Zillow + %d Redfin for city=%s state=%s",
-            len(broad_zillow),
-            len(broad_redfin),
-            city,
-            state,
-        )
+        # Only use broader fallback if we already have real names from ATTOM or county deeds
+        if sold_attom or sold_deeds:
+            broad_zillow = await zillow.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
+            broad_redfin = await redfin.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
+            all_sales = broad_zillow + broad_redfin
+            log.info(
+                "Broad fallback: %d Zillow + %d Redfin for city=%s state=%s",
+                len(broad_zillow),
+                len(broad_redfin),
+                city,
+                state,
+            )
+        else:
+            log.warning("No real buyer names available — skipping broad Zillow/Redfin fallback")
 
     if not all_sales:
         log.warning(
@@ -204,8 +216,12 @@ async def find_cash_buyers(
                 prices=prices,
             )
 
+            # Calculate llc_name BEFORE building profile
+            llc_name = cand["buyer_name"] if str(cand["buyer_name"]).upper().endswith(("LLC", "INC", "CORP", "LP", "LLP", "LTD", "TRUST")) else None
+
             profile: Dict[str, Any] = {
                 "buyer_name": cand["buyer_name"],
+                "llc_name": llc_name,
                 "buyer_type": classification["buyer_type"],
                 "classification_reason": classification["classification_reason"],
                 "city": cand.get("city"),
@@ -223,7 +239,6 @@ async def find_cash_buyers(
 
             # ── Skip-trace via SOS / OpenCorporates / SEC EDGAR / PropertyAPI ──
             try:
-                llc_name = cand["buyer_name"] if str(cand["buyer_name"]).upper().endswith(("LLC", "INC", "CORP", "LP", "LLP", "LTD")) else None
                 traced = await skip_trace(
                     cand["buyer_name"],
                     llc=llc_name,

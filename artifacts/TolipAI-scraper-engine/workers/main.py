@@ -79,7 +79,7 @@ _shutting_down: bool = False
 _jobs: Dict[str, Dict[str, Any]] = job_store._memory
 
 # WeakSet to hold references to persist tasks so they aren't GC'd mid-flight.
-_persist_tasks: "weakref.WeakSet[asyncio.Task]" = weakref.WeakSet()
+_persist_tasks: set = set()
 
 # ─── Structured Metrics ──────────────────────────────────────────────────────
 METRICS = {
@@ -459,7 +459,7 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
     _jobs[job_id]["status"] = status
     for k, v in kwargs.items():
         _jobs[job_id][k] = v
-    if status in ("done", "failed", "partial_success"):
+    if status in ("done", "failed", "partial_success", "completed_no_results"):
         import time
         _jobs[job_id]["_completed_at"] = time.time()
 
@@ -528,6 +528,7 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
             progress=100,
             result_count=len(results),
             completed=True,
+            result=results,
         )
         return {"count": len(results)}
     except Exception as e:
@@ -590,13 +591,14 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
                 completed=True,
             )
         else:
-            _set_status(job_id, "completed_no_results", progress=100)
+            _set_status(job_id, "done", progress=100, result=[])
             await db.update_job(
                 job_id,
-                status="completed_no_results",
+                status="done",
                 progress=100,
                 result_count=0,
                 completed=True,
+                result=[],
             )
             log.info(
                 "distressed job %s: no listings found for state=%s county=%s zip=%s — "
@@ -673,6 +675,7 @@ async def _run_propelio_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
             progress=100,
             result_count=len(buyers),
             completed=True,
+            result=result,
         )
         return {"count": len(buyers)}
     except Exception as e:
@@ -737,6 +740,7 @@ async def _run_propwire_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict
             progress=100,
             result_count=len(buyers),
             completed=True,
+            result=result,
         )
         return {"count": len(buyers)}
     except Exception as e:
@@ -1408,7 +1412,15 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
                     progress=100,
                     result_count=len(results),
                     completed=True,
+                    result=results,
                 )
+                # Persist results to cash_buyer_matches table
+                if results and req.lead_id:
+                    try:
+                        inserted = await db.insert_cash_buyer_matches(job_id, req.lead_id, results)
+                        log.debug("cash_buyers: persisted %d buyers for lead %s", inserted, req.lead_id)
+                    except Exception as e:
+                        log.warning("cash_buyers: persist to DB failed: %s", str(e)[:120])
                 async with _get_metrics_lock():
                     METRICS["cash_buyers_success"] += 1
 

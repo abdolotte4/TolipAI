@@ -7,7 +7,9 @@ on:
     paths:
       - 'workers/**'
       - 'Dockerfile.fargate'
+      - 'Dockerfile.base'
       - 'requirements.txt'
+      - 'requirements.lock'
       - 'infrastructure/ecs-task-definition.json'
       - 'start.fargate.sh'
 
@@ -17,10 +19,17 @@ on:
         description: 'Image tag to deploy (defaults to git SHA)'
         required: false
         default: ''
+      force_rebuild_base:
+        description: 'Force rebuild the base image'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: tolipai-scraper
+  ECR_BASE_REPOSITORY: tolipai-scraper-base
   ECS_CLUSTER: TolipAI-scraper-cluster
   ECS_SERVICE: tolipai-scraper-engine-service-xop
   TASK_DEFINITION: infrastructure/ecs-task-definition.json
@@ -28,20 +37,21 @@ env:
 
 jobs:
   deploy:
-    name: Build, Push & Deploy (ARM64)
+    name: Build, Push & Deploy (AMD64)
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials (static keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GithubActionsECRPush
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to Amazon ECR
@@ -57,24 +67,55 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Docker Buildx (ARM64)
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          platforms: linux/arm64
 
-      - name: Build and push Docker image
+      - name: Check if base image exists and is correct platform
+        id: check-base
+        env:
+          BASE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest
+        run: |
+          NEED_BUILD="true"
+          if [ "${{ github.event.inputs.force_rebuild_base }}" != "true" ] && docker pull "$BASE" 2>/dev/null; then
+            PLATFORM=$(docker inspect --format='{{.Os}}/{{.Architecture}}' "$BASE" 2>/dev/null || echo "unknown")
+            echo "Base image platform: $PLATFORM"
+            if [ "$PLATFORM" = "linux/amd64" ]; then
+              echo "Base image OK (linux/amd64)"
+              NEED_BUILD="false"
+            else
+              echo "Base image is $PLATFORM, need linux/amd64"
+            fi
+          else
+            echo "Base image not found or force rebuild"
+          fi
+          echo "need_build=$NEED_BUILD" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push base image
+        if: steps.check-base.outputs.need_build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.base
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest
+          cache-from: type=gha,scope=base-amd64
+          cache-to: type=gha,mode=max,scope=base-amd64
+
+      - name: Build and push app image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.fargate
-          platforms: linux/arm64
           push: true
+          build-args: |
+            BASE_IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image-tag.outputs.tag }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=deploy-amd64
+          cache-to: type=gha,mode=max,scope=deploy-amd64
 
       - name: Substitute ACCOUNT_ID in task definition
         run: |
@@ -104,7 +145,8 @@ jobs:
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Image tag | \`${{ steps.image-tag.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Platform  | \`linux/arm64 (Graviton3)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Base image | \`${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform  | \`linux/amd64\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Cluster   | \`${{ env.ECS_CLUSTER }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Service   | \`${{ env.ECS_SERVICE }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Region    | \`${{ env.AWS_REGION }}\` |" >> $GITHUB_STEP_SUMMARY

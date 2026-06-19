@@ -96,7 +96,10 @@ async def create_job(
             INSERT INTO scraper_jobs
               (id, job_type, status, params, lead_id, campaign_id, created_by)
             VALUES ($1, $2, 'queued', $3::jsonb, $4, $5, $6)
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+              status = EXCLUDED.status,
+              progress = EXCLUDED.progress,
+              updated_at = NOW()
             """,
             job_id,
             job_type,
@@ -115,6 +118,7 @@ async def update_job(
     result_count: Optional[int] = None,
     error: Optional[str] = None,
     completed: bool = False,
+    result: Optional[Any] = None,
 ) -> None:
     async with conn() as c:
         if c is None:
@@ -138,9 +142,13 @@ async def update_job(
             sets.append(f"error=${i}")
             vals.append(error)
             i += 1
+        if result is not None:
+            sets.append(f"result=${i}")
+            vals.append(json.dumps(result, default=str))
+            i += 1
         if completed:
             sets.append(f"completed_at=${i}")
-            vals.append(datetime.now(timezone.utc).replace(tzinfo=None))
+            vals.append(datetime.now(timezone.utc))
             i += 1
         if not sets:
             return
@@ -220,7 +228,7 @@ async def insert_cash_buyer_matches(
                     m.get("city"),
                     m.get("state"),
                     m.get("zip"),
-                    m.get("mailing_address"),
+                    m.get("mailing_address") or m.get("address"),
                     json.dumps(m.get("phones") or []),
                     json.dumps(m.get("emails") or []),
                     json.dumps(m.get("principals") or []),
@@ -268,6 +276,8 @@ async def insert_cash_buyers_batch(
     if not buyers:
         return 0
 
+    from .models import validate_buyer
+
     matches: List[Dict[str, Any]] = []
     for buyer in buyers:
         types = buyer.get("types") or []
@@ -277,28 +287,31 @@ async def insert_cash_buyers_batch(
         elif "landlord" in types:
             btype = "landlord"
 
-        matches.append(
-            {
-                "buyer_name":         buyer.get("name") or buyer.get("llc") or "Unknown",
-                "llc_name":           buyer.get("llc"),
-                "buyer_type":         btype,
-                "match_score":        int(min(100, max(0, (buyer.get("props_count") or 0) * 2))),
-                "match_reasons":      [f"{buyer.get('props_count', 0)} recent buys"],
-                "portfolio_size":     buyer.get("props_count"),
-                "portfolio_value":    buyer.get("total_deal"),
-                "avg_purchase_price": buyer.get("avg_deal"),
-                "last_purchase_date": buyer.get("last_deal"),
-                "city":               buyer.get("city"),
-                "state":              buyer.get("state"),
-                "zip":                buyer.get("zip"),
-                "mailing_address":    buyer.get("address"),
-                "phones":             buyer.get("phones") or [],
-                "emails":             buyer.get("emails") or [],
-                "principals":         buyer.get("principals") or [],
-                "source":             buyer.get("source") or "scraper-engine",
-                "raw_data":           buyer.get("raw") or buyer,
-            }
-        )
+        match = {
+            "buyer_name":         buyer.get("name") or buyer.get("llc") or "Unknown",
+            "llc_name":           buyer.get("llc"),
+            "buyer_type":         btype,
+            "match_score":        int(min(100, max(0, (buyer.get("props_count") or 0) * 2))),
+            "match_reasons":      [f"{buyer.get('props_count', 0)} recent buys"],
+            "portfolio_size":     buyer.get("props_count"),
+            "portfolio_value":    buyer.get("total_deal"),
+            "avg_purchase_price": buyer.get("avg_deal"),
+            "last_purchase_date": buyer.get("last_deal"),
+            "city":               buyer.get("city"),
+            "state":              buyer.get("state"),
+            "zip":                buyer.get("zip"),
+            "mailing_address":    buyer.get("address"),
+            "phones":             buyer.get("phones") or [],
+            "emails":             buyer.get("emails") or [],
+            "principals":         buyer.get("principals") or [],
+            "source":             buyer.get("source") or "scraper-engine",
+            "raw_data":           buyer.get("raw") or buyer,
+        }
+        validated = validate_buyer(match)
+        if validated:
+            matches.append(validated.model_dump())
+        else:
+            log.warning("Skipping invalid buyer record in batch: %s", match)
 
     return await insert_cash_buyer_matches(job_id or "manual", lead_id, matches)
 
@@ -370,7 +383,7 @@ def _safe_num(v: Any) -> Optional[float]:
     """Coerce LLM-extracted numeric strings to float; return None for blanks / dashes."""
     if v is None:
         return None
-    s = str(v).strip().replace(",", "").replace("$", "").replace("—", "").replace("-", "")
+    s = str(v).strip().replace(",", "").replace("$", "").replace("—", "")
     if not s:
         return None
     try:
@@ -395,7 +408,7 @@ async def insert_distressed_listings(
                 (
                     job_id,
                     campaign_id,
-                    listing.get("distress_type") or "unknown",
+                    listing.get("sale_type") or listing.get("distress_type") or "unknown",
                     listing.get("address") or "Unknown",
                     listing.get("city"),
                     listing.get("state"),

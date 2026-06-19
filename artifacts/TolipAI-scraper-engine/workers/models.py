@@ -59,7 +59,7 @@ class DistressedListing(BaseModel):
     def address_not_po_box(cls, v: str) -> str:
         lower = v.lower()
         if "p.o. box" in lower or "po box" in lower:
-            raise ValueError("PO Box addresses are not valid property listings")
+            log.warning("PO Box address detected: %s — keeping record but flagging", v)
         return v.strip()
 
     @field_validator("city", "county")
@@ -105,6 +105,8 @@ class CashBuyer(BaseModel):
             if len(digits) == 10:
                 out.append(f"+1{digits}")
             elif len(digits) == 11 and digits.startswith("1"):
+                out.append(f"+{digits}")
+            elif len(digits) > 5:  # Allow extensions, international, etc.
                 out.append(f"+{digits}")
         return list(dict.fromkeys(out))
 

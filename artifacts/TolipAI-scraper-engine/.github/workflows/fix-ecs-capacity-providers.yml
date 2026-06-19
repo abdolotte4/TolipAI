@@ -1,0 +1,44 @@
+name: Fix ECS Cluster Capacity Providers
+on:
+  workflow_dispatch:
+jobs:
+  fix-capacity-providers:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Add FARGATE capacity providers to cluster
+        run: |
+          echo "Adding FARGATE capacity providers to TolipAI-scraper-cluster..."
+          aws ecs put-cluster-capacity-providers \
+            --cluster TolipAI-scraper-cluster \
+            --capacity-providers FARGATE FARGATE_SPOT \
+            --default-capacity-provider-strategy \
+              base=0,weight=1,capacityProvider=FARGATE \
+            --region us-east-1
+          echo "Capacity providers added successfully."
+
+      - name: Force new service deployment
+        run: |
+          echo "Forcing new deployment of tolipai-scraper-engine-service-xop..."
+          aws ecs update-service \
+            --cluster TolipAI-scraper-cluster \
+            --service tolipai-scraper-engine-service-xop \
+            --force-new-deployment \
+            --region us-east-1
+          echo "New deployment forced successfully."
+
+      - name: Wait for service stability
+        run: |
+          echo "Waiting for service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster TolipAI-scraper-cluster \
+            --services tolipai-scraper-engine-service-xop \
+            --region us-east-1
+          echo "Service is now stable!"
