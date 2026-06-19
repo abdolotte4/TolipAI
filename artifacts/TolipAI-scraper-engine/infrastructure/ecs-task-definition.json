@@ -1,227 +1,269 @@
 {
   "family": "tolipai-scraper-engine",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/tolipai-scraper-task-role",
-  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/TolipAI-scraper-execution-role",
   "networkMode": "awsvpc",
-  "requiresCompatibilities": [
-    "FARGATE"
-  ],
-  "cpu": "2048",
-  "memory": "4096",
-  "runtimePlatform": {
-    "operatingSystemFamily": "LINUX",
-    "cpuArchitecture": "ARM64"
-  },
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "4096",
+  "memory": "8192",
+  "executionRoleArn": "arn:aws:iam::583299526161:role/TolipAI-scraper-execution-role",
+  "taskRoleArn": "arn:aws:iam::583299526161:role/TolipAI-scraper-task-role",
   "containerDefinitions": [
     {
       "name": "scraper",
       "image": "583299526161.dkr.ecr.us-east-1.amazonaws.com/tolipai-scraper:latest",
-      "essential": true,
       "portMappings": [
         {
           "containerPort": 8765,
-          "hostPort": 8765,
           "protocol": "tcp"
         }
       ],
+      "essential": true,
       "environment": [
         {
           "name": "PORT",
           "value": "8765"
         },
         {
+          "name": "HOST",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "PYTHON_ENV",
+          "value": "production"
+        },
+        {
           "name": "LOG_LEVEL",
-          "value": "info"
+          "value": "INFO"
         },
         {
-          "name": "BROWSER_MAX_CONCURRENT",
-          "value": "3"
+          "name": "AWS_REGION",
+          "value": "us-east-1"
         },
         {
-          "name": "SPOT_EXIT_DEADLINE_SECONDS",
-          "value": "90"
+          "name": "PROXY_TIMEOUT",
+          "value": "55"
         },
         {
-          "name": "CIRCUIT_FAILURE_THRESHOLD",
+          "name": "BROWSER_TIMEOUT",
+          "value": "55"
+        },
+        {
+          "name": "MAX_CONCURRENT_JOBS",
           "value": "5"
         },
         {
-          "name": "CIRCUIT_RECOVERY_TIMEOUT",
-          "value": "120"
+          "name": "MAX_CONCURRENT_TASKS",
+          "value": "15"
         },
         {
-          "name": "CACHE_DEFAULT_TTL",
-          "value": "3600"
+          "name": "MAX_BROWSERS_PER_JOB",
+          "value": "3"
         },
         {
-          "name": "CACHE_REDIS_TTL",
-          "value": "86400"
+          "name": "USE_WEBSHARE_PROXY",
+          "value": "true"
         },
         {
-          "name": "SCRAPER_TIMEOUT",
-          "value": "45"
+          "name": "DISTRESSED_COMP_CHECK",
+          "value": "true"
         },
         {
-          "name": "SCRAPER_JOB_CONCURRENCY",
-          "value": "4"
+          "name": "CASH_BUYER_MIN_OFFER",
+          "value": "0.7"
         },
         {
-          "name": "BRIGHTDATA_PORT",
-          "value": "33335"
+          "name": "CASH_BUYER_MAX_OFFER",
+          "value": "0.85"
         },
         {
-          "name": "ENABLE_GOOGLE_DORKS",
+          "name": "SKIP_ARV_ESTIMATE",
           "value": "false"
         },
         {
-          "name": "ENABLE_OPENCORPORATES",
+          "name": "LEAD_TIMEOUT",
+          "value": "1800"
+        },
+        {
+          "name": "RETRY_COUNT",
+          "value": "3"
+        },
+        {
+          "name": "RATE_LIMIT_MS",
+          "value": "1000"
+        },
+        {
+          "name": "CACHE_TTL_HOURS",
+          "value": "24"
+        },
+        {
+          "name": "HEALTH_CHECK_PORT",
+          "value": "8765"
+        },
+        {
+          "name": "HEALTH_CHECK_PATH",
+          "value": "/health"
+        },
+        {
+          "name": "HEALTH_CHECK_INTERVAL",
+          "value": "30"
+        },
+        {
+          "name": "HEALTH_CHECK_TIMEOUT",
+          "value": "5"
+        },
+        {
+          "name": "HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+          "value": "2"
+        },
+        {
+          "name": "HEALTH_CHECK_HEALTHY_THRESHOLD",
+          "value": "2"
+        },
+        {
+          "name": "ENABLE_METRICS",
           "value": "true"
         },
         {
-          "name": "ENABLE_PROPERTYAPI",
-          "value": "true"
+          "name": "METRICS_PORT",
+          "value": "9090"
+        },
+        {
+          "name": "SCRAPER_ENGINE_VERSION",
+          "value": "2.0.0"
         }
       ],
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/database-url"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/DATABASE_URL"
         },
         {
           "name": "SCRAPER_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/api-key"
-        },
-        {
-          "name": "OPENAI_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/openai-key"
-        },
-        {
-          "name": "ATTOM_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/attom-key"
-        },
-        {
-          "name": "ATTOM_API_KEY_2",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/attom-key-2"
-        },
-        {
-          "name": "BRIGHTDATA_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/brightdata-username"
-        },
-        {
-          "name": "BRIGHTDATA_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/brightdata-password"
-        },
-        {
-          "name": "OXYLABS_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/oxylabs-username"
-        },
-        {
-          "name": "OXYLABS_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/oxylabs-password"
-        },
-        {
-          "name": "PROPELIO_EMAIL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propelio-email"
-        },
-        {
-          "name": "PROPELIO_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propelio-password"
-        },
-        {
-          "name": "PROPWIRE_EMAIL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propwire-email"
-        },
-        {
-          "name": "PROPWIRE_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/propwire-password"
-        },
-        {
-          "name": "GOOGLE_MAPS_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/google-maps-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/SCRAPER_API_KEY"
         },
         {
           "name": "JWT_SECRET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/jwt-secret"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/JWT_SECRET"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/OPENAI_API_KEY"
+        },
+        {
+          "name": "ATTOM_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ATTOM_API_KEY"
+        },
+        {
+          "name": "ATTOM_API_KEY_2",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ATTOM_API_KEY_2"
+        },
+        {
+          "name": "BRIGHTDATA_USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/BRIGHTDATA_USERNAME"
+        },
+        {
+          "name": "BRIGHTDATA_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/BRIGHTDATA_PASSWORD"
+        },
+        {
+          "name": "OXYLABS_USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/OXYLABS_USERNAME"
+        },
+        {
+          "name": "OXYLABS_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/OXYLABS_PASSWORD"
+        },
+        {
+          "name": "PROPELIO_EMAIL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/PROPELIO_EMAIL"
+        },
+        {
+          "name": "PROPELIO_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/PROPELIO_PASSWORD"
+        },
+        {
+          "name": "PROPWIRE_EMAIL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/PROPWIRE_EMAIL"
+        },
+        {
+          "name": "PROPWIRE_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/PROPWIRE_PASSWORD"
+        },
+        {
+          "name": "GOOGLE_MAPS_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/GOOGLE_MAPS_API_KEY"
         },
         {
           "name": "REDIS_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/redis-url"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/REDIS_URL"
         },
         {
           "name": "S3_CACHE_BUCKET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/s3-cache-bucket"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/S3_CACHE_BUCKET"
         },
         {
           "name": "WEBSCRAPER_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/webscraper-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/WEBSCRAPER_KEY"
         },
         {
           "name": "OPENROUTER_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/openrouter-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/OPENROUTER_KEY"
         },
         {
           "name": "GROQ_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/groq-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/GROQ_KEY"
         },
         {
           "name": "OPENAI_BASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/openai-base-url"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/OPENAI_BASE_URL"
         },
         {
           "name": "AI_MODEL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/ai-model"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/AI_MODEL"
         },
         {
           "name": "MOONSHOT_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/moonshot-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/MOONSHOT_KEY"
         },
         {
           "name": "NVIDIA_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/nvidia-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/NVIDIA_KEY"
         },
         {
           "name": "BRIGHTDATA_API",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/brightdata-api"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/BRIGHTDATA_API"
         },
         {
           "name": "PROXY_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/proxy-host"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/PROXY_HOST"
         },
         {
           "name": "CEREBRAS_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/cerebras-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/CEREBRAS_KEY"
         },
         {
           "name": "GEMINI_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/gemini-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/GEMINI_KEY"
         },
         {
           "name": "PEOPLEDATALABS_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:TolipAI/scraper/peopledatalabs-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/PEOPLEDATALABS_KEY"
         }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/tolipai-scraper",
+          "awslogs-group": "/ecs/tolipai-scraper-engine",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "scraper",
+          "awslogs-stream-prefix": "ecs",
           "awslogs-create-group": "true"
         }
       },
       "healthCheck": {
-        "command": [
-          "CMD-SHELL",
-          "curl -sf http://localhost:8765/health || exit 1"
-        ],
+        "command": ["CMD-SHELL", "curl -f http://localhost:8765/health || exit 1"],
         "interval": 30,
-        "timeout": 10,
+        "timeout": 5,
         "retries": 3,
         "startPeriod": 60
-      },
-      "stopTimeout": 90,
-      "linuxParameters": {
-        "initProcessEnabled": true
       },
       "ulimits": [
         {

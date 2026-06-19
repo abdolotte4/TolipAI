@@ -11,7 +11,7 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DB_URL="${NEONDB_URL:-postgresql://neondb_owner:npg_fsD0mvh9zypn@ep-hidden-sound-apu9c516.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require}"
+DB_URL="${NEONDB_URL:-postgresql://neondb_owner:npg_vGaWn3bp4COq@ep-restless-waterfall-adcwhmet.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require}"
 OUTPUT_SQL="merged.sql"
 OUTPUT_ZIP="merged_neondb.zip"
 NO_ZIP=0
