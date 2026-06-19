@@ -16,12 +16,6 @@ const loginLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many login attempts. Please wait 15 minutes and try again." },
-  keyGenerator: (req) => {
-    const forwarded = req.headers["x-forwarded-for"];
-    const ip = Array.isArray(forwarded) ? forwarded[0] : (forwarded?.split(",")[0] ?? req.ip ?? "unknown");
-    return ip.trim();
-  },
-  skip: (_req, res) => res.statusCode < 400,
 });
 
 router.post("/auth/login", loginLimiter, async (req, res) => {
