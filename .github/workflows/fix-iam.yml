@@ -1,0 +1,144 @@
+name: Fix AWS IAM Roles
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  fix-iam:
+    name: Create ECS IAM Roles & Policies
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS auth
+        run: aws sts get-caller-identity
+
+      - name: Create ECS Execution Role
+        run: |
+          ROLE="TolipAI-scraper-execution-role"
+          if aws iam get-role --role-name "$ROLE" > /dev/null 2>&1; then
+            echo "✓ Execution role exists"
+          else
+            echo "Creating execution role..."
+            aws iam create-role \
+              --role-name "$ROLE" \
+              --assume-role-policy-document '{
+                "Version": "2012-10-17",
+                "Statement": [{
+                  "Effect": "Allow",
+                  "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+                  "Action": "sts:AssumeRole"
+                }]
+              }'
+            echo "✓ Execution role created"
+          fi
+
+          echo "Attaching ECS execution policy..."
+          aws iam attach-role-policy \
+            --role-name "$ROLE" \
+            --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy || true
+
+          echo "Adding Secrets Manager inline policy..."
+          aws iam put-role-policy \
+            --role-name "$ROLE" \
+            --policy-name "SecretsManagerAccess" \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue",
+                  "secretsmanager:DescribeSecret"
+                ],
+                "Resource": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/*"
+              }]
+            }' || true
+
+          echo "✓ Execution role configured"
+
+      - name: Create ECS Task Role
+        run: |
+          ROLE="TolipAI-scraper-task-role"
+          if aws iam get-role --role-name "$ROLE" > /dev/null 2>&1; then
+            echo "✓ Task role exists"
+          else
+            echo "Creating task role..."
+            aws iam create-role \
+              --role-name "$ROLE" \
+              --assume-role-policy-document '{
+                "Version": "2012-10-17",
+                "Statement": [{
+                  "Effect": "Allow",
+                  "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+                  "Action": "sts:AssumeRole"
+                }]
+              }'
+            echo "✓ Task role created"
+          fi
+
+          echo "Adding S3 + Logs inline policy..."
+          aws iam put-role-policy \
+            --role-name "$ROLE" \
+            --policy-name "ScraperTaskPolicy" \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:ListBucket"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }' || true
+
+          echo "✓ Task role configured"
+
+      - name: Verify roles
+        run: |
+          echo "=== Execution Role ==="
+          aws iam get-role --role-name TolipAI-scraper-execution-role --query 'Role.Arn'
+          echo ""
+          echo "=== Task Role ==="
+          aws iam get-role --role-name TolipAI-scraper-task-role --query 'Role.Arn'
+          echo ""
+          echo "=== Execution Role Policies ==="
+          aws iam list-attached-role-policies --role-name TolipAI-scraper-execution-role
+          aws iam list-role-policies --role-name TolipAI-scraper-execution-role
+          echo ""
+          echo "=== Task Role Policies ==="
+          aws iam list-role-policies --role-name TolipAI-scraper-task-role
+
+      - name: Summary
+        run: |
+          echo "### IAM Roles Fixed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Role | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TolipAI-scraper-execution-role | ✅ Ready |" >> $GITHUB_STEP_SUMMARY
+          echo "| TolipAI-scraper-task-role | ✅ Ready |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next step:** Trigger the deploy workflow to build and push the ECS task." >> $GITHUB_STEP_SUMMARY
