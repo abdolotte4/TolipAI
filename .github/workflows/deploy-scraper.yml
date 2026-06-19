@@ -90,7 +90,7 @@ jobs:
       - name: Substitute ACCOUNT_ID in task definition
         run: |
           sed "s|ACCOUNT_ID|${{ secrets.AWS_ACCOUNT_ID }}|g" \
-            artifacts/TolipAI-scraper-engine/${{ env.TASK_DEFINITION }} > /tmp/task-def-resolved.json
+            ${{ env.TASK_DEFINITION }} > /tmp/task-def-resolved.json
 
       - name: Update image URI in task definition
         id: task-def
