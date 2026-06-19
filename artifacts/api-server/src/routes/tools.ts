@@ -506,7 +506,7 @@ router.post("/tools/arv/calculate", requirePin, async (req: Request, res: Respon
     // 2. Fetch subject property details + comps in parallel
     const [subjectData, compsRaw, attomAvm] = await Promise.allSettled([
       fetchPropertyDataViaAttom(street, city, state, zip),
-      fetchCompsViaAttom(coords.lat, coords.lng, miles, Math.min(Number(maxComps) || 8, 20), null, null),
+      fetchCompsViaAttom(coords.lat, coords.lng, miles, Math.min(Number(maxComps) || 8, 20), null, null, null, null, null, req.body?.excludeDistressed),
       fetchAttomAvm(street, [city, state, zip].filter(Boolean).join(" ")),
     ]);
 

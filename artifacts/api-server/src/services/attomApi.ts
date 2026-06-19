@@ -129,6 +129,7 @@ export async function fetchCompsViaAttom(
   subjectBeds?: number | null,
   subjectBaths?: number | null,
   subjectYearBuilt?: number | null,
+  excludeDistressed?: boolean,
 ): Promise<AttomComp[]> {
   // Pull a larger pool so strict post-filtering still yields enough comps.
   const data = await attomGet("/propertyapi/v1.0.0/sale/snapshot", {
@@ -144,7 +145,7 @@ export async function fetchCompsViaAttom(
 
   const comps: AttomComp[] = [];
   const excluded: Record<string, number> = {
-    noPrice: 0, oldSale: 0, multiFamily: 0,
+    noPrice: 0, oldSale: 0, multiFamily: 0, distressed: 0,
     sqftMismatch: 0, bedsMismatch: 0, bathsMismatch: 0, yearMismatch: 0,
   };
 
@@ -160,6 +161,13 @@ export async function fetchCompsViaAttom(
     if (saleDateRaw) {
       const d = new Date(saleDateRaw);
       if (isNaN(d.getTime()) || d < TWO_YEARS_AGO) { excluded.oldSale++; continue; }
+    }
+
+    // ── Distressed sale filter ────────────────────────────────────────────────
+    if (excludeDistressed) {
+      const transType = (sale?.sale?.saleTransType || sale?.sale?.saleType || "").toLowerCase();
+      const distressKeywords = ["short sale", "foreclosure", "reo", "auction", "bank owned", "distress", "lis pendens"];
+      if (distressKeywords.some(k => transType.includes(k))) { excluded.distressed++; continue; }
     }
 
     const rawPropType = (sale?.summary?.proptype || "").toUpperCase();
