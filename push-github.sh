@@ -14,7 +14,7 @@ fi
 
 MSG="${1:-"chore: sync from Replit [$(date '+%Y-%m-%d %H:%M')]"}"
 
-DIGOR_URL="https://${TOKEN}@github.com/Agawish24/Digor.git"
+DIGOR_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
 
 # Replit sets GIT_ASKPASS=replit-git-askpass which intercepts every push and
 # prompts for a password even when credentials are embedded in the URL.
@@ -36,7 +36,7 @@ else
 fi
 
 echo ""
-echo "=== Pushing monorepo → Agawish24/Digor (main) ==="
+echo "=== Pushing monorepo → Agawish24/TolipAI (main) ==="
 $GIT push "${DIGOR_URL}" main
 echo "✓ Monorepo push complete."
 

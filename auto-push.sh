@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# auto-push.sh — Automated periodic push to GitHub Agawish24/Digor.
+# auto-push.sh — Automated periodic push to GitHub Agawish24/TolipAI.
 #
 # Run once in background:
 #   bash auto-push.sh &
@@ -19,7 +19,7 @@ if [ -z "${TOKEN}" ]; then
   exit 1
 fi
 
-DIGOR_URL="https://${TOKEN}@github.com/Agawish24/Digor.git"
+DIGOR_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
 INTERVAL="${AUTO_PUSH_INTERVAL:-1800}"
 
 push_once() {
@@ -31,8 +31,8 @@ push_once() {
     return 0
   fi
   git commit -m "chore: auto-sync from Replit [${ts}]" 2>/dev/null || true
-  if git push "${DIGOR_URL}" main 2>/dev/null; then
-    echo "[${ts}] ✓ Pushed to Agawish24/Digor."
+  if git push "${TolipAI_URL}" main 2>/dev/null; then
+    echo "[${ts}] ✓ Pushed to Agawish24/TolipAI."
   else
     echo "[${ts}] ✗ Push failed — will retry next interval."
   fi
@@ -43,7 +43,7 @@ if [ "${1:-}" = "--once" ]; then
   exit 0
 fi
 
-echo "[auto-push] Started — interval: ${INTERVAL}s — target: Agawish24/Digor. Press Ctrl-C to stop."
+echo "[auto-push] Started — interval: ${INTERVAL}s — target: Agawish24/TolipAI. Press Ctrl-C to stop."
 while true; do
   push_once
   sleep "${INTERVAL}"
