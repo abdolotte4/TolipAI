@@ -67,9 +67,17 @@ jobs:
           platforms: linux/arm64
           driver: docker
 
-      - name: Pull pre-built base image
+      - name: Pull or build base image
         run: |
-          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest || true
+          BASE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest"
+          if docker pull "$BASE"; then
+            echo "Base image pulled successfully."
+          else
+            echo "Base image not found in ECR — building from Dockerfile.base..."
+            docker build -f artifacts/TolipAI-scraper-engine/Dockerfile.base --platform linux/arm64 -t "$BASE" artifacts/TolipAI-scraper-engine
+            docker push "$BASE"
+            echo "Base image built and pushed."
+          fi
 
       - name: Build and push Docker image
         id: build
