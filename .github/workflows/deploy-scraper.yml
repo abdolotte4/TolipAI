@@ -1,4 +1,4 @@
-name: Deploy Scraper Engine to ECS Fargate
+name: Deploy to ECS Fargate
 
 on:
   push:
@@ -7,9 +7,11 @@ on:
     paths:
       - 'artifacts/TolipAI-scraper-engine/workers/**'
       - 'artifacts/TolipAI-scraper-engine/Dockerfile.fargate'
+      - 'artifacts/TolipAI-scraper-engine/Dockerfile.base'
       - 'artifacts/TolipAI-scraper-engine/requirements.txt'
-      - 'artifacts/TolipAI-scraper-engine/start.fargate.sh'
+      - 'artifacts/TolipAI-scraper-engine/requirements.lock'
       - 'artifacts/TolipAI-scraper-engine/infrastructure/ecs-task-definition.json'
+      - 'artifacts/TolipAI-scraper-engine/start.fargate.sh'
 
   workflow_dispatch:
     inputs:
@@ -21,6 +23,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: tolipai-scraper
+  ECR_BASE_REPOSITORY: tolipai-scraper-base
   ECS_CLUSTER: TolipAI-scraper-cluster
   ECS_SERVICE: tolipai-scraper-engine-service-xop
   TASK_DEFINITION: artifacts/TolipAI-scraper-engine/infrastructure/ecs-task-definition.json
@@ -32,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    timeout-minutes: 12
 
     steps:
       - name: Checkout
@@ -61,6 +65,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           platforms: linux/arm64
+          driver: docker
+
+      - name: Pull pre-built base image
+        run: |
+          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest || true
 
       - name: Build and push Docker image
         id: build
@@ -70,16 +79,18 @@ jobs:
           file: artifacts/TolipAI-scraper-engine/Dockerfile.fargate
           platforms: linux/arm64
           push: true
+          build-args: |
+            BASE_IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image-tag.outputs.tag }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=deploy-arm64
+          cache-to: type=gha,mode=max,scope=deploy-arm64
 
       - name: Substitute ACCOUNT_ID in task definition
         run: |
           sed "s|ACCOUNT_ID|${{ secrets.AWS_ACCOUNT_ID }}|g" \
-            ${{ env.TASK_DEFINITION }} > /tmp/task-def-resolved.json
+            artifacts/TolipAI-scraper-engine/${{ env.TASK_DEFINITION }} > /tmp/task-def-resolved.json
 
       - name: Update image URI in task definition
         id: task-def
@@ -104,6 +115,7 @@ jobs:
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Image tag | \`${{ steps.image-tag.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Base image | \`${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Platform  | \`linux/arm64 (Graviton3)\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Cluster   | \`${{ env.ECS_CLUSTER }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Service   | \`${{ env.ECS_SERVICE }}\` |" >> $GITHUB_STEP_SUMMARY

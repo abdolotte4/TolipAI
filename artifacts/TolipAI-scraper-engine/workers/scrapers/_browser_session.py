@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
@@ -300,16 +301,105 @@ try {
   }
 } catch(e) {}
 
-// 7. Override console.debug to suppress Playwright CDP messages
+// ── Extra anti-detection hardening ───────────────────────────────────────────
+// 8. Prevent AutomationDetection via Permission-Policy headers
+// (some sites check navigator.permissions.query for 'midi', 'clipboard-read')
+// Override known automation probes
 try {
-  const _origDebug = console.debug;
-  console.debug = function(...args) {
-    const msg = args.join(' ');
-    if (msg.includes(' playwright') || msg.includes(' binding ') || msg.includes('cdp')) return;
-    return _origDebug.apply(this, args);
+  const _origPermissionsQuery = navigator.permissions.query;
+  navigator.permissions.query = function(parameters) {
+    const name = parameters && parameters.name;
+    if (name === 'midi' || name === 'midi-sysex') return Promise.resolve({ state: 'prompt', onchange: null });
+    if (name === 'clipboard-read' || name === 'clipboard-write') return Promise.resolve({ state: 'prompt', onchange: null });
+    return _origPermissionsQuery.call(navigator.permissions, parameters);
   };
 } catch(e) {}
+
+// 9. Hide `chrome.runtime` properties that signal automation
+try {
+  if (window.chrome && window.chrome.runtime) {
+    Object.defineProperty(window.chrome.runtime, 'OnConnectExternal', { get: () => undefined, configurable: true });
+    Object.defineProperty(window.chrome.runtime, 'OnMessageExternal', { get: () => undefined, configurable: true });
+  }
+} catch(e) {}
+
+// 10. Prevent `window.callPhantom` / `window._phantom` detection
+try {
+  if (window.callPhantom) { delete window.callPhantom; }
+  if (window._phantom) { delete window._phantom; }
+} catch(e) {}
+
+// 11. Override `navigator.maxTouchPoints` to 0 (desktop)
+try {
+  Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0, configurable: true });
+} catch(e) {}
+
+// 12. Fake `navigator.vendor` to Google Inc.
+try {
+  Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.', configurable: true });
+} catch(e) {}
+
+// 13. Override `window.devicePixelRatio` to a realistic value
+try {
+  Object.defineProperty(window, 'devicePixelRatio', { get: () => 1.0, configurable: true });
+} catch(e) {}
+
+// 14. Prevent `window.Buffer` / `window.process` (Node.js leak detection)
+try {
+  if (window.Buffer) { delete window.Buffer; }
+  if (window.process) { delete window.process; }
+} catch(e) {}
+
+// 15. Add random `navigator.userAgentData` (Chrome 90+)
+try {
+  if (!navigator.userAgentData) {
+    Object.defineProperty(navigator, 'userAgentData', {
+      get: () => ({
+        brands: [
+          { brand: 'Not(A:Brand', version: '24' },
+          { brand: 'Chromium', version: '120' }
+        ],
+        mobile: false,
+        platform: 'Windows',
+        getHighEntropyValues: () => Promise.resolve({ platform: 'Windows', platformVersion: '10.0', architecture: 'x86_64', model: '', uaFullVersion: '120.0.6099.71' })
+      }),
+      configurable: true
+    });
+  }
+} catch(e) {}
 """
+
+
+async def _humanize_type(page: Any, selector: str, text: str, *, min_delay_ms: int = 60, max_delay_ms: int = 120) -> None:
+    """Type text into a field with human-like random delays per keystroke.
+
+    DataDome and similar services detect instantaneous fills (Playwright's
+    `fill()` sends all characters at once).  `press_sequentially` with a
+    per-keystroke delay mimics real typing cadence.
+    """
+    try:
+        await page.locator(selector).press_sequentially(
+            text,
+            delay=random.randint(min_delay_ms, max_delay_ms),
+        )
+    except Exception:
+        # Fallback to ordinary fill if the locator doesn't support sequential
+        await page.locator(selector).fill(text)
+
+
+async def _humanize_scroll(page: Any) -> None:
+    """Simulate a small random scroll before interacting with a form element.
+
+    Many bot detectors check that the element receiving input is actually
+    within the viewport and that scroll events preceded the interaction.
+    """
+    try:
+        viewport = page.viewport_size or {"width": 1440, "height": 900}
+        scroll_y = random.randint(100, max(200, viewport["height"] - 200))
+        await page.evaluate(f"window.scrollTo(0, {scroll_y})")
+        await page.wait_for_timeout(random.randint(200, 600))
+    except Exception:
+        pass
 
 
 async def _apply_stealth(ctx: Any) -> None:
@@ -334,6 +424,23 @@ async def _apply_stealth(ctx: Any) -> None:
     # Fallback: hand-rolled comprehensive stealth script
     await ctx.add_init_script(_STEALTH_SCRIPT)
     log.debug("[stealth] applied hand-rolled stealth script")
+
+    # ── Per-session randomization of hardwareConcurrency / deviceMemory ───────
+    # Static values in the init script are OK for basic evasion, but rotating
+    # them per browser launch makes fingerprint clustering harder.
+    hw_concurrency = random.choice([4, 6, 8, 12, 16])
+    device_mem = random.choice([4, 8, 16, 32])
+    await ctx.add_init_script(f"""
+    Object.defineProperty(navigator, 'hardwareConcurrency', {{
+      get: () => {hw_concurrency}, configurable: true
+    }});
+    if ('deviceMemory' in navigator) {{
+      Object.defineProperty(navigator, 'deviceMemory', {{
+        get: () => {device_mem}, configurable: true
+      }});
+    }}
+    """)
+    log.debug("[stealth] per-session randomization: hwConcurrency=%d, deviceMemory=%d", hw_concurrency, device_mem)
 
 
 async def _humanize_mouse(page: Any) -> None:

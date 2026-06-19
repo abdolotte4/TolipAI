@@ -1,118 +1,33 @@
-# ── TolipAI Scraper Engine — AWS Fargate Spot Dockerfile ─────────────────────
+# ── TolipAI Scraper Engine — Fast Deploy Dockerfile ──────────────────────────
+# Uses a pre-built base image (tolipai-scraper-base) that already contains:
+#   - Python 3.13 venv with all dependencies
+#   - Playwright Chromium browser binaries
 #
-# Optimised for:
-#  • ARM64 (Graviton3) — 20% cheaper than x86 on Fargate Spot
-#  • Multi-stage build — small final image (no pip cache, no build deps)
-#  • Fargate Spot interruption handling via spot_handler.py
-#  • ECS health checks via /health endpoint
-#  • Pre-compiled requirements.lock — deterministic, fast installs (no pip-compile on QEMU)
+# The base image is built once and reused. This Dockerfile only:
+#   1. Pulls the base image
+#   2. Copies the latest app code
+#   3. Sets up the entrypoint
 #
-# Build:
-#   docker build -f Dockerfile.fargate --platform linux/arm64 -t TolipAI-scraper:latest .
+# Build time: ~2-3 minutes (vs 10-15 minutes with full QEMU build)
 #
-# Regenerate lockfile (run on x86 host, then commit requirements.lock):
-#   uv pip compile requirements.in -o requirements.lock --no-header
+# To build the base image (run once or weekly):
+#   docker build -f Dockerfile.base --platform linux/arm64 -t BASE .
+#   docker tag BASE ECR_REGISTRY/tolipai-scraper-base:latest
+#   docker push ECR_REGISTRY/tolipai-scraper-base:latest
+# ──────────────────────────────────────────────────────────────────────────────
 
-FROM python:3.13-slim-bookworm AS builder
+ARG BASE_IMAGE=583299526161.dkr.ecr.us-east-1.amazonaws.com/tolipai-scraper-base:latest
 
-WORKDIR /build
-
-# System build deps only — not included in final image
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    libpq-dev \
-    libffi-dev \
-    libssl-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python deps into a venv so the final stage can just copy /venv
-RUN python -m venv /venv
-ENV PATH="/venv/bin:$PATH"
-
-# ── Dependency installation from pre-compiled lockfile ────────────────────────
-# requirements.lock is generated via:
-#   uv pip compile requirements.in -o requirements.lock --no-header
-# and committed to the repo.  This avoids running pip-compile on QEMU ARM64
-# (which is 10-20x slower than native and is the root cause of CI timeouts).
-# To update deps: edit requirements.in, regenerate requirements.lock, commit.
-COPY requirements.lock ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.lock
-
-# Install Playwright Chromium browser binary into /app/.cache so the non-root
-# scraper user can read it in the final stage (browsers in /root/.cache would
-# be inaccessible to non-root users).
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
-RUN playwright install chromium --with-deps 2>/dev/null || \
-    playwright install chromium 2>/dev/null || true
-
-
-# ── Final image ───────────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm
-
-LABEL org.opencontainers.image.title="TolipAI-scraper-engine"
-LABEL org.opencontainers.image.description="TolipAI scraper engine — AWS Fargate Spot"
-LABEL org.opencontainers.image.source="https://github.com/Agawish24/Python-Worker"
+FROM ${BASE_IMAGE} AS app
 
 WORKDIR /app
 
-# Runtime system deps for Playwright Chromium on ARM64
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Playwright / Chromium
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libexpat1 \
-    libxkbcommon0 \
-    libx11-6 \
-    libxcomposite1 \
-    libxext6 \
-    libxcb1 \
-    # OCR + PDF
-    tesseract-ocr \
-    poppler-utils \
-    libgomp1 \
-    libgl1 \
-    libglib2.0-0 \
-    libpq5 \
-    # Misc
-    curl \
-    ca-certificates \
-    && update-ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Python env from builder
-COPY --from=builder /venv /venv
-# Browser cache already lives under /app/.cache in the builder — copy it here
-# so it stays under /app and is chowned to the scraper user below.
-COPY --from=builder /app/.cache /app/.cache
-
-ENV PATH="/venv/bin:$PATH"
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
-# CRITICAL FIX: scraper user needs a real home dir for crawl4ai/pip caches
-ENV HOME=/home/scraper
-ENV CRAWL4AI_DATA_DIR=/tmp/crawl4ai
-
-# ── App code ──────────────────────────────────────────────────────────────────
-COPY workers/ ./workers/
-COPY start.fargate.sh ./start.sh
+# Copy only the app code (the heavy deps are in the base image)
+COPY --chown=scraper:scraper workers/ ./workers/
+COPY --chown=scraper:scraper start.fargate.sh ./start.sh
 RUN chmod +x ./start.sh
 
-# Fargate health check — ECS pings /health every 30s
+# Fargate health check
 HEALTHCHECK \
     --interval=30s \
     --timeout=10s \
@@ -122,11 +37,6 @@ HEALTHCHECK \
 
 EXPOSE 8765
 
-# CRITICAL FIX: -m creates /home/scraper (prevents crawl4ai PermissionError);
-# .cache/.local subdirs ensure pip/crawl4ai never write to /root (read-only).
-RUN useradd -r -m -s /bin/false scraper && \
-    mkdir -p /home/scraper/.cache /home/scraper/.local && \
-    chown -R scraper:scraper /app /home/scraper
 USER scraper
 
 CMD ["bash", "./start.sh"]

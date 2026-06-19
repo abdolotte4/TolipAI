@@ -19,11 +19,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import re
 from typing import Any, Dict, List
 
 from functools import partial
-from ._browser_session import browser_context, invalidate_session, _nav_with_fallback
+from ._browser_session import browser_context, invalidate_session, _nav_with_fallback, _humanize_mouse, _humanize_type, _humanize_scroll
 from ._utils import _safe_num, _parse_buyer_card
 
 log = logging.getLogger("propelio")
@@ -227,16 +228,19 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     # ═══════════════════════════════════════════════════════════════════════════
     log.info("Propelio: filling login form")
 
+    await _humanize_scroll(page)
+    await _humanize_mouse(page)
+
     email_el = page.locator(email_sel).first
     await email_el.click(click_count=3)
     await page.wait_for_timeout(200)
-    await email_el.press_sequentially(email, delay=60)
+    await _humanize_type(page, email_sel, email)
     await page.wait_for_timeout(300)
 
     pw_el = page.locator(pw_sel).first
     await pw_el.click(click_count=3)
     await page.wait_for_timeout(200)
-    await pw_el.press_sequentially(password, delay=60)
+    await _humanize_type(page, pw_sel, password)
     await page.wait_for_timeout(500)
 
     # Verify values were actually entered
@@ -280,10 +284,12 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
                 pass
             await pw_el.press("Enter")
         else:
+            await page.wait_for_timeout(random.randint(400, 900))
             await btn.click()
             log.info("Propelio: clicked submit button")
     else:
         log.warning("Propelio: no submit button found — using Enter key")
+        await page.wait_for_timeout(random.randint(400, 900))
         await pw_el.press("Enter")
 
     await page.wait_for_timeout(1000)  # brief pause for submission to start
@@ -403,7 +409,7 @@ async def test_login_credentials(email: str, password: str) -> Dict[str, Any]:
     login_fn = partial(_do_login, email=email, password=password)
 
     try:
-        async with browser_context(SERVICE, login_fn=login_fn) as ctx:
+        async with browser_context(SERVICE, login_fn=login_fn, no_proxy=True) as ctx:
             page = await ctx.new_page()
             try:
                 # Navigate to the search page to verify the session is valid
@@ -470,7 +476,7 @@ async def search_property(address: str, *, login_fn=None) -> Dict[str, Any]:
     if not address:
         return {"address": "", "property_id": None}
 
-    async with browser_context(SERVICE, login_fn=login_fn or _do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn or _do_login, no_proxy=True) as ctx:
         page = await ctx.new_page()
         try:
             await _nav_with_fallback(page, SEARCH_URL, log, SERVICE)
@@ -522,7 +528,7 @@ async def fetch_comps(
         return []
     url = f"{PROPELIO_BASE}/search/{property_id}/comparable-sales"
 
-    async with browser_context(SERVICE, login_fn=login_fn or _do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn or _do_login, no_proxy=True) as ctx:
         page = await ctx.new_page()
         comps: List[Dict[str, Any]] = []
         try:
@@ -611,7 +617,7 @@ async def fetch_cash_buyers(
     buyers: List[Dict[str, Any]] = []
     api_pat = re.compile(r"cash[-_]?buyers?|/buyers", re.IGNORECASE)
 
-    async with browser_context(SERVICE, login_fn=login_fn or _do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn or _do_login, no_proxy=True) as ctx:
         page = await ctx.new_page()
         # ── Register XHR capture BEFORE navigation so first-page results aren't missed ──
         pending_xhr: List[Dict[str, Any]] = []

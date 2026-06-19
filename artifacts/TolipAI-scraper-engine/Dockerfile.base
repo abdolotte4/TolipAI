@@ -1,0 +1,59 @@
+# ── TolipAI Scraper Engine — Pre-built Base Image with Playwright ────────────
+# This image is built ONCE and reused across all deployments. It contains:
+#   - Python 3.13 + venv + all pip dependencies from requirements.lock
+#   - Playwright Chromium browser binary
+#
+# Build and push manually or via weekly CI:
+#   docker build -f Dockerfile.base --platform linux/arm64 -t BASE_IMAGE .
+#   docker tag BASE_IMAGE ECR_REGISTRY/tolipai-scraper-base:latest
+#   docker push ECR_REGISTRY/tolipai-scraper-base:latest
+#
+# The main Dockerfile uses this as its FROM stage to skip the slow QEMU step.
+
+FROM python:3.13-slim-bookworm AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libpq-dev libffi-dev libssl-dev curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.lock
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+RUN playwright install chromium --with-deps 2>/dev/null || \
+    playwright install chromium 2>/dev/null || true
+
+# ── Final base image (same OS + runtime libs) ─────────────────────────────────
+FROM python:3.13-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
+    libcairo2 libexpat1 libxkbcommon0 libx11-6 libxcomposite1 libxext6 libxcb1 \
+    tesseract-ocr poppler-utils libgomp1 libgl1 libglib2.0-0 libpq5 \
+    curl ca-certificates && update-ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /venv /venv
+COPY --from=builder /app/.cache /app/.cache
+
+ENV PATH="/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+ENV HOME=/home/scraper
+ENV CRAWL4AI_DATA_DIR=/tmp/crawl4ai
+
+RUN useradd -r -m -s /bin/false scraper && \
+    mkdir -p /home/scraper/.cache /home/scraper/.local && \
+    chown -R scraper:scraper /app /home/scraper
+
+USER scraper
+
+# This image is only the base — no app code. The main Dockerfile copies code on top.
+WORKDIR /app

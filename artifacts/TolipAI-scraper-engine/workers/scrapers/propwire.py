@@ -16,11 +16,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
 from functools import partial
 from typing import Any, Dict, List, Optional
 
-from ._browser_session import browser_context, invalidate_session, _nav_with_fallback, _humanize_mouse
+from ._browser_session import browser_context, invalidate_session, _nav_with_fallback, _humanize_mouse, _humanize_type, _humanize_scroll
 from ._utils import _safe_num, _parse_buyer_card
 
 log = logging.getLogger("propwire")
@@ -268,22 +269,25 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
             f"visible_inputs_count={len(visible_inputs) if 'visible_inputs' in dir() else 'N/A'}"
         )
 
+    await _humanize_scroll(page)
+    await _humanize_mouse(page)
+
     # ── Fill email ──
     await email_el.scroll_into_view_if_needed(timeout=10000)
     await email_el.click(click_count=3)
     await page.wait_for_timeout(200)
-    # Use press_sequentially to fire React synthetic onChange events
-    await email_el.press_sequentially(email, delay=60)
+    await email_el.press_sequentially(email, delay=random.randint(60, 120))
     await page.wait_for_timeout(300)
 
     # ── Fill password ──
     await pw_el.scroll_into_view_if_needed(timeout=10000)
     await pw_el.click(click_count=3)
     await page.wait_for_timeout(200)
-    await pw_el.press_sequentially(password, delay=60)
+    await pw_el.press_sequentially(password, delay=random.randint(60, 120))
     await page.wait_for_timeout(500)
 
     # ── Step 5: Submit ──
+    await page.wait_for_timeout(random.randint(400, 900))
     submit_selectors = [
         'button[type="submit"]',
         'button:has-text("Log in")',
@@ -351,7 +355,7 @@ async def test_login_credentials(email: str, password: str) -> None:
     """Test login with explicit credentials without caching or mutating env vars."""
     from functools import partial
     login_fn = partial(_do_login, email=email, password=password)
-    async with browser_context(SERVICE, login_fn=login_fn) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn, no_proxy=True) as ctx:
         page = await ctx.new_page()
         await page.close()
 
@@ -405,7 +409,7 @@ async def _resolve_property_url(ctx, query_or_url: str) -> str:
 
 async def fetch_property(query_or_url: str) -> Dict[str, Any]:
     """Property tab: details, owner, beds/baths/sqft, value, photos."""
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=_do_login, no_proxy=True) as ctx:
         url = await _resolve_property_url(ctx, query_or_url)
         # Force the property tab
         prop_url = re.sub(r"/(comparable-sales|history|owner|market)$", "", url) or url
@@ -585,7 +589,7 @@ def _propwire_normalise_comp(r: Dict[str, Any]) -> Dict[str, Any]:
 
 async def fetch_history(query_or_url: str) -> Dict[str, Any]:
     """Sale history + mortgage history."""
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=_do_login, no_proxy=True) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         url = base.rstrip("/") + "/history"
         page = await ctx.new_page()
@@ -621,7 +625,7 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
       tax_history (list of {year, assessed, taxes}),
       land_value, improvement_value, parcel_id, legal_description
     """
-    async with browser_context(SERVICE, login_fn=_do_login) as ctx:
+    async with browser_context(SERVICE, login_fn=_do_login, no_proxy=True) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         # Tax info lives on the Property tab (root URL)
         prop_url = re.sub(r"/(comparable-sales|history|owner|market|comps|buyers)$", "", base) or base
@@ -704,7 +708,7 @@ async def fetch_cash_buyers_nearby(
     PROPWIRE_PASSWORD env vars so Node.js can pass campaign credentials from DB.
     """
     login_fn = partial(_do_login, email=email, password=password) if (email or password) else _do_login
-    async with browser_context(SERVICE, login_fn=login_fn) as ctx:
+    async with browser_context(SERVICE, login_fn=login_fn, no_proxy=True) as ctx:
         base = await _resolve_property_url(ctx, query_or_url)
         # Propwire's nearby-buyers tab URL pattern can vary; try a few.
         candidates = [
