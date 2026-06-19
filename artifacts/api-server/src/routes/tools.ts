@@ -18,7 +18,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { randomUUID } from "crypto";
+import crypto, { randomUUID } from "crypto";
 import { scraperEngine, ScraperEngineUnavailable } from "../services/scraperEngineClient";
 import {
   hasAttomKey,
