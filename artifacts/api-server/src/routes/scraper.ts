@@ -13,6 +13,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
+import crypto from "crypto";
 import { logger } from "../lib/logger";
 import { digitsOnly } from "../services/coreCalculations";
 
@@ -27,7 +28,16 @@ function requirePin(req: Request, res: Response, next: NextFunction) {
   const fromHeader = req.headers["x-tools-pin"] as string | undefined;
   const fromBody   = (req.body as Record<string, unknown>)?.pin as string | undefined;
   const provided   = fromHeader || fromBody;
-  if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN — send TOOLS_PIN in x-tools-pin header or request body as 'pin'" }); return; }
+  if (!provided) { res.status(403).json({ error: "Invalid PIN — send TOOLS_PIN in x-tools-pin header or request body as 'pin'" }); return; }
+  try {
+    const providedBuf = Buffer.from(provided.trim());
+    const pinBuf = Buffer.from(toolsPin.trim());
+    if (providedBuf.length !== pinBuf.length || !crypto.timingSafeEqual(providedBuf, pinBuf)) {
+      res.status(403).json({ error: "Invalid PIN — send TOOLS_PIN in x-tools-pin header or request body as 'pin'" }); return;
+    }
+  } catch {
+    res.status(403).json({ error: "Invalid PIN — send TOOLS_PIN in x-tools-pin header or request body as 'pin'" }); return;
+  }
   next();
 }
 
