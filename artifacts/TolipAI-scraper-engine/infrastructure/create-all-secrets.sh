@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run this in AWS CloudShell: https://console.aws.amazon.com/cloudshell/
-# Creates all required secrets in AWS Secrets Manager
-# You need to fill in the actual values for each secret
+# Creates ALL missing secrets in AWS Secrets Manager for TolipAI scraper
+# This fixes: "Secrets Manager can't find the specified secret"
 
 set -e
 
@@ -9,10 +9,9 @@ REGION="us-east-1"
 SECRET_PREFIX="TolipAI/scraper"
 
 echo "========================================"
-echo "Creating/updating secrets in AWS Secrets Manager"
+echo "Creating ALL secrets in AWS Secrets Manager"
 echo "========================================"
 
-# Function to create or update a secret
 upsert_secret() {
     local name="$1"
     local value="$2"
@@ -20,104 +19,183 @@ upsert_secret() {
     
     echo "Processing: $name"
     
-    # Check if secret exists
     if aws secretsmanager describe-secret --region $REGION --secret-id "$name" > /dev/null 2>&1; then
-        # Update existing secret
         aws secretsmanager put-secret-value \
             --region $REGION \
             --secret-id "$name" \
             --secret-string "$value"
-        echo "  ✓ Updated existing secret"
+        echo "  ✓ Updated"
     else
-        # Create new secret
         aws secretsmanager create-secret \
             --region $REGION \
             --name "$name" \
             --secret-string "$value" \
             --description "$description"
-        echo "  ✓ Created new secret"
+        echo "  ✓ Created"
     fi
 }
 
-# IMPORTANT: Replace the placeholder values below with your actual secrets!
-# You can get these from your Railway dashboard or wherever you store them
-
+# ── CRITICAL: These MUST exist for the scraper to start ──
 echo ""
-echo "Creating secrets..."
-echo "NOTE: Please edit this script with your actual secret values before running!"
+echo "=== CRITICAL SECRETS (scraper will fail without these) ==="
 echo ""
 
-# Replace these placeholder values with your actual secrets:
 upsert_secret "$SECRET_PREFIX/DATABASE_URL" \
     "postgresql://neondb_owner:npg_vGaWn3bp4COq@ep-restless-waterfall-adcwhmet.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require" \
-    "Database connection URL"
-
-upsert_secret "$SECRET_PREFIX/SCRAPER_API_KEY" \
-    "YOUR_SCRAPER_API_KEY_HERE" \
-    "API key for scraper authentication"
-
-upsert_secret "$SECRET_PREFIX/JWT_SECRET" \
-    "YOUR_JWT_SECRET_HERE" \
-    "JWT signing secret"
-
-upsert_secret "$SECRET_PREFIX/OPENAI_API_KEY" \
-    "YOUR_OPENAI_API_KEY_HERE" \
-    "OpenAI API key"
+    "Database connection URL (Neon PostgreSQL)"
 
 upsert_secret "$SECRET_PREFIX/REDIS_URL" \
-    "YOUR_REDIS_URL_HERE" \
-    "Redis connection URL"
+    "rediss://tolipai-scraper-cache-juvjic.serverless.use1.cache.amazonaws.com:6379" \
+    "Redis connection URL (ElastiCache)"
+
+upsert_secret "$SECRET_PREFIX/JWT_SECRET" \
+    "335d13d37694627082c6f9bfad69a638553392c374ea4b792a7dd15aa7d745a97bd77f5ee97331d0dd01b416c35d0e6359d6cb5a1bc9886e0e7e64eb8457bda6" \
+    "JWT signing secret (64-byte hex)"
+
+upsert_secret "$SECRET_PREFIX/SCRAPER_API_KEY" \
+    "tolipai-scraper-api-key-change-me" \
+    "API key for scraper authentication"
+
+# ── AI/LLM API Keys (replace with your real keys) ──
+echo ""
+echo "=== AI/LLM API Keys (update with your real values) ==="
+echo ""
+
+upsert_secret "$SECRET_PREFIX/OPENAI_API_KEY" \
+    "sk-change-me-to-your-real-openai-key" \
+    "OpenAI API key"
+
+upsert_secret "$SECRET_PREFIX/OPENAI_BASE_URL" \
+    "https://api.openai.com/v1" \
+    "OpenAI base URL"
+
+upsert_secret "$SECRET_PREFIX/AI_MODEL" \
+    "gpt-4o-mini" \
+    "AI model identifier"
+
+upsert_secret "$SECRET_PREFIX/GROQ_KEY" \
+    "gsk-change-me-to-your-real-groq-key" \
+    "Groq API key"
+
+upsert_secret "$SECRET_PREFIX/OPENROUTER_KEY" \
+    "sk-or-change-me-to-your-real-openrouter-key" \
+    "OpenRouter API key"
+
+upsert_secret "$SECRET_PREFIX/MOONSHOT_KEY" \
+    "change-me-to-your-real-moonshot-key" \
+    "Moonshot API key"
+
+upsert_secret "$SECRET_PREFIX/NVIDIA_KEY" \
+    "nvapi-change-me-to-your-real-nvidia-key" \
+    "NVIDIA API key"
+
+upsert_secret "$SECRET_PREFIX/CEREBRAS_KEY" \
+    "change-me-to-your-real-cerebras-key" \
+    "Cerebras API key"
+
+upsert_secret "$SECRET_PREFIX/GEMINI_KEY" \
+    "change-me-to-your-real-gemini-key" \
+    "Google Gemini API key"
+
+# ── Data/Scraper API Keys ──
+echo ""
+echo "=== Data/Scraper API Keys (update with your real values) ==="
+echo ""
 
 upsert_secret "$SECRET_PREFIX/ATTOM_API_KEY" \
-    "YOUR_ATTOM_API_KEY_HERE" \
+    "change-me-to-your-real-attom-key" \
     "ATTOM API key"
 
+upsert_secret "$SECRET_PREFIX/ATTOM_API_KEY_2" \
+    "change-me-to-your-real-attom-key-2" \
+    "ATTOM API key (backup)"
+
 upsert_secret "$SECRET_PREFIX/GOOGLE_MAPS_API_KEY" \
-    "YOUR_GOOGLE_MAPS_KEY_HERE" \
+    "AIzaSyDAJahdCGatUxZxXoBS47VCFOFWvd5YBes" \
     "Google Maps API key"
 
+upsert_secret "$SECRET_PREFIX/PEOPLEDATALABS_KEY" \
+    "change-me-to-your-real-pdl-key" \
+    "People Data Labs API key"
+
+upsert_secret "$SECRET_PREFIX/WEBSCRAPER_KEY" \
+    "change-me-to-your-real-webscraper-key" \
+    "WebScraper API key"
+
+upsert_secret "$SECRET_PREFIX/BRIGHTDATA_API" \
+    "change-me-to-your-real-brightdata-api-key" \
+    "BrightData API key"
+
 upsert_secret "$SECRET_PREFIX/BRIGHTDATA_USERNAME" \
-    "YOUR_BRIGHTDATA_USERNAME_HERE" \
+    "brd-customer-hl_fbaba1cb-zone-digor_scraper" \
     "BrightData proxy username"
 
 upsert_secret "$SECRET_PREFIX/BRIGHTDATA_PASSWORD" \
-    "YOUR_BRIGHTDATA_PASSWORD_HERE" \
+    "6dnvnr208ey4" \
     "BrightData proxy password"
 
+upsert_secret "$SECRET_PREFIX/PROXY_HOST" \
+    "change-me-to-your-real-proxy-host" \
+    "Proxy host"
+
+# ── Login Credentials ──
+echo ""
+echo "=== Login Credentials (update with your real values) ==="
+echo ""
+
 upsert_secret "$SECRET_PREFIX/PROPELIO_EMAIL" \
-    "YOUR_PROPELIO_EMAIL_HERE" \
+    "martin.direct2sellers@gmail.com" \
     "Propelio login email"
 
 upsert_secret "$SECRET_PREFIX/PROPELIO_PASSWORD" \
-    "YOUR_PROPELIO_PASSWORD_HERE" \
+    "Password123!" \
     "Propelio login password"
 
 upsert_secret "$SECRET_PREFIX/PROPWIRE_EMAIL" \
-    "YOUR_PROPWIRE_EMAIL_HERE" \
+    "martin.direct2sellers@gmail.com" \
     "Propwire login email"
 
 upsert_secret "$SECRET_PREFIX/PROPWIRE_PASSWORD" \
-    "YOUR_PROPWIRE_PASSWORD_HERE" \
+    "Abdosan2#" \
     "Propwire login password"
 
+upsert_secret "$SECRET_PREFIX/OXYLABS_USERNAME" \
+    "abdolotte_j2hjU" \
+    "Oxylabs proxy username"
+
+upsert_secret "$SECRET_PREFIX/OXYLABS_PASSWORD" \
+    "Abdo2006611~" \
+    "Oxylabs proxy password"
+
+# ── Infrastructure ──
 echo ""
-echo "========================================"
-echo "Listing all created secrets"
-echo "========================================"
-aws secretsmanager list-secrets \
-    --region $REGION \
-    --query "SecretList[?starts_with(Name, \`$SECRET_PREFIX\`)].Name" \
-    --output table
+echo "=== Infrastructure Secrets ==="
+echo ""
+
+upsert_secret "$SECRET_PREFIX/S3_CACHE_BUCKET" \
+    "tolipai-scraper-cache" \
+    "S3 cache bucket name"
 
 echo ""
 echo "========================================"
-echo "✅ Secrets created/updated successfully!"
+echo "✅ ALL Secrets Created/Updated!"
 echo "========================================"
 echo ""
-echo "IMPORTANT: If you used placeholder values (YOUR_*_HERE),"
-echo "edit this script with your actual values and run it again."
+echo "IMPORTANT: The following secrets have PLACEHOLDER values."
+echo "Update them with your REAL API keys in AWS Secrets Manager:"
+echo "  - OPENAI_API_KEY"
+echo "  - GROQ_KEY"
+echo "  - OPENROUTER_KEY"
+echo "  - MOONSHOT_KEY"
+echo "  - NVIDIA_KEY"
+echo "  - CEREBRAS_KEY"
+echo "  - GEMINI_KEY"
+echo "  - ATTOM_API_KEY"
+echo "  - ATTOM_API_KEY_2"
+echo "  - PEOPLEDATALABS_KEY"
+echo "  - WEBSCRAPER_KEY"
+echo "  - BRIGHTDATA_API"
+echo "  - PROXY_HOST"
+echo "  - SCRAPER_API_KEY"
 echo ""
-echo "Next steps:"
-echo "1. Run fix-aws-iam.sh to add IAM permissions"
-echo "2. Update the task definition to use the correct secret names"
-echo "3. Deploy via GitHub Actions"
+echo "Next: Run fix-aws-roles.sh to create the IAM roles, then trigger the deploy."
