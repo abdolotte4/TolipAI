@@ -9,7 +9,7 @@
 import { logger } from "../lib/logger";
 
 const ENGINE_URL = (process.env.SCRAPER_ENGINE_URL || "").replace(/\/$/, "");
-const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 55_000;
 
 export class ScraperEngineUnavailable extends Error {
   constructor(message: string) {

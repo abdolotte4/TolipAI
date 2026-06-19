@@ -289,8 +289,8 @@ router.get("/export", crmAuth, async (req, res) => {
 router.get("/", crmAuth, async (req, res) => {
   const { status, search, page = "1", limit = "20", archived } = req.query as Record<string, string | undefined>;
   const crmUser = req.crmUser!;
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
   const offset = (pageNum - 1) * limitNum;
 
   try {
@@ -384,7 +384,7 @@ router.post("/", crmAuth, async (req, res) => {
     res.status(403).json({ error: "VAs cannot create leads directly" });
     return;
   }
-  const campaignId = crmUser.campaignId ?? (req.body.campaignId ? parseInt(req.body.campaignId) : null);
+  const campaignId = crmUser.campaignId ?? (req.body.campaignId ? parseInt(req.body.campaignId, 10) : null);
   if (!campaignId && crmUser.role !== "super_admin") {
     res.status(400).json({ error: "Campaign is required" });
     return;
@@ -402,7 +402,7 @@ router.post("/", crmAuth, async (req, res) => {
       : parseMoney(data.mao);
 
     const [lead] = await db.insert(crmLeads).values({
-      campaignId: campaignId || (data.campaignId ? parseInt(data.campaignId) : null),
+      campaignId: campaignId || (data.campaignId ? parseInt(data.campaignId, 10) : null),
       sellerName: data.sellerName,
       phone: data.phone || null,
       email: data.email || null,
@@ -412,10 +412,10 @@ router.post("/", crmAuth, async (req, res) => {
       state: data.state || null,
       zip: data.zip || null,
       propertyType: data.propertyType || null,
-      beds: data.beds ? parseInt(data.beds) : null,
+      beds: data.beds ? parseInt(data.beds, 10) : null,
       baths: data.baths ? data.baths.toString() : null,
-      sqft: data.sqft ? parseInt(data.sqft) : null,
-      condition: data.condition ? parseInt(data.condition) : null,
+      sqft: data.sqft ? parseInt(data.sqft, 10) : null,
+      condition: data.condition ? parseInt(data.condition, 10) : null,
       occupancy: data.occupancy || null,
       isRental: data.isRental ?? false,
       rentalAmount: parseMoney(data.rentalAmount)?.toString() || null,
@@ -507,8 +507,8 @@ router.post("/bulk-import", crmAuth, async (req, res) => {
           propertyType: data.propertyType || null,
           beds: data.beds ? parseInt(data.beds, 10) : null,
           baths: data.baths ? data.baths.toString() : null,
-          sqft: data.sqft ? parseInt(data.sqft) : null,
-          condition: data.condition ? parseInt(data.condition) : null,
+          sqft: data.sqft ? parseInt(data.sqft, 10) : null,
+          condition: data.condition ? parseInt(data.condition, 10) : null,
           occupancy: data.occupancy || null,
           isRental: data.isRental === true || data.isRental === "true" || false,
           reasonForSelling: data.reasonForSelling || null,
@@ -520,7 +520,7 @@ router.post("/bulk-import", crmAuth, async (req, res) => {
           mao: mao?.toString() || null,
           notes: data.notes || null,
           status: data.status || "new",
-          assignedTo: data.assignedTo ? parseInt(data.assignedTo) : null,
+          assignedTo: data.assignedTo ? parseInt(data.assignedTo, 10) : null,
         },
       });
     } catch (err: any) {
@@ -630,7 +630,7 @@ router.post("/bulk-status", crmAuth, crmAdminOnly, async (req, res) => {
 });
 
 router.get("/:id", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
@@ -686,7 +686,7 @@ router.get("/:id", crmAuth, async (req, res) => {
 
 // GET /:id/full — lead + comps in a single round-trip (used by LeadDetail page)
 router.get("/:id/full", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
@@ -757,7 +757,7 @@ router.get("/:id/full", crmAuth, async (req, res) => {
 });
 
 router.patch("/:id", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const [existing] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
@@ -792,11 +792,11 @@ router.patch("/:id", crmAuth, async (req, res) => {
     fields.forEach(f => { if (data[f] !== undefined) updates[f] = data[f]; });
     if (data.isRental !== undefined) updates.isRental = data.isRental;
     if (data.rentalAmount !== undefined) updates.rentalAmount = parseMoney(data.rentalAmount)?.toString() || null;
-    if (data.beds !== undefined) updates.beds = data.beds ? parseInt(data.beds) : null;
+    if (data.beds !== undefined) updates.beds = data.beds ? parseInt(data.beds, 10) : null;
     if (data.baths !== undefined) updates.baths = data.baths ? data.baths.toString() : null;
-    if (data.sqft !== undefined) updates.sqft = data.sqft ? parseInt(data.sqft) : null;
-    if (data.yearBuilt !== undefined) updates.yearBuilt = data.yearBuilt ? parseInt(data.yearBuilt) : null;
-    if (data.condition !== undefined) updates.condition = data.condition ? parseInt(data.condition) : null;
+    if (data.sqft !== undefined) updates.sqft = data.sqft ? parseInt(data.sqft, 10) : null;
+    if (data.yearBuilt !== undefined) updates.yearBuilt = data.yearBuilt ? parseInt(data.yearBuilt, 10) : null;
+    if (data.condition !== undefined) updates.condition = data.condition ? parseInt(data.condition, 10) : null;
     if (data.askingPrice !== undefined) updates.askingPrice = parseMoney(data.askingPrice)?.toString() || null;
     if (data.currentValue !== undefined) updates.currentValue = parseMoney(data.currentValue)?.toString() || null;
     if (data.lastSalePrice !== undefined) updates.lastSalePrice = parseMoney(data.lastSalePrice)?.toString() || null;
@@ -906,7 +906,7 @@ router.patch("/:id", crmAuth, async (req, res) => {
 });
 
 router.delete("/:id", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const [existing] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
@@ -942,7 +942,7 @@ router.delete("/:id", crmAuth, async (req, res) => {
 
 // Archive a lead (admin or super_admin only)
 router.post("/:id/archive", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   if (crmUser.role !== "super_admin" && crmUser.role !== "admin") {
     res.status(403).json({ error: "Only admins can archive leads." });
@@ -964,7 +964,7 @@ router.post("/:id/archive", crmAuth, async (req, res) => {
 
 // Unarchive a lead (admin or super_admin only)
 router.post("/:id/unarchive", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   if (crmUser.role !== "super_admin" && crmUser.role !== "admin") {
     res.status(403).json({ error: "Only admins can unarchive leads." });
@@ -985,9 +985,9 @@ router.post("/:id/unarchive", crmAuth, async (req, res) => {
 });
 
 router.get("/:id/notes", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
-  const offset = parseInt(req.query.offset as string) || 0;
+  const id = parseInt(req.params.id as string, 10);
+  const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 50);
+  const offset = parseInt(req.query.offset as string, 10) || 0;
   try {
     const notes = await db.select({
       id: crmNotes.id, leadId: crmNotes.leadId, userId: crmNotes.userId,
@@ -1007,7 +1007,7 @@ router.get("/:id/notes", crmAuth, async (req, res) => {
 });
 
 router.post("/:id/notes", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id as string);
+  const leadId = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   const { content } = req.body;
   if (!content) {
@@ -1065,7 +1065,7 @@ router.post("/:id/notes", crmAuth, async (req, res) => {
 
 // Follow/unfollow a lead
 router.get("/:id/followers", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id as string);
+  const leadId = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const followers = await db.select().from(crmLeadFollowers).where(eq(crmLeadFollowers.leadId, leadId));
@@ -1077,7 +1077,7 @@ router.get("/:id/followers", crmAuth, async (req, res) => {
 });
 
 router.post("/:id/follow", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id as string);
+  const leadId = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const existing = await db.select().from(crmLeadFollowers).where(
@@ -1093,7 +1093,7 @@ router.post("/:id/follow", crmAuth, async (req, res) => {
 });
 
 router.delete("/:id/follow", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id as string);
+  const leadId = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     await db.delete(crmLeadFollowers).where(
@@ -1106,7 +1106,7 @@ router.delete("/:id/follow", crmAuth, async (req, res) => {
 });
 
 router.post("/:id/estimate", crmAuth, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
@@ -1148,7 +1148,7 @@ router.post("/:id/ai-repair-estimate", crmAuth, async (req, res) => {
     res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
     return;
   }
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   const { description } = req.body as { description: string };
 
@@ -1241,7 +1241,7 @@ Do not include markdown, only the raw JSON object.`;
 // POST /crm/leads/:id/fetch-property-data  — calls PropertyAPI.co to auto-fill lead
 // Cooldown rules: per-lead max 2 fetches w/ 5h gap; per-campaign 10min gap; super_admin bypasses all
 router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
-  const id = parseInt(req.params["id"] as string);
+  const id = parseInt(req.params["id"] as string, 10);
   const user = req.crmUser!;
   const isSuperAdmin = user?.role === "super_admin";
 
@@ -1350,7 +1350,7 @@ router.post("/:id/fetch-property-data", crmAuth, async (req, res) => {
 
 // POST /crm/leads/:id/skip-trace
 router.post("/:id/skip-trace", crmAuth, async (req, res) => {
-  const id = parseInt(req.params["id"] as string);
+  const id = parseInt(req.params["id"] as string, 10);
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
 
@@ -1463,7 +1463,7 @@ router.post("/:id/skip-trace", crmAuth, async (req, res) => {
 // POST /crm/leads/:id/comp-address-lookup — look up a single comparable property address (1 credit)
 // Returns property details to pre-fill the comp form
 router.post("/:id/comp-address-lookup", crmAuth, async (req, res) => {
-  const id = parseInt(req.params["id"] as string);
+  const id = parseInt(req.params["id"] as string, 10);
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
 
   const { address } = req.body;
@@ -1721,7 +1721,7 @@ async function fetchCompsViaScraperEngine(
 
 // POST /crm/leads/:id/fetch-comps — starts async export job, returns immediately
 router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
-  const id = parseInt(req.params["id"] as string);
+  const id = parseInt(req.params["id"] as string, 10);
   const crmUser = req.crmUser!;
   const isSuperAdmin = crmUser.role === "super_admin";
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
@@ -1926,7 +1926,7 @@ router.post("/:id/fetch-comps", crmAuth, async (req, res) => {
 
 // GET /crm/leads/:id/fetch-comps/poll?token=... — poll export status; finalize when done
 router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
-  const id = parseInt(req.params["id"] as string);
+  const id = parseInt(req.params["id"] as string, 10);
   const token = req.query["token"] as string;
   if (!token) { res.status(400).json({ error: "token required" }); return; }
 
@@ -2065,7 +2065,7 @@ router.get("/:id/fetch-comps/poll", crmAuth, async (req, res) => {
 // POST /crm/leads/:id/fetch-comps-ai — explicit AI comp generation (separate from ATTOM).
 // Persists comps + recalculated ARV/MAO to the DB so they don't disappear on refresh.
 router.post("/:id/fetch-comps-ai", crmAuth, async (req, res) => {
-  const id = parseInt(req.params["id"] as string);
+  const id = parseInt(req.params["id"] as string, 10);
   const crmUser = req.crmUser!;
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
 
@@ -2114,7 +2114,7 @@ router.post("/:id/detect-condition", crmAuth, async (req, res) => {
     res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
     return;
   }
-  const id = parseInt(req.params["id"] as string);
+  const id = parseInt(req.params["id"] as string, 10);
   const crmUser = req.crmUser!;
   if (!id) { res.status(400).json({ error: "Invalid lead ID" }); return; }
 
@@ -2240,7 +2240,7 @@ router.post("/:id/ai-deal-score", crmAuth, async (req, res) => {
     res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
     return;
   }
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
 
   try {
@@ -2352,7 +2352,7 @@ router.post("/:id/ai-seller-script", crmAuth, async (req, res) => {
     res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
     return;
   }
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
 
   try {
@@ -2435,7 +2435,7 @@ router.post("/:id/ai-offer-letter", crmAuth, async (req, res) => {
     res.status(503).json({ error: "AI service temporarily unavailable — too many recent failures. Try again in 60 seconds." });
     return;
   }
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params.id as string, 10);
   const crmUser = req.crmUser!;
   try {
     const [lead] = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1);
@@ -2581,7 +2581,7 @@ router.post("/:id/rentcast-valuation", crmAuth, async (req, res) => {
 // ─── Appointments CRUD (/crm/leads/:id/appointments) ──────────────────────────
 
 router.get("/:id/appointments", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id);
+  const leadId = parseInt(req.params.id, 10);
   if (isNaN(leadId)) { res.status(400).json({ error: "Invalid lead ID" }); return; }
   try {
     const rows = await db
@@ -2613,7 +2613,7 @@ router.get("/:id/appointments", crmAuth, async (req, res) => {
 });
 
 router.post("/:id/appointments", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id);
+  const leadId = parseInt(req.params.id, 10);
   if (isNaN(leadId)) { res.status(400).json({ error: "Invalid lead ID" }); return; }
   const crmUser = req.crmUser!;
   const { title, scheduledAt, durationMins, location, notes } = req.body;
@@ -2624,7 +2624,7 @@ router.post("/:id/appointments", crmAuth, async (req, res) => {
       campaignId: crmUser.campaignId ?? null,
       title: String(title),
       scheduledAt: new Date(scheduledAt),
-      durationMins: durationMins ? parseInt(durationMins) : 30,
+      durationMins: durationMins ? parseInt(durationMins, 10) : 30,
       location: location || null,
       notes: notes || null,
       status: "scheduled",
@@ -2638,14 +2638,14 @@ router.post("/:id/appointments", crmAuth, async (req, res) => {
 });
 
 router.patch("/:id/appointments/:aptId", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id);
-  const aptId = parseInt(req.params.aptId);
+  const leadId = parseInt(req.params.id, 10);
+  const aptId = parseInt(req.params.aptId, 10);
   if (isNaN(leadId) || isNaN(aptId)) { res.status(400).json({ error: "Invalid ID" }); return; }
   const { title, scheduledAt, durationMins, location, notes, status } = req.body;
   const updates: Partial<typeof crmAppointments.$inferInsert> = { updatedAt: new Date() };
   if (title) updates.title = String(title);
   if (scheduledAt) updates.scheduledAt = new Date(scheduledAt);
-  if (durationMins != null) updates.durationMins = parseInt(durationMins);
+  if (durationMins != null) updates.durationMins = parseInt(durationMins, 10);
   if (location !== undefined) updates.location = location || null;
   if (notes !== undefined) updates.notes = notes || null;
   if (status) updates.status = String(status);
@@ -2663,8 +2663,8 @@ router.patch("/:id/appointments/:aptId", crmAuth, async (req, res) => {
 });
 
 router.delete("/:id/appointments/:aptId", crmAuth, async (req, res) => {
-  const leadId = parseInt(req.params.id);
-  const aptId = parseInt(req.params.aptId);
+  const leadId = parseInt(req.params.id, 10);
+  const aptId = parseInt(req.params.aptId, 10);
   if (isNaN(leadId) || isNaN(aptId)) { res.status(400).json({ error: "Invalid ID" }); return; }
   try {
     await db.delete(crmAppointments).where(and(eq(crmAppointments.id, aptId), eq(crmAppointments.leadId, leadId)));
