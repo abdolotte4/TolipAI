@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# auto-push.sh — Automated periodic push to GitHub.
+# auto-push.sh — Automated periodic push to GitHub Agawish24/TolipAI.
 #
 # Run once in background:
 #   bash auto-push.sh &
 #
-# Push once and exit (e.g. from a cron job):
+# Push once and exit:
 #   bash auto-push.sh --once
 #
 # Custom interval (seconds):
 #   AUTO_PUSH_INTERVAL=900 bash auto-push.sh &   # every 15 min
 #
-# Requires GAWISH_GIT_TOKEN in Replit Secrets.
+# Requires GITHUB_PERSONAL_ACCESS_TOKEN in Replit Secrets.
 set -euo pipefail
 
-TOKEN="${GAWISH_GIT_TOKEN:-}"
+TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN:-}"
 if [ -z "${TOKEN}" ]; then
-  echo "ERROR: GAWISH_GIT_TOKEN is not set." >&2
+  echo "ERROR: GITHUB_PERSONAL_ACCESS_TOKEN is not set." >&2
   exit 1
 fi
 
@@ -32,7 +32,7 @@ push_once() {
   fi
   git commit -m "chore: auto-sync from Replit [${ts}]" 2>/dev/null || true
   if git push "${MONO_URL}" main 2>/dev/null; then
-    echo "[${ts}] ✓ Pushed to GitHub."
+    echo "[${ts}] ✓ Pushed to Agawish24/TolipAI."
   else
     echo "[${ts}] ✗ Push failed — will retry next interval."
   fi
@@ -43,7 +43,7 @@ if [ "${1:-}" = "--once" ]; then
   exit 0
 fi
 
-echo "[auto-push] Started — interval: ${INTERVAL}s. Press Ctrl-C to stop."
+echo "[auto-push] Started — interval: ${INTERVAL}s — target: Agawish24/TolipAI. Press Ctrl-C to stop."
 while true; do
   push_once
   sleep "${INTERVAL}"

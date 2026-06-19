@@ -19,6 +19,12 @@ on:
         description: 'Image tag to deploy (defaults to git SHA)'
         required: false
         default: ''
+      force_rebuild_base:
+        description: 'Force rebuild the slow base image (~15 min)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 env:
   AWS_REGION: us-east-1
@@ -35,12 +41,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # 60 min: base build if needed (~15 min) + app image (~3 min) + ECS update (~2 min)
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (static keys)
+      # Static key auth — GitHub Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ACCOUNT_ID
+      # (OIDC role-to-assume removed — no OIDC identity provider configured in this AWS account)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -65,26 +75,42 @@ jobs:
         with:
           platforms: arm64
 
-      - name: Set up Docker Buildx (ARM64)
+      # driver omitted (defaults to docker-container) — required for multi-platform push
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           platforms: linux/arm64
-          driver: docker
 
+      # Pull the pre-built base image from ECR (fast path, ~5 s).
+      # Only builds from scratch when the image doesn't exist yet or force_rebuild_base=true.
+      # First-time base build takes ~15 min via QEMU — use the build-base-scraper.yml
+      # workflow to pre-build it before the first deploy.
       - name: Pull or build base image
+        id: base-image
+        env:
+          BASE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest
+          FORCE: ${{ github.event.inputs.force_rebuild_base || 'false' }}
         run: |
-          BASE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest"
-          if docker pull "$BASE" 2>/dev/null; then
-            echo "Base image pulled successfully."
+          if [ "$FORCE" != "true" ] && docker pull "$BASE" 2>/dev/null; then
+            echo "Base image pulled from ECR — fast path."
+            echo "built=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Base image not found in ECR — building with buildx (ARM64 via QEMU)..."
-            docker buildx build -f artifacts/TolipAI-scraper-engine/Dockerfile.base --platform linux/arm64 -t "$BASE" --push artifacts/TolipAI-scraper-engine
-            echo "Base image built and pushed."
+            echo "Building base image from scratch (ARM64 via QEMU — ~15 min)..."
+            docker buildx build \
+              --platform linux/arm64 \
+              --file artifacts/TolipAI-scraper-engine/Dockerfile.base \
+              --tag "$BASE" \
+              --push \
+              --cache-from type=gha,scope=base-arm64 \
+              --cache-to  type=gha,mode=max,scope=base-arm64 \
+              artifacts/TolipAI-scraper-engine
+            echo "built=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push Docker image
+      # App image only copies code onto the pre-built base → ~2-3 min
+      - name: Build and push app image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: artifacts/TolipAI-scraper-engine
           file: artifacts/TolipAI-scraper-engine/Dockerfile.fargate
@@ -96,14 +122,15 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image-tag.outputs.tag }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           cache-from: type=gha,scope=deploy-arm64
-          cache-to: type=gha,mode=max,scope=deploy-arm64
+          cache-to:   type=gha,mode=max,scope=deploy-arm64
 
       - name: Substitute ACCOUNT_ID in task definition
         run: |
           sed "s|ACCOUNT_ID|${{ secrets.AWS_ACCOUNT_ID }}|g" \
-            ${{ env.TASK_DEFINITION }} > /tmp/task-def-resolved.json
+            "${{ env.TASK_DEFINITION }}" > /tmp/task-def-resolved.json
+          echo "Secrets injected: $(jq '.containerDefinitions[0].secrets | length' /tmp/task-def-resolved.json)"
 
-      - name: Update image URI in task definition
+      - name: Render task definition with new image
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -111,23 +138,61 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image-tag.outputs.tag }}
 
+      # wait-for-service-stability: false — avoids the 30+ min hang that occurs when
+      # tasks crash-loop (ECS never reaches stable, job exceeds timeout and is cancelled).
+      # A dedicated smoke-test step below checks health after 90 s.
       - name: Register task definition and update ECS service
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+          wait-for-service-stability: false
+
+      # Give ECS 90 s to pull the image and start the container, then check running count.
+      - name: Wait for ECS task to start
+        run: sleep 90
+
+      - name: Smoke test — verify running task count
+        run: |
+          RUNNING=$(aws ecs describe-services \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ env.ECS_SERVICE }}" \
+            --query 'services[0].runningCount' \
+            --output text)
+          echo "Running tasks: $RUNNING"
+          aws ecs describe-services \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ env.ECS_SERVICE }}" \
+            --query 'services[0].{desired:desiredCount,running:runningCount,pending:pendingCount}' \
+            --output table
+          if [ "$RUNNING" -lt 1 ]; then
+            echo "::error::No running tasks after 90 s — fetching stopped-task diagnostics..."
+            STOPPED=$(aws ecs list-tasks \
+              --cluster "${{ env.ECS_CLUSTER }}" \
+              --desired-status STOPPED \
+              --query 'taskArns[0]' \
+              --output text 2>/dev/null || true)
+            if [ -n "$STOPPED" ] && [ "$STOPPED" != "None" ]; then
+              aws ecs describe-tasks \
+                --cluster "${{ env.ECS_CLUSTER }}" \
+                --tasks "$STOPPED" \
+                --query 'tasks[0].containers[*].{name:name,exitCode:exitCode,reason:reason}' \
+                --output table
+            fi
+            exit 1
+          fi
 
       - name: Summary
+        if: always()
         run: |
-          echo "### Scraper Engine Deployed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| Image tag | \`${{ steps.image-tag.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Base image | \`${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Platform  | \`linux/arm64 (Graviton3)\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Cluster   | \`${{ env.ECS_CLUSTER }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Service   | \`${{ env.ECS_SERVICE }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Region    | \`${{ env.AWS_REGION }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "### Scraper Engine Deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image tag     | \`${{ steps.image-tag.outputs.tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Base rebuilt  | \`${{ steps.base-image.outputs.built }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platform      | \`linux/arm64 (Graviton3)\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cluster       | \`${{ env.ECS_CLUSTER }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Service       | \`${{ env.ECS_SERVICE }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Region        | \`${{ env.AWS_REGION }}\` |" >> "$GITHUB_STEP_SUMMARY"

@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# push-github.sh — Push TolipAI monorepo and Python-Worker subtree to GitHub.
+# push-github.sh — Push TolipAI monorepo to GitHub Agawish24/TolipAI.
 # Usage:   bash push-github.sh
 #          bash push-github.sh "feat: my commit message"
-# Requires GAWISH_GIT_TOKEN to be set in Replit Secrets.
+# Requires GITHUB_PERSONAL_ACCESS_TOKEN to be set in Replit Secrets.
 
 set -e
 
-TOKEN="${GAWISH_GIT_TOKEN:-}"
+TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN:-}"
 if [ -z "${TOKEN}" ]; then
-  echo "ERROR: GAWISH_GIT_TOKEN is not set. Add it in Replit → Secrets." >&2
+  echo "ERROR: GITHUB_PERSONAL_ACCESS_TOKEN is not set. Add it in Replit → Secrets." >&2
   exit 1
 fi
 
 MSG="${1:-"chore: sync from Replit [$(date '+%Y-%m-%d %H:%M')]"}"
 
-MONO_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
-WORKER_URL="https://${TOKEN}@github.com/Agawish24/Python-Worker.git"
+TolipAI_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
 
 # Replit sets GIT_ASKPASS=replit-git-askpass which intercepts every push and
 # prompts for a password even when credentials are embedded in the URL.
@@ -38,14 +37,8 @@ fi
 
 echo ""
 echo "=== Pushing monorepo → Agawish24/TolipAI (main) ==="
-$GIT push "${MONO_URL}" main
+$GIT push "${TolipAI_URL}" main
 echo "✓ Monorepo push complete."
-
-echo ""
-echo "=== Splitting subtree: artifacts/TolipAI-scraper-engine → Python-Worker (main) ==="
-SHA=$(git subtree split --prefix=artifacts/TolipAI-scraper-engine main)
-$GIT push "${WORKER_URL}" "${SHA}:main" --force
-echo "✓ Subtree push complete."
 
 echo ""
 echo "✓ All pushes finished successfully."

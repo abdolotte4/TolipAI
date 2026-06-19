@@ -181,6 +181,16 @@ async function runDbStartupTasks(): Promise<void> {
       desc: "crm_users.password_plain",
       sql: `ALTER TABLE crm_users ADD COLUMN IF NOT EXISTS password_plain TEXT`,
     },
+    // tools_skip_trace_jobs.created_at — added after initial schema push
+    {
+      desc: "tools_skip_trace_jobs.created_at",
+      sql: `ALTER TABLE tools_skip_trace_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()`,
+    },
+    // tools_distressed_jobs.created_at — added after initial schema push
+    {
+      desc: "tools_distressed_jobs.created_at",
+      sql: `ALTER TABLE tools_distressed_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()`,
+    },
     // tools_distressed_jobs and tools_skip_trace_jobs — DB has nullable columns, convert notNull constraints
     // (non-destructive: just ensure the column exists with the right type)
     {

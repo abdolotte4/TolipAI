@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 import { db } from "@workspace/db";
 import { crmUsers, crmCampaigns } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -9,7 +10,15 @@ import { logger } from "../../lib/logger";
 
 const router = Router();
 
-router.post("/auth/login", async (req, res) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please wait 15 minutes and try again." },
+});
+
+router.post("/auth/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body ?? {};
   if (!email || !password) {
     res.status(400).json({ error: "Email and password required" });
