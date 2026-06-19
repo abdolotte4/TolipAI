@@ -30,7 +30,7 @@ type Buyer = {
 
 type JobStatus = {
   id: string;
-  status: "queued" | "running" | "completed" | "failed" | string;
+  status: "queued" | "running" | "completed" | "done" | "failed" | "completed_no_results" | string;
   progress?: number;
   message?: string;
   error?: string | null;
@@ -138,7 +138,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
   // ── Poll job ──
   useEffect(() => {
     if (!jobId) return;
-    if (job?.status === "completed" || job?.status === "failed") {
+    if (job?.status === "completed" || job?.status === "done" || job?.status === "failed" || job?.status === "completed_no_results") {
       if (pollRef.current) clearInterval(pollRef.current);
       return;
     }
@@ -148,10 +148,10 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
         if (!res.ok) return;
         const data: JobStatus = await res.json();
         setJob(data);
-        if (data.status === "completed") {
+        if (data.status === "completed" || data.status === "done") {
           if (pollRef.current) clearInterval(pollRef.current);
           await refreshList(jobId);
-        } else if (data.status === "failed") {
+        } else if (data.status === "failed" || data.status === "completed_no_results") {
           if (pollRef.current) clearInterval(pollRef.current);
           setError(data.error || "Search failed.");
         }
@@ -333,7 +333,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
         <div className="px-5 py-3 border-b border-border bg-secondary/20">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="text-muted-foreground">
-              {job.message || (job.status === "completed" ? "Done" : "Working…")}
+              {job.message || (job.status === "completed" || job.status === "done" ? "Done" : "Working…")}
             </span>
             <span className="text-muted-foreground tabular-nums">
               {Math.round(job.progress ?? 0)}%
@@ -434,7 +434,7 @@ export function CashBuyerMatchPanel({ leadId, leadAddress }: { leadId: string; l
           </div>
         )}
 
-        {job?.status === "completed" && (
+        {job?.status === "completed" || job?.status === "done" && (
           <div className="mt-4 inline-flex items-center gap-2 text-xs text-emerald-400">
             <CheckCircle2 className="w-3.5 h-3.5" /> Search complete — {buyers.length} buyer(s) matched.
           </div>
