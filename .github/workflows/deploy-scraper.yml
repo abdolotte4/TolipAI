@@ -37,19 +37,17 @@ env:
 
 jobs:
   deploy:
-    name: Build, Push & Deploy (ARM64)
+    name: Build, Push & Deploy (AMD64)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    # 60 min: base build if needed (~15 min) + app image (~3 min) + ECS update (~2 min)
+    # 60 min: base build if needed (~5 min) + app image (~2 min) + ECS update (~2 min)
     timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Static key auth — GitHub Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ACCOUNT_ID
-      # (OIDC role-to-assume removed — no OIDC identity provider configured in this AWS account)
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -70,21 +68,9 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU (for ARM64 on AMD64)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      # driver omitted (defaults to docker-container) — required for multi-platform push
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          platforms: linux/arm64
 
-      # Pull the pre-built base image from ECR (fast path, ~5 s).
-      # Only builds from scratch when the image doesn't exist yet or force_rebuild_base=true.
-      # First-time base build takes ~15 min via QEMU — use the build-base-scraper.yml
-      # workflow to pre-build it before the first deploy.
       - name: Pull or build base image
         id: base-image
         env:
@@ -95,34 +81,31 @@ jobs:
             echo "Base image pulled from ECR — fast path."
             echo "built=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Building base image from scratch (ARM64 via QEMU — ~15 min)..."
+            echo "Building base image from scratch (AMD64 native — ~5 min)..."
             docker buildx build \
-              --platform linux/arm64 \
               --file artifacts/TolipAI-scraper-engine/Dockerfile.base \
               --tag "$BASE" \
               --push \
-              --cache-from type=gha,scope=base-arm64 \
-              --cache-to  type=gha,mode=max,scope=base-arm64 \
+              --cache-from type=gha,scope=base-amd64 \
+              --cache-to  type=gha,mode=max,scope=base-amd64 \
               artifacts/TolipAI-scraper-engine
             echo "built=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # App image only copies code onto the pre-built base → ~2-3 min
       - name: Build and push app image
         id: build
         uses: docker/build-push-action@v6
         with:
           context: artifacts/TolipAI-scraper-engine
           file: artifacts/TolipAI-scraper-engine/Dockerfile.fargate
-          platforms: linux/arm64
           push: true
           build-args: |
             BASE_IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BASE_REPOSITORY }}:latest
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.image-tag.outputs.tag }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-          cache-from: type=gha,scope=deploy-arm64
-          cache-to:   type=gha,mode=max,scope=deploy-arm64
+          cache-from: type=gha,scope=deploy-amd64
+          cache-to:   type=gha,mode=max,scope=deploy-amd64
 
       - name: Substitute ACCOUNT_ID in task definition
         run: |
