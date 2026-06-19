@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# push-github.sh — Push Digor monorepo to GitHub Agawish24/Digor.
+# push-github.sh — Push TolipAI monorepo to GitHub Agawish24/TolipAI.
 # Usage:   bash push-github.sh
 #          bash push-github.sh "feat: my commit message"
 # Requires GITHUB_PERSONAL_ACCESS_TOKEN to be set in Replit Secrets.
@@ -14,7 +14,7 @@ fi
 
 MSG="${1:-"chore: sync from Replit [$(date '+%Y-%m-%d %H:%M')]"}"
 
-DIGOR_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
+TolipAI_URL="https://${TOKEN}@github.com/Agawish24/TolipAI.git"
 
 # Replit sets GIT_ASKPASS=replit-git-askpass which intercepts every push and
 # prompts for a password even when credentials are embedded in the URL.
@@ -37,7 +37,7 @@ fi
 
 echo ""
 echo "=== Pushing monorepo → Agawish24/TolipAI (main) ==="
-$GIT push "${DIGOR_URL}" main
+$GIT push "${TolipAI_URL}" main
 echo "✓ Monorepo push complete."
 
 echo ""
