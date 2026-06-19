@@ -7,6 +7,7 @@
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
+import crypto from "crypto";
 import { db } from "@workspace/db";
 import { csvCell } from "../lib/textUtils";
 import { cashBuyerMatches, crmLeads, crmCampaigns } from "@workspace/db/schema";
@@ -28,9 +29,17 @@ type ScraperService = "propelio" | "propwire";
 function crmOrPinAuth(req: Request, res: Response, next: () => void): void {
   const toolsPin = process.env.TOOLS_PIN;
   const provided = req.headers["x-tools-pin"] as string | undefined;
-  if (toolsPin && provided && provided.trim() === toolsPin.trim()) {
-    (req as any).authType = "pin";
-    return next();
+  if (toolsPin && provided) {
+    try {
+      const providedBuf = Buffer.from(provided.trim());
+      const pinBuf = Buffer.from(toolsPin.trim());
+      if (providedBuf.length === pinBuf.length && crypto.timingSafeEqual(providedBuf, pinBuf)) {
+        (req as any).authType = "pin";
+        return next();
+      }
+    } catch {
+      // timingSafeEqual error — fall through to JWT
+    }
   }
   (req as any).authType = "jwt";
   return crmAuth(req, res, next);
@@ -740,7 +749,7 @@ router.all("/scraper-engine/{*path}", crmOrPinAuth, async (req: Request, res: Re
     return;
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 180_000);
+  const timer = setTimeout(() => controller.abort(), 55_000);
   const apiKey = process.env.WEBSCRAPER_API_KEY;
   try {
     const upstream = await fetch(`${_ENGINE_URL}${subPath}`, {
