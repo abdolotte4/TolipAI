@@ -495,7 +495,7 @@ router.post("/bulk-import", crmAuth, async (req, res) => {
       toInsert.push({
         rowIdx: i,
         values: {
-          campaignId: campaignId ?? (data.campaignId ? parseInt(data.campaignId) : null),
+          campaignId: campaignId ?? (data.campaignId ? parseInt(data.campaignId, 10) : null),
           sellerName: data.sellerName || data.name || "Unknown",
           phone: data.phone || null,
           email: data.email || null,
@@ -505,7 +505,7 @@ router.post("/bulk-import", crmAuth, async (req, res) => {
           state: data.state || null,
           zip: data.zip || null,
           propertyType: data.propertyType || null,
-          beds: data.beds ? parseInt(data.beds) : null,
+          beds: data.beds ? parseInt(data.beds, 10) : null,
           baths: data.baths ? data.baths.toString() : null,
           sqft: data.sqft ? parseInt(data.sqft) : null,
           condition: data.condition ? parseInt(data.condition) : null,

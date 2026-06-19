@@ -377,7 +377,10 @@ export default function SatelliteDFD() {
 
       while (Date.now() < deadline) {
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        await new Promise(r => {
+          const t = setTimeout(r, POLL_INTERVAL_MS);
+          signal.addEventListener("abort", () => clearTimeout(t), { once: true });
+        });
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 
         const pollResp = await fetch(`${API_BASE}/jobs/${jobId}`, {

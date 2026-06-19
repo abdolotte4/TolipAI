@@ -968,7 +968,9 @@ export default function LeadDetail() {
   const erc = Number(formData.estimatedRepairCost) || 0;
   // Mirror server-side getMaoDiscount: ≤3→70%, ≤6→80%, >6→90%
   const conditionNum = Number(formData.condition) || 0;
-  const discountFactor = conditionNum <= 0 ? 0.80 : conditionNum <= 3 ? 0.70 : conditionNum <= 6 ? 0.80 : 0.90;
+  // Map 1-5 UI scale to 1-10 server scale so excellent (5) gets 90%
+  const serverCondition = conditionNum > 0 ? Math.round(conditionNum * 2) : 0;
+  const discountFactor = serverCondition <= 0 ? 0.80 : serverCondition <= 3 ? 0.70 : serverCondition <= 6 ? 0.80 : 0.90;
   const discountPct = Math.round(discountFactor * 100);
   const mao = arv > 0 ? Math.max(0, Math.round(arv * discountFactor - erc)) : 0;
 

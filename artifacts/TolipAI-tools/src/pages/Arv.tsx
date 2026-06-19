@@ -68,7 +68,8 @@ export default function ArvCalculator() {
       ...autoForm,
       repairCost: Number(autoForm.repairCost),
       maxComps: Number(autoForm.maxComps),
-      miles: Number(autoForm.miles)
+      miles: Number(autoForm.miles),
+      excludeDistressed: autoForm.excludeDistressed
     }, {
       onSuccess: (data) => setResult(data)
     });

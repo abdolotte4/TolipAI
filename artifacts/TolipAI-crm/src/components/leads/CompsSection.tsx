@@ -42,7 +42,11 @@ export default function CompsSection({ leadId, lead }: { leadId: number; lead: a
       .filter((c: any) => c.salePrice > 0 && c.sqft > 0)
       .map((c: any) => c.salePrice / c.sqft)
       .sort((a: number, b: number) => a - b);
-    return rates.length > 0 ? rates[Math.floor(rates.length / 2)] : 50;
+    if (rates.length === 0) return 50;
+    const mid = Math.floor(rates.length / 2);
+    return rates.length % 2 === 0
+      ? Math.round((rates[mid - 1] + rates[mid]) / 2)
+      : rates[mid];
   }, [comps]);
 
   function calcBreakdown(comp: any) {
@@ -238,7 +242,8 @@ export default function CompsSection({ leadId, lead }: { leadId: number; lead: a
 
   useEffect(() => {
     if (!compsPolling) return;
-    const interval = setInterval(async () => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    interval = setInterval(async () => {
       try {
         const resp = await fetch(
           `/api/crm/leads/${leadId}/fetch-comps/poll?token=${encodeURIComponent(compsPolling.jobToken)}`,
@@ -246,11 +251,13 @@ export default function CompsSection({ leadId, lead }: { leadId: number; lead: a
         );
         const data = await resp.json();
         if (!resp.ok) {
+          if (interval) clearInterval(interval);
           setCompsPolling(null);
           toast({ title: "Fetch comps failed", description: data.error ?? "Export failed", variant: "destructive" });
           return;
         }
         if (data.status === "done") {
+          if (interval) clearInterval(interval);
           setCompsPolling(null);
           applyFetchCompsResult(data);
         }
@@ -258,7 +265,7 @@ export default function CompsSection({ leadId, lead }: { leadId: number; lead: a
         // network blip — keep polling
       }
     }, 2000);
-    return () => clearInterval(interval);
+    return () => { if (interval) clearInterval(interval); };
   }, [compsPolling?.jobToken, leadId]);
 
   const createMutation = useCrmCreateComp({

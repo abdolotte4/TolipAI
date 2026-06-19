@@ -138,6 +138,66 @@
         {
           "name": "GOOGLE_MAPS_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/google-maps-key"
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/jwt-secret"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/redis-url"
+        },
+        {
+          "name": "S3_CACHE_BUCKET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/s3-cache-bucket"
+        },
+        {
+          "name": "WEBSCRAPER_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/webscraper-key"
+        },
+        {
+          "name": "OPENROUTER_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/openrouter-key"
+        },
+        {
+          "name": "GROQ_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/groq-key"
+        },
+        {
+          "name": "OPENAI_BASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/openai-base-url"
+        },
+        {
+          "name": "AI_MODEL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ai-model"
+        },
+        {
+          "name": "MOONSHOT_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/moonshot-key"
+        },
+        {
+          "name": "NVIDIA_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/nvidia-key"
+        },
+        {
+          "name": "BRIGHTDATA_API",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/brightdata-api"
+        },
+        {
+          "name": "PROXY_HOST",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/proxy-host"
+        },
+        {
+          "name": "CEREBRAS_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/cerebras-key"
+        },
+        {
+          "name": "GEMINI_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/gemini-key"
+        },
+        {
+          "name": "PEOPLEDATALABS_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/peopledatalabs-key"
         }
       ],
       "logConfiguration": {

@@ -23,42 +23,51 @@ async function request<T = any>(
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<T> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...rest } = init;
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const apiKey = process.env.WEBSCRAPER_API_KEY;
-    const res = await fetch(`${ENGINE_URL}${path}`, {
-      ...rest,
-      signal: controller.signal,
-      headers: {
-        "content-type": "application/json",
-        ...(apiKey ? { "X-API-Key": apiKey } : {}),
-        ...(rest.headers || {}),
-      },
-    });
-    const text = await res.text();
-    let body: any = null;
-    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-    if (!res.ok) {
-      const detail = body?.detail || body?.error || (typeof body === "string" ? body : "Engine error");
-      const err = new Error(`scraper-engine ${res.status}: ${detail}`);
-      (err as any).status = res.status;
-      throw err;
+  let lastError: any;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const apiKey = process.env.WEBSCRAPER_API_KEY;
+      const res = await fetch(`${ENGINE_URL}${path}`, {
+        ...rest,
+        signal: controller.signal,
+        headers: {
+          "content-type": "application/json",
+          ...(apiKey ? { "X-API-Key": apiKey } : {}),
+          ...(rest.headers || {}),
+        },
+      });
+      const text = await res.text();
+      let body: any = null;
+      try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+      if (!res.ok) {
+        const detail = body?.detail || body?.error || (typeof body === "string" ? body : "Engine error");
+        const err = new Error(`scraper-engine ${res.status}: ${detail}`);
+        (err as any).status = res.status;
+        throw err;
+      }
+      return body as T;
+    } catch (e: any) {
+      lastError = e;
+      if (e?.name === "AbortError" && attempt < 3) {
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+        continue;
+      }
+      if ((e?.cause?.code === "ECONNREFUSED" || /ECONNREFUSED|fetch failed/.test(e?.message || "")) && attempt < 3) {
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+        continue;
+      }
+      if (e?.status >= 500 && attempt < 3) {
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+        continue;
+      }
+      throw e;
+    } finally {
+      clearTimeout(t);
     }
-    return body as T;
-  } catch (e: any) {
-    if (e?.name === "AbortError") {
-      throw new ScraperEngineUnavailable(`Engine timeout after ${timeoutMs}ms (${path})`);
-    }
-    if (e?.cause?.code === "ECONNREFUSED" || /ECONNREFUSED|fetch failed/.test(e?.message || "")) {
-      throw new ScraperEngineUnavailable(
-        `Cannot reach scraper engine${ENGINE_URL ? ` at ${ENGINE_URL}` : ""}. Set SCRAPER_ENGINE_URL to enable.`,
-      );
-    }
-    throw e;
-  } finally {
-    clearTimeout(t);
   }
+  throw lastError;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -321,7 +330,7 @@ export const scraperEngine = {
         max_results: req.maxResults ?? 50,
         use_ai_scoring: req.useAiScoring ?? true,
       }),
-      timeoutMs: 180_000,
+      timeoutMs: 55_000,
     });
   },
 

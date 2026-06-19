@@ -46,7 +46,17 @@ function requirePin(req: Request, res: Response, next: NextFunction) {
   const toolsPin = process.env.TOOLS_PIN;
   if (!toolsPin) { res.status(503).json({ error: "TOOLS_PIN not configured" }); return; }
   const provided = (req.headers["x-tools-pin"] as string | undefined) || (req.body as Record<string, unknown>)?.pin as string | undefined;
-  if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN" }); return; }
+  if (!provided) { res.status(403).json({ error: "Invalid PIN" }); return; }
+  // Timing-safe comparison to prevent side-channel PIN discovery
+  try {
+    const providedBuf = Buffer.from(provided.trim());
+    const pinBuf = Buffer.from(toolsPin.trim());
+    if (providedBuf.length !== pinBuf.length || !crypto.timingSafeEqual(providedBuf, pinBuf)) {
+      res.status(403).json({ error: "Invalid PIN" }); return;
+    }
+  } catch {
+    res.status(403).json({ error: "Invalid PIN" }); return;
+  }
   next();
 }
 
@@ -58,7 +68,16 @@ router.post("/tools/auth/verify", (req, res) => {
   const fromHeader = req.headers["x-tools-pin"] as string | undefined;
   const fromBody   = (req.body as Record<string, unknown>)?.pin as string | undefined;
   const provided   = fromHeader || fromBody;
-  if (!provided || provided.trim() !== toolsPin.trim()) { res.status(403).json({ error: "Invalid PIN" }); return; }
+  if (!provided) { res.status(403).json({ error: "Invalid PIN" }); return; }
+  try {
+    const providedBuf = Buffer.from(provided.trim());
+    const pinBuf = Buffer.from(toolsPin.trim());
+    if (providedBuf.length !== pinBuf.length || !crypto.timingSafeEqual(providedBuf, pinBuf)) {
+      res.status(403).json({ error: "Invalid PIN" }); return;
+    }
+  } catch {
+    res.status(403).json({ error: "Invalid PIN" }); return;
+  }
   res.json({
     success: true,
     attomConfigured: hasAttomKey(),
