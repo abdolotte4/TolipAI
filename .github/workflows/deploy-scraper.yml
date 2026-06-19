@@ -61,6 +61,11 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU (for ARM64 on AMD64)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Set up Docker Buildx (ARM64)
         uses: docker/setup-buildx-action@v3
         with:
@@ -73,9 +78,8 @@ jobs:
           if docker pull "$BASE"; then
             echo "Base image pulled successfully."
           else
-            echo "Base image not found in ECR — building from Dockerfile.base..."
-            docker build -f artifacts/TolipAI-scraper-engine/Dockerfile.base --platform linux/arm64 -t "$BASE" artifacts/TolipAI-scraper-engine
-            docker push "$BASE"
+            echo "Base image not found in ECR — building with buildx (ARM64 via QEMU)..."
+            docker buildx build -f artifacts/TolipAI-scraper-engine/Dockerfile.base --platform linux/arm64 -t "$BASE" --push artifacts/TolipAI-scraper-engine
             echo "Base image built and pushed."
           fi
 
