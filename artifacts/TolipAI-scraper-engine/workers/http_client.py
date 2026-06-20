@@ -161,11 +161,15 @@ async def fetch_direct(url: str, *, use_proxy: bool = True, verify_ssl: bool = T
     if proxy is None and _persistent_client and not _persistent_client.is_closed:
         return await _do_request(_persistent_client)
 
+    # When using a proxy, always pass verify=False (not an ssl context object).
+    # httpx >= 0.28: passing an ssl.SSLContext via verify= when a proxy is set
+    # can still fail to suppress certificate verification on the proxy CONNECT
+    # tunnel.  verify=False is the only reliable flag that disables it globally.
     async with httpx.AsyncClient(
         timeout=settings.request_timeout,
         proxy=proxy,
         follow_redirects=True,
-        verify=ssl_context,
+        verify=False,
     ) as cli:
         return await _do_request(cli)
 

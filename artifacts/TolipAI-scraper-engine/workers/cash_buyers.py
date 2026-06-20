@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 
 from . import db
 from .llm import classify_buyer_type, score_buyer_match_rule_based
-from .scrapers import redfin, zillow
+from .scrapers import homeharvest_scraper, redfin, zillow
 from .scrapers.county_deeds import fetch_recent_deeds
 from .skip_trace import trace as skip_trace
 
@@ -175,6 +175,38 @@ async def find_cash_buyers(
             city,
             state,
         )
+
+    # ── Tier 4: HomeHarvest fallback — if Zillow + Redfin + Deeds all returned 0 ──
+    # HomeHarvest scrapes Zillow / Realtor.com directly using a maintained library
+    # and does NOT go through our BrightData proxy (avoids the SSL tunnel issue).
+    # It is the most reliable fallback when proxy-based scraping is blocked.
+    if not all_sales and (city or zip_code):
+        if progress_cb:
+            await progress_cb(45, "Proxy sources returned 0 — trying HomeHarvest fallback…")
+        log.info("Cash buyers: Zillow/Redfin/Deeds all empty — falling back to HomeHarvest for %s %s", city, state)
+        try:
+            location = zip_code or f"{city}, {state}"
+            hh_sold = await homeharvest_scraper.scrape_foreclosures(
+                city=location,
+                state="" if zip_code else state,
+                listing_type="sold",
+                limit=80,
+            )
+            hh_active = await homeharvest_scraper.scrape_foreclosures(
+                city=location,
+                state="" if zip_code else state,
+                listing_type="for_sale",
+                limit=40,
+            )
+            hh_results = hh_sold + hh_active
+            # Normalise HomeHarvest fields to match Zillow/Redfin shape
+            for h in hh_results:
+                if "list_price" in h and "price" not in h:
+                    h["price"] = h["list_price"]
+            all_sales = hh_results
+            log.info("HomeHarvest fallback: %d records (%d sold + %d active)", len(hh_results), len(hh_sold), len(hh_active))
+        except Exception as e:
+            log.warning("HomeHarvest fallback failed: %s", e)
 
     if not all_sales:
         log.warning(

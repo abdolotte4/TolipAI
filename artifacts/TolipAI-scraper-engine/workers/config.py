@@ -125,19 +125,30 @@ class Settings:
         return user
 
     def proxy_url(self) -> Optional[str]:
-        """Return a residential proxy URL if configured."""
+        """Return a residential proxy URL if configured.
+
+        IMPORTANT: Use http:// (not https://) for the proxy scheme.
+        When httpx/aiohttp see https:// as the proxy URL, they try to SSL-handshake
+        with the proxy server itself — BrightData presents a self-signed cert on that
+        connection, causing [SSL: CERTIFICATE_VERIFY_FAILED] and dropping every
+        request silently.  The http:// scheme uses a plain CONNECT tunnel; the proxy
+        still forwards HTTPS traffic to the target correctly.
+        """
         if self.brightdata_configured():
             user = self._brightdata_username_full()
-            return f"https://{user}:{self.brightdata_password}@{self.brightdata_host}:{self.brightdata_port}"
+            return f"http://{user}:{self.brightdata_password}@{self.brightdata_host}:{self.brightdata_port}"
         if self.oxylabs_user and self.oxylabs_pass:
             return f"http://{self.oxylabs_user}:{self.oxylabs_pass}@unblock.oxylabs.io:60000"
         return None
 
     def proxy_dict(self) -> Optional[dict]:
-        """Return a {'server', 'username', 'password'} dict for Playwright / Crawl4AI."""
+        """Return a {'server', 'username', 'password'} dict for Playwright / Crawl4AI.
+
+        Uses http:// for the server scheme — see proxy_url() for rationale.
+        """
         if self.brightdata_configured():
             return {
-                "server": f"https://{self.brightdata_host}:{self.brightdata_port}",
+                "server": f"http://{self.brightdata_host}:{self.brightdata_port}",
                 "username": self._brightdata_username_full(),
                 "password": self.brightdata_password or "",
             }

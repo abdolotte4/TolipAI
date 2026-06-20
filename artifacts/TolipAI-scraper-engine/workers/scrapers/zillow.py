@@ -37,6 +37,106 @@ def _parse_next_data(html: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _extract_listings_from_data(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Extract listing results from Zillow's __NEXT_DATA__ JSON.
+
+    Zillow has changed their internal data structure multiple times through
+    2024-2025.  This function tries all known paths in priority order so
+    the scraper stays resilient across deployments.
+
+    Known paths (newest first):
+      A. props.pageProps.searchPageState.cat1.searchResults.listResults
+      B. props.pageProps.initialData.searchPageState.cat1.searchResults.listResults
+      C. cat1.searchResults.listResults (top-level — older pages)
+      D. props.pageProps.searchPageState.cat2.searchResults.listResults (map-pin results)
+      E. Flatten the entire JSON looking for any key named "listResults"
+    """
+    candidates: List[List[Dict[str, Any]]] = []
+
+    # Path A — most common in 2024-2025
+    try:
+        r = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("searchPageState", {})
+            .get("cat1", {})
+            .get("searchResults", {})
+            .get("listResults") or []
+        )
+        if r:
+            candidates.append(r)
+    except Exception:
+        pass
+
+    # Path B — alternate initialData key
+    try:
+        r = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("initialData", {})
+            .get("searchPageState", {})
+            .get("cat1", {})
+            .get("searchResults", {})
+            .get("listResults") or []
+        )
+        if r:
+            candidates.append(r)
+    except Exception:
+        pass
+
+    # Path C — top-level cat1 (older pages)
+    try:
+        r = (data.get("cat1") or {}).get("searchResults", {}).get("listResults") or []
+        if r:
+            candidates.append(r)
+    except Exception:
+        pass
+
+    # Path D — cat2 (map-based results on some pages)
+    try:
+        r = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("searchPageState", {})
+            .get("cat2", {})
+            .get("searchResults", {})
+            .get("listResults") or []
+        )
+        if r:
+            candidates.append(r)
+    except Exception:
+        pass
+
+    # Path E — deep search for any "listResults" key in the entire JSON
+    if not candidates:
+        def _find_key(obj: Any, target: str) -> Optional[Any]:
+            if isinstance(obj, dict):
+                if target in obj and isinstance(obj[target], list) and len(obj[target]) > 0:
+                    return obj[target]
+                for v in obj.values():
+                    found = _find_key(v, target)
+                    if found is not None:
+                        return found
+            elif isinstance(obj, list):
+                for item in obj:
+                    found = _find_key(item, target)
+                    if found is not None:
+                        return found
+            return None
+
+        try:
+            r = _find_key(data, "listResults") or []
+            if r:
+                candidates.append(r)
+        except Exception:
+            pass
+
+    # Return the largest result set found
+    if not candidates:
+        return []
+    return max(candidates, key=len)
+
+
 async def fetch_recently_sold(
     zip_code: Optional[str] = None,
     city: str = "",
@@ -64,12 +164,11 @@ async def fetch_recently_sold(
 
     data = _parse_next_data(html)
     if not data:
+        log.warning("Zillow: __NEXT_DATA__ not found in response (anti-bot block?), len(html)=%d", len(html or ""))
         return []
 
-    cat = (data.get("cat1") or {}) or (
-        data.get("props", {}).get("pageProps", {}).get("searchPageState", {}).get("cat1") or {}
-    )
-    results = (cat.get("searchResults") or {}).get("listResults") or []
+    results = _extract_listings_from_data(data)
+    log.info("Zillow recently_sold: found %d raw listings for %s", len(results), zip_code or f"{city},{state}")
 
     out: List[Dict[str, Any]] = []
     for p in results[:max_results]:
@@ -125,11 +224,10 @@ async def fetch_active_listings(
         return []
     data = _parse_next_data(html)
     if not data:
+        log.warning("Zillow active: __NEXT_DATA__ not found (anti-bot?), len(html)=%d", len(html or ""))
         return []
-    cat = (data.get("cat1") or {}) or (
-        data.get("props", {}).get("pageProps", {}).get("searchPageState", {}).get("cat1") or {}
-    )
-    results = (cat.get("searchResults") or {}).get("listResults") or []
+    results = _extract_listings_from_data(data)
+    log.info("Zillow active_listings: found %d raw listings for %s", len(results), zip_code or f"{city},{state}")
     out: List[Dict[str, Any]] = []
     for p in results[:max_results]:
         info = (p or {}).get("hdpData", {}).get("homeInfo") or {}
@@ -203,9 +301,10 @@ async def fetch_fsbo(
         return []
     data = _parse_next_data(html)
     if not data:
+        log.warning("Zillow FSBO: __NEXT_DATA__ not found (anti-bot?), len(html)=%d", len(html or ""))
         return []
-    cat = data.get("cat1") or {}
-    results = (cat.get("searchResults") or {}).get("listResults") or []
+    results = _extract_listings_from_data(data)
+    log.info("Zillow fsbo: found %d raw listings for %s", len(results), zip_code or f"{city},{state}")
     out: List[Dict[str, Any]] = []
     for p in results[:max_results]:
         info = (p or {}).get("hdpData", {}).get("homeInfo") or {}

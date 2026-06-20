@@ -1173,12 +1173,14 @@ async def debug_proxy() -> Dict[str, Any]:
         return result
 
     # Live probe through the proxy
+    # verify=False: BrightData proxy presents a self-signed cert on the CONNECT
+    # tunnel; True here would cause [SSL: CERTIFICATE_VERIFY_FAILED].
     try:
         async with _httpx.AsyncClient(
             proxy=proxy_url,
             timeout=20.0,
             follow_redirects=True,
-            verify=True,
+            verify=False,
         ) as cli:
             r = await cli.get("https://api.ipify.org?format=json")
             if r.status_code == 407:
@@ -1238,7 +1240,7 @@ async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
             proxy=test_url,
             timeout=20.0,
             follow_redirects=True,
-            verify=True,
+            verify=False,
         ) as cli:
             r = await cli.get("https://api.ipify.org?format=json")
             if r.status_code == 407:
