@@ -3,6 +3,7 @@
 Schema lives in lib/db/src/schema/crm.ts (Drizzle).  This module mirrors
 the table/column names but uses asyncpg directly to avoid a JS dependency.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,7 +56,98 @@ async def init_pool() -> Optional[asyncpg.Pool]:
 
         _pool = await asyncpg.create_pool(dsn, **pool_kwargs)
         log.info("PG pool ready (ssl=%s)", ssl_param or "off")
+
+        # ── Ensure schema exists (idempotent — safe to re-run) ──────────────────
+        await _ensure_schema(_pool)
+
         return _pool
+
+
+async def _ensure_schema(pool: asyncpg.Pool) -> None:
+    """Create scraper-engine tables if they don't exist (idempotent)."""
+    async with pool.acquire() as c:
+        await c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scraper_jobs (
+                id            TEXT        PRIMARY KEY,
+                job_type      TEXT        NOT NULL,
+                status        TEXT        NOT NULL DEFAULT 'queued',
+                progress      INTEGER     NOT NULL DEFAULT 0,
+                result_count  INTEGER,
+                result        JSONB,
+                error         TEXT,
+                params        JSONB       NOT NULL DEFAULT '{}',
+                lead_id       INTEGER,
+                campaign_id   INTEGER,
+                created_by    INTEGER,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                completed_at  TIMESTAMPTZ
+            )
+            """
+        )
+        await c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cash_buyer_matches (
+                id                      BIGSERIAL   PRIMARY KEY,
+                lead_id                 INTEGER,
+                job_id                  TEXT        NOT NULL,
+                buyer_name              TEXT        NOT NULL,
+                llc_name                TEXT,
+                buyer_type              TEXT        NOT NULL DEFAULT 'unknown',
+                match_score             INTEGER     NOT NULL DEFAULT 0,
+                match_reasons           JSONB       NOT NULL DEFAULT '[]',
+                portfolio_size          INTEGER,
+                portfolio_value         NUMERIC(18, 2),
+                portfolio_appreciation  NUMERIC(18, 2),
+                avg_purchase_price      NUMERIC(18, 2),
+                last_purchase_date      TEXT,
+                city                    TEXT,
+                state                   TEXT,
+                zip                     TEXT,
+                mailing_address         TEXT,
+                phones                  JSONB       NOT NULL DEFAULT '[]',
+                emails                  JSONB       NOT NULL DEFAULT '[]',
+                principals              JSONB       NOT NULL DEFAULT '[]',
+                classification_reason   TEXT,
+                source                  TEXT        NOT NULL DEFAULT 'scraper-engine',
+                raw_data                JSONB       NOT NULL DEFAULT '{}',
+                created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        await c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS distressed_listings (
+                id                BIGSERIAL   PRIMARY KEY,
+                job_id            TEXT        NOT NULL,
+                campaign_id       INTEGER,
+                distress_type     TEXT        NOT NULL DEFAULT 'unknown',
+                address           TEXT        NOT NULL,
+                city              TEXT,
+                state             TEXT,
+                zip               TEXT,
+                county            TEXT,
+                parcel_id         TEXT,
+                owner_name        TEXT,
+                sale_date         TEXT,
+                opening_bid       NUMERIC(18, 2),
+                estimated_value   NUMERIC(18, 2),
+                mortgage_balance  NUMERIC(18, 2),
+                case_number       TEXT,
+                lien_amount       NUMERIC(18, 2),
+                property_type     TEXT,
+                scraped_at        TIMESTAMPTZ,
+                source            TEXT        NOT NULL DEFAULT 'scraper-engine',
+                source_url        TEXT,
+                latitude          NUMERIC(10, 7),
+                longitude         NUMERIC(10, 7),
+                raw_data          JSONB       NOT NULL DEFAULT '{}',
+                created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        log.info("Schema ensured (scraper_jobs, cash_buyer_matches, distressed_listings)")
 
 
 async def close_pool() -> None:
@@ -90,23 +182,42 @@ async def create_job(
     async with conn() as c:
         if c is None:
             return
-        await c.execute(
-            """
-            INSERT INTO scraper_jobs
-              (id, job_type, status, params, lead_id, campaign_id, created_by)
-            VALUES ($1, $2, 'queued', $3::jsonb, $4, $5, $6)
-            ON CONFLICT (id) DO UPDATE SET
-              status = EXCLUDED.status,
-              progress = EXCLUDED.progress,
-              updated_at = NOW()
-            """,
-            job_id,
-            job_type,
-            json.dumps(params),
-            lead_id,
-            campaign_id,
-            created_by,
-        )
+        try:
+            await c.execute(
+                """
+                INSERT INTO scraper_jobs
+                  (id, job_type, status, progress, params, lead_id, campaign_id, created_by, updated_at)
+                VALUES ($1, $2, 'queued', 0, $3::jsonb, $4, $5, $6, NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                  status = EXCLUDED.status,
+                  progress = EXCLUDED.progress,
+                  updated_at = NOW()
+                """,
+                job_id,
+                job_type,
+                json.dumps(params),
+                lead_id,
+                campaign_id,
+                created_by,
+            )
+        except asyncpg.exceptions.UndefinedColumnError:
+            # Fallback for older schema without updated_at
+            await c.execute(
+                """
+                INSERT INTO scraper_jobs
+                  (id, job_type, status, progress, params, lead_id, campaign_id, created_by)
+                VALUES ($1, $2, 'queued', 0, $3::jsonb, $4, $5, $6)
+                ON CONFLICT (id) DO UPDATE SET
+                  status = EXCLUDED.status,
+                  progress = EXCLUDED.progress
+                """,
+                job_id,
+                job_type,
+                json.dumps(params),
+                lead_id,
+                campaign_id,
+                created_by,
+            )
 
 
 async def update_job(
@@ -287,24 +398,24 @@ async def insert_cash_buyers_batch(
             btype = "landlord"
 
         match = {
-            "buyer_name":         buyer.get("name") or buyer.get("llc") or "Unknown",
-            "llc_name":           buyer.get("llc"),
-            "buyer_type":         btype,
-            "match_score":        int(min(100, max(0, (buyer.get("props_count") or 0) * 2))),
-            "match_reasons":      [f"{buyer.get('props_count', 0)} recent buys"],
-            "portfolio_size":     buyer.get("props_count"),
-            "portfolio_value":    buyer.get("total_deal"),
+            "buyer_name": buyer.get("name") or buyer.get("llc") or "Unknown",
+            "llc_name": buyer.get("llc"),
+            "buyer_type": btype,
+            "match_score": int(min(100, max(0, (buyer.get("props_count") or 0) * 2))),
+            "match_reasons": [f"{buyer.get('props_count', 0)} recent buys"],
+            "portfolio_size": buyer.get("props_count"),
+            "portfolio_value": buyer.get("total_deal"),
             "avg_purchase_price": buyer.get("avg_deal"),
             "last_purchase_date": buyer.get("last_deal"),
-            "city":               buyer.get("city"),
-            "state":              buyer.get("state"),
-            "zip":                buyer.get("zip"),
-            "mailing_address":    buyer.get("address"),
-            "phones":             buyer.get("phones") or [],
-            "emails":             buyer.get("emails") or [],
-            "principals":         buyer.get("principals") or [],
-            "source":             buyer.get("source") or "scraper-engine",
-            "raw_data":           buyer.get("raw") or buyer,
+            "city": buyer.get("city"),
+            "state": buyer.get("state"),
+            "zip": buyer.get("zip"),
+            "mailing_address": buyer.get("address"),
+            "phones": buyer.get("phones") or [],
+            "emails": buyer.get("emails") or [],
+            "principals": buyer.get("principals") or [],
+            "source": buyer.get("source") or "scraper-engine",
+            "raw_data": buyer.get("raw") or buyer,
         }
         validated = validate_buyer(match)
         if validated:
@@ -524,7 +635,9 @@ async def insert_property_history(
     sales: List[Dict[str, Any]],
     mortgages: List[Dict[str, Any]],
 ) -> int:
-    events = [{"event_type": "sale", **s} for s in sales] + [{"event_type": "mortgage", **m} for m in mortgages]
+    events = [{"event_type": "sale", **s} for s in sales] + [
+        {"event_type": "mortgage", **m} for m in mortgages
+    ]
     if not events:
         return 0
     async with conn() as c:

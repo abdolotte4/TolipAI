@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS scraper_jobs (
     campaign_id   INTEGER,
     created_by    INTEGER,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at  TIMESTAMPTZ
 );
 
