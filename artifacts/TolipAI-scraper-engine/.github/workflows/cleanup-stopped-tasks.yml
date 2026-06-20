@@ -6,10 +6,9 @@ env:
   AWS_REGION: us-east-1
   CLUSTER: TolipAI-scraper-cluster
   SERVICE: tolipai-scraper-engine-service-xop
-  TASK_FAMILY: tolipai-scraper-engine
 
 jobs:
-  cleanup-and-redeploy:
+  cleanup-only:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +20,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # ─── Step 1: List and stop all RUNNING tasks ───────────────────────────
+      # ─── Step 1: Stop all RUNNING tasks to free vCPU ───────────────────────
       - name: Stop all running tasks
         run: |
           echo "=== Listing all RUNNING tasks on cluster ==="
@@ -36,52 +35,25 @@ jobs:
             echo "No running tasks found."
           fi
 
-      # ─── Step 2: List and deregister old STOPPED task definitions ────────
-      - name: Deregister old task definition revisions
+      # ─── Step 2: Set service desired count to 0 (no new tasks) ────────────
+      - name: Set service desired count to 0
         run: |
-          echo "=== Listing old task definition revisions ==="
-          REVISIONS=$(aws ecs list-task-definitions --family-prefix ${{ env.TASK_FAMILY }} --status ACTIVE --sort DESC --query 'taskDefinitionArns[1:]' --output text)
-          if [ -n "$REVISIONS" ] && [ "$REVISIONS" != "None" ]; then
-            for rev in $REVISIONS; do
-              aws ecs deregister-task-definition --task-definition "$rev"
-              echo "Deregistered: $rev"
-            done
-          else
-            echo "No old revisions to deregister."
-          fi
-
-      # ─── Step 3: Update ECS service with latest task definition ──────────
-      - name: Register new task definition and update service
-        run: |
-          echo "=== Registering new task definition ==="
-          aws ecs register-task-definition --cli-input-json file://infrastructure/ecs-task-definition.json
-          
-          echo "=== Updating service with latest task definition ==="
+          echo "=== Setting service desired count to 0 ==="
           aws ecs update-service \
             --cluster ${{ env.CLUSTER }} \
             --service ${{ env.SERVICE }} \
-            --task-definition ${{ env.TASK_FAMILY }} \
-            --force-new-deployment
-          
-          echo "=== Waiting for service stability ==="
-          aws ecs wait services-stable --cluster ${{ env.CLUSTER }} --services ${{ env.SERVICE }} || true
+            --desired-count 0
+          echo "Service set to desired-count=0. No new tasks will be scheduled."
 
-      # ─── Step 4: Verify ──────────────────────────────────────────────────
-      - name: Verify deployment
+      # ─── Step 3: Verify nothing is running ────────────────────────────────
+      - name: Verify cleanup
         run: |
-          echo "=== Service status ==="
-          aws ecs describe-services --cluster ${{ env.CLUSTER }} --services ${{ env.SERVICE }} --query 'services[0].{status:status, runningCount:runningCount, desiredCount:desiredCount, pendingCount:pendingCount}'
-          
-          echo "=== Running tasks ==="
+          echo "=== Waiting 30 seconds for tasks to stop ==="
+          sleep 30
+          echo "=== Running tasks after cleanup ==="
           aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status RUNNING --query 'taskArns[]'
-
-      # ─── Step 5: Delete STOPPED tasks (they don't free vCPU but clean up) ─
-      - name: Delete stopped tasks
-        run: |
-          echo "=== Listing STOPPED tasks ==="
-          STOPPED_TASKS=$(aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status STOPPED --query 'taskArns[]' --output text)
-          if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
-            echo "Found $(echo $STOPPED_TASKS | wc -w) stopped tasks. Note: Stopped tasks don't consume vCPU, but we'll note them."
-          else
-            echo "No stopped tasks found."
-          fi
+          echo "=== Service status ==="
+          aws ecs describe-services --cluster ${{ env.CLUSTER }} --services ${{ env.SERVICE }} --query 'services[0].{status:status, runningCount:runningCount, desiredCount:desiredCount}'
+          echo ""
+          echo "✅ vCPU cleanup complete. You can now manually deploy when ready."
+          echo "   To deploy: Go to Actions → Deploy to ECS Fargate → Run workflow"
