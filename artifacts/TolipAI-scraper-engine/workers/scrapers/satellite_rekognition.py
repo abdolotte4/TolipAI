@@ -7,6 +7,7 @@ so no on-instance GPU or large model weights are needed.
 The public API surface is identical to satellite_dfd.scan_area() so the
 lambda_handler can swap in this module transparently.
 """
+
 from __future__ import annotations
 
 import asyncio

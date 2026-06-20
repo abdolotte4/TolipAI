@@ -8,6 +8,7 @@ AUDIT COMPLIANCE:
   hedge_fund_markets() and research() use the LLM for *general analysis* only
   (not data extraction) and remain unchanged.
 """
+
 from __future__ import annotations
 
 import json

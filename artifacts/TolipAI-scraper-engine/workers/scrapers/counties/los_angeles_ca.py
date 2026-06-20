@@ -4,6 +4,7 @@ Source: https://ttc.lacounty.gov/auction/
 Type: Public auction list, no login required
 Data: Tax deed auction properties with parcel numbers and minimum bids
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,7 +39,9 @@ class LosAngelesCountyScraper(CountyScraper):
                 await _nav_with_fallback(page, self.source_url, log, "los_angeles_ca")
 
                 try:
-                    await page.wait_for_selector("table, .auction-properties, a[href*='download'], a[href$='.pdf']", timeout=20000)
+                    await page.wait_for_selector(
+                        "table, .auction-properties, a[href*='download'], a[href$='.pdf']", timeout=20000
+                    )
                 except Exception:
                     self.log_block(self.source_url, "no_content")
                     return []
@@ -75,11 +78,19 @@ class LosAngelesCountyScraper(CountyScraper):
                     "state": "CA",
                     "zip": (row.get("zip") or row.get("zip_code") or "").strip() or None,
                     "county": "Los Angeles",
-                    "parcel_id": (row.get("apn") or row.get("assessor_parcel_number") or row.get("parcel") or "").strip() or None,
-                    "owner_name": (row.get("assessee") or row.get("owner") or row.get("owner_name") or "").strip() or None,
+                    "parcel_id": (
+                        row.get("apn") or row.get("assessor_parcel_number") or row.get("parcel") or ""
+                    ).strip()
+                    or None,
+                    "owner_name": (
+                        row.get("assessee") or row.get("owner") or row.get("owner_name") or ""
+                    ).strip()
+                    or None,
                     "sale_date": self.parse_date(row.get("sale_date") or row.get("auction_date") or ""),
                     "sale_type": "tax_lien",
-                    "opening_bid": self.parse_money(row.get("minimum_bid") or row.get("amount") or row.get("defaulted_taxes") or ""),
+                    "opening_bid": self.parse_money(
+                        row.get("minimum_bid") or row.get("amount") or row.get("defaulted_taxes") or ""
+                    ),
                     "source_url": self.source_url,
                     "source": "los_angeles_ca",
                     "scraped_at": datetime.utcnow().isoformat(),

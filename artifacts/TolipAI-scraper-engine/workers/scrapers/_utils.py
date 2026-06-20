@@ -2,6 +2,7 @@
 
 Centralises helpers that were previously duplicated across multiple scrapers.
 """
+
 from __future__ import annotations
 
 import logging

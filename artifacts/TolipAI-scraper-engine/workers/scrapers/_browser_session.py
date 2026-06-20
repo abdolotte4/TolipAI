@@ -7,6 +7,7 @@ Storage state JSON files live under /tmp/<service>_state.json. They survive
 the lifetime of the container — on Railway you get a fresh disk per deploy,
 which is fine: we just re-login on cold start.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -100,7 +101,8 @@ def _find_chromium_executable() -> Optional[str]:
         "/home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-*"
         "/chrome-headless-shell-linux64/chrome-headless-shell",
         os.path.expanduser(
-            "~/.cache/ms-playwright/chromium_headless_shell-*" "/chrome-headless-shell-linux64/chrome-headless-shell"
+            "~/.cache/ms-playwright/chromium_headless_shell-*"
+            "/chrome-headless-shell-linux64/chrome-headless-shell"
         ),
     ):
         hits = sorted(_glob.glob(pattern))
@@ -180,6 +182,7 @@ async def _redis_delete_state(service: str) -> None:
         log.debug("[%s] Redis session key deleted", service)
     except Exception as exc:
         log.warning("[%s] Redis session delete failed: %s", service, str(exc)[:80])
+
 
 # ─── Shared stealth script (extracted for reuse on re-created contexts) ───────
 _STEALTH_SCRIPT = """
@@ -368,7 +371,9 @@ try {
 """
 
 
-async def _humanize_type(page: Any, selector: str, text: str, *, min_delay_ms: int = 60, max_delay_ms: int = 120) -> None:
+async def _humanize_type(
+    page: Any, selector: str, text: str, *, min_delay_ms: int = 60, max_delay_ms: int = 120
+) -> None:
     """Type text into a field with human-like random delays per keystroke.
 
     DataDome and similar services detect instantaneous fills (Playwright's
@@ -409,6 +414,7 @@ async def _apply_stealth(ctx: Any) -> None:
     """
     try:
         from playwright_stealth import StealthConfig
+
         config = StealthConfig()
         scripts = list(config.enabled_scripts)
         if scripts:
@@ -438,7 +444,9 @@ async def _apply_stealth(ctx: Any) -> None:
       }});
     }}
     """)
-    log.debug("[stealth] per-session randomization: hwConcurrency=%d, deviceMemory=%d", hw_concurrency, device_mem)
+    log.debug(
+        "[stealth] per-session randomization: hwConcurrency=%d, deviceMemory=%d", hw_concurrency, device_mem
+    )
 
 
 async def _humanize_mouse(page: Any) -> None:
@@ -451,6 +459,7 @@ async def _humanize_mouse(page: Any) -> None:
     try:
         # Move to a few random positions within the viewport
         import random
+
         viewport = page.viewport_size or {"width": 1440, "height": 900}
         for _ in range(3):
             x = random.randint(200, viewport["width"] - 200)

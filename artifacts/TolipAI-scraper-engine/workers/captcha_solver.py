@@ -10,6 +10,7 @@ Usage:
     solver = FreeCaptchaSolver()
     token = await solver.solve_recaptcha_v2(page, site_key, page_url)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -102,7 +103,9 @@ class FreeCaptchaSolver:
         """
         try:
             # Find the prompt text
-            prompt = page.locator(".prompt-text, .challenge-text, .hcaptcha-challenge-text, [class*='prompt']").first
+            prompt = page.locator(
+                ".prompt-text, .challenge-text, .hcaptcha-challenge-text, [class*='prompt']"
+            ).first
             if await prompt.count() == 0:
                 return False
             prompt_text = (await prompt.inner_text()).lower()
@@ -184,13 +187,16 @@ class FreeCaptchaSolver:
             return None
         try:
             async with httpx.AsyncClient(timeout=30) as cli:
-                r = await cli.post(_2CAPTCHA_IN, data={
-                    "key": self.paid_api_key,
-                    "method": "userrecaptcha",
-                    "googlekey": site_key,
-                    "pageurl": page_url,
-                    "json": 1,
-                })
+                r = await cli.post(
+                    _2CAPTCHA_IN,
+                    data={
+                        "key": self.paid_api_key,
+                        "method": "userrecaptcha",
+                        "googlekey": site_key,
+                        "pageurl": page_url,
+                        "json": 1,
+                    },
+                )
             result = r.json()
             if result.get("status") != 1:
                 return None
@@ -203,12 +209,15 @@ class FreeCaptchaSolver:
             await asyncio.sleep(_POLL_INTERVAL_SEC)
             try:
                 async with httpx.AsyncClient(timeout=15) as cli:
-                    r = await cli.get(_2CAPTCHA_RES, params={
-                        "key": self.paid_api_key,
-                        "action": "get",
-                        "id": captcha_id,
-                        "json": 1,
-                    })
+                    r = await cli.get(
+                        _2CAPTCHA_RES,
+                        params={
+                            "key": self.paid_api_key,
+                            "action": "get",
+                            "id": captcha_id,
+                            "json": 1,
+                        },
+                    )
                 result = r.json()
                 if result.get("status") == 1:
                     return result["request"]
@@ -231,14 +240,18 @@ class FreeCaptchaSolver:
             return None
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=30) as cli:
-                r = await cli.post(_2CAPTCHA_IN, data={
-                    "key": self.paid_api_key,
-                    "method": "hcaptcha",
-                    "sitekey": site_key,
-                    "pageurl": page_url,
-                    "json": 1,
-                })
+                r = await cli.post(
+                    _2CAPTCHA_IN,
+                    data={
+                        "key": self.paid_api_key,
+                        "method": "hcaptcha",
+                        "sitekey": site_key,
+                        "pageurl": page_url,
+                        "json": 1,
+                    },
+                )
             result = r.json()
             if result.get("status") != 1:
                 return None
@@ -246,12 +259,15 @@ class FreeCaptchaSolver:
             for _ in range(_MAX_POLLS):
                 await asyncio.sleep(_POLL_INTERVAL_SEC)
                 async with httpx.AsyncClient(timeout=15) as cli:
-                    r = await cli.get(_2CAPTCHA_RES, params={
-                        "key": self.paid_api_key,
-                        "action": "get",
-                        "id": captcha_id,
-                        "json": 1,
-                    })
+                    r = await cli.get(
+                        _2CAPTCHA_RES,
+                        params={
+                            "key": self.paid_api_key,
+                            "action": "get",
+                            "id": captcha_id,
+                            "json": 1,
+                        },
+                    )
                 result = r.json()
                 if result.get("status") == 1:
                     return result["request"]
@@ -282,14 +298,18 @@ class FreeCaptchaSolver:
             return None
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=30) as cli:
-                r = await cli.post(_2CAPTCHA_IN, data={
-                    "key": self.paid_api_key,
-                    "method": "turnstile",
-                    "sitekey": site_key,
-                    "pageurl": page_url,
-                    "json": 1,
-                })
+                r = await cli.post(
+                    _2CAPTCHA_IN,
+                    data={
+                        "key": self.paid_api_key,
+                        "method": "turnstile",
+                        "sitekey": site_key,
+                        "pageurl": page_url,
+                        "json": 1,
+                    },
+                )
             result = r.json()
             if result.get("status") != 1:
                 return None
@@ -297,12 +317,15 @@ class FreeCaptchaSolver:
             for _ in range(_MAX_POLLS):
                 await asyncio.sleep(_POLL_INTERVAL_SEC)
                 async with httpx.AsyncClient(timeout=15) as cli:
-                    r = await cli.get(_2CAPTCHA_RES, params={
-                        "key": self.paid_api_key,
-                        "action": "get",
-                        "id": captcha_id,
-                        "json": 1,
-                    })
+                    r = await cli.get(
+                        _2CAPTCHA_RES,
+                        params={
+                            "key": self.paid_api_key,
+                            "action": "get",
+                            "id": captcha_id,
+                            "json": 1,
+                        },
+                    )
                 result = r.json()
                 if result.get("status") == 1:
                     return result["request"]

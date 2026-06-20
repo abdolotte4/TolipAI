@@ -10,6 +10,7 @@ Set the following environment variables to enable:
   REALFORECLOSE_USERNAME=<email>
   REALFORECLOSE_PASSWORD=<password>
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,6 +45,7 @@ class MiamiDadeScraper(CountyScraper):
             return []
 
         from ...captcha_solver import CaptchaSolver
+
         solver = CaptchaSolver()
         if not solver.available:
             log.warning(
@@ -74,6 +76,7 @@ class MiamiDadeScraper(CountyScraper):
                 if captcha_frame:
                     src = await captcha_frame.get_attribute("src") or ""
                     import re
+
                     m = re.search(r"k=([A-Za-z0-9_-]+)", src)
                     site_key = m.group(1) if m else ""
                     if site_key:
@@ -131,12 +134,7 @@ class MiamiDadeScraper(CountyScraper):
         return listings
 
     def _parse_row(self, row: Dict[str, str]) -> Dict[str, Any] | None:
-        address = (
-            row.get("property_address")
-            or row.get("address")
-            or row.get("property")
-            or ""
-        ).strip()
+        address = (row.get("property_address") or row.get("address") or row.get("property") or "").strip()
         if not address:
             return None
 
@@ -146,8 +144,12 @@ class MiamiDadeScraper(CountyScraper):
             "state": "FL",
             "zip": (row.get("zip") or row.get("zip_code") or "").strip() or None,
             "county": "Miami-Dade",
-            "case_number": (row.get("case_number") or row.get("case#") or row.get("certificate#") or "").strip() or None,
-            "parcel_id": (row.get("parcel_id") or row.get("folio") or row.get("parcel#") or "").strip() or None,
+            "case_number": (
+                row.get("case_number") or row.get("case#") or row.get("certificate#") or ""
+            ).strip()
+            or None,
+            "parcel_id": (row.get("parcel_id") or row.get("folio") or row.get("parcel#") or "").strip()
+            or None,
             "sale_date": self.parse_date(row.get("sale_date") or row.get("auction_date") or ""),
             "sale_type": "foreclosure",
             "opening_bid": self.parse_money(row.get("opening_bid") or row.get("assessed_value") or ""),

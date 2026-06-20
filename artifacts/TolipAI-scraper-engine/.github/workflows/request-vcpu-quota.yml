@@ -1,0 +1,86 @@
+name: Request Fargate vCPU Quota Increase
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  request-quota:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check current Fargate vCPU quota
+        run: |
+          echo "=== Current Fargate vCPU quota ==="
+          aws service-quotas list-service-quotas \
+            --service-code fargate \
+            --query 'Quotas[?contains(QuotaName,`vCPU`)].{Name:QuotaName, Value:Value, Code:QuotaCode}' \
+            --output table || echo "Could not list quotas"
+
+      - name: Request vCPU quota increase to 10
+        run: |
+          echo "=== Requesting vCPU quota increase ==="
+          # Try to find the quota code for Fargate vCPU
+          QUOTA_CODE=$(aws service-quotas list-service-quotas \
+            --service-code fargate \
+            --query "Quotas[?contains(QuotaName,'On-Demand Fargate vCPU')].QuotaCode" \
+            --output text 2>/dev/null)
+          
+          if [ -z "$QUOTA_CODE" ] || [ "$QUOTA_CODE" = "None" ]; then
+            echo "Could not find quota code automatically. Trying alternative..."
+            QUOTA_CODE=$(aws service-quotas list-service-quotas \
+              --service-code fargate \
+              --query "Quotas[?contains(QuotaName,'vCPU')].QuotaCode" \
+              --output text 2>/dev/null | head -1)
+          fi
+          
+          echo "Quota code: $QUOTA_CODE"
+          
+          if [ -n "$QUOTA_CODE" ] && [ "$QUOTA_CODE" != "None" ]; then
+            echo "Requesting increase to 10 vCPUs..."
+            aws service-quotas request-service-quota-increase \
+              --service-code fargate \
+              --quota-code "$QUOTA_CODE" \
+              --desired-value 10 \
+              --case-request-description "Need increased Fargate vCPU for ECS scraper engine service. Currently hitting limit with 4096 CPU / 8192 memory tasks."
+            echo "✅ Quota increase request submitted!"
+          else
+            echo "⚠️ Could not find quota code automatically."
+            echo "Please request manually at:"
+            echo "https://us-east-1.console.aws.amazon.com/servicequotas/home/services/fargate/quotas"
+          fi
+
+      - name: Alternative: Request via AWS Support Case
+        run: |
+          echo ""
+          echo "=== Alternative: Create AWS Support Case ==="
+          aws support create-case \
+            --subject "Request Fargate vCPU Quota Increase" \
+            --communication-body "Please increase the On-Demand Fargate vCPU quota for account 583299526161 in region us-east-1 from current value to 10. We are running an ECS service that requires 4 vCPU per task." \
+            --severity-code low \
+            --issue-type service-limit-increase \
+            --service-code amazon-elastic-container-service-fargate \
+            --category-code other || echo "Could not create support case (may lack support permissions)"
+          
+          echo ""
+          echo "=================================================="
+          echo "QUOTA INCREASE REQUEST STATUS"
+          echo "=================================================="
+          echo ""
+          echo "If the automatic request failed, go here and request manually:"
+          echo "  https://us-east-1.console.aws.amazon.com/servicequotas/home/services/fargate/quotas"
+          echo ""
+          echo "Look for 'On-Demand Fargate vCPU resource count'"
+          echo "Click 'Request quota increase' and set to 10"
+          echo ""
+          echo "AWS usually approves this within minutes."
+          echo ""

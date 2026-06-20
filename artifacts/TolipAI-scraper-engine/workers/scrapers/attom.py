@@ -9,6 +9,7 @@ Endpoints we use:
   • /transaction/saleshistory— per-property sale history (LLC + buyer name)
   • /property/expandedprofile— owner mailing address (proxy for "investor")
 """
+
 from __future__ import annotations
 
 import logging

@@ -20,6 +20,7 @@ AUDIT COMPLIANCE:
     - If a county is not covered, return [] and set status = completed_no_results.
     - Add new counties manually after verifying the source URL works correctly.
 """
+
 from __future__ import annotations
 
 import logging

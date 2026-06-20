@@ -9,6 +9,7 @@ On startup call `init()`.  On shutdown call `close()`.
 `recover_interrupted_jobs()` scans Postgres for jobs stuck in "running" and
 marks them "interrupted" so the frontend doesn't spin forever.
 """
+
 from __future__ import annotations
 
 import json

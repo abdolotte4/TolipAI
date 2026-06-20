@@ -1,8 +1,8 @@
 """Cash-buyer discovery orchestrator.
 
 Workflow per lead:
-  1. Pull recent sold properties from ATTOM first (if ATTOM_API_KEY configured).
-  2. Fall back to county deeds, then Zillow/Redfin backfill.
+  1. Pull recent sold properties from Zillow + Redfin (free, always run).
+  2. Enhance with county deed records (real grantee/buyer names from public records).
   3. Group by buyer (mailing address ≠ property address ⇒ likely investor).
      Each unique buyer becomes a candidate.
   4. Skip-trace each candidate (LLC → officers → phones/emails).
@@ -19,6 +19,7 @@ AUDIT COMPLIANCE:
     ✓ classify_buyer_type()             — rule-based from purchase history
     ✓ score_buyer_match_rule_based()    — geographic + price bracket scoring
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -82,19 +83,33 @@ async def find_cash_buyers(
     city = lead.get("city") or ""
     state = lead.get("state") or ""
 
-    # ── Tier 1: ATTOM API (paid, real buyer names)
-    sold_attom: List[Dict[str, Any]] = []
-    from .scrapers import attom
+    # ── Tier 1: Zillow + Redfin (free, always run as primary source) ──────────
+    sold_zillow: List[Dict[str, Any]] = []
+    sold_redfin: List[Dict[str, Any]] = []
+    if progress_cb:
+        await progress_cb(10, "Scanning recent sales (Zillow)…")
     try:
-        sold_attom = await attom.recent_sales(zip_code=zip_code, city=city, state=state, max_results=80)
-        log.info("ATTOM: %d records with real buyer names", len(sold_attom))
+        sold_zillow = await zillow.fetch_recently_sold(
+            zip_code=zip_code, city=city, state=state, max_results=80
+        )
+        log.info("Zillow: %d sold records", len(sold_zillow))
     except Exception as e:
-        log.info("ATTOM failed/exhausted, falling back: %s", e)
+        log.info("Zillow failed, continuing: %s", e)
 
-    # ── Tier 2: County deed records (real grantee/buyer names from public records)
+    if progress_cb:
+        await progress_cb(20, "Scanning recent sales (Redfin)…")
+    try:
+        sold_redfin = await redfin.fetch_recently_sold(
+            zip_code=zip_code, city=city, state=state, max_results=80
+        )
+        log.info("Redfin: %d sold records", len(sold_redfin))
+    except Exception as e:
+        log.info("Redfin failed, continuing: %s", e)
+
+    # ── Tier 2: County deed records (enhancement — real grantee/buyer names)
     sold_deeds: List[Dict[str, Any]] = []
     if progress_cb:
-        await progress_cb(12, "Pulling county deed transfer records…")
+        await progress_cb(30, "Pulling county deed transfer records…")
     try:
         raw_deeds = await fetch_recent_deeds(
             state=state or "",
@@ -102,7 +117,6 @@ async def find_cash_buyers(
             zip_code=zip_code or "",
             max_results=80,
         )
-        # Normalise to the same shape as ATTOM/Zillow rows
         for d in raw_deeds:
             if not d.get("grantee"):
                 continue
@@ -114,7 +128,7 @@ async def find_cash_buyers(
                     "zip": d.get("zip"),
                     "price": d.get("price"),
                     "sold_date": d.get("sold_date"),
-                    "owner_name": d["grantee"],  # <-- real buyer name
+                    "owner_name": d["grantee"],
                     "buyer_name": d["grantee"],
                     "seller_name": d.get("grantor"),
                     "parcel_id": d.get("parcel_id"),
@@ -125,36 +139,19 @@ async def find_cash_buyers(
     except Exception as e:
         log.info("County deed scrape failed, continuing: %s", e)
 
-    # ── Tier 3: free scrape (Zillow + Redfin) — ONLY as backfill when we have real names ──
-    # Zillow/Redfin do NOT expose buyer identities. If we use them as primary source,
-    # we get placeholder names like "Investor — 75201" which are useless for outreach.
-    # Only run if we already have real names from ATTOM or county deeds.
-    sold_zillow: List[Dict[str, Any]] = []
-    sold_redfin: List[Dict[str, Any]] = []
-    if sold_attom or sold_deeds:
-        if progress_cb:
-            await progress_cb(22, "Scanning recent sales (Zillow)…")
-        sold_zillow = await zillow.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
-        if progress_cb:
-            await progress_cb(35, "Scanning recent sales (Redfin)…")
-        sold_redfin = await redfin.fetch_recently_sold(zip_code=zip_code, city=city, state=state, max_results=80)
-    else:
-        log.warning("No real buyer names from ATTOM or county deeds — skipping Zillow/Redfin backfill to avoid placeholder names")
-
-    # ATTOM + County deeds first so real buyer names take priority in aggregation
-    all_sales = sold_attom + sold_deeds + sold_zillow + sold_redfin
+    # Combine all sources — Zillow/Redfin as primary, county deeds as enhancement
+    all_sales = sold_zillow + sold_redfin + sold_deeds
     log.info(
-        "Found %d recent sales (%d ATTOM + %d Deeds + %d Zillow + %d Redfin) for ZIP=%s city=%s",
+        "Found %d recent sales (%d Zillow + %d Redfin + %d Deeds) for ZIP=%s city=%s",
         len(all_sales),
-        len(sold_attom),
-        len(sold_deeds),
         len(sold_zillow),
         len(sold_redfin),
+        len(sold_deeds),
         zip_code,
         city,
     )
 
-    # ── Tier 4: Broader city+state fallback when ZIP-level search returns nothing ──
+    # ── Tier 3: Broader city+state fallback when ZIP-level search returns nothing ──
     if not all_sales and city and state:
         if progress_cb:
             await progress_cb(40, f"No ZIP-level results — broadening to {city}, {state}…")
@@ -164,20 +161,20 @@ async def find_cash_buyers(
             city,
             state,
         )
-        # Only use broader fallback if we already have real names from ATTOM or county deeds
-        if sold_attom or sold_deeds:
-            broad_zillow = await zillow.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
-            broad_redfin = await redfin.fetch_recently_sold(zip_code="", city=city, state=state, max_results=80)
-            all_sales = broad_zillow + broad_redfin
-            log.info(
-                "Broad fallback: %d Zillow + %d Redfin for city=%s state=%s",
-                len(broad_zillow),
-                len(broad_redfin),
-                city,
-                state,
-            )
-        else:
-            log.warning("No real buyer names available — skipping broad Zillow/Redfin fallback")
+        broad_zillow = await zillow.fetch_recently_sold(
+            zip_code="", city=city, state=state, max_results=80
+        )
+        broad_redfin = await redfin.fetch_recently_sold(
+            zip_code="", city=city, state=state, max_results=80
+        )
+        all_sales = broad_zillow + broad_redfin
+        log.info(
+            "Broad fallback: %d Zillow + %d Redfin for city=%s state=%s",
+            len(broad_zillow),
+            len(broad_redfin),
+            city,
+            state,
+        )
 
     if not all_sales:
         log.warning(
@@ -217,7 +214,13 @@ async def find_cash_buyers(
             )
 
             # Calculate llc_name BEFORE building profile
-            llc_name = cand["buyer_name"] if str(cand["buyer_name"]).upper().endswith(("LLC", "INC", "CORP", "LP", "LLP", "LTD", "TRUST")) else None
+            llc_name = (
+                cand["buyer_name"]
+                if str(cand["buyer_name"])
+                .upper()
+                .endswith(("LLC", "INC", "CORP", "LP", "LLP", "LTD", "TRUST"))
+                else None
+            )
 
             profile: Dict[str, Any] = {
                 "buyer_name": cand["buyer_name"],

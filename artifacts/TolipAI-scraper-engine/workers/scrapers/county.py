@@ -12,6 +12,7 @@ AUDIT COMPLIANCE:
   - scrape_county() — returns [] immediately with a log note directing to counties/
   - scrape_auction_com() — stub
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,14 +34,16 @@ def list_supported_counties() -> List[Dict[str, str]]:
         try:
             scraper = cls()
             meta = scraper.metadata()
-            out.append({
-                "key": key,
-                "name": meta.get("name", key),
-                "state": meta.get("state", ""),
-                "county": meta.get("county", ""),
-                "source_url": meta.get("source_url", ""),
-                "sale_type": meta.get("sale_type", ""),
-            })
+            out.append(
+                {
+                    "key": key,
+                    "name": meta.get("name", key),
+                    "state": meta.get("state", ""),
+                    "county": meta.get("county", ""),
+                    "source_url": meta.get("source_url", ""),
+                    "sale_type": meta.get("sale_type", ""),
+                }
+            )
         except Exception as e:
             log.warning("list_supported_counties: metadata() failed for %s: %s", key, e)
     return out

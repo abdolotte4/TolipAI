@@ -9,6 +9,7 @@ Strategy (in order):
   3. Text-based address regex scan as last resort
   Always returns [] (never raises) on block/error.
 """
+
 from __future__ import annotations
 
 import logging
@@ -85,6 +86,7 @@ class DallasCountyScraper(CountyScraper):
                 from workers.http_client import fetch_rendered
 
             import asyncio
+
             html = await asyncio.wait_for(fetch_rendered(url, use_proxy=False), timeout=40)
         except Exception as e:
             log.debug("[Dallas TX] Crawl4AI fetch failed for %s: %s", url, str(e)[:80])
@@ -127,10 +129,12 @@ class DallasCountyScraper(CountyScraper):
                     "county": "Dallas",
                     "case_number": (
                         row.get("case_number") or row.get("cause_number") or row.get("instrument") or ""
-                    ).strip() or None,
+                    ).strip()
+                    or None,
                     "owner_name": (
                         row.get("owner") or row.get("owner_name") or row.get("grantor") or ""
-                    ).strip() or None,
+                    ).strip()
+                    or None,
                     "sale_date": sale_date,
                     "sale_type": "trustee_sale",
                     "opening_bid": self.parse_money(
@@ -154,6 +158,7 @@ class DallasCountyScraper(CountyScraper):
     def _text_address_fallback(self, html: str, url: str) -> List[Dict[str, Any]]:
         try:
             from selectolax.parser import HTMLParser
+
             text = HTMLParser(html).text()
         except Exception:
             text = re.sub(r"<[^>]+>", " ", html)

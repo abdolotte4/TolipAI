@@ -3,6 +3,7 @@
 Redfin exposes a JSON API at /stingray/api/gis-csv that returns a CSV file
 of search results. Much friendlier than HTML scraping.
 """
+
 from __future__ import annotations
 
 import csv
@@ -128,7 +129,9 @@ async def fetch_recently_sold(
                 "price_reduction": price_cut,
                 "sold_date": r.get("SOLD DATE"),
                 "redfin_url": r.get("URL")
-                or r.get("URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)"),
+                or r.get(
+                    "URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)"
+                ),
                 "latitude": lat,
                 "longitude": lon,
             }

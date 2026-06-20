@@ -19,6 +19,7 @@ API note (homeharvest >= 0.5.x):
   - Use `foreclosure=True` to filter to foreclosure/pre-foreclosure listings.
   - `proxy` parameter accepts an http://user:pass@host:port string.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -390,22 +391,24 @@ async def scrape_comps(
         if status and "sold" not in status:
             continue
 
-        comps.append({
-            "address": li.get("address") or li.get("street"),
-            "city": li.get("city"),
-            "state": li.get("state"),
-            "zip": li.get("zip") or li.get("zip_code"),
-            "sold_price": li.get("list_price") or li.get("zestimate") or li.get("estimated_value"),
-            "sold_date": None,
-            "beds": li.get("beds"),
-            "baths": li.get("baths"),
-            "sqft": li.get("sqft"),
-            "lot_sqft": li.get("lot_sqft"),
-            "year_built": li.get("year_built"),
-            "property_type": li.get("property_type") or li.get("style"),
-            "source": "homeharvest",
-            "raw": li,
-        })
+        comps.append(
+            {
+                "address": li.get("address") or li.get("street"),
+                "city": li.get("city"),
+                "state": li.get("state"),
+                "zip": li.get("zip") or li.get("zip_code"),
+                "sold_price": li.get("list_price") or li.get("zestimate") or li.get("estimated_value"),
+                "sold_date": None,
+                "beds": li.get("beds"),
+                "baths": li.get("baths"),
+                "sqft": li.get("sqft"),
+                "lot_sqft": li.get("lot_sqft"),
+                "year_built": li.get("year_built"),
+                "property_type": li.get("property_type") or li.get("style"),
+                "source": "homeharvest",
+                "raw": li,
+            }
+        )
 
     log.info("HomeHarvest scrape_comps: %d comps for %r", len(comps), address[:60])
     return comps

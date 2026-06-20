@@ -26,6 +26,7 @@ Usage
     proxy_pool.record_success(url)
     proxy_pool.record_failure(url, is_rate_limit=True)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,27 +47,39 @@ PROXY_TIERS: Dict[str, Dict[str, Any]] = {
         # Cost: ~$0.50/GB vs $15/GB for residential.
         "cost_per_gb": 0.50,
         "domains": [
-            "attom.com", "rentcast.io", "rentcast.com",
-            "realestate.com", "homejunction.com",
-            "publicrecords", "taxrecords",
-            "county-taxes", "mytaxcollector",
+            "attom.com",
+            "rentcast.io",
+            "rentcast.com",
+            "realestate.com",
+            "homejunction.com",
+            "publicrecords",
+            "taxrecords",
+            "county-taxes",
+            "mytaxcollector",
         ],
     },
     "residential": {
         "cost_per_gb": 15.00,
         "domains": [
-            "propelio.com", "propwire.com",
-            "zillow.com", "redfin.com",
-            "realtor.com", "homes.com", "trulia.com",
-            "homepath.com", "loopnet.com",
+            "propelio.com",
+            "propwire.com",
+            "zillow.com",
+            "redfin.com",
+            "realtor.com",
+            "homes.com",
+            "trulia.com",
+            "homepath.com",
+            "loopnet.com",
         ],
     },
     "mobile": {
         # Reserve for CAPTCHA-gated / bot-detection hardened sites only.
         "cost_per_gb": 30.00,
         "domains": [
-            "foreclosure.com", "hubzu.com",
-            "auction.com", "xome.com",
+            "foreclosure.com",
+            "hubzu.com",
+            "auction.com",
+            "xome.com",
         ],
     },
 }
@@ -74,11 +87,21 @@ PROXY_TIERS: Dict[str, Dict[str, Any]] = {
 # Domains that bypass ALL proxy tiers (government / county portals that block
 # datacenter and residential proxies alike).
 _NO_PROXY_DOMAINS = (
-    "treasurer.cuyahoga", "auditor.cuyahoga", "probate.cuyahoga",
-    "cuyahogacounty.us", "sheriffsaleauction.ohio.gov",
-    ".state.oh.us", ".state.nc.us", ".state.tx.us", ".state.fl.us",
-    "hctax.net", "lacounty.gov", "ttc.lacounty", "cclerk.hctx",
-    "octaxcol.com", "broward.county-taxes",
+    "treasurer.cuyahoga",
+    "auditor.cuyahoga",
+    "probate.cuyahoga",
+    "cuyahogacounty.us",
+    "sheriffsaleauction.ohio.gov",
+    ".state.oh.us",
+    ".state.nc.us",
+    ".state.tx.us",
+    ".state.fl.us",
+    "hctax.net",
+    "lacounty.gov",
+    "ttc.lacounty",
+    "cclerk.hctx",
+    "octaxcol.com",
+    "broward.county-taxes",
 )
 
 # ─── Failure / exhaustion tracking ───────────────────────────────────────────
@@ -86,12 +109,11 @@ _NO_PROXY_DOMAINS = (
 # pile up.  After the cooldown the tier is retried automatically.
 
 _tier_stats: Dict[str, Dict[str, Any]] = {
-    t: {"successes": 0, "failures": 0, "rate_limits": 0, "exhausted_until": 0.0}
-    for t in PROXY_TIERS
+    t: {"successes": 0, "failures": 0, "rate_limits": 0, "exhausted_until": 0.0} for t in PROXY_TIERS
 }
 
 _RATE_LIMIT_THRESHOLD = int(os.getenv("PROXY_RATE_LIMIT_THRESHOLD", "5"))
-_EXHAUSTION_COOLDOWN  = int(os.getenv("PROXY_EXHAUSTION_COOLDOWN",  "120"))  # seconds
+_EXHAUSTION_COOLDOWN = int(os.getenv("PROXY_EXHAUSTION_COOLDOWN", "120"))  # seconds
 
 # ─── Request coalescing ───────────────────────────────────────────────────────
 # url → in-flight asyncio.Future
@@ -146,9 +168,10 @@ class ProxyPool:
             if rl >= _RATE_LIMIT_THRESHOLD:
                 stats["exhausted_until"] = time.time() + _EXHAUSTION_COOLDOWN
                 log.warning(
-                    "proxy_pool: tier '%s' exhausted after %d consecutive "
-                    "rate-limits — cooling down %ds",
-                    t, rl, _EXHAUSTION_COOLDOWN,
+                    "proxy_pool: tier '%s' exhausted after %d consecutive rate-limits — cooling down %ds",
+                    t,
+                    rl,
+                    _EXHAUSTION_COOLDOWN,
                 )
 
     def select_tier(self, url: str) -> str:
@@ -166,7 +189,9 @@ class ProxyPool:
             if t != preferred and not self._tier_exhausted(t):
                 log.info(
                     "proxy_pool: preferred tier '%s' exhausted — using '%s' for %s",
-                    preferred, t, url[:60],
+                    preferred,
+                    t,
+                    url[:60],
                 )
                 return t
         log.warning("proxy_pool: ALL tiers exhausted — using residential as last resort")
@@ -194,7 +219,7 @@ class ProxyPool:
         if "-zone-" in base_user:
             base_user = base_user.split("-zone-")[0]
         return {
-            "server":   f"http://{settings.brightdata_host}:{settings.brightdata_port}",
+            "server": f"http://{settings.brightdata_host}:{settings.brightdata_port}",
             "username": f"{base_user}-zone-{dc_zone}",
             "password": settings.brightdata_password or "",
         }
@@ -228,7 +253,7 @@ class ProxyPool:
         return {
             tier: {
                 **data,
-                "exhausted":          now < data.get("exhausted_until", 0.0),
+                "exhausted": now < data.get("exhausted_until", 0.0),
                 "exhausted_for_secs": max(0, int(data.get("exhausted_until", 0.0) - now)),
             }
             for tier, data in _tier_stats.items()

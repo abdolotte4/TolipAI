@@ -178,9 +178,23 @@ async def fetch_html(url: str, *, render: bool = False, country: str = "us", is_
     errors: list[str] = []
 
     # Only disable SSL for known government/county domains with self-signed certs
-    gov_domains = [".gov", ".gov.", "county-", "treasurer", "auditor", "sheriffsale",
-                   "hctax", "ttc.lacounty", "cclerk.hctx", "octaxcol", "broward.county-taxes",
-                   "public-records", "clerk.", "recorder.", "assessor."]
+    gov_domains = [
+        ".gov",
+        ".gov.",
+        "county-",
+        "treasurer",
+        "auditor",
+        "sheriffsale",
+        "hctax",
+        "ttc.lacounty",
+        "cclerk.hctx",
+        "octaxcol",
+        "broward.county-taxes",
+        "public-records",
+        "clerk.",
+        "recorder.",
+        "assessor.",
+    ]
     is_gov = any(d in url.lower() for d in gov_domains)
 
     try:
@@ -218,6 +232,7 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None, use_proxy:
         raw_proxy = settings.proxy_dict()
         if raw_proxy is None and settings.proxy_url():
             from urllib.parse import urlparse as _urlparse
+
             _u = _urlparse(settings.proxy_url() or "")
             raw_proxy = {"server": f"{_u.scheme}://{_u.hostname}:{_u.port}"}
             if _u.username:
@@ -229,6 +244,7 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None, use_proxy:
             # Try to use the ProxyConfig dataclass (crawl4ai >= 0.4)
             try:
                 from crawl4ai import ProxyConfig as _ProxyConfig  # type: ignore
+
                 _proxy_cfg = _ProxyConfig(
                     server=raw_proxy.get("server", ""),
                     username=raw_proxy.get("username"),
@@ -350,8 +366,19 @@ async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
         headers = _build_headers(url)
 
         # Only disable SSL for known government/county domains with self-signed certs
-        gov_domains = [".gov", ".gov.", "county-", "treasurer", "auditor", "sheriffsale",
-                       "hctax", "ttc.lacounty", "cclerk.hctx", "octaxcol", "broward.county-taxes"]
+        gov_domains = [
+            ".gov",
+            ".gov.",
+            "county-",
+            "treasurer",
+            "auditor",
+            "sheriffsale",
+            "hctax",
+            "ttc.lacounty",
+            "cclerk.hctx",
+            "octaxcol",
+            "broward.county-taxes",
+        ]
         is_gov = any(d in url.lower() for d in gov_domains)
         verify_ssl = not is_gov
 
@@ -360,7 +387,9 @@ async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
             async with httpx.AsyncClient(timeout=settings.request_timeout, verify=verify_ssl) as cli:
                 r = await cli.get(url, headers=headers, follow_redirects=True)
         else:
-            async with httpx.AsyncClient(proxy=proxy, headers=headers, timeout=settings.request_timeout, verify=verify_ssl) as cli:
+            async with httpx.AsyncClient(
+                proxy=proxy, headers=headers, timeout=settings.request_timeout, verify=verify_ssl
+            ) as cli:
                 r = await cli.get(url, follow_redirects=True)
         r.raise_for_status()
         pdf_bytes = r.content

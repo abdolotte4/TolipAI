@@ -74,7 +74,9 @@ def _recent_date(days: int = 180) -> str:
     return (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
-def _parse_deed_table(html: str, *, state: str, city: str, zip_code: str = "", source: str) -> List[Dict[str, Any]]:
+def _parse_deed_table(
+    html: str, *, state: str, city: str, zip_code: str = "", source: str
+) -> List[Dict[str, Any]]:
     """Parse a deed-transfer HTML table into normalised deed records.
     Uses BeautifulSoup with heuristic column matching — no LLM required.
     """
@@ -97,7 +99,11 @@ def _parse_deed_table(html: str, *, state: str, city: str, zip_code: str = "", s
 
         # Heuristic column mapping
         grantee_col = next(
-            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("grantee", "buyer", "purchaser", "owner"))),
+            (
+                i
+                for i, h in enumerate(headers_raw)
+                if any(k in h for k in ("grantee", "buyer", "purchaser", "owner"))
+            ),
             None,
         )
         grantor_col = next(
@@ -105,19 +111,35 @@ def _parse_deed_table(html: str, *, state: str, city: str, zip_code: str = "", s
             None,
         )
         address_col = next(
-            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("address", "situs", "location", "property"))),
+            (
+                i
+                for i, h in enumerate(headers_raw)
+                if any(k in h for k in ("address", "situs", "location", "property"))
+            ),
             None,
         )
         price_col = next(
-            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("price", "amount", "consideration", "sale_price", "sold"))),
+            (
+                i
+                for i, h in enumerate(headers_raw)
+                if any(k in h for k in ("price", "amount", "consideration", "sale_price", "sold"))
+            ),
             None,
         )
         date_col = next(
-            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("date", "recorded", "filed", "transfer"))),
+            (
+                i
+                for i, h in enumerate(headers_raw)
+                if any(k in h for k in ("date", "recorded", "filed", "transfer"))
+            ),
             None,
         )
         parcel_col = next(
-            (i for i, h in enumerate(headers_raw) if any(k in h for k in ("parcel", "apn", "pin", "account"))),
+            (
+                i
+                for i, h in enumerate(headers_raw)
+                if any(k in h for k in ("parcel", "apn", "pin", "account"))
+            ),
             None,
         )
 
@@ -137,18 +159,20 @@ def _parse_deed_table(html: str, *, state: str, city: str, zip_code: str = "", s
             if not grantee:
                 continue  # need a buyer name
 
-            deeds.append(_deed(
-                grantee=grantee,
-                grantor=cell(grantor_col),
-                address=cell(address_col),
-                city=city,
-                state=state,
-                zip_code=zip_code,
-                price=_safe_price(cell(price_col)),
-                date_str=cell(date_col),
-                parcel=cell(parcel_col),
-                source=source,
-            ))
+            deeds.append(
+                _deed(
+                    grantee=grantee,
+                    grantor=cell(grantor_col),
+                    address=cell(address_col),
+                    city=city,
+                    state=state,
+                    zip_code=zip_code,
+                    price=_safe_price(cell(price_col)),
+                    date_str=cell(date_col),
+                    parcel=cell(parcel_col),
+                    source=source,
+                )
+            )
 
     return deeds
 

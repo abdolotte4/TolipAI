@@ -11,6 +11,7 @@ Capabilities
 Auth: PROPWIRE_EMAIL + PROPWIRE_PASSWORD env vars.
 Session: cached on disk via _browser_session helper.
 """
+
 from __future__ import annotations
 
 import json
@@ -83,11 +84,13 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     # Fallback through lighter strategies if the proxy stalls.
     _screenshot_dir = "/tmp"
     nav_ok = False
-    for attempt, (strategy, timeout) in enumerate([
-        ("networkidle", 45000),
-        ("domcontentloaded", 30000),
-        ("commit", 20000),
-    ]):
+    for attempt, (strategy, timeout) in enumerate(
+        [
+            ("networkidle", 45000),
+            ("domcontentloaded", 30000),
+            ("commit", 20000),
+        ]
+    ):
         try:
             await page.goto(LOGIN_URL, wait_until=strategy, timeout=timeout)
             nav_ok = True
@@ -96,7 +99,9 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         except Exception as nav_err:
             log.warning(
                 "Propwire: nav attempt %d (%s) failed: %s",
-                attempt + 1, strategy, str(nav_err)[:120],
+                attempt + 1,
+                strategy,
+                str(nav_err)[:120],
             )
             if attempt < 2:
                 await page.wait_for_timeout(3000)
@@ -132,7 +137,9 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
 
         if _looks_like_challenge_page(html):
             try:
-                await page.screenshot(path=f"{_screenshot_dir}/propwire_challenge_still_present.png", full_page=True)
+                await page.screenshot(
+                    path=f"{_screenshot_dir}/propwire_challenge_still_present.png", full_page=True
+                )
             except Exception:
                 pass
             raise RuntimeError(
@@ -151,7 +158,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         # Strategy B: first visible text input (email field comes before password)
         'input:not([type="password"]):not([type="checkbox"])',
         # Strategy C: all visible inputs — we filter by position
-        'input >> visible=true',
+        "input >> visible=true",
         # Strategy D: React/Next.js generated class patterns
         'input[class*="input" i]',
         'input[class*="field" i]',
@@ -170,7 +177,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     for wait_attempt in range(3):
         try:
             # Check if ANY inputs are visible
-            visible_inputs = await page.locator('input >> visible=true').count()
+            visible_inputs = await page.locator("input >> visible=true").count()
             if visible_inputs >= 2:
                 form_visible = True
                 log.info("Propwire: found %d visible input(s)", visible_inputs)
@@ -246,10 +253,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         """)
         log.debug("Propwire: found inputs: %s", json.dumps(input_info, default=str))
 
-        visible_inputs = [
-            i for i in input_info
-            if i["rect"]["width"] > 50 and i["rect"]["height"] > 20
-        ]
+        visible_inputs = [i for i in input_info if i["rect"]["width"] > 50 and i["rect"]["height"] > 20]
 
         # Email = first non-password, non-checkbox visible input
         # Password = input with type="password"
@@ -360,6 +364,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
 async def test_login_credentials(email: str, password: str) -> None:
     """Test login with explicit credentials without caching or mutating env vars."""
     from functools import partial
+
     login_fn = partial(_do_login, email=email, password=password)
     async with browser_context(SERVICE, login_fn=login_fn, no_proxy=True) as ctx:
         page = await ctx.new_page()
@@ -428,7 +433,8 @@ async def fetch_property(query_or_url: str) -> Dict[str, Any]:
 
             # Pull __NEXT_DATA__ (Propwire is a Next.js app — JSON of the page state)
             next_data = await page.evaluate(
-                "() => { const el = document.getElementById('__NEXT_DATA__');" " return el ? el.textContent : null; }"
+                "() => { const el = document.getElementById('__NEXT_DATA__');"
+                " return el ? el.textContent : null; }"
             )
 
             data: Dict[str, Any] = {}
@@ -534,7 +540,8 @@ async def fetch_comps(
 
             # Try __NEXT_DATA__ first
             next_data = await page.evaluate(
-                "() => { const el = document.getElementById('__NEXT_DATA__');" " return el ? el.textContent : null; }"
+                "() => { const el = document.getElementById('__NEXT_DATA__');"
+                " return el ? el.textContent : null; }"
             )
             comps: List[Dict[str, Any]] = []
             if next_data:
@@ -606,7 +613,8 @@ async def fetch_history(query_or_url: str) -> Dict[str, Any]:
                 raise RuntimeError("Propwire session expired")
 
             next_data = await page.evaluate(
-                "() => { const el = document.getElementById('__NEXT_DATA__');" " return el ? el.textContent : null; }"
+                "() => { const el = document.getElementById('__NEXT_DATA__');"
+                " return el ? el.textContent : null; }"
             )
             sales: List[Dict[str, Any]] = []
             mortgages: List[Dict[str, Any]] = []
@@ -644,7 +652,8 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
 
             # Try __NEXT_DATA__ first — most data is embedded there
             next_data_raw = await page.evaluate(
-                "() => { const el = document.getElementById('__NEXT_DATA__');" " return el ? el.textContent : null; }"
+                "() => { const el = document.getElementById('__NEXT_DATA__');"
+                " return el ? el.textContent : null; }"
             )
             tax: Dict[str, Any] = {}
             tax_history: List[Dict[str, Any]] = []
@@ -656,10 +665,14 @@ async def fetch_tax(query_or_url: str) -> Dict[str, Any]:
                     prop = pp.get("property") or pp.get("propertyDetails") or pp
                     tax_info = prop.get("tax") or prop.get("taxInfo") or prop.get("assessment") or {}
                     tax = {
-                        "assessed_value": _safe_num(tax_info.get("assessedValue") or tax_info.get("assessed")),
+                        "assessed_value": _safe_num(
+                            tax_info.get("assessedValue") or tax_info.get("assessed")
+                        ),
                         "market_value": _safe_num(tax_info.get("marketValue") or tax_info.get("market")),
                         "land_value": _safe_num(tax_info.get("landValue") or tax_info.get("land")),
-                        "improvement_value": _safe_num(tax_info.get("improvementValue") or tax_info.get("improvement")),
+                        "improvement_value": _safe_num(
+                            tax_info.get("improvementValue") or tax_info.get("improvement")
+                        ),
                         "annual_tax": _safe_num(
                             tax_info.get("annualTax") or tax_info.get("taxes") or tax_info.get("taxAmount")
                         ),
@@ -731,7 +744,10 @@ async def fetch_cash_buyers_nearby(
                 if "/login" in page.url:
                     await invalidate_session(SERVICE)
                     raise RuntimeError("Propwire session expired")
-                if not (await page.locator("text=/not found/i").count() or await page.locator("text=/404/").count()):
+                if not (
+                    await page.locator("text=/not found/i").count()
+                    or await page.locator("text=/404/").count()
+                ):
                     chosen_url = c
                     break
             if not chosen_url:
@@ -759,7 +775,7 @@ async def fetch_cash_buyers_nearby(
 
                 if not page_buyers:
                     cards = await page.locator(
-                        '[data-testid*="buyer"], .buyer-card, .investor-card, ' 'li:has-text("Average Deal")'
+                        '[data-testid*="buyer"], .buyer-card, .investor-card, li:has-text("Average Deal")'
                     ).all()
                     for card in cards:
                         text = (await card.inner_text()).strip()
@@ -792,7 +808,9 @@ async def fetch_cash_buyers_nearby(
                     except Exception:
                         pass
 
-                next_btn = page.locator('button:has-text("NEXT"), button:has-text("Next"), a:has-text("Next")').first
+                next_btn = page.locator(
+                    'button:has-text("NEXT"), button:has-text("Next"), a:has-text("Next")'
+                ).first
                 if not await next_btn.count():
                     break
                 disabled = await next_btn.get_attribute("disabled")

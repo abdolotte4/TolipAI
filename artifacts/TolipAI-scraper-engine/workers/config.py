@@ -7,6 +7,7 @@ Skip-trace: PropertyAPI (PROPERTY_API_KEY).
 Dead providers removed: Groq, Cerebras, Together, NVIDIA, OpenRouter,
 Moonshot, ScraperAPI, ScrapingBee.
 """
+
 from __future__ import annotations
 
 import os
@@ -56,7 +57,10 @@ class Settings:
     # ─── Amazon Bedrock ─────────────────────────────────────────────────────
     use_bedrock: bool = os.getenv("USE_BEDROCK", "0") == "1"
     bedrock_region: str = _env("AWS_REGION", "us-east-1") or "us-east-1"
-    bedrock_model_id: str = _env("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0") or "anthropic.claude-3-sonnet-20240229-v1:0"
+    bedrock_model_id: str = (
+        _env("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+        or "anthropic.claude-3-sonnet-20240229-v1:0"
+    )
 
     # ── Residential proxy ───────────────────────────────────────────────────
     brightdata_username: Optional[str] = _env("BRIGHTDATA_USERNAME")
@@ -124,7 +128,7 @@ class Settings:
         """Return a residential proxy URL if configured."""
         if self.brightdata_configured():
             user = self._brightdata_username_full()
-            return f"http://{user}:{self.brightdata_password}" f"@{self.brightdata_host}:{self.brightdata_port}"
+            return f"https://{user}:{self.brightdata_password}@{self.brightdata_host}:{self.brightdata_port}"
         if self.oxylabs_user and self.oxylabs_pass:
             return f"http://{self.oxylabs_user}:{self.oxylabs_pass}@unblock.oxylabs.io:60000"
         return None
@@ -133,7 +137,7 @@ class Settings:
         """Return a {'server', 'username', 'password'} dict for Playwright / Crawl4AI."""
         if self.brightdata_configured():
             return {
-                "server": f"http://{self.brightdata_host}:{self.brightdata_port}",
+                "server": f"https://{self.brightdata_host}:{self.brightdata_port}",
                 "username": self._brightdata_username_full(),
                 "password": self.brightdata_password or "",
             }

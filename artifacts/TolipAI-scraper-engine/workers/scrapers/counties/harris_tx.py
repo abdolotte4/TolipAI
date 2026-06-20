@@ -9,6 +9,7 @@ Strategy (in order):
   3. Playwright fetch of clerk URL → same extraction
   Always returns [] (never raises) on block/error.
 """
+
 from __future__ import annotations
 
 import logging
@@ -92,6 +93,7 @@ class HarrisCountyScraper(CountyScraper):
                 from workers.http_client import fetch_rendered
 
             import asyncio
+
             html = await asyncio.wait_for(fetch_rendered(url, use_proxy=False), timeout=40)
         except Exception as e:
             log.debug("[Harris TX] Crawl4AI fetch failed for %s: %s", url, str(e)[:80])
@@ -127,9 +129,7 @@ class HarrisCountyScraper(CountyScraper):
                 if not address or len(address) < 6:
                     continue
 
-                sale_date_raw = (
-                    row.get("sale_date") or row.get("auction_date") or row.get("date") or ""
-                )
+                sale_date_raw = row.get("sale_date") or row.get("auction_date") or row.get("date") or ""
                 sale_date = self.parse_date(sale_date_raw) if sale_date_raw else None
 
                 listing: Dict[str, Any] = {
@@ -140,10 +140,12 @@ class HarrisCountyScraper(CountyScraper):
                     "county": "Harris",
                     "case_number": (
                         row.get("cause_number") or row.get("case_number") or row.get("case#") or ""
-                    ).strip() or None,
+                    ).strip()
+                    or None,
                     "parcel_id": (
                         row.get("parcel_id") or row.get("account_number") or row.get("account#") or ""
-                    ).strip() or None,
+                    ).strip()
+                    or None,
                     "sale_date": sale_date,
                     "sale_type": "tax_foreclosure",
                     "opening_bid": self.parse_money(
@@ -168,6 +170,7 @@ class HarrisCountyScraper(CountyScraper):
         """Extract addresses via regex when no table is found."""
         try:
             from selectolax.parser import HTMLParser
+
             text = HTMLParser(html).text()
         except Exception:
             text = re.sub(r"<[^>]+>", " ", html)

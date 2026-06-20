@@ -36,6 +36,7 @@ Usage
     browser_pool.start()
     await browser_pool.stop()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -47,10 +48,10 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 log = logging.getLogger("browser_pool")
 
-MAX_BROWSERS     = int(os.getenv("BROWSER_POOL_SIZE",      "3"))
-IDLE_TIMEOUT     = int(os.getenv("BROWSER_IDLE_TIMEOUT",   "300"))   # seconds
-ACQUIRE_TIMEOUT  = int(os.getenv("BROWSER_ACQUIRE_TIMEOUT","60"))    # seconds
-CLEANUP_INTERVAL = int(os.getenv("BROWSER_CLEANUP_INTERVAL","30"))   # seconds
+MAX_BROWSERS = int(os.getenv("BROWSER_POOL_SIZE", "3"))
+IDLE_TIMEOUT = int(os.getenv("BROWSER_IDLE_TIMEOUT", "300"))  # seconds
+ACQUIRE_TIMEOUT = int(os.getenv("BROWSER_ACQUIRE_TIMEOUT", "60"))  # seconds
+CLEANUP_INTERVAL = int(os.getenv("BROWSER_CLEANUP_INTERVAL", "30"))  # seconds
 
 # Chromium flags — memory-efficient + stealth
 _LAUNCH_ARGS = [
@@ -108,12 +109,11 @@ class BrowserPool:
         if self._started:
             return
         self._started = True
-        self._cleanup_task = asyncio.create_task(
-            self._cleanup_loop(), name="browser-pool-cleanup"
-        )
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop(), name="browser-pool-cleanup")
         log.info(
             "BrowserPool started (max=%d, idle_timeout=%ds)",
-            MAX_BROWSERS, IDLE_TIMEOUT,
+            MAX_BROWSERS,
+            IDLE_TIMEOUT,
         )
 
     async def stop(self) -> None:
@@ -145,6 +145,7 @@ class BrowserPool:
                 _ensure_nix_ld_path,
                 _find_chromium_executable,
             )
+
             _ensure_nix_ld_path()
             exec_path: Optional[str] = _find_chromium_executable()
         except Exception as exc:
@@ -160,7 +161,8 @@ class BrowserPool:
         pb = _PooledBrowser(browser, pw)
         log.info(
             "BrowserPool: launched new browser %x (pool size will be %d)",
-            pb._id, len(self._pool) + 1,
+            pb._id,
+            len(self._pool) + 1,
         )
         return pb
 
@@ -189,9 +191,7 @@ class BrowserPool:
             # Pool saturated — wait and retry
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise TimeoutError(
-                    f"BrowserPool: no browser available after {ACQUIRE_TIMEOUT}s"
-                )
+                raise TimeoutError(f"BrowserPool: no browser available after {ACQUIRE_TIMEOUT}s")
             log.debug("BrowserPool: all %d browsers busy — waiting…", MAX_BROWSERS)
             await asyncio.sleep(min(1.0, remaining))
 
@@ -239,9 +239,7 @@ class BrowserPool:
             page = await browser.new_page()
             try:
                 if url:
-                    await page.goto(
-                        url, wait_until="domcontentloaded", timeout=30_000
-                    )
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
                 yield page
             finally:
                 try:
@@ -272,7 +270,9 @@ class BrowserPool:
                 if not pb.busy and idle_secs > IDLE_TIMEOUT:
                     log.info(
                         "BrowserPool: evicting browser %x (idle %.0fs > %ds)",
-                        pb._id, idle_secs, IDLE_TIMEOUT,
+                        pb._id,
+                        idle_secs,
+                        IDLE_TIMEOUT,
                     )
                     to_close.append(pb)
                 else:
@@ -286,15 +286,15 @@ class BrowserPool:
     def stats(self) -> Dict[str, Any]:
         now = time.monotonic()
         return {
-            "total":             len(self._pool),
-            "busy":              sum(1 for pb in self._pool if pb.busy),
-            "idle":              sum(1 for pb in self._pool if not pb.busy),
-            "max":               MAX_BROWSERS,
+            "total": len(self._pool),
+            "busy": sum(1 for pb in self._pool if pb.busy),
+            "idle": sum(1 for pb in self._pool if not pb.busy),
+            "max": MAX_BROWSERS,
             "idle_timeout_secs": IDLE_TIMEOUT,
             "browsers": [
                 {
-                    "id":        hex(pb._id),
-                    "busy":      pb.busy,
+                    "id": hex(pb._id),
+                    "busy": pb.busy,
                     "idle_secs": 0 if pb.busy else int(now - pb.last_used),
                 }
                 for pb in self._pool

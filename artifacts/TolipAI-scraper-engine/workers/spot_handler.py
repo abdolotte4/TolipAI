@@ -23,6 +23,7 @@ Usage in main.py
     # In your lifespan shutdown:
     await spot.drain(timeout=85)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -71,6 +72,7 @@ def on_shutdown(callback: Callable[[], Any]) -> None:
 
 # ── Core handler ──────────────────────────────────────────────────────────────
 
+
 class SpotHandler:
     """Installs signal handlers and coordinates graceful Fargate Spot shutdown."""
 
@@ -81,9 +83,7 @@ class SpotHandler:
         """Register SIGTERM and SIGINT handlers. Call once at startup."""
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
-        log.info(
-            "SpotHandler installed (SIGTERM → %ds drain, then exit)", SPOT_EXIT_DEADLINE
-        )
+        log.info("SpotHandler installed (SIGTERM → %ds drain, then exit)", SPOT_EXIT_DEADLINE)
 
     def _handle_signal(self, sig: int, _frame: Any) -> None:
         global _interrupted, _interrupt_time
@@ -104,9 +104,7 @@ class SpotHandler:
         # Schedule async drain in the running event loop (non-blocking)
         try:
             loop = asyncio.get_running_loop()
-            self._exit_task = loop.create_task(
-                self._drain_and_exit(), name="spot-drain"
-            )
+            self._exit_task = loop.create_task(self._drain_and_exit(), name="spot-drain")
         except RuntimeError:
             # No event loop — sync shutdown
             log.warning("No event loop — performing synchronous shutdown")
@@ -132,7 +130,8 @@ class SpotHandler:
                 elapsed = int(time.monotonic() - _interrupt_time)
                 log.info(
                     "Spot drain: %d job(s) still active (%ds elapsed)...",
-                    remaining, elapsed,
+                    remaining,
+                    elapsed,
                 )
 
         if _active_job_ids:
@@ -179,13 +178,12 @@ class SpotHandler:
 
 # ── Health endpoint helper ────────────────────────────────────────────────────
 
+
 def health_payload() -> Dict[str, Any]:
     """Return spot-handler fields for the /health endpoint."""
     return {
         "spot_interrupted": _interrupted,
-        "spot_interrupt_age_seconds": (
-            int(time.monotonic() - _interrupt_time) if _interrupted else None
-        ),
+        "spot_interrupt_age_seconds": (int(time.monotonic() - _interrupt_time) if _interrupted else None),
         "active_jobs": len(_active_job_ids),
         "active_job_ids": list(_active_job_ids)[:20],
     }

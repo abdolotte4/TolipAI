@@ -4,6 +4,7 @@ Source: https://www.clarkcountynv.gov/government/elected_officials/treasurer/tax
 Type: Public list, no login required
 Data: Tax sale property list (CSV/HTML)
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,11 +69,19 @@ class ClarkCountyScraper(CountyScraper):
                     "state": "NV",
                     "zip": (row.get("zip") or "").strip() or None,
                     "county": "Clark",
-                    "parcel_id": (row.get("apn") or row.get("parcel") or row.get("parcel_number") or "").strip() or None,
-                    "owner_name": (row.get("owner") or row.get("owner_name") or row.get("taxpayer") or "").strip() or None,
+                    "parcel_id": (
+                        row.get("apn") or row.get("parcel") or row.get("parcel_number") or ""
+                    ).strip()
+                    or None,
+                    "owner_name": (
+                        row.get("owner") or row.get("owner_name") or row.get("taxpayer") or ""
+                    ).strip()
+                    or None,
                     "sale_date": self.parse_date(row.get("sale_date") or row.get("auction_date") or ""),
                     "sale_type": "tax_lien",
-                    "opening_bid": self.parse_money(row.get("minimum_bid") or row.get("amount_due") or row.get("bid") or ""),
+                    "opening_bid": self.parse_money(
+                        row.get("minimum_bid") or row.get("amount_due") or row.get("bid") or ""
+                    ),
                     "source_url": self.source_url,
                     "source": "clark_nv",
                     "scraped_at": datetime.utcnow().isoformat(),

@@ -86,6 +86,12 @@ async def _ensure_schema(pool: asyncpg.Pool) -> None:
             )
             """
         )
+        # Add missing columns to existing tables (idempotent)
+        await c.execute("ALTER TABLE scraper_jobs ADD COLUMN IF NOT EXISTS result_count INTEGER")
+        await c.execute("ALTER TABLE scraper_jobs ADD COLUMN IF NOT EXISTS result JSONB")
+        await c.execute("ALTER TABLE scraper_jobs ADD COLUMN IF NOT EXISTS error TEXT")
+        await c.execute("ALTER TABLE scraper_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+        await c.execute("ALTER TABLE scraper_jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ")
         await c.execute(
             """
             CREATE TABLE IF NOT EXISTS cash_buyer_matches (

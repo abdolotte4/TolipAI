@@ -4,6 +4,7 @@ Source: https://www.cookcountyclerkofcourt.org/courts/county-division/tax
 Type: Public list, no login required (some features require registration)
 Data: Tax sale properties by tax year
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,7 +16,9 @@ from .base import CountyScraper
 log = logging.getLogger("cook_il")
 
 _SOURCE_URL = "https://www.cookcountyclerkofcourt.org/courts/county-division/tax"
-_TREASURER_URL = "https://www.cookcountytreasurer.com/SiteCollection/AxdServiceCalls/AxdSalePropertiesDownload.axd"
+_TREASURER_URL = (
+    "https://www.cookcountytreasurer.com/SiteCollection/AxdServiceCalls/AxdSalePropertiesDownload.axd"
+)
 
 
 class CookCountyScraper(CountyScraper):
@@ -69,11 +72,19 @@ class CookCountyScraper(CountyScraper):
                     "state": "IL",
                     "zip": (row.get("zip") or row.get("zip_code") or "").strip() or None,
                     "county": "Cook",
-                    "parcel_id": (row.get("pin") or row.get("parcel_identification_number") or row.get("parcel") or "").strip() or None,
-                    "owner_name": (row.get("owner") or row.get("taxpayer") or row.get("owner_name") or "").strip() or None,
+                    "parcel_id": (
+                        row.get("pin") or row.get("parcel_identification_number") or row.get("parcel") or ""
+                    ).strip()
+                    or None,
+                    "owner_name": (
+                        row.get("owner") or row.get("taxpayer") or row.get("owner_name") or ""
+                    ).strip()
+                    or None,
                     "sale_date": self.parse_date(row.get("sale_date") or row.get("tax_sale_date") or ""),
                     "sale_type": "tax_lien",
-                    "lien_amount": self.parse_money(row.get("amount_sold") or row.get("taxes_sold") or row.get("amount") or ""),
+                    "lien_amount": self.parse_money(
+                        row.get("amount_sold") or row.get("taxes_sold") or row.get("amount") or ""
+                    ),
                     "source_url": self.source_url,
                     "source": "cook_il",
                     "scraped_at": datetime.utcnow().isoformat(),

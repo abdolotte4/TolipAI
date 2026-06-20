@@ -17,6 +17,7 @@ AUDIT COMPLIANCE:
   Both functions below are preserved as stubs so any lingering import
   references do not raise ImportError.
 """
+
 from __future__ import annotations
 
 import logging

@@ -1,0 +1,64 @@
+name: Fix ECS Execution Role CloudWatch Logs Permissions
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  EXECUTION_ROLE: TolipAI-scraper-execution-role
+
+jobs:
+  fix-iam-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Add CloudWatch Logs permissions to execution role
+        run: |
+          echo "=== Creating CloudWatch logs policy ==="
+          cat > /tmp/cloudwatch-logs-policy.json << 'EOF'
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents",
+                  "logs:DescribeLogGroups",
+                  "logs:DescribeLogStreams"
+                ],
+                "Resource": "arn:aws:logs:us-east-1:583299526161:log-group:/ecs/tolipai-scraper-engine:*"
+              }
+            ]
+          }
+          EOF
+
+          # Create the policy if it doesn't exist
+          aws iam create-policy \
+            --policy-name ECS-CloudWatchLogs-Policy \
+            --policy-document file:///tmp/cloudwatch-logs-policy.json \
+            --description "CloudWatch Logs permissions for ECS scraper engine" || echo "Policy already exists, will attach"
+
+          # Get policy ARN
+          POLICY_ARN=$(aws iam list-policies --scope Local --query "Policies[?PolicyName=='ECS-CloudWatchLogs-Policy'].Arn" --output text)
+          echo "Policy ARN: $POLICY_ARN"
+
+          # Attach to execution role
+          aws iam attach-role-policy \
+            --role-name ${{ env.EXECUTION_ROLE }} \
+            --policy-arn $POLICY_ARN || echo "Already attached"
+
+          echo "✅ CloudWatch Logs permissions added to ${{ env.EXECUTION_ROLE }}"
+
+      - name: Verify role permissions
+        run: |
+          echo "=== Attached policies ==="
+          aws iam list-attached-role-policies --role-name ${{ env.EXECUTION_ROLE }} --query 'AttachedPolicies[*].PolicyName'

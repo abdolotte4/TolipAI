@@ -22,6 +22,7 @@ AUDIT COMPLIANCE:
   The public interface (trace_by_address, format_markdown_table) is preserved
   so callers compile without changes — both return empty/placeholder data.
 """
+
 from __future__ import annotations
 
 import logging

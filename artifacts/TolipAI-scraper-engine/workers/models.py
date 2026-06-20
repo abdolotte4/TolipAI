@@ -7,6 +7,7 @@ prevents malformed records from reaching the database.
 Rule: NEVER skip validation. If a record fails validation, log it and discard it.
 Do NOT silently coerce bad data — return completed_no_results instead of junk.
 """
+
 from __future__ import annotations
 
 import logging
@@ -87,7 +88,9 @@ class CashBuyer(BaseModel):
     avg_purchase_price: Optional[float] = Field(None, ge=0)
     last_purchase_date: Optional[str] = None
 
-    buyer_type: Optional[Literal["flipper", "landlord", "wholesaler", "developer", "hedge_fund", "lender", "unknown"]] = "unknown"
+    buyer_type: Optional[
+        Literal["flipper", "landlord", "wholesaler", "developer", "hedge_fund", "lender", "unknown"]
+    ] = "unknown"
     match_score: int = Field(default=0, ge=0, le=100)
     match_reasons: List[str] = Field(default_factory=list)
 
@@ -167,6 +170,7 @@ def validate_deed(raw: Dict[str, Any]) -> Optional[CountyDeed]:
         return CountyDeed(**raw)
     except Exception as exc:
         import logging
+
         logging.getLogger("models").warning("Deed validation failed: %s — data: %s", exc, str(raw)[:200])
         return None
 
@@ -177,6 +181,7 @@ def validate_listing(raw: Dict[str, Any]) -> Optional[DistressedListing]:
         return DistressedListing(**raw)
     except Exception as exc:
         import logging
+
         logging.getLogger("models").warning("Listing validation failed: %s — data: %s", exc, str(raw)[:200])
         return None
 
@@ -187,6 +192,7 @@ def validate_buyer(raw: Dict[str, Any]) -> Optional[CashBuyer]:
         return CashBuyer(**raw)
     except Exception as exc:
         import logging
+
         logging.getLogger("models").warning("Buyer validation failed: %s — data: %s", exc, str(raw)[:200])
         return None
 

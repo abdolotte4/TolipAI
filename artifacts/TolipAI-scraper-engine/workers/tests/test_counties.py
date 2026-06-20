@@ -71,6 +71,7 @@ SAMPLE_HTML = """
 
 # ── Registry completeness ────────────────────────────────────────────────────
 
+
 class TestCountyScrapersRegistry:
     def test_all_10_counties_registered(self):
         for key in EXPECTED_SCRAPERS:
@@ -87,6 +88,7 @@ class TestCountyScrapersRegistry:
 
 
 # ── Per-scraper metadata ──────────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("key", EXPECTED_SCRAPERS)
 class TestScraperMetadata:
@@ -124,11 +126,13 @@ class TestScraperMetadata:
 
 # ── No LLM imports in scraper files ──────────────────────────────────────────
 
+
 class TestNoLLMInScrapers:
     """Verify no county scraper directly imports or calls LLM functions."""
 
     def _get_source(self, key: str) -> str:
         import inspect
+
         cls = COUNTY_SCRAPERS[key]
         return inspect.getsource(cls)
 
@@ -156,6 +160,7 @@ class TestNoLLMInScrapers:
 
 
 # ── Base class utilities ─────────────────────────────────────────────────────
+
 
 class TestCountyScraperBase:
     def setup_method(self):
@@ -215,22 +220,39 @@ class TestCountyScraperBase:
         assert self.scraper.validate_listing(listing) is True
 
     def test_validate_listing_rejects_missing_address(self):
-        assert self.scraper.validate_listing({"county": "Harris", "state": "TX", "source_url": "https://example.com"}) is False
+        assert (
+            self.scraper.validate_listing(
+                {"county": "Harris", "state": "TX", "source_url": "https://example.com"}
+            )
+            is False
+        )
 
     def test_validate_listing_rejects_short_address(self):
-        assert self.scraper.validate_listing({"address": "1 A", "county": "Harris", "state": "TX", "source_url": "https://example.com"}) is False
+        assert (
+            self.scraper.validate_listing(
+                {"address": "1 A", "county": "Harris", "state": "TX", "source_url": "https://example.com"}
+            )
+            is False
+        )
 
     def test_validate_listing_rejects_missing_county(self):
-        assert self.scraper.validate_listing({"address": "123 Main St", "state": "TX", "source_url": "https://example.com"}) is False
+        assert (
+            self.scraper.validate_listing(
+                {"address": "123 Main St", "state": "TX", "source_url": "https://example.com"}
+            )
+            is False
+        )
 
 
 # ── county_deeds no-AI compliance ────────────────────────────────────────────
+
 
 class TestCountyDeedsNoAI:
     def test_no_ai_extract_function(self):
         import inspect
 
         import workers.scrapers.county_deeds as cd
+
         src = inspect.getsource(cd)
         assert "_ai_extract_deeds" not in src, "county_deeds must not contain _ai_extract_deeds"
         assert "discover_deed_source" not in src or "discover_deed_source" not in src.split("import")[-1], (
@@ -242,6 +264,7 @@ class TestCountyDeedsNoAI:
         import inspect
 
         import workers.scrapers.county_deeds as cd
+
         src = inspect.getsource(cd)
         assert "propertyshark" not in src.lower(), "county_deeds must not scrape PropertyShark"
 
@@ -249,6 +272,7 @@ class TestCountyDeedsNoAI:
         import asyncio
 
         import workers.scrapers.county_deeds as cd
+
         # Patch DEED_REGISTRY to empty to simulate missing county
         original = cd.DEED_REGISTRY.copy()
         cd.DEED_REGISTRY.clear()
@@ -263,11 +287,13 @@ class TestCountyDeedsNoAI:
 
 # ── distressed.py no-LLM compliance ─────────────────────────────────────────
 
+
 class TestDistressedNoLLM:
     def test_no_parse_distressed_page_import(self):
         import inspect
 
         import workers.distressed as dist
+
         src = inspect.getsource(dist)
         assert "parse_distressed_page" not in src, (
             "distressed.py must not import or call parse_distressed_page"
@@ -277,6 +303,7 @@ class TestDistressedNoLLM:
         import inspect
 
         import workers.distressed as dist
+
         src = inspect.getsource(dist)
         assert "sources_for_request_ai" not in src, (
             "distressed.py must not call sources_for_request_ai (AI URL discovery)"
@@ -286,5 +313,6 @@ class TestDistressedNoLLM:
         import inspect
 
         import workers.distressed as dist
+
         src = inspect.getsource(dist)
         assert "COUNTY_SCRAPERS" in src, "distressed.py must import and use COUNTY_SCRAPERS"

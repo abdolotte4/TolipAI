@@ -19,6 +19,7 @@ AUDIT COMPLIANCE:
   Added data-driven helper:
     ✓ classify_buyer_type()        — rule-based classification from purchase history
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -171,13 +172,13 @@ async def _chat_inner(
     provider = "openai"
 
     if provider in _dead_providers:
-        raise RuntimeError("OpenAI provider is permanently dead (auth/deprecated error). Check OPENAI_API_KEY.")
+        raise RuntimeError(
+            "OpenAI provider is permanently dead (auth/deprecated error). Check OPENAI_API_KEY."
+        )
 
     client = _openai()
     if client is None:
-        raise RuntimeError(
-            "No LLM available — set OPENAI_API_KEY in ECS task environment variables."
-        )
+        raise RuntimeError("No LLM available — set OPENAI_API_KEY in ECS task environment variables.")
 
     hits = _rate_hits.get(provider, 0)
     cooldown_until = _rate_cooldown_until.get(provider, 0.0)
@@ -306,10 +307,18 @@ def classify_buyer_type(
     # Volume + price heuristics
     elif purchase_count >= 15:
         buyer_type = "hedge_fund" if (avg_price or 0) > 300_000 else "landlord"
-        reason = f"{purchase_count} purchases avg ${avg_price:,.0f}" if avg_price else f"{purchase_count} purchases"
+        reason = (
+            f"{purchase_count} purchases avg ${avg_price:,.0f}"
+            if avg_price
+            else f"{purchase_count} purchases"
+        )
     elif purchase_count >= 5:
         buyer_type = "flipper" if (avg_price or 0) < 200_000 else "landlord"
-        reason = f"{purchase_count} purchases avg ${avg_price:,.0f}" if avg_price else f"{purchase_count} purchases"
+        reason = (
+            f"{purchase_count} purchases avg ${avg_price:,.0f}"
+            if avg_price
+            else f"{purchase_count} purchases"
+        )
     else:
         buyer_type = "unknown"
         reason = f"Insufficient data ({purchase_count} purchases)"

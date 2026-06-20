@@ -1,4 +1,5 @@
 """Unit tests for config.py — key rotation and settings validation."""
+
 import os
 import sys
 

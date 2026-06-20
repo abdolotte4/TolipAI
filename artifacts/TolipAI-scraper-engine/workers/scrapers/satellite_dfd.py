@@ -290,7 +290,7 @@ async def _ai_distress_score(
     )
     sig_lines = "\n".join(f"- {k}: {v}" for k, v in signals.items() if v)
     vis_lines = "\n".join(f"- VISUAL (Google Cloud Vision): {k}" for k, v in gcv_signals.items() if v)
-    user_msg = f"Property: {address}\nBase score: {base_score}\n" f"Signals:\n{sig_lines}" + (
+    user_msg = f"Property: {address}\nBase score: {base_score}\nSignals:\n{sig_lines}" + (
         f"\nVisual detections:\n{vis_lines}" if vis_lines else ""
     )
     try:
@@ -521,12 +521,7 @@ async def scan_area(
 
         # ── Normalise value field — always int or None, never NaN/Inf ────────
         # Try all common price keys; _safe_numeric() strips $, commas, rejects NaN.
-        raw_value = (
-            p.get("estimated_value")
-            or p.get("zestimate")
-            or p.get("price")
-            or p.get("list_price")
-        )
+        raw_value = p.get("estimated_value") or p.get("zestimate") or p.get("price") or p.get("list_price")
         ev = _safe_numeric(raw_value)
         estimated_value: Optional[int] = int(ev) if ev else None
 

@@ -34,6 +34,7 @@ Usage
     # Or use get_or_fetch helper:
     html = await cache.get_or_fetch(url, lambda: fetch_direct(url), ttl=3600)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -46,11 +47,11 @@ from typing import Any, Callable, Coroutine, Optional
 log = logging.getLogger("cache")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-_DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL", "3600"))          # 1 hour
-_S3_BUCKET = os.getenv("S3_CACHE_BUCKET")                           # optional
+_DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL", "3600"))  # 1 hour
+_S3_BUCKET = os.getenv("S3_CACHE_BUCKET")  # optional
 _S3_PREFIX = os.getenv("S3_CACHE_PREFIX", "scraper-cache/")
 _REDIS_KEY_PREFIX = "TolipAI:cache:"
-_REDIS_TTL = int(os.getenv("CACHE_REDIS_TTL", "86400"))             # 24h max in Redis
+_REDIS_TTL = int(os.getenv("CACHE_REDIS_TTL", "86400"))  # 24h max in Redis
 
 # ── Fallback in-memory store ──────────────────────────────────────────────────
 _memory: dict[str, tuple[Any, float]] = {}  # key → (value, expiry_epoch)
@@ -78,6 +79,7 @@ async def _get_redis() -> Any:
         return None
     try:
         import redis.asyncio as aioredis  # type: ignore
+
         client = aioredis.from_url(url, decode_responses=True, socket_timeout=2)
         await client.ping()
         _redis_client = client
@@ -104,6 +106,7 @@ async def _get_s3():
         return None
     try:
         import aioboto3  # type: ignore
+
         session = aioboto3.Session()
         _s3_client = session
         _s3_ok = True
@@ -121,6 +124,7 @@ def _s3_object_key(cache_key: str) -> str:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 class Cache:
     """Dual-layer cache with in-memory fallback."""
@@ -151,9 +155,7 @@ class Cache:
         if s3 is not None:
             try:
                 async with s3.client("s3") as client:
-                    resp = await client.get_object(
-                        Bucket=_S3_BUCKET, Key=_s3_object_key(_cache_key(key))
-                    )
+                    resp = await client.get_object(Bucket=_S3_BUCKET, Key=_s3_object_key(_cache_key(key)))
                     body = await resp["Body"].read()
                     data = json.loads(body)
                     if time.time() < data.get("exp", 0):

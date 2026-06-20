@@ -4,6 +4,7 @@ Source: https://www.fultoncountytaxes.org/
 Type: Public list, no login required
 Data: Tax sale property list published before each quarterly sale
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,7 +39,9 @@ class FultonCountyScraper(CountyScraper):
                 await _nav_with_fallback(page, self.source_url, log, "fulton_ga")
 
                 try:
-                    await page.wait_for_selector("table, .tax-sale-list, a[href$='.pdf'], a[href$='.xlsx']", timeout=30000)
+                    await page.wait_for_selector(
+                        "table, .tax-sale-list, a[href$='.pdf'], a[href$='.xlsx']", timeout=30000
+                    )
                 except Exception:
                     self.log_block(self.source_url, "no_content")
                     return []
@@ -68,11 +71,19 @@ class FultonCountyScraper(CountyScraper):
                     "state": "GA",
                     "zip": (row.get("zip") or row.get("zip_code") or "").strip() or None,
                     "county": "Fulton",
-                    "parcel_id": (row.get("parcel_id") or row.get("property_id") or row.get("account_number") or "").strip() or None,
-                    "owner_name": (row.get("owner") or row.get("owner_name") or row.get("taxpayer") or "").strip() or None,
+                    "parcel_id": (
+                        row.get("parcel_id") or row.get("property_id") or row.get("account_number") or ""
+                    ).strip()
+                    or None,
+                    "owner_name": (
+                        row.get("owner") or row.get("owner_name") or row.get("taxpayer") or ""
+                    ).strip()
+                    or None,
                     "sale_date": self.parse_date(row.get("sale_date") or row.get("tax_sale_date") or ""),
                     "sale_type": "tax_lien",
-                    "lien_amount": self.parse_money(row.get("amount_due") or row.get("fi_fa_amount") or row.get("taxes") or ""),
+                    "lien_amount": self.parse_money(
+                        row.get("amount_due") or row.get("fi_fa_amount") or row.get("taxes") or ""
+                    ),
                     "opening_bid": self.parse_money(row.get("minimum_bid") or row.get("opening_bid") or ""),
                     "source_url": self.source_url,
                     "source": "fulton_ga",

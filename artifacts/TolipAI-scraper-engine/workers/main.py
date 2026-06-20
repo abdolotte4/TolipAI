@@ -6,6 +6,7 @@ background task that persists progress + results to Postgres.
 Run:
     uvicorn workers.main:app --host 0.0.0.0 --port ${PORT:-8765}
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -56,16 +57,16 @@ log = logging.getLogger("main")
 class _PIIFilter(logging.Filter):
     """Redact phone numbers, emails, and SSNs from all log records."""
 
-    _PHONE = re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b')
-    _EMAIL = re.compile(r'\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b')
-    _SSN = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
+    _PHONE = re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b")
+    _EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+    _SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             msg = record.getMessage()
-            msg = self._PHONE.sub('[PHONE]', msg)
-            msg = self._EMAIL.sub('[EMAIL]', msg)
-            msg = self._SSN.sub('[SSN]', msg)
+            msg = self._PHONE.sub("[PHONE]", msg)
+            msg = self._EMAIL.sub("[EMAIL]", msg)
+            msg = self._SSN.sub("[SSN]", msg)
             record.msg = msg
             record.args = ()
         except Exception:
@@ -112,12 +113,14 @@ def _get_metrics_lock() -> asyncio.Lock:
 async def _evict_old_jobs() -> None:
     """Remove completed jobs older than 1 hour from in-memory store."""
     import time
+
     while True:
         await asyncio.sleep(300)  # every 5 minutes
         try:
             now = time.time()
             to_evict = [
-                jid for jid, j in list(_jobs.items())
+                jid
+                for jid, j in list(_jobs.items())
                 if j.get("status") in ("done", "failed", "partial_success")
                 and now - j.get("_completed_at", now) > 3600
             ]
@@ -127,6 +130,7 @@ async def _evict_old_jobs() -> None:
                 log.debug("Evicted %d old jobs from memory", len(to_evict))
         except Exception as e:
             log.warning("Job eviction failed: %s", e)
+
 
 # ─── Mode B safety helpers ───────────────────────────────────────────────────
 
@@ -215,7 +219,6 @@ async def lifespan(app: FastAPI):
     # Wire _shutting_down to spot_handler's interrupted flag
     import ctypes as _ctypes  # noqa: F401
 
-
     def _sync_shutdown_flag(sig: int, frame: Any) -> None:
         global _shutting_down
         _shutting_down = True
@@ -223,6 +226,7 @@ async def lifespan(app: FastAPI):
     spot_handler.install()
     # Also keep _shutting_down in sync for code that polls it directly
     import signal as _sig
+
     _orig_sigterm = _sig.getsignal(_sig.SIGTERM)
 
     def _combined_sigterm(sig: int, frame: Any) -> None:
@@ -232,7 +236,7 @@ async def lifespan(app: FastAPI):
             _orig_sigterm(sig, frame)
 
     _sig.signal(_sig.SIGTERM, _combined_sigterm)
-    _sig.signal(_sig.SIGINT,  _combined_sigterm)
+    _sig.signal(_sig.SIGINT, _combined_sigterm)
 
     # ── Memory pressure monitor ──────────────────────────────────────────────
     async def _memory_monitor() -> None:
@@ -266,8 +270,7 @@ async def lifespan(app: FastAPI):
     _emf_task = asyncio.create_task(_emit_cloudwatch_emf(), name="cloudwatch_emf")
 
     log.info(
-        "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s, "
-        "retry_backend=%s, cache_s3=%s)",
+        "Engine ready on port %s (LLM=%s, proxies_configured=%s, redis=%s, retry_backend=%s, cache_s3=%s)",
         os.getenv("PORT", str(settings.port)),
         settings.has_llm(),
         bool(settings.proxy_url()),
@@ -367,7 +370,9 @@ class CashBuyerRequest(BaseModel):
     city: Optional[str] = Field(None, description="City (used when lead_id is absent)")
     state: Optional[str] = Field(None, description="State (used when lead_id is absent)")
     zip: Optional[str] = Field(None, description="ZIP code (used when lead_id is absent)")
-    county_key: Optional[str] = Field(None, description="County key for deed lookup (used when lead_id is absent)")
+    county_key: Optional[str] = Field(
+        None, description="County key for deed lookup (used when lead_id is absent)"
+    )
     max_buyers: int = 50
     campaign_id: Optional[int] = None
 
@@ -466,16 +471,19 @@ def _set_status(job_id: str, status: str, **kwargs: Any) -> None:
         _jobs[job_id][k] = v
     if status in ("done", "failed", "partial_success", "completed_no_results"):
         import time
+
         _jobs[job_id]["_completed_at"] = time.time()
 
     # Safer fire-and-forget Redis persistence
     try:
         loop = asyncio.get_running_loop()
+
         async def _persist():
             try:
                 await job_store.set_job(job_id, _jobs[job_id])
             except Exception as e:
                 log.debug("Redis persist failed for job %s: %s", job_id, str(e)[:80])
+
         task = loop.create_task(_persist())
         _persist_tasks.add(task)
     except RuntimeError:
@@ -841,15 +849,15 @@ async def invalidate_service_session(service: str) -> Dict[str, Any]:
 
 
 _METRIC_HELP: Dict[str, str] = {
-    "cash_buyers_success":    "Total successful cash-buyer scrape jobs",
-    "cash_buyers_failed":     "Total failed cash-buyer scrape jobs",
-    "cash_buyers_timeout":    "Total timed-out cash-buyer scrape jobs",
-    "distressed_success":     "Total successful distressed-property scrape jobs",
-    "distressed_failed":      "Total failed distressed-property scrape jobs",
-    "distressed_timeout":     "Total timed-out distressed-property scrape jobs",
-    "foreclosure_success":    "Total successful foreclosure scrape jobs",
-    "foreclosure_failed":     "Total failed foreclosure scrape jobs",
-    "foreclosure_timeout":    "Total timed-out foreclosure scrape jobs",
+    "cash_buyers_success": "Total successful cash-buyer scrape jobs",
+    "cash_buyers_failed": "Total failed cash-buyer scrape jobs",
+    "cash_buyers_timeout": "Total timed-out cash-buyer scrape jobs",
+    "distressed_success": "Total successful distressed-property scrape jobs",
+    "distressed_failed": "Total failed distressed-property scrape jobs",
+    "distressed_timeout": "Total timed-out distressed-property scrape jobs",
+    "foreclosure_success": "Total successful foreclosure scrape jobs",
+    "foreclosure_failed": "Total failed foreclosure scrape jobs",
+    "foreclosure_timeout": "Total timed-out foreclosure scrape jobs",
 }
 
 
@@ -865,7 +873,9 @@ async def metrics() -> str:
         lines.append(f"{metric_name} {value}")
     lines.append("# HELP tolipai_scraper_active_jobs Currently running scrape jobs")
     lines.append("# TYPE tolipai_scraper_active_jobs gauge")
-    lines.append(f"tolipai_scraper_active_jobs {len([j for j in _jobs.values() if j.get('status') == 'running'])}")
+    lines.append(
+        f"tolipai_scraper_active_jobs {len([j for j in _jobs.values() if j.get('status') == 'running'])}"
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -895,10 +905,8 @@ async def _emit_cloudwatch_emf() -> None:
                         {
                             "Namespace": "TolipAI/ScraperEngine",
                             "Dimensions": [["ServiceName"]],
-                            "Metrics": [
-                                {"Name": k, "Unit": "Count"}
-                                for k in METRICS
-                            ] + [{"Name": "ActiveJobs", "Unit": "Count"}],
+                            "Metrics": [{"Name": k, "Unit": "Count"} for k in METRICS]
+                            + [{"Name": "ActiveJobs", "Unit": "Count"}],
                         }
                     ],
                 },
@@ -976,7 +984,9 @@ async def health() -> Dict[str, Any]:
             "active_jobs": len([j for j in _jobs.values() if j.get("status") == "running"]),
         },
         "fargate": {
-            "task_arn": os.getenv("ECS_CONTAINER_METADATA_URI_V4", "not_fargate").split("/")[-1] if os.getenv("ECS_CONTAINER_METADATA_URI_V4") else "local",
+            "task_arn": os.getenv("ECS_CONTAINER_METADATA_URI_V4", "not_fargate").split("/")[-1]
+            if os.getenv("ECS_CONTAINER_METADATA_URI_V4")
+            else "local",
             "spot_exit_deadline_seconds": int(os.getenv("SPOT_EXIT_DEADLINE_SECONDS", "90")),
         },
     }
@@ -999,6 +1009,7 @@ async def health_keys() -> Dict[str, Any]:
 @app.get("/health/providers")
 async def health_providers() -> Dict[str, Any]:
     """Return status of all configured LLM and scraper providers."""
+
     def _cb(svc):
         return all_breaker_states().get(svc, {"state": "closed"})
 
@@ -1052,9 +1063,7 @@ async def health_providers() -> Dict[str, Any]:
     }
 
     llm_any_configured = any(p["configured"] for p in llm_providers.values())
-    llm_any_open = any(
-        p["circuit_breaker"].get("state") == "open" for p in llm_providers.values()
-    )
+    llm_any_open = any(p["circuit_breaker"].get("state") == "open" for p in llm_providers.values())
 
     return {
         "status": "ok",
@@ -1068,6 +1077,7 @@ async def health_providers() -> Dict[str, Any]:
         "infra": infra,
         "circuit_breakers_all": all_breaker_states(),
     }
+
 
 # ─── Circuit breaker admin endpoints ────────────────────────────────────────
 
@@ -1094,6 +1104,7 @@ async def reset_circuit_breaker_endpoint(service: str) -> Dict[str, Any]:
 async def get_spot_status() -> Dict[str, Any]:
     """Return Fargate Spot interruption status and active job list."""
     from .spot_handler import health_payload
+
     return health_payload()
 
 
@@ -1446,7 +1457,9 @@ async def scrape_cash_buyers(req: CashBuyerRequest) -> Dict[str, Any]:
 
         except Exception as e:  # noqa: BLE001
             err = str(e)
-            if is_transient(e) and retry_queue.enqueue(job_id, "cash_buyers", req.model_dump(), last_error=err):
+            if is_transient(e) and retry_queue.enqueue(
+                job_id, "cash_buyers", req.model_dump(), last_error=err
+            ):
                 log.warning(
                     "cash_buyers job %s failed (transient) — queued for retry: %s",
                     job_id,
@@ -1544,6 +1557,7 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
     if propelio_email and propelio_password:
         try:
             from functools import partial
+
             login_fn = partial(propelio_v2._do_login, email=propelio_email, password=propelio_password)
             prop = await propelio_v2.search_property(req.address, login_fn=login_fn)
             property_id = prop.get("property_id") if prop else None
@@ -1563,10 +1577,9 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
     if propwire_email and propwire_password:
         try:
             from functools import partial
+
             login_fn = partial(propwire._do_login, email=propwire_email, password=propwire_password)
-            comps = await propwire.fetch_comps(
-                req.address, max_results=req.max_results, login_fn=login_fn
-            )
+            comps = await propwire.fetch_comps(req.address, max_results=req.max_results, login_fn=login_fn)
             if comps:
                 log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
                 return {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
@@ -1575,9 +1588,7 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
 
     # 3. HomeHarvest (no auth required) ────────────────────────────────────────
     try:
-        comps = await homeharvest_scraper.scrape_comps(
-            req.address, max_results=req.max_results
-        )
+        comps = await homeharvest_scraper.scrape_comps(req.address, max_results=req.max_results)
         if comps:
             log.info("scrape_comps: HomeHarvest returned %d comps for %s", len(comps), req.address[:60])
             return {"address": req.address, "count": len(comps), "comps": comps, "source": "homeharvest"}
@@ -1943,7 +1954,11 @@ async def nar_directory_scrape(req: NARDirectoryRequest) -> Dict[str, Any]:
                 for m in members[:limit]:
                     first = m.get("firstName", "")
                     last = m.get("lastName", "")
-                    full = m.get("fullName") or m.get("name") or (f"{first} {last}".strip() if first or last else "")
+                    full = (
+                        m.get("fullName")
+                        or m.get("name")
+                        or (f"{first} {last}".strip() if first or last else "")
+                    )
                     results.append(
                         {
                             "name": full,
@@ -2034,11 +2049,14 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
 
             # Extract __NEXT_DATA__ JSON (Zillow is Next.js)
             next_data_raw = await page.evaluate(
-                "() => { const el = document.getElementById('__NEXT_DATA__'); " "return el ? el.textContent : null; }"
+                "() => { const el = document.getElementById('__NEXT_DATA__'); "
+                "return el ? el.textContent : null; }"
             )
             if not next_data_raw:
                 # Fall back: try window.__PRELOADED_STATE__
-                next_data_raw = await page.evaluate("() => JSON.stringify(window.__PRELOADED_STATE__ || null)")
+                next_data_raw = await page.evaluate(
+                    "() => JSON.stringify(window.__PRELOADED_STATE__ || null)"
+                )
             await page.close()
 
     except Exception as e:
@@ -2104,9 +2122,13 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
                         "city": c.get("location", {}).get("city", city),
                         "state": c.get("location", {}).get("stateCode", state),
                         "rating": str(c.get("rating") or c.get("reviewStats", {}).get("averageRating", "")),
-                        "reviews": str(c.get("reviewCount") or c.get("reviewStats", {}).get("totalReviewCount", "")),
+                        "reviews": str(
+                            c.get("reviewCount") or c.get("reviewStats", {}).get("totalReviewCount", "")
+                        ),
                         "activeListings": str(c.get("activeListingCount", "")),
-                        "profileUrl": ("https://www.zillow.com" + c["profileUrl"]) if c.get("profileUrl") else "",
+                        "profileUrl": ("https://www.zillow.com" + c["profileUrl"])
+                        if c.get("profileUrl")
+                        else "",
                         "source": "Zillow Agents (Python Engine)",
                     }
                 )
@@ -2114,7 +2136,10 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
     elif mode in ("listings", "fsbo"):
         # __NEXT_DATA__ listing results
         search_results = (
-            page_props.get("searchPageState", {}).get("cat1", {}).get("searchResults", {}).get("listResults", [])
+            page_props.get("searchPageState", {})
+            .get("cat1", {})
+            .get("searchResults", {})
+            .get("listResults", [])
         ) or page_props.get("searchResults", {}).get("listResults", [])
 
         for prop in search_results[:limit]:
@@ -2212,7 +2237,9 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
                 METRICS["distressed_timeout"] += 1
         except Exception as e:
             err = str(e)
-            if is_transient(e) and retry_queue.enqueue(job_id, "distressed", req.model_dump(), last_error=err):
+            if is_transient(e) and retry_queue.enqueue(
+                job_id, "distressed", req.model_dump(), last_error=err
+            ):
                 log.warning(
                     "Distressed job %s transient failure — queued for retry: %s",
                     job_id,
@@ -2363,12 +2390,16 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
         await cb(5, f"Scraping {listing_type} listings in {city}, {state}…")
         if site == "all":
             listings = await asyncio.wait_for(
-                homeharvest_scraper.scrape_multi_site(city, state, listing_type=listing_type, limit_per_site=limit),
+                homeharvest_scraper.scrape_multi_site(
+                    city, state, listing_type=listing_type, limit_per_site=limit
+                ),
                 timeout=900,
             )
         else:
             listings = await asyncio.wait_for(
-                homeharvest_scraper.scrape_foreclosures(city, state, listing_type=listing_type, site=site, limit=limit),
+                homeharvest_scraper.scrape_foreclosures(
+                    city, state, listing_type=listing_type, site=site, limit=limit
+                ),
                 timeout=900,
             )
 
@@ -2399,7 +2430,7 @@ async def _run_foreclosure_lead_gen(job_id: str, params: Dict[str, Any]) -> None
         for i, prop in enumerate(enriched):
             pct = 30 + i * skip_step
             street = prop.get("street") or prop.get("address", "").split(",")[0]
-            await cb(pct, f"Skip-tracing {street}… ({i+1}/{len(enriched)})")
+            await cb(pct, f"Skip-tracing {street}… ({i + 1}/{len(enriched)})")
 
             if do_skip_trace and street:
                 try:
@@ -2645,6 +2676,7 @@ async def _phone_finder_lookup(name: str, address: str) -> Dict[str, Any]:
         query = f"{name} {address}".strip()
         try:
             import httpx as _httpx
+
             async with _httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(
                     "https://maps.googleapis.com/maps/api/place/textsearch/json",

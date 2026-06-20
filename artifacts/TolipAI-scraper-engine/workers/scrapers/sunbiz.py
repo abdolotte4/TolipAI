@@ -3,6 +3,7 @@
 Looks up an LLC name and pulls its registered agent + officers/managers.
 For other states we'd add a similar module per SoS.
 """
+
 from __future__ import annotations
 
 import logging

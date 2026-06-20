@@ -41,6 +41,7 @@ Usage in main.py
     else:
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,32 +56,58 @@ from typing import Any, Callable, Coroutine, Dict, Optional
 
 log = logging.getLogger("retry_queue")
 
-POLL_INTERVAL = 30       # seconds between in-memory queue scans
-MAX_ATTEMPTS = 3         # retries before permanently failing
-BACKOFF = [60, 300, 900] # seconds per attempt index (0-based)
-MAX_QUEUE_SIZE = 500     # reject new retries beyond this depth
+POLL_INTERVAL = 30  # seconds between in-memory queue scans
+MAX_ATTEMPTS = 3  # retries before permanently failing
+BACKOFF = [60, 300, 900]  # seconds per attempt index (0-based)
+MAX_QUEUE_SIZE = 500  # reject new retries beyond this depth
 
 # Redis Streams constants
 _STREAM_KEY = os.getenv("RETRY_STREAM_KEY", "TolipAI:retry-stream")
-_GROUP_NAME  = os.getenv("RETRY_GROUP_NAME",  "TolipAI-scrapers")
-_CONSUMER    = f"{socket.gethostname()}-{os.getpid()}"
-_BATCH_SIZE  = 10       # messages read per XREADGROUP call
+_GROUP_NAME = os.getenv("RETRY_GROUP_NAME", "TolipAI-scrapers")
+_CONSUMER = f"{socket.gethostname()}-{os.getpid()}"
+_BATCH_SIZE = 10  # messages read per XREADGROUP call
 
 
 # ─── Error classification ────────────────────────────────────────────────────
 
 _TRANSIENT_KEYWORDS = (
-    "429", "rate limit", "too many requests", "timeout", "timed out",
-    "read timeout", "connect timeout", "connection reset", "connection refused",
-    "dns", "name or service not known", "502", "503", "504",
-    "service unavailable", "bad gateway", "temporary", "retry", "ssl",
+    "429",
+    "rate limit",
+    "too many requests",
+    "timeout",
+    "timed out",
+    "read timeout",
+    "connect timeout",
+    "connection reset",
+    "connection refused",
+    "dns",
+    "name or service not known",
+    "502",
+    "503",
+    "504",
+    "service unavailable",
+    "bad gateway",
+    "temporary",
+    "retry",
+    "ssl",
     "certificate",
 )
 
 _FATAL_KEYWORDS = (
-    "401", "403", "unauthorized", "forbidden", "suspended", "account",
-    "deprecated", "not found", "no such model", "does not exist",
-    "invalid api key", "quota exceeded", "dataerror", "invalid input",
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "suspended",
+    "account",
+    "deprecated",
+    "not found",
+    "no such model",
+    "does not exist",
+    "invalid api key",
+    "quota exceeded",
+    "dataerror",
+    "invalid input",
 )
 
 
@@ -93,6 +120,7 @@ def is_transient(exc: Exception) -> bool:
 
 
 # ─── Data model ──────────────────────────────────────────────────────────────
+
 
 @dataclass
 class PendingRetry:
@@ -119,6 +147,7 @@ async def _get_redis() -> Any:
         return None
     try:
         import redis.asyncio as aioredis  # type: ignore
+
         client = aioredis.from_url(url, decode_responses=True, socket_timeout=3)
         await client.ping()
         _redis = client
@@ -158,18 +187,20 @@ async def _stream_enqueue(
         await r.xadd(
             _STREAM_KEY,
             {
-                "job_id":       job_id,
-                "job_type":     job_type,
-                "params":       json.dumps(params, default=str),
-                "attempt":      str(attempt),
-                "last_error":   last_error[:200],
-                "retry_at":     str(retry_at_epoch),
-                "enqueued_at":  str(time.time()),
+                "job_id": job_id,
+                "job_type": job_type,
+                "params": json.dumps(params, default=str),
+                "attempt": str(attempt),
+                "last_error": last_error[:200],
+                "retry_at": str(retry_at_epoch),
+                "enqueued_at": str(time.time()),
             },
         )
         log.info(
             "RetryQueue(stream): job %s enqueued for retry #%d in %ds",
-            job_id, attempt + 1, delay,
+            job_id,
+            attempt + 1,
+            delay,
         )
         return True
     except Exception as exc:
@@ -188,14 +219,16 @@ async def _stream_drain_once(
     try:
         # Read pending messages for this consumer (unacknowledged from previous runs)
         pending = await r.xreadgroup(
-            _GROUP_NAME, _CONSUMER,
+            _GROUP_NAME,
+            _CONSUMER,
             {_STREAM_KEY: "0"},
             count=_BATCH_SIZE,
             block=0,
         )
         # Also read new messages
         new_msgs = await r.xreadgroup(
-            _GROUP_NAME, _CONSUMER,
+            _GROUP_NAME,
+            _CONSUMER,
             {_STREAM_KEY: ">"},
             count=_BATCH_SIZE,
             block=0,
@@ -216,9 +249,9 @@ async def _stream_drain_once(
             # Not ready yet — leave it for the next poll
             continue
 
-        job_id   = fields.get("job_id", "?")
+        job_id = fields.get("job_id", "?")
         job_type = fields.get("job_type", "?")
-        attempt  = int(fields.get("attempt", 0))
+        attempt = int(fields.get("attempt", 0))
         # last_err = fields.get("last_error", "")  # unused — kept for debugging
         params: Dict[str, Any] = {}
         try:
@@ -244,14 +277,23 @@ async def _stream_drain_once(
             await _ack(r, msg_id)  # ACK so it's removed from PEL; we'll re-add if needed
             next_attempt = attempt + 1
             if next_attempt >= MAX_ATTEMPTS:
-                log.error("RetryQueue(stream): job %s exhausted %d retries — permanent failure", job_id, MAX_ATTEMPTS)
+                log.error(
+                    "RetryQueue(stream): job %s exhausted %d retries — permanent failure",
+                    job_id,
+                    MAX_ATTEMPTS,
+                )
                 if on_exhaust:
                     await on_exhaust(job_id, str(exc))
             else:
                 delay = BACKOFF[min(next_attempt, len(BACKOFF) - 1)]
                 await _stream_enqueue(
-                    r, job_id, job_type, params,
-                    attempt=next_attempt, last_error=str(exc), delay=delay,
+                    r,
+                    job_id,
+                    job_type,
+                    params,
+                    attempt=next_attempt,
+                    last_error=str(exc),
+                    delay=delay,
                 )
 
 
@@ -277,21 +319,24 @@ async def _stream_pending_snapshot(r: Any) -> list[Dict[str, Any]]:
         msgs = await r.xrange(_STREAM_KEY, count=200)
         for msg_id, fields in msgs:
             retry_at = float(fields.get("retry_at", 0))
-            result.append({
-                "job_id":           fields.get("job_id"),
-                "job_type":         fields.get("job_type"),
-                "attempt":          int(fields.get("attempt", 0)) + 1,
-                "max_attempts":     MAX_ATTEMPTS,
-                "retry_in_seconds": max(0, int(retry_at - now)),
-                "last_error":       fields.get("last_error", "")[:120],
-                "stream_id":        msg_id,
-            })
+            result.append(
+                {
+                    "job_id": fields.get("job_id"),
+                    "job_type": fields.get("job_type"),
+                    "attempt": int(fields.get("attempt", 0)) + 1,
+                    "max_attempts": MAX_ATTEMPTS,
+                    "retry_in_seconds": max(0, int(retry_at - now)),
+                    "last_error": fields.get("last_error", "")[:120],
+                    "stream_id": msg_id,
+                }
+            )
     except Exception as exc:
         log.debug("RetryQueue: stream snapshot failed: %s", exc)
     return result
 
 
 # ─── Queue — unified interface ────────────────────────────────────────────────
+
 
 class RetryQueue:
     """
@@ -314,7 +359,9 @@ class RetryQueue:
         if r is not None:
             await _ensure_stream_group(r)
             self._use_redis = True
-            log.info("RetryQueue: using Redis Streams backend (stream=%s, group=%s)", _STREAM_KEY, _GROUP_NAME)
+            log.info(
+                "RetryQueue: using Redis Streams backend (stream=%s, group=%s)", _STREAM_KEY, _GROUP_NAME
+            )
         else:
             log.info("RetryQueue: using in-memory deque (Redis unavailable)")
 
@@ -334,7 +381,10 @@ class RetryQueue:
         if attempt >= MAX_ATTEMPTS:
             log.warning(
                 "Job %s (%s) exhausted %d retries — permanently failed: %s",
-                job_id, job_type, MAX_ATTEMPTS, last_error,
+                job_id,
+                job_type,
+                MAX_ATTEMPTS,
+                last_error,
             )
             return False
 
@@ -343,7 +393,9 @@ class RetryQueue:
         if self._use_redis:
             # Schedule async enqueue — fire-and-forget (non-blocking for callers)
             asyncio.create_task(
-                self._async_enqueue(job_id, job_type, params, attempt=attempt, last_error=last_error, delay=delay),
+                self._async_enqueue(
+                    job_id, job_type, params, attempt=attempt, last_error=last_error, delay=delay
+                ),
                 name=f"retry-enqueue-{job_id}",
             )
             return True
@@ -353,8 +405,12 @@ class RetryQueue:
                 log.warning("RetryQueue full (%d) — dropping retry for %s", MAX_QUEUE_SIZE, job_id)
                 return False
             entry = PendingRetry(
-                job_id=job_id, job_type=job_type, params=params,
-                attempt=attempt, retry_at=time.monotonic() + delay, last_error=last_error,
+                job_id=job_id,
+                job_type=job_type,
+                params=params,
+                attempt=attempt,
+                retry_at=time.monotonic() + delay,
+                last_error=last_error,
             )
             self._deque.append(entry)
             log.info("RetryQueue(mem): job %s enqueued for retry #%d in %ds", job_id, attempt + 1, delay)
@@ -372,14 +428,20 @@ class RetryQueue:
     ) -> None:
         r = await _get_redis()
         if r:
-            await _stream_enqueue(r, job_id, job_type, params, attempt=attempt, last_error=last_error, delay=delay)
+            await _stream_enqueue(
+                r, job_id, job_type, params, attempt=attempt, last_error=last_error, delay=delay
+            )
         else:
             # Redis went away — fall back to in-memory
             if len(self._deque) < MAX_QUEUE_SIZE:
                 self._deque.append(
                     PendingRetry(
-                        job_id=job_id, job_type=job_type, params=params,
-                        attempt=attempt, retry_at=time.monotonic() + delay, last_error=last_error,
+                        job_id=job_id,
+                        job_type=job_type,
+                        params=params,
+                        attempt=attempt,
+                        retry_at=time.monotonic() + delay,
+                        last_error=last_error,
                     )
                 )
 
@@ -391,12 +453,12 @@ class RetryQueue:
         now = time.monotonic()
         return [
             {
-                "job_id":           e.job_id,
-                "job_type":         e.job_type,
-                "attempt":          e.attempt + 1,
-                "max_attempts":     MAX_ATTEMPTS,
+                "job_id": e.job_id,
+                "job_type": e.job_type,
+                "attempt": e.attempt + 1,
+                "max_attempts": MAX_ATTEMPTS,
                 "retry_in_seconds": max(0, int(e.retry_at - now)),
-                "last_error":       e.last_error[:120],
+                "last_error": e.last_error[:120],
             }
             for e in self._deque
         ]
@@ -465,21 +527,32 @@ class RetryQueue:
         for entry in ready:
             runner = self._runners.get(entry.job_type)
             if runner is None:
-                log.warning("RetryQueue(mem): no runner for job_type=%s — dropping %s", entry.job_type, entry.job_id)
+                log.warning(
+                    "RetryQueue(mem): no runner for job_type=%s — dropping %s", entry.job_type, entry.job_id
+                )
                 continue
-            log.info("RetryQueue(mem): retrying job %s (attempt %d/%d)…", entry.job_id, entry.attempt + 1, MAX_ATTEMPTS)
+            log.info(
+                "RetryQueue(mem): retrying job %s (attempt %d/%d)…",
+                entry.job_id,
+                entry.attempt + 1,
+                MAX_ATTEMPTS,
+            )
             try:
                 result = await runner(entry.job_id, entry.params)
                 log.info("RetryQueue(mem): retry succeeded for job %s → %s", entry.job_id, str(result)[:60])
                 if on_success:
                     await on_success(entry.job_id, result)
             except Exception as exc:
-                log.warning("RetryQueue(mem): retry #%d for %s failed: %s", entry.attempt + 1, entry.job_id, exc)
+                log.warning(
+                    "RetryQueue(mem): retry #%d for %s failed: %s", entry.attempt + 1, entry.job_id, exc
+                )
                 next_attempt = entry.attempt + 1
                 if on_exhaust and next_attempt >= MAX_ATTEMPTS:
                     await on_exhaust(entry.job_id, str(exc))
                 else:
-                    self.enqueue(entry.job_id, entry.job_type, entry.params, attempt=next_attempt, last_error=str(exc))
+                    self.enqueue(
+                        entry.job_id, entry.job_type, entry.params, attempt=next_attempt, last_error=str(exc)
+                    )
 
     def start(self, on_success: Any = None, on_exhaust: Any = None) -> asyncio.Task:
         """Spawn the background drain loop. Call once at startup."""
@@ -489,7 +562,9 @@ class RetryQueue:
             name="retry-queue-loop",
         )
         backend = "Redis Streams" if self._use_redis else "in-memory deque"
-        log.info("RetryQueue started (backend=%s, poll=%ds, max_attempts=%d)", backend, POLL_INTERVAL, MAX_ATTEMPTS)
+        log.info(
+            "RetryQueue started (backend=%s, poll=%ds, max_attempts=%d)", backend, POLL_INTERVAL, MAX_ATTEMPTS
+        )
         return self._task
 
     def stop(self) -> None:

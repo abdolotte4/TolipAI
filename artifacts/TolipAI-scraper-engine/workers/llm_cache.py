@@ -41,6 +41,7 @@ Usage
     # HTML → plain text before sending:
     text = strip_html(raw_html)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -56,13 +57,14 @@ from .llm import _chat
 log = logging.getLogger("llm_cache")
 
 # ── Tunables ──────────────────────────────────────────────────────────────────
-_LLM_CACHE_TTL  = int(os.getenv("LLM_CACHE_TTL",       str(86_400 * 7)))  # 7 days
-_BATCH_SIZE     = int(os.getenv("LLM_BATCH_SIZE",       "10"))
-_MAX_HTML_CHARS = int(os.getenv("LLM_MAX_HTML_CHARS",   "12000"))
+_LLM_CACHE_TTL = int(os.getenv("LLM_CACHE_TTL", str(86_400 * 7)))  # 7 days
+_BATCH_SIZE = int(os.getenv("LLM_BATCH_SIZE", "10"))
+_MAX_HTML_CHARS = int(os.getenv("LLM_MAX_HTML_CHARS", "12000"))
 _FAST_MAX_TOKENS = int(os.getenv("LLM_FAST_MAX_TOKENS", "400"))
 
 
 # ── Cache key ─────────────────────────────────────────────────────────────────
+
 
 def _llm_cache_key(messages: List[Dict[str, str]], **kwargs: Any) -> str:
     """Stable SHA256 fingerprint of messages + call parameters."""
@@ -77,6 +79,7 @@ def _llm_cache_key(messages: List[Dict[str, str]], **kwargs: Any) -> str:
 
 # ── HTML stripping ────────────────────────────────────────────────────────────
 
+
 def strip_html(html: str, max_chars: int = _MAX_HTML_CHARS) -> str:
     """Remove HTML tags and collapse whitespace; trim to max_chars.
 
@@ -87,6 +90,7 @@ def strip_html(html: str, max_chars: int = _MAX_HTML_CHARS) -> str:
         return ""
     try:
         from bs4 import BeautifulSoup  # type: ignore[import]
+
         soup = BeautifulSoup(html, "lxml")
         for tag in soup(["script", "style", "noscript", "head", "meta", "link", "svg"]):
             tag.decompose()
@@ -99,6 +103,7 @@ def strip_html(html: str, max_chars: int = _MAX_HTML_CHARS) -> str:
 
 
 # ── Cached chat ───────────────────────────────────────────────────────────────
+
 
 async def cached_chat(
     messages: List[Dict[str, str]],
@@ -154,6 +159,7 @@ async def cached_chat(
 
 # ── Model tiering ─────────────────────────────────────────────────────────────
 
+
 async def tiered_chat(
     messages: List[Dict[str, str]],
     *,
@@ -189,6 +195,7 @@ async def tiered_chat(
 
 # ── Batch extraction — REMOVED ────────────────────────────────────────────────
 
+
 async def batch_extract_profiles(
     texts: List[str],
     *,
@@ -217,6 +224,7 @@ async def batch_extract_profiles(
 
 # ── Convenience: cached versions of the public llm helpers ───────────────────
 
+
 def cached_extract_investor_profile(
     text: str,
     *,
@@ -230,6 +238,7 @@ def cached_extract_investor_profile(
     Use workers.llm.classify_buyer_type() instead.
     """
     import logging
+
     logging.getLogger("llm_cache").warning(
         "cached_extract_investor_profile() is deprecated — use classify_buyer_type(). "
         "Returning empty profile."
@@ -248,8 +257,8 @@ def cached_score_buyer_match(
     Use workers.llm.score_buyer_match_rule_based() instead.
     """
     import logging
+
     logging.getLogger("llm_cache").warning(
-        "cached_score_buyer_match() is deprecated — use score_buyer_match_rule_based(). "
-        "Returning zero score."
+        "cached_score_buyer_match() is deprecated — use score_buyer_match_rule_based(). Returning zero score."
     )
     return {"match_score": 0, "match_reasons": []}

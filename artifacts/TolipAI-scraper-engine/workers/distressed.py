@@ -20,6 +20,7 @@ AUDIT COMPLIANCE:
     ✓ categories parameter now filters which static sources are scraped
     ✓ All results validated against DistressedListing schema before return
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -215,14 +216,12 @@ def _row_to_listing(
             or row.get("instrument")
             or row.get("case#")
             or ""
-        ).strip() or None,
+        ).strip()
+        or None,
         "owner_name": (
-            row.get("owner")
-            or row.get("owner_name")
-            or row.get("grantor")
-            or row.get("defendant")
-            or ""
-        ).strip() or None,
+            row.get("owner") or row.get("owner_name") or row.get("grantor") or row.get("defendant") or ""
+        ).strip()
+        or None,
         "sale_date": sale_date,
         "sale_type": distress_type,
         "opening_bid": opening_bid,
@@ -243,6 +242,7 @@ async def _fetch_and_parse_source(src: Dict[str, Any], state: str) -> List[Dict[
     log.info("[static] Fetching source %s → %s", key, url)
     try:
         from .http_client import fetch_rendered
+
         html = await asyncio.wait_for(
             fetch_rendered(url, use_proxy=False),
             timeout=45,
@@ -317,6 +317,7 @@ async def _scrape_static_sources(
 
 # ─── Main orchestrator ────────────────────────────────────────────────────────
 
+
 async def find_distressed(
     *,
     zip_code: str = "",
@@ -351,7 +352,9 @@ async def find_distressed(
             batch = await _run_county_scraper(key)
             results.extend(batch)
         if progress_cb:
-            await progress_cb(40, f"Scraped {len(county_srcs)} explicit county sources → {len(results)} raw listings")
+            await progress_cb(
+                40, f"Scraped {len(county_srcs)} explicit county sources → {len(results)} raw listings"
+            )
 
     # ── 2. County scraper dispatch ────────────────────────────────────────────
     else:
@@ -367,9 +370,7 @@ async def find_distressed(
         else:
             # Try all scrapers that match the state when no county was specified
             state_scrapers = (
-                [k for k in COUNTY_SCRAPERS if k.endswith(f"_{state_upper.lower()}")]
-                if state_upper
-                else []
+                [k for k in COUNTY_SCRAPERS if k.endswith(f"_{state_upper.lower()}")] if state_upper else []
             )
 
             if state_scrapers:
@@ -437,10 +438,7 @@ async def find_distressed(
     if zip_code and results:
         zip_prefix = zip_code[:3]
         before = len(results)
-        results = [
-            r for r in results
-            if not r.get("zip") or str(r.get("zip", "")).startswith(zip_prefix)
-        ]
+        results = [r for r in results if not r.get("zip") or str(r.get("zip", "")).startswith(zip_prefix)]
         if before != len(results):
             log.info("ZIP filter (%s): %d → %d listings", zip_code, before, len(results))
 

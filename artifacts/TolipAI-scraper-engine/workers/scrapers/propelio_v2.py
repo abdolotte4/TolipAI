@@ -14,6 +14,7 @@ Capabilities
 Auth: PROPELIO_EMAIL + PROPELIO_PASSWORD env vars.
 Session: cached on disk via _browser_session helper.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -104,7 +105,9 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     # ═══════════════════════════════════════════════════════════════════════════
     # Phase 1: Navigate to login page
     # ═══════════════════════════════════════════════════════════════════════════
-    log.info("Propelio: navigating to login page (email=%s)", email[:3] + "***@***" + email.split("@")[-1][3:])
+    log.info(
+        "Propelio: navigating to login page (email=%s)", email[:3] + "***@***" + email.split("@")[-1][3:]
+    )
 
     # Check if we're already logged in (session redirect)
     current_url = page.url
@@ -186,8 +189,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
             # React may still be mounting — check how many inputs exist
             input_count = await page.locator("input").count()
             log.warning(
-                "Propelio: email input not found (attempt %d, %d total inputs on page). "
-                "Console errors: %s",
+                "Propelio: email input not found (attempt %d, %d total inputs on page). Console errors: %s",
                 wait_attempt + 1,
                 input_count,
                 _console_errors[-3:] or "none",
@@ -303,7 +305,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     # Phase 5: Wait for navigation / auth response
     # ═══════════════════════════════════════════════════════════════════════════
     for nav_strategy, nav_timeout in [
-        ("function", 45000),   # wait_for_function
+        ("function", 45000),  # wait_for_function
         ("networkidle", 25000),  # networkidle fallback
     ]:
         try:
@@ -408,7 +410,13 @@ async def test_login_credentials(email: str, password: str) -> Dict[str, Any]:
     import time
     from functools import partial
 
-    result: Dict[str, Any] = {"ok": False, "url": "", "error": "", "screenshots": [], "timestamp": time.time()}
+    result: Dict[str, Any] = {
+        "ok": False,
+        "url": "",
+        "error": "",
+        "screenshots": [],
+        "timestamp": time.time(),
+    }
     login_fn = partial(_do_login, email=email, password=password)
 
     try:
@@ -450,7 +458,9 @@ async def _intercept_json(page, url_pattern: re.Pattern, timeout_ms: int = 25000
 
     async def on_response(resp):
         try:
-            if url_pattern.search(resp.url) and "application/json" in (resp.headers.get("content-type") or ""):
+            if url_pattern.search(resp.url) and "application/json" in (
+                resp.headers.get("content-type") or ""
+            ):
                 body = await resp.json()
                 captured.append({"url": resp.url, "body": body})
         except Exception:
@@ -627,7 +637,9 @@ async def fetch_cash_buyers(
 
         async def _capture_response(resp):
             try:
-                if api_pat.search(resp.url) and "application/json" in (resp.headers.get("content-type") or ""):
+                if api_pat.search(resp.url) and "application/json" in (
+                    resp.headers.get("content-type") or ""
+                ):
                     body = await resp.json()
                     pending_xhr.append({"url": resp.url, "body": body})
             except Exception:
@@ -700,7 +712,13 @@ async def fetch_cash_buyers(
                 while pending_xhr:
                     item = pending_xhr.pop(0)
                     body = item.get("body") or {}
-                    raw = body.get("data") or body.get("buyers") or body.get("results") or body.get("items") or []
+                    raw = (
+                        body.get("data")
+                        or body.get("buyers")
+                        or body.get("results")
+                        or body.get("items")
+                        or []
+                    )
                     if isinstance(raw, list):
                         rows.extend(raw)
                 return rows
@@ -731,7 +749,9 @@ async def fetch_cash_buyers(
                         norm.get("name", "").lower(),
                         (norm.get("address") or "").lower(),
                     )
-                    if not any((x.get("name", "").lower(), (x.get("address") or "").lower()) == key for x in buyers):
+                    if not any(
+                        (x.get("name", "").lower(), (x.get("address") or "").lower()) == key for x in buyers
+                    ):
                         buyers.append(norm)
 
                 if progress_cb:

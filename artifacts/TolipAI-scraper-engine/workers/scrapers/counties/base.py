@@ -30,6 +30,7 @@ Template for a new county scraper:
                     results.append(listing)
             return results
 """
+
 from __future__ import annotations
 
 import logging
@@ -90,7 +91,7 @@ class CountyScraper(ABC):
                 continue
             if len(cells) < len(headers):
                 cells.extend([""] * (len(headers) - len(cells)))
-            row = dict(zip(headers, cells[:len(headers)]))
+            row = dict(zip(headers, cells[: len(headers)]))
             rows.append(row)
         return rows
 
@@ -98,6 +99,7 @@ class CountyScraper(ABC):
         """BeautifulSoup fallback for table parsing."""
         try:
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(html, "lxml")
             table = soup.select_one(selector)
             if not table:
@@ -106,7 +108,9 @@ class CountyScraper(ABC):
             if not headers:
                 first_row = table.select_one("tr")
                 if first_row:
-                    headers = [td.get_text(strip=True).lower().replace(" ", "_") for td in first_row.select("td,th")]
+                    headers = [
+                        td.get_text(strip=True).lower().replace(" ", "_") for td in first_row.select("td,th")
+                    ]
             rows = []
             for tr in table.select("tbody tr"):
                 cells = [td.get_text(strip=True) for td in tr.select("td")]

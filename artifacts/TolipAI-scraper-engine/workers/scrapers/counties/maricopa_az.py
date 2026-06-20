@@ -4,6 +4,7 @@ Source: https://mctreasurer.maricopa.gov/
 Type: Public list, no login required
 Data: Annual tax lien certificate sale list (typically held in February)
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,9 +47,14 @@ class MaricopaScraper(CountyScraper):
                 html = await page.content()
 
                 # Also look for linked PDF/spreadsheet downloads
-                pdf_links = await page.query_selector_all("a[href$='.pdf'], a[href$='.xlsx'], a[href$='.csv']")
+                pdf_links = await page.query_selector_all(
+                    "a[href$='.pdf'], a[href$='.xlsx'], a[href$='.csv']"
+                )
                 if pdf_links:
-                    log.info("[Maricopa AZ] Found %d downloadable list(s) — HTML table will be primary", len(pdf_links))
+                    log.info(
+                        "[Maricopa AZ] Found %d downloadable list(s) — HTML table will be primary",
+                        len(pdf_links),
+                    )
 
         except Exception as e:
             self.log_block(self.source_url, "navigation_failed", str(e)[:120])
@@ -73,11 +79,19 @@ class MaricopaScraper(CountyScraper):
                     "state": "AZ",
                     "zip": (row.get("zip") or row.get("situs_zip") or "").strip() or None,
                     "county": "Maricopa",
-                    "parcel_id": (row.get("parcel_number") or row.get("parcel") or row.get("apn") or "").strip() or None,
-                    "owner_name": (row.get("owner") or row.get("owner_name") or row.get("taxpayer") or "").strip() or None,
+                    "parcel_id": (
+                        row.get("parcel_number") or row.get("parcel") or row.get("apn") or ""
+                    ).strip()
+                    or None,
+                    "owner_name": (
+                        row.get("owner") or row.get("owner_name") or row.get("taxpayer") or ""
+                    ).strip()
+                    or None,
                     "sale_date": self.parse_date(row.get("sale_date") or row.get("auction_date") or ""),
                     "sale_type": "tax_lien",
-                    "lien_amount": self.parse_money(row.get("amount_due") or row.get("lien_amount") or row.get("taxes_due") or ""),
+                    "lien_amount": self.parse_money(
+                        row.get("amount_due") or row.get("lien_amount") or row.get("taxes_due") or ""
+                    ),
                     "opening_bid": self.parse_money(row.get("minimum_bid") or row.get("opening_bid") or ""),
                     "source_url": self.source_url,
                     "source": "maricopa_az",

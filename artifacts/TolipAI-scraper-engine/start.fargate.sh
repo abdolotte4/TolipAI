@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # start.fargate.sh — Fargate Spot-aware startup script
-# Trigger: deploy workflow v2 (QEMU + buildx ARM64)
+# Trigger: deploy workflow v4.0 (standard ECS secrets + clean workflow)
 #
 # Differences from start.sh (Railway/Replit):
 #  • No Nix store path resolution needed (Debian/Ubuntu on Fargate)

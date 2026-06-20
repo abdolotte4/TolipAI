@@ -44,6 +44,7 @@ Presigned URLs
   URL for any S3 object.  Serve this to the client instead of proxying the
   bytes through your API — zero data transfer cost on the server side.
 """
+
 from __future__ import annotations
 
 import gzip
@@ -66,12 +67,14 @@ _pending: Dict[str, Dict[str, Any]] = {}
 
 # ── S3 helper ─────────────────────────────────────────────────────────────────
 
+
 async def _s3_client():
     """Return a boto3 aioboto3 S3 client or None if aioboto3 is unavailable."""
     if not _BUCKET:
         return None
     try:
         import aioboto3  # type: ignore[import]
+
         session = aioboto3.Session()
         return session
     except ImportError:
@@ -84,6 +87,7 @@ def _checkpoint_key(job_id: str) -> str:
 
 
 # ── Save a single checkpoint ──────────────────────────────────────────────────
+
 
 async def save_checkpoint(
     job_id: str,
@@ -100,13 +104,13 @@ async def save_checkpoint(
     Returns True on success, False if S3 is unavailable (silently degrades).
     """
     checkpoint = {
-        "job_id":        job_id,
-        "job_type":      job_type,
-        "params":        params,
-        "progress":      progress,
+        "job_id": job_id,
+        "job_type": job_type,
+        "params": params,
+        "progress": progress,
         "partial_result": partial_result,
-        "saved_at":      time.time(),
-        "hostname":      os.uname().nodename if hasattr(os, "uname") else "unknown",
+        "saved_at": time.time(),
+        "hostname": os.uname().nodename if hasattr(os, "uname") else "unknown",
     }
     _pending[job_id] = checkpoint
 
@@ -115,9 +119,7 @@ async def save_checkpoint(
         return False
 
     try:
-        compressed = gzip.compress(
-            json.dumps(checkpoint, default=str).encode(), compresslevel=6
-        )
+        compressed = gzip.compress(json.dumps(checkpoint, default=str).encode(), compresslevel=6)
         key = _checkpoint_key(job_id)
         async with session.client("s3") as s3:
             await s3.put_object(
@@ -127,7 +129,7 @@ async def save_checkpoint(
                 ContentType="application/json",
                 ContentEncoding="gzip",
                 Metadata={
-                    "job_id":   job_id,
+                    "job_id": job_id,
                     "job_type": job_type,
                     "progress": str(progress),
                 },
@@ -141,6 +143,7 @@ async def save_checkpoint(
 
 # ── Flush all pending checkpoints (called on SIGTERM) ────────────────────────
 
+
 async def flush_all_checkpoints() -> None:
     """Write all in-memory checkpoints to S3. Called by spot_handler on SIGTERM.
 
@@ -152,6 +155,7 @@ async def flush_all_checkpoints() -> None:
         return
 
     import asyncio
+
     jobs = list(_pending.items())
     log.info("spot_checkpoint: flushing %d checkpoint(s) to S3...", len(jobs))
 
@@ -166,15 +170,17 @@ async def flush_all_checkpoints() -> None:
         for _, cp in jobs
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    ok  = sum(1 for r in results if r is True)
+    ok = sum(1 for r in results if r is True)
     err = sum(1 for r in results if r is not True)
     log.info(
         "spot_checkpoint: flush complete — %d saved, %d failed",
-        ok, err,
+        ok,
+        err,
     )
 
 
 # ── Recover checkpoints on startup ────────────────────────────────────────────
+
 
 async def recover_checkpoints(retry_queue: Any) -> int:
     """On container startup, re-queue any checkpoint left by a previous Spot task.
@@ -214,14 +220,16 @@ async def recover_checkpoints(retry_queue: Any) -> int:
                     except Exception:
                         data = json.loads(body)
 
-                    job_id   = data["job_id"]
+                    job_id = data["job_id"]
                     job_type = data["job_type"]
-                    params   = data.get("params") or {}
+                    params = data.get("params") or {}
                     progress = data.get("progress", 0)
 
                     # Re-queue with attempt=0 so it gets a fresh retry
                     queued = retry_queue.enqueue(
-                        job_id, job_type, params,
+                        job_id,
+                        job_type,
+                        params,
                         attempt=0,
                         last_error=f"spot_interrupted at {progress}%",
                     )
@@ -229,7 +237,9 @@ async def recover_checkpoints(retry_queue: Any) -> int:
                         recovered += 1
                         log.info(
                             "spot_checkpoint: recovered job %s (%s, was %d%% done)",
-                            job_id, job_type, progress,
+                            job_id,
+                            job_type,
+                            progress,
                         )
                         # Delete checkpoint so it doesn't re-queue on next restart
                         await s3.delete_object(Bucket=_BUCKET, Key=key)
@@ -257,6 +267,7 @@ async def recover_checkpoints(retry_queue: Any) -> int:
 
 # ── Delete a specific checkpoint (call after job completes successfully) ──────
 
+
 async def delete_checkpoint(job_id: str) -> None:
     """Remove a checkpoint once the job finishes successfully.
 
@@ -277,6 +288,7 @@ async def delete_checkpoint(job_id: str) -> None:
 
 
 # ── Presigned download URL ────────────────────────────────────────────────────
+
 
 async def presigned_download_url(
     key: str,
@@ -320,6 +332,7 @@ async def presigned_download_url(
 
 # ── CSV compression helper ────────────────────────────────────────────────────
 
+
 def compress_csv(csv_text: str) -> bytes:
     """Gzip-compress a CSV string before S3 upload.
 
@@ -361,7 +374,7 @@ async def upload_compressed_csv(
         return None
 
     compressed = compress_csv(csv_text)
-    gzip_key   = key if key.endswith(".gz") else f"{key}.gz"
+    gzip_key = key if key.endswith(".gz") else f"{key}.gz"
 
     try:
         async with session.client("s3") as s3:

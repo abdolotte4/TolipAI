@@ -5,6 +5,7 @@ already in the api-server TS scraper but adds:
   - "sold within last N months" filtering for the cash buyer flow
   - owner mailing address from the property detail page (when available)
 """
+
 from __future__ import annotations
 
 import json

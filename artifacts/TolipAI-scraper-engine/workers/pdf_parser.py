@@ -8,6 +8,7 @@ Flow:
   3. Optionally extract tables + metadata
   4. Return plain text (chunked if large) ready for LLM parsing
 """
+
 from __future__ import annotations
 
 import io

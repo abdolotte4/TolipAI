@@ -25,6 +25,7 @@ Usage
     from .circuit_breaker import all_breaker_states
     states = all_breaker_states()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -58,19 +59,19 @@ class CircuitOpenError(RuntimeError):
         self.name = name
         self.reopen_in = reopen_in
         super().__init__(
-            f"Circuit '{name}' is OPEN — service appears down. "
-            f"Will probe again in {int(reopen_in)}s."
+            f"Circuit '{name}' is OPEN — service appears down. Will probe again in {int(reopen_in)}s."
         )
 
 
 # ── Core class ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class CircuitBreaker:
     name: str
     failure_threshold: int = _DEFAULT_FAILURE_THRESHOLD
     recovery_timeout: float = _DEFAULT_RECOVERY_TIMEOUT
-    success_threshold: int = _DEFAULT_SUCCESS_THRESHOLD   # successes needed in HALF_OPEN to close
+    success_threshold: int = _DEFAULT_SUCCESS_THRESHOLD  # successes needed in HALF_OPEN to close
     half_open_max_probes: int = _DEFAULT_HALF_OPEN_MAX
 
     # Internal counters — not in __init__
@@ -108,7 +109,9 @@ class CircuitBreaker:
         self._last_failure_msg = reason[:200]
         log.warning(
             "[circuit_breaker] '%s' OPENED — %s — will probe in %ds",
-            self.name, reason[:120], int(self.recovery_timeout),
+            self.name,
+            reason[:120],
+            int(self.recovery_timeout),
         )
 
     def _close(self) -> None:
@@ -131,6 +134,7 @@ class CircuitBreaker:
                     # Reset failure window on a clean success run
                     if self._failure_count > 0:
                         self._failure_count = max(0, self._failure_count - 1)
+
         return _inner()
 
     def _record_failure(self, exc: Exception) -> None:
@@ -145,9 +149,8 @@ class CircuitBreaker:
                 elif self._state == State.CLOSED:
                     self._failure_count += 1
                     if self._failure_count >= self.failure_threshold:
-                        self._open(
-                            f"failure threshold {self.failure_threshold} reached: {msg}"
-                        )
+                        self._open(f"failure threshold {self.failure_threshold} reached: {msg}")
+
         return _inner()
 
     @asynccontextmanager
@@ -229,8 +232,8 @@ async def breaker(
 ) -> AsyncIterator[None]:
     """Convenience context manager:
 
-        async with breaker("propelio"):
-            result = await scrape_propelio(address)
+    async with breaker("propelio"):
+        result = await scrape_propelio(address)
     """
     cb = get_breaker(
         service,
@@ -257,12 +260,12 @@ def reset_breaker(name: str) -> bool:
 # ── Pre-register known services ───────────────────────────────────────────────
 # These are created eagerly so health checks always show them (even before first call).
 for _svc, _thresh, _timeout in [
-    ("propelio",     5, 180),  # 3-min recovery — requires browser session
-    ("propwire",     5, 180),
-    ("attom",        8,  60),  # faster recovery — reliable API
-    ("brightdata",   6,  90),
-    ("groq",        10,  30),
-    ("openrouter",  10,  30),
-    ("scraperapi",   8,  60),
+    ("propelio", 5, 180),  # 3-min recovery — requires browser session
+    ("propwire", 5, 180),
+    ("attom", 8, 60),  # faster recovery — reliable API
+    ("brightdata", 6, 90),
+    ("groq", 10, 30),
+    ("openrouter", 10, 30),
+    ("scraperapi", 8, 60),
 ]:
     get_breaker(_svc, failure_threshold=_thresh, recovery_timeout=float(_timeout))

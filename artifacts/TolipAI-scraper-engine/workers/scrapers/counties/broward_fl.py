@@ -4,6 +4,7 @@ Source: https://www.realforeclose.com/index.cfm?zaction=auction&zmethod=host&zho
 Type: Login required + reCAPTCHA (same platform as Miami-Dade)
 Status: Requires CAPTCHA_API_KEY + REALFORECLOSE_USERNAME + REALFORECLOSE_PASSWORD
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,12 +32,11 @@ class BrowardScraper(CountyScraper):
         password = os.getenv("REALFORECLOSE_PASSWORD")
 
         if not username or not password:
-            log.warning(
-                "[Broward FL] REALFORECLOSE_USERNAME/PASSWORD not set — skipping."
-            )
+            log.warning("[Broward FL] REALFORECLOSE_USERNAME/PASSWORD not set — skipping.")
             return []
 
         from ...captcha_solver import CaptchaSolver
+
         solver = CaptchaSolver()
         if not solver.available:
             log.warning("[Broward FL] CAPTCHA_API_KEY not set — skipping.")
@@ -62,6 +62,7 @@ class BrowardScraper(CountyScraper):
                 if captcha_frame:
                     src = await captcha_frame.get_attribute("src") or ""
                     import re
+
                     m = re.search(r"k=([A-Za-z0-9_-]+)", src)
                     site_key = m.group(1) if m else ""
                     if site_key:
@@ -102,9 +103,13 @@ class BrowardScraper(CountyScraper):
                             "county": "Broward",
                             "case_number": (row.get("case_number") or row.get("case#") or "").strip() or None,
                             "parcel_id": (row.get("parcel_id") or row.get("folio") or "").strip() or None,
-                            "sale_date": self.parse_date(row.get("sale_date") or row.get("auction_date") or ""),
+                            "sale_date": self.parse_date(
+                                row.get("sale_date") or row.get("auction_date") or ""
+                            ),
                             "sale_type": "foreclosure",
-                            "opening_bid": self.parse_money(row.get("opening_bid") or row.get("assessed_value") or ""),
+                            "opening_bid": self.parse_money(
+                                row.get("opening_bid") or row.get("assessed_value") or ""
+                            ),
                             "source_url": self.source_url,
                             "source": "broward_fl",
                             "scraped_at": datetime.utcnow().isoformat(),

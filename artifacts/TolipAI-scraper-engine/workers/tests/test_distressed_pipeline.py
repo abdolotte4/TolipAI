@@ -1,4 +1,5 @@
 """Unit tests for distressed scraper pipeline — mocks HTTP, no real network calls."""
+
 import asyncio
 import os
 import sys
@@ -62,8 +63,9 @@ class TestDistressedSourceFiltering:
         result = _run(sources_for_request_ai(state="TX"))
         assert isinstance(result, list)
         for src in result:
-            assert src.get("state") in ("TX", "*"), \
+            assert src.get("state") in ("TX", "*"), (
                 f"sources_for_request_ai returned wrong-state entry: {src.get('state')}"
+            )
 
 
 class TestCountyScraperRegistry:
@@ -72,11 +74,16 @@ class TestCountyScraperRegistry:
         from workers.scrapers.counties import COUNTY_SCRAPERS
 
         expected = [
-            "harris_tx", "dallas_tx",
-            "miami_dade_fl", "broward_fl",
-            "maricopa_az", "clark_nv",
-            "orange_ca", "los_angeles_ca",
-            "cook_il", "fulton_ga",
+            "harris_tx",
+            "dallas_tx",
+            "miami_dade_fl",
+            "broward_fl",
+            "maricopa_az",
+            "clark_nv",
+            "orange_ca",
+            "los_angeles_ca",
+            "cook_il",
+            "fulton_ga",
         ]
         for key in expected:
             assert key in COUNTY_SCRAPERS, f"Missing county scraper: {key}"
@@ -92,18 +99,16 @@ class TestCountyScraperRegistry:
             assert isinstance(meta, dict), f"{key}.metadata() must return dict"
             for field in required_fields:
                 assert field in meta, f"{key}.metadata() missing '{field}'"
-            assert meta["state"].isupper(), \
+            assert meta["state"].isupper(), (
                 f"{key}.metadata()['state'] must be uppercase, got: {meta['state']}"
-            assert meta["source_url"].startswith("http"), \
-                f"{key}.metadata()['source_url'] must be a real URL"
+            )
+            assert meta["source_url"].startswith("http"), f"{key}.metadata()['source_url'] must be a real URL"
 
     def test_county_scrapers_no_llm_import(self):
         """County scraper files must not import any removed LLM extraction functions."""
         import glob
 
-        counties_dir = os.path.join(
-            os.path.dirname(__file__), "..", "scrapers", "counties"
-        )
+        counties_dir = os.path.join(os.path.dirname(__file__), "..", "scrapers", "counties")
         banned = [
             "parse_distressed_page",
             "suggest_distressed_sources",
@@ -114,9 +119,7 @@ class TestCountyScraperRegistry:
             with open(py_file) as f:
                 content = f.read()
             for fn in banned:
-                assert fn not in content, (
-                    f"{os.path.basename(py_file)} references banned function '{fn}'"
-                )
+                assert fn not in content, f"{os.path.basename(py_file)} references banned function '{fn}'"
 
     def test_list_supported_counties_uses_registry(self):
         """list_supported_counties() must return data from COUNTY_SCRAPERS, not distressed_sources."""
@@ -161,18 +164,27 @@ class TestDistressedDispatch:
     def test_completed_no_results_status_string(self):
         """The status string for empty results must be exactly 'completed_no_results'."""
         status = "completed_no_results"
-        assert status == "completed_no_results", \
-            "Must be 'completed_no_results', not 'completed' or 'failed'"
+        assert status == "completed_no_results", "Must be 'completed_no_results', not 'completed' or 'failed'"
 
     def test_validate_listings_drops_invalid(self):
         """validate_listings() must drop invalid records silently."""
         from workers.models import validate_listings
 
         raw = [
-            {"address": "123 Main St", "city": "Houston", "state": "TX",
-             "county": "Harris", "source_url": "https://hctax.net"},
-            {"address": "po box 1234", "city": "Dallas", "state": "TX",
-             "county": "Dallas", "source_url": "https://dallascounty.org"},
+            {
+                "address": "123 Main St",
+                "city": "Houston",
+                "state": "TX",
+                "county": "Harris",
+                "source_url": "https://hctax.net",
+            },
+            {
+                "address": "po box 1234",
+                "city": "Dallas",
+                "state": "TX",
+                "county": "Dallas",
+                "source_url": "https://dallascounty.org",
+            },
         ]
         result = validate_listings(raw)
         assert len(result) == 1, "PO Box address must be dropped"
@@ -212,8 +224,9 @@ class TestAiResearch:
         assert len(result) > 0, "TX must have at least one trustee entry"
         for entry in result:
             assert entry.get("state") == "TX"
-            assert entry.get("website", "").startswith("http"), \
+            assert entry.get("website", "").startswith("http"), (
                 "All trustee entries must have a real https:// URL"
+            )
             assert "name" in entry
             assert "role" in entry
 
@@ -243,9 +256,7 @@ class TestAiResearch:
             assert url.startswith("https://"), (
                 f"Registry URL must use HTTPS: {url!r} (entry: {entry.get('name')})"
             )
-            assert "{" not in url, (
-                f"URL must not contain template placeholders: {url!r}"
-            )
+            assert "{" not in url, f"URL must not contain template placeholders: {url!r}"
 
     def test_batch_extract_profiles_is_stubbed(self):
         """batch_extract_profiles() must be a no-op stub (LLM extraction removed)."""
@@ -295,14 +306,16 @@ class TestCountyDeedModel:
         """validate_deed() must return None for invalid records."""
         from workers.models import validate_deed
 
-        result = validate_deed({
-            "grantor": "X",
-            "grantee": "Harris County LLC",
-            "address": "123 Main St",
-            "state": "TX",
-            "county": "Harris",
-            "source_url": "https://hctax.net",
-        })
+        result = validate_deed(
+            {
+                "grantor": "X",
+                "grantee": "Harris County LLC",
+                "address": "123 Main St",
+                "state": "TX",
+                "county": "Harris",
+                "source_url": "https://hctax.net",
+            }
+        )
         assert result is None, "grantor 'X' (< 2 chars) must fail validation"
 
 
