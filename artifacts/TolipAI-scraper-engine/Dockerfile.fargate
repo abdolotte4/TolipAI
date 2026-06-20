@@ -22,6 +22,12 @@ FROM ${BASE_IMAGE} AS app
 
 WORKDIR /app
 
+# Install any packages added since the base image was last built.
+# This runs as root before USER scraper so it can write to /venv.
+# Fast (no-op) if base is up-to-date; catches new deps without a base rebuild.
+COPY requirements.txt ./
+RUN /venv/bin/pip install --no-cache-dir -q -r requirements.txt 2>&1 | tail -5
+
 # Copy only the app code (the heavy deps are in the base image)
 COPY --chown=scraper:scraper workers/ ./workers/
 COPY --chown=scraper:scraper start.fargate.sh ./start.sh
