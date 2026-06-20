@@ -1,0 +1,295 @@
+name: Full ECS Diagnostics and Auto-Fix
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER: TolipAI-scraper-cluster
+  SERVICE: tolipai-scraper-engine-service-xop
+  TASK_FAMILY: tolipai-scraper-engine
+  EXECUTION_ROLE: TolipAI-scraper-execution-role
+  TASK_ROLE: tolipai-scraper-task-role
+
+jobs:
+  diagnose-and-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ─── CHECK 1: Cluster capacity providers ─────────────────────────────
+      - name: Check cluster capacity providers
+        run: |
+          echo "=== Cluster Capacity Providers ==="
+          aws ecs describe-clusters --clusters ${{ env.CLUSTER }} --query 'clusters[0].capacityProviders'
+
+      # ─── CHECK 2: Execution role policies ────────────────────────────────
+      - name: Check execution role policies
+        run: |
+          echo "=== Execution Role Attached Policies ==="
+          aws iam list-attached-role-policies --role-name ${{ env.EXECUTION_ROLE }} --query 'AttachedPolicies[*].PolicyName'
+          echo ""
+          echo "=== Execution Role Inline Policies ==="
+          aws iam list-role-policies --role-name ${{ env.EXECUTION_ROLE }} --query 'PolicyNames'
+
+      # ─── CHECK 3: Execution role trust policy ────────────────────────────
+      - name: Check execution role trust policy
+        run: |
+          echo "=== Execution Role Trust Policy ==="
+          aws iam get-role --role-name ${{ env.EXECUTION_ROLE }} --query 'Role.AssumeRolePolicyDocument.Statement'
+
+      # ─── CHECK 4: Task role trust policy ──────────────────────────────────
+      - name: Check task role trust policy
+        run: |
+          echo "=== Task Role Trust Policy ==="
+          aws iam get-role --role-name ${{ env.TASK_ROLE }} --query 'Role.AssumeRolePolicyDocument.Statement'
+
+      # ─── CHECK 5: All required secrets ───────────────────────────────────
+      - name: Verify all secrets exist
+        run: |
+          SECRETS=(
+            "database-url" "webscraper-key" "jwt-secret" "openai-api-key"
+            "brightdata-username" "brightdata-password"
+            "oxylabs-username" "oxylabs-password"
+            "propelio-email" "propelio-password"
+            "propwire-email" "propwire-password"
+            "google-maps-key" "redis-url" "s3-cache-bucket"
+          )
+          MISSING=()
+          for secret in "${SECRETS[@]}"; do
+            echo -n "Checking TolipAI/scraper/$secret... "
+            if aws secretsmanager describe-secret --secret-id "TolipAI/scraper/$secret" >/dev/null 2>&1; then
+              echo "EXISTS"
+            else
+              echo "MISSING"
+              MISSING+=("$secret")
+            fi
+          done
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo ""
+            echo "❌ MISSING SECRETS: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "✅ All secrets exist"
+
+      # ─── FIX 1: Add CloudWatch Logs policy to execution role ────────────
+      - name: Fix CloudWatch Logs permissions
+        run: |
+          echo "=== Adding CloudWatch Logs policy ==="
+          cat > /tmp/cloudwatch-policy.json << 'EOF'
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents",
+                  "logs:DescribeLogGroups",
+                  "logs:DescribeLogStreams"
+                ],
+                "Resource": "arn:aws:logs:us-east-1:583299526161:log-group:/ecs/tolipai-scraper-engine:*"
+              }
+            ]
+          }
+          EOF
+
+          POLICY_ARN=$(aws iam create-policy \
+            --policy-name ECS-CloudWatchLogs-Policy \
+            --policy-document file:///tmp/cloudwatch-policy.json \
+            --description "CloudWatch Logs for ECS scraper" 2>/dev/null | jq -r '.Policy.Arn' || \
+            aws iam list-policies --scope Local --query "Policies[?PolicyName=='ECS-CloudWatchLogs-Policy'].Arn" --output text)
+
+          if [ -n "$POLICY_ARN" ] && [ "$POLICY_ARN" != "None" ]; then
+            aws iam attach-role-policy --role-name ${{ env.EXECUTION_ROLE }} --policy-arn $POLICY_ARN 2>/dev/null || echo "Already attached"
+            echo "✅ CloudWatch Logs policy attached"
+          else
+            echo "❌ Could not create/attach CloudWatch policy"
+            exit 1
+          fi
+
+      # ─── FIX 2: Add Secrets Manager read policy to execution role ───────
+      - name: Fix Secrets Manager permissions
+        run: |
+          echo "=== Adding Secrets Manager read policy ==="
+          cat > /tmp/secrets-policy.json << 'EOF'
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/*"
+              }
+            ]
+          }
+          EOF
+
+          POLICY_ARN=$(aws iam create-policy \
+            --policy-name ECS-SecretsManager-Policy \
+            --policy-document file:///tmp/secrets-policy.json \
+            --description "Secrets Manager read for ECS scraper" 2>/dev/null | jq -r '.Policy.Arn' || \
+            aws iam list-policies --scope Local --query "Policies[?PolicyName=='ECS-SecretsManager-Policy'].Arn" --output text)
+
+          if [ -n "$POLICY_ARN" ] && [ "$POLICY_ARN" != "None" ]; then
+            aws iam attach-role-policy --role-name ${{ env.EXECUTION_ROLE }} --policy-arn $POLICY_ARN 2>/dev/null || echo "Already attached"
+            echo "✅ Secrets Manager policy attached"
+          else
+            echo "❌ Could not create/attach Secrets Manager policy"
+            exit 1
+          fi
+
+      # ─── FIX 3: Add ECR pull policy to execution role ────────────────────
+      - name: Fix ECR pull permissions
+        run: |
+          echo "=== Adding ECR pull policy ==="
+          cat > /tmp/ecr-policy.json << 'EOF'
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ecr:GetAuthorizationToken",
+                  "ecr:BatchCheckLayerAvailability",
+                  "ecr:GetDownloadUrlForLayer",
+                  "ecr:BatchGetImage"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+          EOF
+
+          POLICY_ARN=$(aws iam create-policy \
+            --policy-name ECS-ECR-Pull-Policy \
+            --policy-document file:///tmp/ecr-policy.json \
+            --description "ECR pull for ECS scraper" 2>/dev/null | jq -r '.Policy.Arn' || \
+            aws iam list-policies --scope Local --query "Policies[?PolicyName=='ECS-ECR-Pull-Policy'].Arn" --output text)
+
+          if [ -n "$POLICY_ARN" ] && [ "$POLICY_ARN" != "None" ]; then
+            aws iam attach-role-policy --role-name ${{ env.EXECUTION_ROLE }} --policy-arn $POLICY_ARN 2>/dev/null || echo "Already attached"
+            echo "✅ ECR pull policy attached"
+          else
+            echo "❌ Could not create/attach ECR policy"
+            exit 1
+          fi
+
+      # ─── FIX 4: Update task definition with correct secret ARNs ─────────
+      - name: Fix task definition ARNs
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import subprocess
+          import sys
+
+          secret_mapping = {
+              "DATABASE_URL": "database-url",
+              "SCRAPER_API_KEY": "webscraper-key",
+              "JWT_SECRET": "jwt-secret",
+              "OPENAI_API_KEY": "openai-api-key",
+              "BRIGHTDATA_USERNAME": "brightdata-username",
+              "BRIGHTDATA_PASSWORD": "brightdata-password",
+              "OXYLABS_USERNAME": "oxylabs-username",
+              "OXYLABS_PASSWORD": "oxylabs-password",
+              "PROPELIO_EMAIL": "propelio-email",
+              "PROPELIO_PASSWORD": "propelio-password",
+              "PROPWIRE_EMAIL": "propwire-email",
+              "PROPWIRE_PASSWORD": "propwire-password",
+              "GOOGLE_MAPS_API_KEY": "google-maps-key",
+              "REDIS_URL": "redis-url",
+              "S3_CACHE_BUCKET": "s3-cache-bucket",
+          }
+
+          secrets = {}
+          for env_name, secret_name in secret_mapping.items():
+              try:
+                  result = subprocess.run(
+                      ["aws", "secretsmanager", "describe-secret",
+                       "--secret-id", f"TolipAI/scraper/{secret_name}",
+                       "--query", "ARN", "--output", "text"],
+                      capture_output=True, text=True, check=True
+                  )
+                  secrets[env_name] = result.stdout.strip()
+              except subprocess.CalledProcessError:
+                  print(f"❌ ERROR: Secret not found: {secret_name}")
+                  sys.exit(1)
+
+          with open("infrastructure/ecs-task-definition.json", "r") as f:
+              task_def = json.load(f)
+
+          for secret in task_def["containerDefinitions"][0]["secrets"]:
+              env_name = secret["name"]
+              if env_name in secrets:
+                  secret["valueFrom"] = secrets[env_name]
+
+          with open("infrastructure/ecs-task-definition.json", "w") as f:
+              json.dump(task_def, f, indent=2)
+              f.write("\n")
+
+          print("✅ Task definition updated with correct ARNs")
+          PYEOF
+
+      # ─── FIX 5: Fix log group creation (create if not exists) ───────────
+      - name: Create CloudWatch log group
+        run: |
+          aws logs create-log-group --log-group-name /ecs/tolipai-scraper-engine 2>/dev/null || echo "Log group already exists"
+          echo "✅ Log group /ecs/tolipai-scraper-engine exists"
+
+      # ─── FIX 6: Set service desired count to 1 and stop old tasks ───────
+      - name: Stop old tasks
+        run: |
+          TASKS=$(aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status RUNNING --query 'taskArns[]' --output text)
+          if [ -n "$TASKS" ] && [ "$TASKS" != "None" ]; then
+            for task in $TASKS; do
+              aws ecs stop-task --cluster ${{ env.CLUSTER }} --task "$task" --reason "Full diagnostic fix"
+            done
+          fi
+          aws ecs update-service --cluster ${{ env.CLUSTER }} --service ${{ env.SERVICE }} --desired-count 1
+          echo "✅ Old tasks stopped, desired count set to 1"
+
+      # ─── FIX 7: Register new task definition and deploy ────────────────
+      - name: Register and deploy
+        run: |
+          aws ecs register-task-definition --cli-input-json file://infrastructure/ecs-task-definition.json
+          aws ecs update-service \
+            --cluster ${{ env.CLUSTER }} \
+            --service ${{ env.SERVICE }} \
+            --task-definition ${{ env.TASK_FAMILY }} \
+            --force-new-deployment
+          echo "✅ New task definition registered and deployed"
+
+      # ─── VERIFY: Wait for stability and test ───────────────────────────
+      - name: Wait and verify
+        run: |
+          echo "Waiting 60 seconds for task to start..."
+          sleep 60
+          echo "=== Service status ==="
+          aws ecs describe-services --cluster ${{ env.CLUSTER }} --services ${{ env.SERVICE }} \
+            --query 'services[0].{status:status, runningCount:runningCount, desiredCount:desiredCount, pendingCount:pendingCount}'
+          echo ""
+          echo "=== Recent events ==="
+          aws ecs describe-services --cluster ${{ env.CLUSTER }} --services ${{ env.SERVICE }} \
+            --query 'services[0].events[:5]'
+          echo ""
+          echo "=== Testing /health endpoint ==="
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://tolip-scraper-url-323311724.us-east-1.elb.amazonaws.com:8765/health)
+            echo "Attempt $i: HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "✅ Health check passing!"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "❌ Health check still failing after 5 attempts"
+          exit 1
