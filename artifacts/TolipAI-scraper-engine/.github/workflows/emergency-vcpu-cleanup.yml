@@ -1,0 +1,97 @@
+name: Emergency vCPU Cleanup
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER: TolipAI-scraper-cluster
+
+jobs:
+  emergency-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set ALL services to desired-count=0
+        run: |
+          echo "=== Getting all services ==="
+          SERVICES=$(aws ecs list-services --cluster ${{ env.CLUSTER }} --query 'serviceArns[*]' --output text)
+          echo "Services: $SERVICES"
+          for svc in $SERVICES; do
+            echo "Setting $svc to desired-count=0..."
+            aws ecs update-service --cluster ${{ env.CLUSTER }} --service "$svc" --desired-count 0
+          done
+
+      - name: Stop ALL running tasks
+        run: |
+          echo "=== Getting all running tasks ==="
+          for status in RUNNING PENDING; do
+            TASKS=$(aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status $status --query 'taskArns[*]' --output text)
+            if [ -n "$TASKS" ] && [ "$TASKS" != "None" ]; then
+              echo "Stopping $status tasks: $TASKS"
+              for task in $TASKS; do
+                aws ecs stop-task --cluster ${{ env.CLUSTER }} --task "$task" --reason "Emergency vCPU cleanup" 2>/dev/null || true
+              done
+            else
+              echo "No $status tasks"
+            fi
+          done
+
+      - name: Wait for tasks to stop
+        run: |
+          echo "Waiting 60 seconds for tasks to stop..."
+          sleep 60
+
+      - name: Verify no tasks running
+        run: |
+          echo "=== Running tasks ==="
+          RUNNING=$(aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status RUNNING --query 'taskArns[*]' --output text)
+          PENDING=$(aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status PENDING --query 'taskArns[*]' --output text)
+          echo "Running: $RUNNING"
+          echo "Pending: $PENDING"
+          if [ "$RUNNING" = "None" ] && [ "$PENDING" = "None" ]; then
+            echo "✅ ALL TASKS STOPPED - vCPU should be free"
+          else
+            echo "⚠️ Some tasks still running, waiting more..."
+            sleep 60
+            RUNNING2=$(aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status RUNNING --query 'taskArns[*]' --output text)
+            PENDING2=$(aws ecs list-tasks --cluster ${{ env.CLUSTER }} --desired-status PENDING --query 'taskArns[*]' --output text)
+            echo "Running: $RUNNING2"
+            echo "Pending: $PENDING2"
+          fi
+
+      - name: Check all clusters for vCPU usage
+        run: |
+          echo "=== All clusters and their services ==="
+          CLUSTERS=$(aws ecs list-clusters --query 'clusterArns[*]' --output text)
+          for cluster in $CLUSTERS; do
+            echo "Cluster: $cluster"
+            SERVICES=$(aws ecs list-services --cluster "$cluster" --query 'serviceArns[*]' --output text)
+            for svc in $SERVICES; do
+              aws ecs describe-services --cluster "$cluster" --services "$svc" \
+                --query 'services[0].{name:serviceName, running:runningCount, desired:desiredCount, pending:pendingCount}'
+            done
+          done
+
+      - name: Report vCPU status
+        run: |
+          echo ""
+          echo "=================================================="
+          echo "vCPU CLEANUP COMPLETE"
+          echo "=================================================="
+          echo ""
+          echo "All services on cluster ${{ env.CLUSTER }} have been set to desired-count=0"
+          echo "All running/pending tasks have been stopped"
+          echo ""
+          echo "⚠️ IMPORTANT: You now need to request a vCPU quota increase from AWS:"
+          echo "   https://us-east-1.console.aws.amazon.com/servicequotas/home/services/ecs/quotas"
+          echo "   Search for 'Fargate' and request increase for 'On-Demand Fargate vCPU count'"
+          echo ""
+          echo "After quota is increased, run 'Full ECS Diagnostics and Auto-Fix'"
