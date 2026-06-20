@@ -76,3 +76,8 @@ psutil==7.2.2              # crawl4ai==0.8.9 requires >=6.1.1
 # pandas is a required dependency of homeharvest.
 homeharvest>=0.5.0
 pandas>=2.0.0
+
+# ── Fast HTML parser (used by distressed.py table extractor + county scrapers) ──
+# selectolax is the primary HTML parser for distressed lead tables.
+# Without it _parse_generic_table() silently returns [] for all static sources.
+selectolax>=0.3.17

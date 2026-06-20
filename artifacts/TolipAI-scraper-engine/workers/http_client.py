@@ -391,8 +391,10 @@ async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
             async with httpx.AsyncClient(timeout=settings.request_timeout, verify=verify_ssl) as cli:
                 r = await cli.get(url, headers=headers, follow_redirects=True)
         else:
+            # When proxy is set, always verify=False (same reason as fetch_direct):
+            # BrightData http:// CONNECT tunnel + httpx >= 0.28 requires this flag.
             async with httpx.AsyncClient(
-                proxy=proxy, headers=headers, timeout=settings.request_timeout, verify=verify_ssl
+                proxy=proxy, headers=headers, timeout=settings.request_timeout, verify=False
             ) as cli:
                 r = await cli.get(url, follow_redirects=True)
         r.raise_for_status()

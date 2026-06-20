@@ -74,3 +74,6 @@ psutil==7.2.2
 # ── Listing data scraping (free fallback for Zillow / Redfin / Realtor) ───────
 homeharvest>=0.5.0
 pandas>=2.0.0
+
+# ── Fast HTML parser (used by distressed.py table extractor + county scrapers) ──
+selectolax>=0.3.17
