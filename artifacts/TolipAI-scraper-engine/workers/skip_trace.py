@@ -21,12 +21,13 @@ All contact data now comes from official sources only:
 """
 
 from __future__ import annotations
+
 import logging
 import re
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote as _url_quote
 
 import httpx
-from typing import Any, Dict, List, Optional, Set
 from bs4 import BeautifulSoup
 
 from .config import settings

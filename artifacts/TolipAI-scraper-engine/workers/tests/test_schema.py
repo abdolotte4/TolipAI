@@ -3,14 +3,14 @@
 Run with: pytest workers/tests/test_schema.py -v
 """
 import pytest
+
 from workers.models import (
-    DistressedListing,
     CashBuyer,
-    validate_listing,
+    DistressedListing,
     validate_buyer,
+    validate_listing,
     validate_listings,
 )
-
 
 # ── DistressedListing ────────────────────────────────────────────────────────
 

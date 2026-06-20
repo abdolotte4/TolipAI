@@ -9,11 +9,14 @@ Do NOT silently coerce bad data — return completed_no_results instead of junk.
 """
 from __future__ import annotations
 
+import logging
 import re
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+log = logging.getLogger("models")
 
 
 class DistressedListing(BaseModel):

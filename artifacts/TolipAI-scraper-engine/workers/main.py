@@ -13,32 +13,38 @@ import hashlib
 import logging
 import os
 import re
-import signal
 import uuid
-import weakref
+from contextlib import asynccontextmanager  # noqa: E402
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse, PlainTextResponse  # noqa: E402
-from contextlib import asynccontextmanager  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from . import db, cash_buyers, distressed, skip_trace, ai_research  # noqa: E402
-from . import http_client  # noqa: E402
-from . import job_store  # noqa: E402
-from . import osint_skip_trace  # noqa: E402
-from .scrapers import homeharvest_scraper  # noqa: E402
-from .config import settings  # noqa: E402
-from .spot_handler import spot_handler, is_interrupted, register_job, unregister_job  # noqa: E402
-from .circuit_breaker import all_breaker_states, reset_breaker  # noqa: E402
-from .cache import cache  # noqa: E402
-from .retry_queue import retry_queue, is_transient  # noqa: E402
-from .scrapers import propelio_v2, propwire  # noqa: E402
-from .scrapers import satellite_dfd  # noqa: E402
-from .proxy_pool import proxy_pool  # noqa: E402
+from . import (  # noqa: E402
+    ai_research,
+    cash_buyers,
+    db,
+    distressed,
+    http_client,  # noqa: E402
+    job_store,  # noqa: E402
+    osint_skip_trace,  # noqa: E402
+    skip_trace,
+    spot_checkpoint,  # noqa: E402
+)
 from .browser_pool import browser_pool  # noqa: E402
-from . import spot_checkpoint  # noqa: E402
+from .cache import cache  # noqa: E402
+from .circuit_breaker import all_breaker_states, reset_breaker  # noqa: E402
+from .config import settings  # noqa: E402
+from .retry_queue import is_transient, retry_queue  # noqa: E402
+from .scrapers import (  # noqa: E402
+    homeharvest_scraper,  # noqa: E402
+    propelio_v2,
+    propwire,
+    satellite_dfd,  # noqa: E402
+)
+from .spot_handler import is_interrupted, register_job, spot_handler, unregister_job  # noqa: E402
 
 logging.basicConfig(
     level=settings.log_level.upper(),
@@ -209,7 +215,6 @@ async def lifespan(app: FastAPI):
     # Wire _shutting_down to spot_handler's interrupted flag
     import ctypes as _ctypes  # noqa: F401
 
-    from . import spot_handler as _spot_mod
 
     def _sync_shutdown_flag(sig: int, frame: Any) -> None:
         global _shutting_down
@@ -795,8 +800,10 @@ async def _on_retry_exhausted(job_id: str, error: str) -> None:
 # ─── Session management endpoints ────────────────────────────────────────────
 
 from .scrapers._browser_session import (  # noqa: E402
-    invalidate_session as _invalidate_session,
     _state_path,
+)
+from .scrapers._browser_session import (  # noqa: E402
+    invalidate_session as _invalidate_session,
 )
 
 
@@ -849,7 +856,6 @@ _METRIC_HELP: Dict[str, str] = {
 @app.get("/metrics", response_class=PlainTextResponse)
 async def metrics() -> str:
     """Prometheus text-format metrics endpoint (CloudWatch Container Insights compatible)."""
-    import time as _time
     lines: list[str] = []
     for key, value in METRICS.items():
         metric_name = f"tolipai_scraper_{key}_total"
@@ -857,8 +863,8 @@ async def metrics() -> str:
         lines.append(f"# HELP {metric_name} {help_text}")
         lines.append(f"# TYPE {metric_name} counter")
         lines.append(f"{metric_name} {value}")
-    lines.append(f"# HELP tolipai_scraper_active_jobs Currently running scrape jobs")
-    lines.append(f"# TYPE tolipai_scraper_active_jobs gauge")
+    lines.append("# HELP tolipai_scraper_active_jobs Currently running scrape jobs")
+    lines.append("# TYPE tolipai_scraper_active_jobs gauge")
     lines.append(f"tolipai_scraper_active_jobs {len([j for j in _jobs.values() if j.get('status') == 'running'])}")
     lines.append("")
     return "\n".join(lines)
@@ -1129,6 +1135,7 @@ async def debug_proxy() -> Dict[str, Any]:
     zone-name mismatches.
     """
     import re as _re
+
     import httpx as _httpx
 
     # Build masked proxy URL for display  (mask password only, preserve username)
@@ -1199,6 +1206,7 @@ async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
     Useful for trying different zone names without an env restart.
     """
     import re as _re
+
     import httpx as _httpx
 
     zone = (body.get("zone") or "").strip()
@@ -1249,9 +1257,9 @@ async def debug_proxy_set_zone(body: Dict[str, Any]) -> Dict[str, Any]:
 
 def _decrypt_password(ciphertext: str) -> str:
     """AES-256-CBC decrypt — matches Node.js crypto-util.ts exactly."""
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import padding as crypto_padding
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
     # If ciphertext is plain text (no ":" separator), return as-is immediately.
     # This allows request-body credentials to work without ENCRYPTION_KEY.
@@ -1989,8 +1997,9 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
     Returns structured agent/listing/FSBO records by extracting __NEXT_DATA__
     from the server-side-rendered page.
     """
-    from .scrapers._browser_session import browser_context
     import json as _json
+
+    from .scrapers._browser_session import browser_context
 
     city = req.city.strip()
     state = req.state.upper().strip()
@@ -2535,9 +2544,10 @@ async def debug_playwright() -> Dict[str, Any]:
     quickly confirm Chromium is working inside this container.
     """
     import time as _time
+
     from .scrapers._browser_session import (
-        _find_chromium_executable,
         _ensure_nix_ld_path,
+        _find_chromium_executable,
     )
 
     _ensure_nix_ld_path()
@@ -2593,7 +2603,7 @@ async def debug_playwright() -> Dict[str, Any]:
 @app.get("/debug/satellite")
 async def debug_satellite() -> Dict[str, Any]:
     """Show satellite DFD config: Google Maps API status, GCV availability."""
-    from .scrapers.satellite_dfd import _google_key, _get_gcv_key
+    from .scrapers.satellite_dfd import _get_gcv_key, _google_key
 
     gkey = _google_key()
     gcv_key = _get_gcv_key()

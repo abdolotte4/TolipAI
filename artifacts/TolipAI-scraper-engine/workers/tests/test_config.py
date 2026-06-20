@@ -1,6 +1,6 @@
 """Unit tests for config.py — key rotation and settings validation."""
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 

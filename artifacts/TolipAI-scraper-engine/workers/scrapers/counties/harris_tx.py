@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .base import CountyScraper
 
@@ -58,10 +58,10 @@ class HarrisCountyScraper(CountyScraper):
     async def _scrape_url_playwright(self, url: str) -> List[Dict[str, Any]]:
         """Fetch URL with Playwright and extract table data."""
         try:
-            from ..._browser_session import browser_context, _nav_with_fallback
+            from ..._browser_session import _nav_with_fallback, browser_context
         except ImportError:
             try:
-                from workers.scrapers._browser_session import browser_context, _nav_with_fallback
+                from workers.scrapers._browser_session import _nav_with_fallback, browser_context
             except ImportError:
                 return []
 

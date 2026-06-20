@@ -12,9 +12,9 @@ import logging
 import math
 import os
 import urllib.parse
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from typing import Any, Dict, List, Optional, Tuple
 
 # ─── Google Cloud Vision availability ────────────────────────────────────────
 _GCV_API_KEY: Optional[str] = None
@@ -28,7 +28,7 @@ def _get_gcv_key() -> Optional[str]:
 
 
 from ..llm import _chat  # noqa: E402
-from . import zillow, redfin, homeharvest_scraper  # noqa: E402
+from . import homeharvest_scraper, redfin, zillow  # noqa: E402
 
 log = logging.getLogger("satellite_dfd")
 

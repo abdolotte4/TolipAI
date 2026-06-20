@@ -21,8 +21,14 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional
 
-from ._browser_session import browser_context, invalidate_session, _nav_with_fallback, _humanize_mouse, _humanize_type, _humanize_scroll
-from ._utils import _safe_num, _parse_buyer_card
+from ._browser_session import (
+    _humanize_mouse,
+    _humanize_scroll,
+    _nav_with_fallback,
+    browser_context,
+    invalidate_session,
+)
+from ._utils import _parse_buyer_card, _safe_num
 
 log = logging.getLogger("propwire")
 

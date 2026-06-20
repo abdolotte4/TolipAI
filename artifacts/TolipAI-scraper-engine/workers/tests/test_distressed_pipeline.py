@@ -1,7 +1,7 @@
 """Unit tests for distressed scraper pipeline — mocks HTTP, no real network calls."""
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -120,8 +120,8 @@ class TestCountyScraperRegistry:
 
     def test_list_supported_counties_uses_registry(self):
         """list_supported_counties() must return data from COUNTY_SCRAPERS, not distressed_sources."""
-        from workers.scrapers.county import list_supported_counties
         from workers.scrapers.counties import COUNTY_SCRAPERS
+        from workers.scrapers.county import list_supported_counties
 
         result = list_supported_counties()
         assert isinstance(result, list)

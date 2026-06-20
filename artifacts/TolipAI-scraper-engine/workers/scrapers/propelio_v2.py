@@ -21,11 +21,18 @@ import logging
 import os
 import random
 import re
+from functools import partial
 from typing import Any, Dict, List
 
-from functools import partial
-from ._browser_session import browser_context, invalidate_session, _nav_with_fallback, _humanize_mouse, _humanize_type, _humanize_scroll
-from ._utils import _safe_num, _parse_buyer_card
+from ._browser_session import (
+    _humanize_mouse,
+    _humanize_scroll,
+    _humanize_type,
+    _nav_with_fallback,
+    browser_context,
+    invalidate_session,
+)
+from ._utils import _parse_buyer_card, _safe_num
 
 log = logging.getLogger("propelio")
 
@@ -170,11 +177,9 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     # ═══════════════════════════════════════════════════════════════════════════
     # Phase 2: Wait for login form to render (React SPA)
     # ═══════════════════════════════════════════════════════════════════════════
-    form_ready = False
     for wait_attempt in range(3):
         try:
             await page.wait_for_selector(email_sel, timeout=30000)
-            form_ready = True
             log.info("Propelio: login form rendered (attempt %d)", wait_attempt + 1)
             break
         except Exception:
@@ -297,7 +302,6 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
     # ═══════════════════════════════════════════════════════════════════════════
     # Phase 5: Wait for navigation / auth response
     # ═══════════════════════════════════════════════════════════════════════════
-    nav_away = False
     for nav_strategy, nav_timeout in [
         ("function", 45000),   # wait_for_function
         ("networkidle", 25000),  # networkidle fallback
@@ -310,7 +314,6 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
                 )
             else:
                 await page.wait_for_load_state("networkidle", timeout=nav_timeout)
-            nav_away = True
             log.info("Propelio: navigation detected (strategy=%s)", nav_strategy)
             break
         except Exception as e:
@@ -402,8 +405,8 @@ async def test_login_credentials(email: str, password: str) -> Dict[str, Any]:
     Returns a dict with {ok: bool, url: str, error: str, screenshots: list}
     so the caller can diagnose issues remotely.
     """
-    from functools import partial
     import time
+    from functools import partial
 
     result: Dict[str, Any] = {"ok": False, "url": "", "error": "", "screenshots": [], "timestamp": time.time()}
     login_fn = partial(_do_login, email=email, password=password)

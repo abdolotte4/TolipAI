@@ -142,8 +142,8 @@ class BrowserPool:
         # Resolve Chromium path (handles both Nix and standard installs)
         try:
             from .scrapers._browser_session import (
-                _find_chromium_executable,
                 _ensure_nix_ld_path,
+                _find_chromium_executable,
             )
             _ensure_nix_ld_path()
             exec_path: Optional[str] = _find_chromium_executable()

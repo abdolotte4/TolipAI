@@ -16,6 +16,7 @@ contexts run simultaneously. Excess requests wait on the semaphore.
 """
 
 from __future__ import annotations
+
 import asyncio
 import io
 import logging
@@ -23,6 +24,7 @@ import os
 import random
 import ssl
 from typing import Any, Dict, Optional
+
 import httpx
 from tenacity import (
     AsyncRetrying,
@@ -30,6 +32,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+
 from .config import settings
 
 log = logging.getLogger("http")
@@ -79,7 +82,7 @@ _DOMAIN_HEADERS: dict[str, dict[str, str]] = {
 }
 
 # Import the canonical stealth script from _browser_session to avoid duplication.
-from .scrapers._browser_session import _STEALTH_SCRIPT as _STEALTH_JS
+from .scrapers._browser_session import _STEALTH_SCRIPT as _STEALTH_JS  # noqa: E402
 
 # Persistent shared client
 _persistent_client: Optional[httpx.AsyncClient] = None
@@ -204,7 +207,7 @@ async def fetch_crawl4ai(url: str, *, wait_for: Optional[str] = None, use_proxy:
     instances run concurrently — prevents OOM kills on Railway.
     """
     try:
-        from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+        from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
     except (ImportError, OSError) as e:
         raise RuntimeError(f"Crawl4AI unavailable: {e}") from e
 
@@ -336,8 +339,8 @@ async def polite_sleep(min_ms: int = 250, max_ms: int = 800) -> None:
 # ─── PDF fetch + extraction ──────────────────────────────────────────────────
 import fitz  # PyMuPDF  # noqa: E402  # type: ignore[import]
 import pdfplumber  # noqa: E402  # type: ignore[import]
-from PIL import Image  # noqa: E402  # type: ignore[import]
 import pytesseract  # noqa: E402  # type: ignore[import]
+from PIL import Image  # noqa: E402  # type: ignore[import]
 
 
 async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:

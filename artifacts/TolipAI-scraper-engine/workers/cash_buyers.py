@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 
 from . import db
 from .llm import classify_buyer_type, score_buyer_match_rule_based
-from .scrapers import zillow, redfin
+from .scrapers import redfin, zillow
 from .scrapers.county_deeds import fetch_recent_deeds
 from .skip_trace import trace as skip_trace
 

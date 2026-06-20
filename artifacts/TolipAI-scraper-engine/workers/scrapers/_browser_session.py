@@ -10,15 +10,13 @@ which is fine: we just re-login on cold start.
 from __future__ import annotations
 
 import asyncio
-import json
+import glob as _glob
 import logging
 import os
 import random
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
-
-import glob as _glob
 
 from playwright.async_api import ProxySettings
 

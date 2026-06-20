@@ -219,7 +219,7 @@ async def _stream_drain_once(
         job_id   = fields.get("job_id", "?")
         job_type = fields.get("job_type", "?")
         attempt  = int(fields.get("attempt", 0))
-        last_err = fields.get("last_error", "")
+        # last_err = fields.get("last_error", "")  # unused — kept for debugging
         params: Dict[str, Any] = {}
         try:
             params = json.loads(fields.get("params", "{}"))

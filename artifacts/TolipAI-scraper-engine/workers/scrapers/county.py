@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from . import distressed_sources as ds
 from .counties import COUNTY_SCRAPERS
 
 log = logging.getLogger("county")

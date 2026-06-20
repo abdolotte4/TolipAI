@@ -13,7 +13,7 @@ from __future__ import annotations
 import io
 import logging
 import re
-from typing import Optional, List
+from typing import List, Optional
 
 import httpx
 

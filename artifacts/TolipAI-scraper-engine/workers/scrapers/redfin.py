@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import csv
 import io
-import logging
 import json as _json
+import logging
 from typing import Any, Dict, List, Optional
 
 from ..http_client import fetch_html

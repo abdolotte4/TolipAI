@@ -5,14 +5,13 @@ the table/column names but uses asyncpg directly to avoid a JS dependency.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re as _re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
-
-import asyncio
-import re as _re
 
 import asyncpg
 

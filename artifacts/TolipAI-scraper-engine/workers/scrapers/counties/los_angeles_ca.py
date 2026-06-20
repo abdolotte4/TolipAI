@@ -28,9 +28,9 @@ class LosAngelesCountyScraper(CountyScraper):
         listings: List[Dict[str, Any]] = []
 
         try:
-            from ..._browser_session import browser_context, _nav_with_fallback
+            from ..._browser_session import _nav_with_fallback, browser_context
         except ImportError:
-            from workers.scrapers._browser_session import browser_context, _nav_with_fallback
+            from workers.scrapers._browser_session import _nav_with_fallback, browser_context
 
         try:
             async with browser_context("los_angeles_ca", headless=True, no_proxy=True) as ctx:

@@ -10,12 +10,11 @@ Tests validate:
 
 Run with: pytest workers/tests/test_counties.py -v
 """
+
 import pytest
-import re
 
 from workers.scrapers.counties import COUNTY_SCRAPERS
 from workers.scrapers.counties.base import CountyScraper
-
 
 EXPECTED_SCRAPERS = [
     "harris_tx",
@@ -230,6 +229,7 @@ class TestCountyScraperBase:
 class TestCountyDeedsNoAI:
     def test_no_ai_extract_function(self):
         import inspect
+
         import workers.scrapers.county_deeds as cd
         src = inspect.getsource(cd)
         assert "_ai_extract_deeds" not in src, "county_deeds must not contain _ai_extract_deeds"
@@ -240,12 +240,14 @@ class TestCountyDeedsNoAI:
 
     def test_no_propertyshark_scraper(self):
         import inspect
+
         import workers.scrapers.county_deeds as cd
         src = inspect.getsource(cd)
         assert "propertyshark" not in src.lower(), "county_deeds must not scrape PropertyShark"
 
     def test_fetch_recent_deeds_returns_empty_for_unknown_county(self):
         import asyncio
+
         import workers.scrapers.county_deeds as cd
         # Patch DEED_REGISTRY to empty to simulate missing county
         original = cd.DEED_REGISTRY.copy()
@@ -264,6 +266,7 @@ class TestCountyDeedsNoAI:
 class TestDistressedNoLLM:
     def test_no_parse_distressed_page_import(self):
         import inspect
+
         import workers.distressed as dist
         src = inspect.getsource(dist)
         assert "parse_distressed_page" not in src, (
@@ -272,6 +275,7 @@ class TestDistressedNoLLM:
 
     def test_no_sources_for_request_ai_call(self):
         import inspect
+
         import workers.distressed as dist
         src = inspect.getsource(dist)
         assert "sources_for_request_ai" not in src, (
@@ -280,6 +284,7 @@ class TestDistressedNoLLM:
 
     def test_uses_county_scrapers(self):
         import inspect
+
         import workers.distressed as dist
         src = inspect.getsource(dist)
         assert "COUNTY_SCRAPERS" in src, "distressed.py must import and use COUNTY_SCRAPERS"

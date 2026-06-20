@@ -19,16 +19,16 @@ Available scrapers:
     fulton_ga      — Fulton County, GA (tax sales)
 """
 
-from .harris_tx import HarrisCountyScraper
-from .dallas_tx import DallasCountyScraper
-from .miami_dade_fl import MiamiDadeScraper
 from .broward_fl import BrowardScraper
-from .maricopa_az import MaricopaScraper
 from .clark_nv import ClarkCountyScraper
-from .orange_ca import OrangeCountyScraper
-from .los_angeles_ca import LosAngelesCountyScraper
 from .cook_il import CookCountyScraper
+from .dallas_tx import DallasCountyScraper
 from .fulton_ga import FultonCountyScraper
+from .harris_tx import HarrisCountyScraper
+from .los_angeles_ca import LosAngelesCountyScraper
+from .maricopa_az import MaricopaScraper
+from .miami_dade_fl import MiamiDadeScraper
+from .orange_ca import OrangeCountyScraper
 
 COUNTY_SCRAPERS = {
     "harris_tx": HarrisCountyScraper,

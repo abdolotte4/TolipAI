@@ -1,11 +1,12 @@
 """PDF utilities for deed/foreclosure scraping."""
 
+import io
+import logging
+
 import fitz  # PyMuPDF
 import pdfplumber
-import io
-from PIL import Image
 import pytesseract
-import logging
+from PIL import Image
 
 log = logging.getLogger("pdf_utils")
 

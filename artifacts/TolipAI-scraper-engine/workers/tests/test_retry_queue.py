@@ -1,7 +1,7 @@
 """Unit tests for retry_queue.py — no external deps required."""
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
