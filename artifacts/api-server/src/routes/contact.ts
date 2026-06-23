@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import * as ZodSchemas from "@workspace/api-zod";
 const { SubmitContactBody, SubmitContactResponse } = ZodSchemas;
 import { db, contactsTable } from "@workspace/db";
+import nodemailer from "nodemailer";
 
 const _rlMap = new Map<string, { count: number; resetAt: number }>();
 function contactRateLimit(req: Request, res: Response, next: NextFunction) {
@@ -19,7 +20,36 @@ setInterval(() => { const now = Date.now(); for (const [k, v] of _rlMap) if (now
 
 const router: IRouter = Router();
 
-// ── Brevo transactional email sender ─────────────────────────────────────────
+// ── SMTP transactional email sender (primary) ─────────────────────────────────
+async function sendViaSmtp(subject: string, htmlContent: string, textContent: string, replyTo?: { email: string; name?: string }): Promise<boolean> {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) return false;
+  try {
+    const transporter = nodemailer.createTransport({
+      host,
+      port: parseInt(process.env.SMTP_PORT || "587", 10),
+      secure: process.env.SMTP_PORT === "465",
+      auth: { user, pass },
+    });
+    const from = process.env.SMTP_FROM || `"TolipAI" <${user}>`;
+    await transporter.sendMail({
+      from,
+      to: "info@tolipai.com",
+      cc: ["hello@tolipai.com", "martin@tolipai.com"],
+      replyTo: replyTo ? `"${replyTo.name || replyTo.email}" <${replyTo.email}>` : undefined,
+      subject,
+      html: htmlContent,
+      text: textContent,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── Brevo transactional email sender (fallback) ───────────────────────────────
 async function sendViaBrevo(payload: object): Promise<boolean> {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) return false;
@@ -64,7 +94,7 @@ router.post("/contact", contactRateLimit, async (req, res) => {
   const emailHtml = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9;">
       <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
-        <h1 style="color:#d4af37;margin:0;font-size:24px;">TOLIPAI LLC</h1>
+        <h1 style="color:#d4af37;margin:0;font-size:24px;">TOLIP GROUP LLC</h1>
         <p style="color:#aaa;margin:8px 0 0;font-size:13px;">New Contact Form Inquiry</p>
       </div>
       <div style="background:#fff;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;">
@@ -81,29 +111,36 @@ router.post("/contact", contactRateLimit, async (req, res) => {
           <p style="color:#222;margin:0;line-height:1.6;">${message.replace(/\n/g, "<br>")}</p>
         </div>
         <p style="margin-top:24px;color:#888;font-size:12px;border-top:1px solid #eee;padding-top:16px;">
-          TolipAI LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
+          Tolip Group LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
         </p>
       </div>
     </div>
   `;
 
-  const sent = await sendViaBrevo({
-    sender: { name: "TolipAI Website", email: senderEmail },
-    to: [{ email: "info@tolipai.com", name: "TolipAI Info" }],
-    cc: [
-      { email: "hello@tolipai.com" },
-      { email: "martin@tolipai.com" },
-    ],
-    replyTo: { email, name },
-    subject: `New Inquiry from ${name} — ${serviceLabel}`,
-    htmlContent: emailHtml,
-    textContent: `New inquiry from ${name}\nEmail: ${email}\nCompany: ${company || "N/A"}\nPhone: ${phone || "N/A"}\nService: ${serviceLabel}\n\nMessage:\n${message}`,
-  });
+  const emailSubject = `New Inquiry from ${name} — ${serviceLabel}`;
+  const emailText = `New inquiry from ${name}\nEmail: ${email}\nCompany: ${company || "N/A"}\nPhone: ${phone || "N/A"}\nService: ${serviceLabel}\n\nMessage:\n${message}`;
 
-  if (sent) {
-    req.log.info({ name, email }, "Contact email sent via Brevo");
+  const sentSmtp = await sendViaSmtp(emailSubject, emailHtml, emailText, { email, name });
+  if (sentSmtp) {
+    req.log.info({ name, email }, "Contact email sent via SMTP");
   } else {
-    req.log.warn({ name, email }, "Contact email not sent — BREVO_API_KEY not set or Brevo error");
+    const sentBrevo = await sendViaBrevo({
+      sender: { name: "TolipAI Website", email: senderEmail },
+      to: [{ email: "info@tolipai.com", name: "TolipAI Info" }],
+      cc: [
+        { email: "hello@tolipai.com" },
+        { email: "martin@tolipai.com" },
+      ],
+      replyTo: { email, name },
+      subject: emailSubject,
+      htmlContent: emailHtml,
+      textContent: emailText,
+    });
+    if (sentBrevo) {
+      req.log.info({ name, email }, "Contact email sent via Brevo (SMTP fallback)");
+    } else {
+      req.log.warn({ name, email }, "Contact email not sent — SMTP and Brevo both unavailable");
+    }
   }
 
   res.json(SubmitContactResponse.parse({

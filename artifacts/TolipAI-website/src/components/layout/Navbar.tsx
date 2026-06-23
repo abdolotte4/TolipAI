@@ -20,7 +20,6 @@ export function Navbar() {
     { name: "Services", href: "#services" },
     { name: "Methodology", href: "#methodology" },
     { name: "Case Studies", href: "#case-studies" },
-    { name: "Team", href: "#team" },
     { name: "About", href: "#about" },
   ];
 

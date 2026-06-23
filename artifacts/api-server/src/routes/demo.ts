@@ -52,7 +52,7 @@ async function sendDemoNotification(name: string | undefined, phone: string, sta
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9;">
       <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
-        <h1 style="color:#d4af37;margin:0;font-size:24px;">TOLIPAI LLC</h1>
+        <h1 style="color:#d4af37;margin:0;font-size:24px;">TOLIP GROUP LLC</h1>
         <p style="color:#aaa;margin:8px 0 0;font-size:13px;">${statusLabel} — Website Demo Request</p>
       </div>
       <div style="background:#fff;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;">
@@ -64,7 +64,7 @@ async function sendDemoNotification(name: string | undefined, phone: string, sta
           <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Time:</td><td style="padding:8px 0;color:#222;">${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} ET</td></tr>
         </table>
         <p style="margin-top:24px;color:#888;font-size:12px;border-top:1px solid #eee;padding-top:16px;">
-          TolipAI LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
+          Tolip Group LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
         </p>
       </div>
     </div>
