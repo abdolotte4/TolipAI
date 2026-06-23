@@ -78,6 +78,10 @@ async function ensureColumns() {
     ["crm_users.password_plain",           "ALTER TABLE crm_users ADD COLUMN IF NOT EXISTS password_plain text"],
     ["crm_leads.last_motivation_score",    "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_score integer"],
     ["crm_leads.last_motivation_label",    "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_label text"],
+    // Drop stale NOT NULL constraints that block manual lead creation (skip_traced fields are optional)
+    ["crm_leads.skip_traced_name.nullable",   "ALTER TABLE crm_leads ALTER COLUMN skip_traced_name DROP NOT NULL"],
+    ["crm_leads.skip_traced_phones.nullable", "ALTER TABLE crm_leads ALTER COLUMN skip_traced_phones DROP NOT NULL"],
+    ["crm_leads.skip_traced_emails.nullable", "ALTER TABLE crm_leads ALTER COLUMN skip_traced_emails DROP NOT NULL"],
   ];
   for (const [name, ddl] of columns) {
     try {

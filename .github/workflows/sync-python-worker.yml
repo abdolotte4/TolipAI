@@ -1,3 +1,10 @@
 # Disabled — scraper engine sync is no longer managed via GitHub Actions.
-on: {}
-jobs: {}
+on:
+  workflow_dispatch:
+jobs:
+  disabled:
+    name: Disabled workflow
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: echo "This workflow is disabled"
