@@ -81,9 +81,9 @@ class DallasCountyScraper(CountyScraper):
     async def _scrape_url_crawl4ai(self, url: str) -> List[Dict[str, Any]]:
         try:
             try:
-                from ...http_client import fetch_rendered
+                from ...http_client import fetch_crawl4ai as fetch_rendered
             except ImportError:
-                from workers.http_client import fetch_rendered
+                from workers.http_client import fetch_crawl4ai as fetch_rendered
 
             import asyncio
 

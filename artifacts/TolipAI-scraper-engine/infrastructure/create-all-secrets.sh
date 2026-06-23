@@ -176,6 +176,18 @@ upsert_secret "$SECRET_PREFIX/S3_CACHE_BUCKET" \
     "tolipai-scraper-cache" \
     "S3 cache bucket name"
 
+upsert_secret "$SECRET_PREFIX/ADMIN_API_KEY" \
+    "change-me-to-your-real-admin-key" \
+    "Admin API key for /admin/* endpoints (separate from SCRAPER_API_KEY)"
+
+upsert_secret "$SECRET_PREFIX/REALFORECLOSE_USERNAME" \
+    "change-me-to-your-realforeclose-username" \
+    "RealForeclose.com username (Broward FL + Miami-Dade FL county scrapers)"
+
+upsert_secret "$SECRET_PREFIX/REALFORECLOSE_PASSWORD" \
+    "change-me-to-your-realforeclose-password" \
+    "RealForeclose.com password (Broward FL + Miami-Dade FL county scrapers)"
+
 echo ""
 echo "========================================"
 echo "✅ ALL Secrets Created/Updated!"
@@ -197,5 +209,8 @@ echo "  - WEBSCRAPER_KEY"
 echo "  - BRIGHTDATA_API"
 echo "  - PROXY_HOST"
 echo "  - SCRAPER_API_KEY"
+echo "  - ADMIN_API_KEY"
+echo "  - REALFORECLOSE_USERNAME"
+echo "  - REALFORECLOSE_PASSWORD"
 echo ""
 echo "Next: Run fix-aws-roles.sh to create the IAM roles, then trigger the deploy."

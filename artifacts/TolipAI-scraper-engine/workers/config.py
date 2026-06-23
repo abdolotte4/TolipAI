@@ -98,6 +98,26 @@ class Settings:
         )
     )
 
+    # ── Redis / Cache / Storage ─────────────────────────────────────────────
+    # REDIS_URL is used by job_store.py, cache.py, and retry_queue.py.
+    # Falls back to in-memory deque/dict when not set (development only).
+    redis_url: Optional[str] = _env("REDIS_URL") or _env("REDIS_PRIVATE_URL")
+    s3_cache_bucket: Optional[str] = _env("S3_CACHE_BUCKET")
+    spot_checkpoint_bucket: Optional[str] = _env("SPOT_CHECKPOINT_BUCKET") or _env("S3_CACHE_BUCKET")
+
+    # ── External API keys ───────────────────────────────────────────────────
+    # Google Maps Platform — used by satellite_dfd.py and /google-maps route.
+    google_maps_api_key: Optional[str] = _env("GOOGLE_MAPS_API_KEY")
+
+    # Admin key for /admin/* endpoints. Separate from SCRAPER_API_KEY so
+    # internal tooling can be scoped to admin operations only.
+    admin_api_key: Optional[str] = _env("ADMIN_API_KEY")
+
+    # RealForeclose credentials — required for Broward FL and Miami-Dade FL
+    # county scrapers that log into realforeclose.com portals.
+    realforeclose_username: Optional[str] = _env("REALFORECLOSE_USERNAME")
+    realforeclose_password: Optional[str] = _env("REALFORECLOSE_PASSWORD")
+
     # ── Feature flags ──────────────────────────────────────────────────────
     enable_google_dorks: bool = os.getenv("ENABLE_GOOGLE_DORKS", "false").lower() == "true"
     enable_opencorporates: bool = os.getenv("ENABLE_OPENCORPORATES", "true").lower() == "true"

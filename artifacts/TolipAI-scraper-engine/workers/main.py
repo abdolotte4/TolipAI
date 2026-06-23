@@ -604,10 +604,10 @@ async def _run_distressed(job_id: str, params: Dict[str, Any]) -> Dict[str, Any]
                 completed=True,
             )
         else:
-            _set_status(job_id, "done", progress=100, result=[])
+            _set_status(job_id, "completed_no_results", progress=100, result=[])
             await db.update_job(
                 job_id,
-                status="done",
+                status="completed_no_results",
                 progress=100,
                 result_count=0,
                 completed=True,
@@ -1808,10 +1808,8 @@ async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
                             )
 
     if not results:
-        raise HTTPException(
-            status_code=503,
-            detail="Google Maps scrape returned no results — Playwright and Places API both unavailable",
-        )
+        log.info("Google Maps scrape returned 0 results — Playwright/Places API found nothing or unavailable")
+        return {"count": 0, "results": [], "message": "No results found — service may be unavailable or no matches exist for this query"}
 
     return {"count": len(results), "results": results}
 
@@ -1864,10 +1862,8 @@ async def google_search_scrape(req: GoogleSearchRequest) -> Dict[str, Any]:
             await asyncio.sleep(float(os.getenv("GOOGLE_SEARCH_THROTTLE", "0.5")))
 
     if not results:
-        raise HTTPException(
-            status_code=503,
-            detail="Browser scrape returned no results — Playwright may be unavailable",
-        )
+        log.info("Google Search scrape returned 0 results — Playwright may be unavailable or no matches")
+        return {"count": 0, "results": [], "message": "No results found — browser may be unavailable or no matches for this query"}
 
     return {"count": len(results), "results": results}
 
@@ -1986,13 +1982,8 @@ async def nar_directory_scrape(req: NARDirectoryRequest) -> Dict[str, Any]:
                 continue
 
     if not results:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "NAR directory API returned no members — "
-                "all endpoint patterns failed (state=%s, city=%s)" % (state, city)
-            ),
-        )
+        log.info("NAR directory returned 0 members for state=%s city=%s — all endpoint patterns tried", state, city)
+        return {"count": 0, "results": [], "message": f"No members found for {city}, {state} — NAR API may have changed patterns"}
 
     return {"count": len(results), "results": results}
 
@@ -2162,14 +2153,12 @@ async def zillow_scrape(req: ZillowRequest) -> Dict[str, Any]:
             )
 
     if not results:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Zillow scrape succeeded but returned 0 results — "
-                "DataDome may have served a challenge page or the slug is incorrect. "
-                f"URL: {target_url}"
-            ),
-        )
+        log.info("Zillow scrape returned 0 results — DataDome challenge or incorrect slug. URL: %s", target_url)
+        return {
+            "count": 0,
+            "results": [],
+            "message": f"Zillow returned 0 results — DataDome may have served a challenge page or the slug is incorrect. URL: {target_url}",
+        }
 
     return {"count": len(results), "results": results}
 

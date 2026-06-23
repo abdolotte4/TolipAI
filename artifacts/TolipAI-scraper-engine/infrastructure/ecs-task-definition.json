@@ -23,12 +23,10 @@
         { "name": "PYTHON_ENV", "value": "production" },
         { "name": "LOG_LEVEL", "value": "info" },
         { "name": "AWS_REGION", "value": "us-east-1" },
-        { "name": "PROXY_TIMEOUT", "value": "55" },
-        { "name": "BROWSER_TIMEOUT", "value": "55" },
-        { "name": "MAX_CONCURRENT_JOBS", "value": "5" },
+        { "name": "SCRAPER_TIMEOUT", "value": "55" },
+        { "name": "SCRAPER_JOB_CONCURRENCY", "value": "5" },
         { "name": "MAX_CONCURRENT_TASKS", "value": "15" },
         { "name": "MAX_BROWSERS_PER_JOB", "value": "3" },
-        { "name": "USE_WEBSHARE_PROXY", "value": "true" },
         { "name": "DISTRESSED_COMP_CHECK", "value": "true" },
         { "name": "CASH_BUYER_MIN_OFFER", "value": "0.7" },
         { "name": "CASH_BUYER_MAX_OFFER", "value": "0.85" },
@@ -62,7 +60,10 @@
         { "name": "PROPWIRE_PASSWORD", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/propwire-password-vA52VR" },
         { "name": "GOOGLE_MAPS_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/google-maps-key-89upPY" },
         { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/redis-url-CSzF81" },
-        { "name": "S3_CACHE_BUCKET", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/s3-cache-bucket-rIXWv4" }
+        { "name": "S3_CACHE_BUCKET", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/s3-cache-bucket-rIXWv4" },
+        { "name": "ADMIN_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ADMIN_API_KEY" },
+        { "name": "REALFORECLOSE_USERNAME", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/REALFORECLOSE_USERNAME" },
+        { "name": "REALFORECLOSE_PASSWORD", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/REALFORECLOSE_PASSWORD" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

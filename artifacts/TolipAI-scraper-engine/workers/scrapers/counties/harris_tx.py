@@ -88,9 +88,9 @@ class HarrisCountyScraper(CountyScraper):
         """Fetch URL with Crawl4AI (http_client.fetch_rendered) and extract table data."""
         try:
             try:
-                from ...http_client import fetch_rendered
+                from ...http_client import fetch_crawl4ai as fetch_rendered
             except ImportError:
-                from workers.http_client import fetch_rendered
+                from workers.http_client import fetch_crawl4ai as fetch_rendered
 
             import asyncio
 
