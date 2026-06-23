@@ -239,14 +239,23 @@ async def _fetch_and_parse_source(src: Dict[str, Any], state: str) -> List[Dict[
         log.debug("[static] Skipping parameterized URL: %s", url)
         return []
 
-    log.info("[static] Fetching source %s → %s", key, url)
+    render = src.get("render", False)
+    log.info("[static] Fetching source %s → %s (render=%s)", key, url, render)
     try:
-        from .http_client import fetch_rendered
+        if render:
+            from .http_client import fetch_crawl4ai
 
-        html = await asyncio.wait_for(
-            fetch_rendered(url, use_proxy=False),
-            timeout=45,
-        )
+            html = await asyncio.wait_for(
+                fetch_crawl4ai(url, use_proxy=True),
+                timeout=60,
+            )
+        else:
+            from .http_client import fetch_direct
+
+            html = await asyncio.wait_for(
+                fetch_direct(url, use_proxy=True),
+                timeout=30,
+            )
     except asyncio.TimeoutError:
         log.warning("[static] Timeout fetching %s", key)
         return []

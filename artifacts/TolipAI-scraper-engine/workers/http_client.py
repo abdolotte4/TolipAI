@@ -434,3 +434,7 @@ async def fetch_pdf(url: str, *, use_proxy: bool = True) -> str:
         log.warning("OCR failed: %s", e)
 
     return ""
+
+
+# Alias — some modules import fetch_rendered; map it to the Crawl4AI renderer.
+fetch_rendered = fetch_crawl4ai

@@ -2235,14 +2235,31 @@ async def scrape_distressed(req: DistressedRequest) -> Dict[str, Any]:
                 ),
                 timeout=900,
             )
-            _set_status(job_id, "done", progress=100, result=listings)
-            await db.update_job(
-                job_id,
-                status="done",
-                progress=100,
-                result_count=len(listings),
-                completed=True,
-            )
+            if listings:
+                _set_status(job_id, "done", progress=100, result=listings)
+                await db.update_job(
+                    job_id,
+                    status="done",
+                    progress=100,
+                    result_count=len(listings),
+                    completed=True,
+                )
+            else:
+                _set_status(job_id, "completed_no_results", progress=100, result=[])
+                await db.update_job(
+                    job_id,
+                    status="completed_no_results",
+                    progress=100,
+                    result_count=0,
+                    completed=True,
+                )
+                log.info(
+                    "Distressed job %s: no listings found for state=%s county=%s zip=%s",
+                    job_id,
+                    req.state,
+                    req.county_key,
+                    req.zip,
+                )
             async with _get_metrics_lock():
                 METRICS["distressed_success"] += 1
         except asyncio.TimeoutError:

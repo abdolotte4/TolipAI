@@ -50,7 +50,7 @@ export default function DistressedLeadGen() {
   const [results, setResults] = useState<any[]>([]);
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState("");
-  const [area, setArea] = useState({ city: "", county: "", state: "WY", zip: "" });
+  const [area, setArea] = useState({ city: "", county: "", state: "FL", zip: "" });
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -209,10 +209,20 @@ export default function DistressedLeadGen() {
         <h1 className="text-2xl font-bold">Distressed Lead Gen</h1>
         <p className="text-sm text-muted-foreground mt-2">Build distressed lead lists from multiple sources and import them into CRM.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <div><Label className="text-xs">City</Label><Input value={area.city} onChange={e => setArea(a => ({ ...a, city: e.target.value }))} /></div>
-          <div><Label className="text-xs">County</Label><Input value={area.county} onChange={e => setArea(a => ({ ...a, county: e.target.value }))} /></div>
-          <div><Label className="text-xs">State</Label><Input value={area.state} onChange={e => setArea(a => ({ ...a, state: e.target.value }))} /></div>
-          <div><Label className="text-xs">ZIP</Label><Input value={area.zip} onChange={e => setArea(a => ({ ...a, zip: e.target.value }))} /></div>
+          <div><Label className="text-xs">City</Label><Input placeholder="e.g. Houston" value={area.city} onChange={e => setArea(a => ({ ...a, city: e.target.value }))} /></div>
+          <div>
+            <Label className="text-xs">County Key</Label>
+            <Input
+              placeholder="e.g. harris_tx, miami_dade_fl"
+              value={area.county}
+              onChange={e => setArea(a => ({ ...a, county: e.target.value }))}
+            />
+            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+              Supported: harris_tx · dallas_tx · miami_dade_fl · broward_fl · orange_ca · los_angeles_ca · maricopa_az · clark_nv · cook_il · fulton_ga
+            </p>
+          </div>
+          <div><Label className="text-xs">State (2-letter)</Label><Input placeholder="e.g. FL" value={area.state} onChange={e => setArea(a => ({ ...a, state: e.target.value.toUpperCase() }))} /></div>
+          <div><Label className="text-xs">ZIP</Label><Input placeholder="e.g. 77001" value={area.zip} onChange={e => setArea(a => ({ ...a, zip: e.target.value }))} /></div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {LEAD_TYPES.map(type => (
