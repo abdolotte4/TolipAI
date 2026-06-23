@@ -1,0 +1,42 @@
+name: Sync scraper engine → Python-Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "artifacts/TolipAI-scraper-engine/**"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout monorepo (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PYTHON_WORKER_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Split subtree and push to Python-Worker
+        env:
+          TOKEN: ${{ secrets.PYTHON_WORKER_TOKEN }}
+        run: |
+          git remote add python-worker \
+            https://x-access-token:${TOKEN}@github.com/Agawish24/Python-Worker.git
+
+          # Delete local split branch if it already exists from a previous run
+          git branch -D _pw_sync 2>/dev/null || true
+
+          # Split the subdirectory into an isolated branch
+          git subtree split \
+            --prefix=artifacts/TolipAI-scraper-engine \
+            main \
+            -b _pw_sync
+
+          # Force-push that branch to Python-Worker main
+          git push python-worker _pw_sync:main --force
