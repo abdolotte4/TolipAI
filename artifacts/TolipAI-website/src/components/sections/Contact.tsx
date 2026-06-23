@@ -109,7 +109,7 @@ export function Contact() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-foreground text-lg mb-1">Phone</h4>
-                  <p className="text-muted-foreground">(307) 488-2217</p>
+                  <p className="text-muted-foreground">(659) 250-4618</p>
                 </div>
               </div>
             </div>

@@ -5,13 +5,11 @@ import { Services } from "@/components/sections/Services";
 import { LeadTypes } from "@/components/sections/LeadTypes";
 import { Methodology } from "@/components/sections/Methodology";
 import { CaseStudies } from "@/components/sections/CaseStudies";
-import { Team } from "@/components/sections/Team";
 import { About } from "@/components/sections/About";
 import { Contact } from "@/components/sections/Contact";
 import { SuccessStory } from "@/components/sections/SuccessStory";
 import { PerformanceDashboard } from "@/components/sections/PerformanceDashboard";
 import { Testimonials } from "@/components/sections/Testimonials";
-import { TryDemo } from "@/components/sections/TryDemo";
 import { ChatBot } from "@/components/ChatBot";
 
 export default function Home() {
@@ -22,14 +20,12 @@ export default function Home() {
       <main>
         <Hero />
         <SuccessStory />
-        <TryDemo />
         <Services />
         <LeadTypes />
         <Methodology />
         <PerformanceDashboard />
         <CaseStudies />
         <Testimonials />
-        <Team />
         <About />
         <Contact />
       </main>

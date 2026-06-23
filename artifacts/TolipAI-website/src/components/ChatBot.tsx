@@ -5,7 +5,7 @@ import { MessageSquare, X, Send, ChevronDown } from "lucide-react";
 const BOT_RESPONSES = [
   {
     keywords: ["price", "pricing", "cost", "rate", "fee", "how much", "package"],
-    response: "Our pricing is customized based on your operational scope and service requirements. We offer flexible engagement models for Data Engineering, Managed Outreach Operations, and Technical CRM Infrastructure. Please schedule a consultation with our team for a detailed proposal tailored to your needs. You can reach us at info@tolipai.com or call (307) 488-2217."
+    response: "Our pricing is customized based on your operational scope and service requirements. We offer flexible engagement models for Data Engineering, Managed Outreach Operations, and Technical CRM Infrastructure. Please schedule a consultation with our team for a detailed proposal tailored to your needs. You can reach us at info@tolipai.com or call (659) 250-4618."
   },
   {
     keywords: ["service", "offer", "provide", "what do", "what you do"],
@@ -25,7 +25,7 @@ const BOT_RESPONSES = [
   },
   {
     keywords: ["contact", "email", "phone", "address", "location", "reach", "office"],
-    response: "You can reach Tolip Group LLC through the following channels:\n\n📧 General: info@tolipai.com\n📧 Info: hello@tolipai.com\n📧 Technology: martin@tolipai.com\n📞 Phone: (307) 488-2217\n📍 Address: 1095 Sugar View Dr Ste 500, Sheridan, WY 82801\n\nOur team responds to all inquiries within one business day."
+    response: "You can reach Tolip Group LLC through the following channels:\n\n📧 General: info@tolipai.com\n📧 Info: hello@tolipai.com\n📧 Technology: martin@tolipai.com\n📞 Phone: (659) 250-4618\n📍 Address: 1095 Sugar View Dr Ste 500, Sheridan, WY 82801\n\nOur team responds to all inquiries within one business day."
   },
   {
     keywords: ["real estate", "property", "wholesale", "acquisition", "investor"],
@@ -45,11 +45,11 @@ const BOT_RESPONSES = [
   },
   {
     keywords: ["about", "company", "founded", "wyoming", "llc", "established"],
-    response: "Tolip Group LLC is a Wyoming-based Managed Marketing and Data Infrastructure Agency established in 2024. We are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
+    response: "TolipAI, a division of Tolip Group LLC, is a Managed Marketing and Data Infrastructure Agency delivering precision outreach operations, data engineering, and technical CRM infrastructure to real estate investors. Established in 2026, we are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
   },
   {
     keywords: ["start", "begin", "get started", "onboard", "sign up", "work together"],
-    response: "Getting started with Tolip Group LLC is straightforward:\n\n1. Schedule a consultation — contact us at info@tolipai.com\n2. We'll assess your operational needs and current infrastructure\n3. We'll propose a customized service engagement\n4. Onboarding typically takes 1-2 weeks\n\nReady to scale your operations? Use the contact form below or call us at (307) 488-2217."
+    response: "Getting started with Tolip Group LLC is straightforward:\n\n1. Schedule a consultation — contact us at info@tolipai.com\n2. We'll assess your operational needs and current infrastructure\n3. We'll propose a customized service engagement\n4. Onboarding typically takes 1-2 weeks\n\nReady to scale your operations? Use the contact form below or call us at (659) 250-4618."
   }
 ];
 
@@ -108,7 +108,7 @@ export function ChatBot() {
       if (!foundResponse) {
         setMessages(prev => [...prev, {
           id: (Date.now() + 1).toString(),
-          text: "I'd be happy to connect you with our team for more specific information. Please reach out at info@tolipai.com or call (307) 488-2217, and a specialist will assist you promptly.",
+          text: "I'd be happy to connect you with our team for more specific information. Please reach out at info@tolipai.com or call (659) 250-4618, and a specialist will assist you promptly.",
           sender: "bot"
         }]);
       }

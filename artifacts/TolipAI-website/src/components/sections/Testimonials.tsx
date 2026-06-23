@@ -6,13 +6,13 @@ export function Testimonials() {
     {
       name: "Michael Torres",
       role: "REAL ESTATE INVESTOR",
-      text: "TolipAI LLC transformed our acquisition operations completely. Their data engineering services delivered verified property owner contacts with accuracy rates we had never seen before. Our transaction volume increased by 200% within the first quarter.",
+      text: "TolipAI transformed our acquisition operations completely. Their data engineering services delivered verified property owner contacts with accuracy rates we had never seen before. Our transaction volume increased by 200% within the first quarter.",
       featured: false
     },
     {
       name: "Sarah Chen",
       role: "PORTFOLIO MANAGER",
-      text: "Outstanding operational infrastructure. Within weeks of partnering with TolipAI LLC, our acquisition pipeline was producing consistent, qualified opportunities. Their managed outreach team operates with exceptional professionalism and compliance standards. The ROI has been remarkable.",
+      text: "Outstanding operational infrastructure. Within weeks of partnering with TolipAI, our acquisition pipeline was producing consistent, qualified opportunities. Their managed outreach team operates with exceptional professionalism and compliance standards. The ROI has been remarkable.",
       featured: true
     },
     {

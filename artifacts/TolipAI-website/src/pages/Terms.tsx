@@ -195,7 +195,7 @@ export default function Terms() {
               <p className="font-semibold text-foreground mb-3">Tolip Group LLC</p>
               <p>1095 Sugar View Dr Ste 500, Sheridan, WY 82801</p>
               <p className="mt-2">📧 <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a></p>
-              <p>📞 (307) 488-2217</p>
+              <p>📞 (659) 250-4618</p>
             </div>
           </section>
 

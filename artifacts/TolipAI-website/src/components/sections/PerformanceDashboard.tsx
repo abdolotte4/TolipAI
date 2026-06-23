@@ -61,7 +61,7 @@ export function PerformanceDashboard() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display text-white">Client Performance Analytics</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Real results from real estate professionals partnering with TolipAI LLC's managed infrastructure
+            Real results from real estate professionals partnering with Tolip Group LLC's managed infrastructure
           </p>
         </motion.div>
 
