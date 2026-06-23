@@ -410,6 +410,8 @@ class CompsRequest(BaseModel):
     address: str = Field(..., description="Full property address for comp lookup")
     radius_miles: float = Field(0.5, ge=0.1, le=10.0)
     max_results: int = Field(12, ge=1, le=50)
+    campaign_id: Optional[int] = None
+    lead_id: Optional[int] = None
     propelio_email: Optional[str] = None
     propelio_password: Optional[str] = None
     propwire_email: Optional[str] = None
@@ -1543,61 +1545,84 @@ async def scrape_propwire_property(req: PropwireQueryRequest) -> Dict[str, Any]:
 
 @app.post("/scrape/comps")
 async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
-    """Fetch comparable sales for an address.
+    """Fetch comparable sales for an address — returns a job_id for async polling.
 
     Source priority:
       1. Propelio V2 (authenticated) — if credentials provided or PROPELIO_EMAIL + PROPELIO_PASSWORD are set
       2. Propwire (authenticated) — fallback if Propelio is unconfigured or returns nothing
+      3. HomeHarvest — no-auth fallback
 
-    Returns: { address, count, comps, source }
+    Returns: { job_id, status: "queued" }  — poll /jobs/{job_id} for results.
     """
-    comps: List[Dict[str, Any]] = []
+    job_id = _new_job("comps", req.model_dump())
+    await db.create_job(job_id, "comps", req.model_dump(), campaign_id=req.campaign_id)
 
-    # 1. Try Propelio V2 ───────────────────────────────────────────────────────
-    propelio_email = req.propelio_email or os.getenv("PROPELIO_EMAIL")
-    propelio_password = req.propelio_password or os.getenv("PROPELIO_PASSWORD")
-    if propelio_email and propelio_password:
+    async def runner() -> None:
         try:
-            from functools import partial
+            result: Dict[str, Any] = {"address": req.address, "count": 0, "comps": [], "source": "none"}
 
-            login_fn = partial(propelio_v2._do_login, email=propelio_email, password=propelio_password)
-            prop = await propelio_v2.search_property(req.address, login_fn=login_fn)
-            property_id = prop.get("property_id") if prop else None
-            if property_id:
-                comps = await propelio_v2.fetch_comps(
-                    property_id, radius_miles=req.radius_miles, login_fn=login_fn
-                )
-                if comps:
-                    log.info("scrape_comps: Propelio returned %d comps for %s", len(comps), req.address[:60])
-                    return {"address": req.address, "count": len(comps), "comps": comps, "source": "propelio"}
+            # 1. Try Propelio V2 ───────────────────────────────────────────────
+            propelio_email = req.propelio_email or os.getenv("PROPELIO_EMAIL")
+            propelio_password = req.propelio_password or os.getenv("PROPELIO_PASSWORD")
+            if propelio_email and propelio_password:
+                try:
+                    from functools import partial
+
+                    login_fn = partial(propelio_v2._do_login, email=propelio_email, password=propelio_password)
+                    prop = await propelio_v2.search_property(req.address, login_fn=login_fn)
+                    property_id = prop.get("property_id") if prop else None
+                    if property_id:
+                        comps = await propelio_v2.fetch_comps(
+                            property_id, radius_miles=req.radius_miles, login_fn=login_fn
+                        )
+                        if comps:
+                            log.info("scrape_comps: Propelio returned %d comps for %s", len(comps), req.address[:60])
+                            result = {"address": req.address, "count": len(comps), "comps": comps, "source": "propelio"}
+                except Exception as e:
+                    log.warning("scrape_comps: Propelio V2 failed for %s: %s", req.address[:60], str(e)[:200])
+
+            # 2. Propwire fallback ────────────────────────────────────────────
+            if result["count"] == 0:
+                propwire_email = req.propwire_email or os.getenv("PROPWIRE_EMAIL")
+                propwire_password = req.propwire_password or os.getenv("PROPWIRE_PASSWORD")
+                if propwire_email and propwire_password:
+                    try:
+                        from functools import partial
+
+                        login_fn = partial(propwire._do_login, email=propwire_email, password=propwire_password)
+                        comps = await propwire.fetch_comps(req.address, max_results=req.max_results, login_fn=login_fn)
+                        if comps:
+                            log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
+                            result = {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
+                    except Exception as e:
+                        log.warning("scrape_comps: Propwire failed for %s: %s", req.address[:60], str(e)[:200])
+
+            # 3. HomeHarvest (no auth required) ───────────────────────────────
+            if result["count"] == 0:
+                try:
+                    comps = await homeharvest_scraper.scrape_comps(req.address, max_results=req.max_results)
+                    if comps:
+                        log.info("scrape_comps: HomeHarvest returned %d comps for %s", len(comps), req.address[:60])
+                        result = {"address": req.address, "count": len(comps), "comps": comps, "source": "homeharvest"}
+                except Exception as e:
+                    log.warning("scrape_comps: HomeHarvest failed for %s: %s", req.address[:60], str(e)[:200])
+
+            _set_status(job_id, "done", progress=100, result=result)
+            await db.update_job(
+                job_id,
+                status="done",
+                progress=100,
+                result_count=result["count"],
+                completed=True,
+            )
         except Exception as e:
-            log.warning("scrape_comps: Propelio V2 failed for %s: %s", req.address[:60], str(e)[:200])
+            err = str(e)
+            log.error("scrape_comps job %s failed: %s", job_id, err[:200])
+            _set_status(job_id, "failed", error=err[:300])
+            await db.update_job(job_id, status="failed", error=err[:300], completed=True)
 
-    # 2. Propwire fallback ─────────────────────────────────────────────────────
-    propwire_email = req.propwire_email or os.getenv("PROPWIRE_EMAIL")
-    propwire_password = req.propwire_password or os.getenv("PROPWIRE_PASSWORD")
-    if propwire_email and propwire_password:
-        try:
-            from functools import partial
-
-            login_fn = partial(propwire._do_login, email=propwire_email, password=propwire_password)
-            comps = await propwire.fetch_comps(req.address, max_results=req.max_results, login_fn=login_fn)
-            if comps:
-                log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
-                return {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
-        except Exception as e:
-            log.warning("scrape_comps: Propwire failed for %s: %s", req.address[:60], str(e)[:200])
-
-    # 3. HomeHarvest (no auth required) ────────────────────────────────────────
-    try:
-        comps = await homeharvest_scraper.scrape_comps(req.address, max_results=req.max_results)
-        if comps:
-            log.info("scrape_comps: HomeHarvest returned %d comps for %s", len(comps), req.address[:60])
-            return {"address": req.address, "count": len(comps), "comps": comps, "source": "homeharvest"}
-    except Exception as e:
-        log.warning("scrape_comps: HomeHarvest failed for %s: %s", req.address[:60], str(e)[:200])
-
-    return {"address": req.address, "count": 0, "comps": [], "source": "none"}
+    safe_create_task(runner(), name="comps")
+    return {"job_id": job_id, "status": "queued"}
 
 
 @app.post("/scrape/propwire/comps")

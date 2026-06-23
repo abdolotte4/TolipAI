@@ -156,16 +156,48 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
 
     bot_keywords = ("just a moment", "cloudflare", "access denied", "blocked", "captcha", "challenge")
     if any(kw in title for kw in bot_keywords) or any(kw in body_text for kw in bot_keywords):
+        log.warning("Propelio: bot-block page detected (title=%r) — attempting bypass", title)
         await page.screenshot(path=_ss_nav)
-        page.remove_listener("console", _on_console)
+
+        # Cloudflare JS challenges often auto-resolve within 5–10 s.
+        # Also try the captcha solver (session rotation + paid fallback).
         try:
-            page.remove_listener("response", _on_response)
+            from ...captcha_solver import FreeCaptchaSolver as _Solver
+        except ImportError:
+            from workers.captcha_solver import FreeCaptchaSolver as _Solver
+
+        solver = _Solver()
+        # Cloudflare Turnstile / hCaptcha check first
+        if "captcha" in body_text or "hcaptcha" in body_text:
+            await solver.solve_hcaptcha(page, "", LOGIN_URL)
+        elif "turnstile" in body_text or "cloudflare" in title:
+            await solver.solve_turnstile(page, "", LOGIN_URL)
+        else:
+            # Generic: session rotation + wait
+            await solver._rotate_session(page)
+            await page.wait_for_timeout(8000)
+
+        # Re-check after solver attempt
+        title = (await page.title()).lower()
+        body_text = ""
+        try:
+            body_text = (await page.locator("body").inner_text(timeout=5000)).lower()[:300]
         except Exception:
             pass
-        raise RuntimeError(
-            f"Propelio: bot-block page detected (title={title!r}, body={body_text[:100]!r}). "
-            f"Screenshot: {_ss_nav}"
-        )
+
+        if any(kw in title for kw in bot_keywords) or any(kw in body_text for kw in bot_keywords):
+            page.remove_listener("console", _on_console)
+            try:
+                page.remove_listener("response", _on_response)
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"Propelio: bot-block page could not be bypassed "
+                f"(title={title!r}, body={body_text[:100]!r}). "
+                f"Screenshot: {_ss_nav}. "
+                f"Set CAPTCHA_API_KEY (2Captcha) for paid bypass."
+            )
+        log.info("Propelio: bot-block page resolved — continuing login")
 
     # If we were redirected away from /login (already authenticated), we're done
     if "/login" not in page.url:
@@ -503,20 +535,20 @@ async def search_property(address: str, *, login_fn=None) -> Dict[str, Any]:
             search_input = page.locator(
                 'input[placeholder*="address" i], input[placeholder*="search" i], input[type="search"]'
             ).first
-            await search_input.wait_for(state="visible", timeout=15000)
+            await search_input.wait_for(state="visible", timeout=30000)
             await search_input.fill(address)
             await page.wait_for_timeout(800)
             await search_input.press("Enter")
 
             # Wait for a navigation to /search/<id>/...
             try:
-                await page.wait_for_url(re.compile(r"/search/\d+"), timeout=20000)
+                await page.wait_for_url(re.compile(r"/search/\d+"), timeout=25000)
             except Exception:
                 # Sometimes Propelio shows a dropdown — click the first suggestion.
                 first = page.locator('[role="option"], li[role="option"], .search-result').first
                 if await first.count():
                     await first.click()
-                    await page.wait_for_url(re.compile(r"/search/\d+"), timeout=15000)
+                    await page.wait_for_url(re.compile(r"/search/\d+"), timeout=20000)
 
             m = re.search(r"/search/(\d+)", page.url)
             prop_id = m.group(1) if m else None
@@ -704,7 +736,7 @@ async def fetch_cash_buyers(
             except Exception:
                 pass
 
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            await page.wait_for_load_state("networkidle", timeout=30000)
 
             def _drain_xhr() -> List[Dict[str, Any]]:
                 """Consume all accumulated XHR responses and return normalised buyer rows."""

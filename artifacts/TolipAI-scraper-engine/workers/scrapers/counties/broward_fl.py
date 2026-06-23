@@ -38,7 +38,7 @@ class BrowardScraper(CountyScraper):
         from ...captcha_solver import CaptchaSolver
 
         solver = CaptchaSolver()
-        if not solver.available:
+        if not solver.paid_available:
             log.warning("[Broward FL] CAPTCHA_API_KEY not set — skipping.")
             return []
 
@@ -66,7 +66,7 @@ class BrowardScraper(CountyScraper):
                     m = re.search(r"k=([A-Za-z0-9_-]+)", src)
                     site_key = m.group(1) if m else ""
                     if site_key:
-                        token = await solver.solve_recaptcha_v2(site_key, _LOGIN_URL)
+                        token = await solver.solve_recaptcha_v2(page, site_key, _LOGIN_URL)
                         if token:
                             await page.evaluate(
                                 f"document.getElementById('g-recaptcha-response').value = '{token}'"

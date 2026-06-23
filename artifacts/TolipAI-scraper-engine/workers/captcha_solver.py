@@ -43,6 +43,11 @@ class FreeCaptchaSolver:
     def paid_available(self) -> bool:
         return bool(self.paid_api_key)
 
+    @property
+    def available(self) -> bool:
+        """Alias for paid_available — backward-compat for older callers."""
+        return self.paid_available
+
     # ── Strategy 1: Session rotation (free) ─────────────────────────────────────
     async def _rotate_session(self, page) -> None:
         """Clear cookies, storage, and reload with a fresh fingerprint."""
@@ -334,6 +339,141 @@ class FreeCaptchaSolver:
         except Exception as e:
             log.error("[captcha] Turnstile paid error: %s", e)
         return None
+
+
+    async def solve_datadome(self, page, page_url: str) -> bool:
+        """Attempt to bypass a DataDome JS-challenge page.
+
+        Strategy (free → paid):
+          1. Session rotation — clear cookies, reload with fresh fingerprint.
+             DataDome often clears on the second visit from a clean session.
+          2. Wait for the JS challenge iframe to resolve on its own (8 s).
+          3. Image heuristic — look for clickable challenge elements.
+          4. Paid 2Captcha DataDome method if CAPTCHA_API_KEY is set.
+
+        Returns True if the challenge appears resolved, False otherwise.
+        """
+        log.info("[captcha] DataDome challenge on %s — trying strategies", page_url)
+
+        # 1. Session rotation
+        await self._rotate_session(page)
+        html = await page.content()
+        if not any(ind in html.lower() for ind in ("datadome", "captcha-delivery.com", "challenge")):
+            log.info("[captcha] DataDome resolved after session rotation")
+            return True
+
+        # 2. Wait for JS challenge to auto-complete
+        log.info("[captcha] Waiting 8 s for DataDome JS challenge to auto-complete...")
+        await page.wait_for_timeout(8000)
+        html = await page.content()
+        if not any(ind in html.lower() for ind in ("datadome", "captcha-delivery.com", "challenge")):
+            log.info("[captcha] DataDome resolved after wait")
+            return True
+
+        # 3. Try clicking a visible "Continue" / verify button in the challenge
+        try:
+            verify_sel = (
+                'button:has-text("Continue"), button:has-text("Verify"), '
+                'button:has-text("I am human"), button[id*="submit"], '
+                'a[href*="captcha-delivery"], iframe[src*="captcha-delivery"]'
+            )
+            el = page.locator(verify_sel).first
+            if await el.count():
+                tag = await el.evaluate("el => el.tagName.toLowerCase()")
+                if tag == "iframe":
+                    frame = await el.content_frame()
+                    if frame:
+                        btn = frame.locator("button, a").first
+                        if await btn.count():
+                            await btn.click()
+                else:
+                    await el.click()
+                await page.wait_for_timeout(5000)
+                html = await page.content()
+                if not any(ind in html.lower() for ind in ("datadome", "captcha-delivery.com")):
+                    log.info("[captcha] DataDome resolved after button click")
+                    return True
+        except Exception as e:
+            log.debug("[captcha] DataDome button click failed: %s", e)
+
+        # 4. Paid 2Captcha DataDome
+        if self.paid_available:
+            solved = await self._solve_datadome_paid(page, page_url)
+            if solved:
+                return True
+
+        log.warning("[captcha] DataDome could not be bypassed for %s", page_url)
+        return False
+
+    async def _solve_datadome_paid(self, page, page_url: str) -> bool:
+        """Use 2Captcha's DataDome solver.
+
+        Requires CAPTCHA_API_KEY.  2Captcha DataDome method needs:
+          - captchaUrl: the captcha-delivery.com URL found in the iframe src
+          - userAgent: the browser UA used when the challenge was triggered
+        """
+        if not self.paid_api_key:
+            return False
+        try:
+            import httpx
+
+            html = await page.content()
+            import re as _re
+
+            m = _re.search(r'(https://[^"\']*captcha-delivery\.com[^"\']*)', html)
+            if not m:
+                log.warning("[captcha] DataDome paid: captcha-delivery.com URL not found in page")
+                return False
+            captcha_url = m.group(1)
+            ua = await page.evaluate("() => navigator.userAgent")
+
+            async with httpx.AsyncClient(timeout=30) as cli:
+                r = await cli.post(
+                    _2CAPTCHA_IN,
+                    data={
+                        "key": self.paid_api_key,
+                        "method": "datadome",
+                        "captchaUrl": captcha_url,
+                        "pageurl": page_url,
+                        "userAgent": ua,
+                        "json": 1,
+                    },
+                )
+            result = r.json()
+            if result.get("status") != 1:
+                log.warning("[captcha] DataDome paid submit failed: %s", result)
+                return False
+            captcha_id = result["request"]
+
+            for _ in range(_MAX_POLLS):
+                await asyncio.sleep(_POLL_INTERVAL_SEC)
+                async with httpx.AsyncClient(timeout=15) as cli:
+                    r = await cli.get(
+                        _2CAPTCHA_RES,
+                        params={
+                            "key": self.paid_api_key,
+                            "action": "get",
+                            "id": captcha_id,
+                            "json": 1,
+                        },
+                    )
+                result = r.json()
+                if result.get("status") == 1:
+                    cookie_value = result["request"]
+                    await page.context.add_cookies([{
+                        "name": "datadome",
+                        "value": cookie_value,
+                        "domain": ".propwire.com",
+                        "path": "/",
+                    }])
+                    await page.reload(wait_until="domcontentloaded", timeout=30000)
+                    log.info("[captcha] DataDome paid cookie injected, page reloaded")
+                    return True
+                if result.get("request") == "CAPCHA_NOT_READY":
+                    continue
+        except Exception as e:
+            log.error("[captcha] DataDome paid error: %s", e)
+        return False
 
 
 # Backward-compatible alias

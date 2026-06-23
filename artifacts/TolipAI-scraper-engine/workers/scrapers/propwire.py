@@ -121,21 +121,22 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
         except Exception:
             pass
 
-        # Strategy: wait a bit longer — DataDome sometimes auto-resolves
-        # when the browser passes fingerprint checks.
-        log.info("Propwire: waiting 15 s for challenge to auto-resolve...")
-        await page.wait_for_timeout(15000)
+        # Use captcha solver: session rotation → JS wait → button click → paid DataDome
+        try:
+            from ...captcha_solver import FreeCaptchaSolver as _Solver
+        except ImportError:
+            from workers.captcha_solver import FreeCaptchaSolver as _Solver
 
-        # Check again
-        html = await page.content()
-        if _looks_like_challenge_page(html):
-            # Try reloading once — fresh request through proxy may help
-            log.info("Propwire: challenge still present, attempting reload...")
+        solver = _Solver()
+        resolved = await solver.solve_datadome(page, LOGIN_URL)
+        if not resolved:
+            # Final fallback: reload once more through proxy
+            log.info("Propwire: captcha solver did not resolve — attempting one more reload...")
             await page.goto(LOGIN_URL, wait_until="networkidle", timeout=45000)
             await page.wait_for_timeout(8000)
             html = await page.content()
 
-        if _looks_like_challenge_page(html):
+        if _looks_like_challenge_page(await page.content()):
             try:
                 await page.screenshot(
                     path=f"{_screenshot_dir}/propwire_challenge_still_present.png", full_page=True
@@ -144,7 +145,7 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
                 pass
             raise RuntimeError(
                 "Propwire: DataDome/CAPTCHA challenge is blocking login. "
-                "The bot detection could not be bypassed. "
+                "Set CAPTCHA_API_KEY (2Captcha) to enable paid DataDome bypass. "
                 "Check proxy configuration and stealth settings."
             )
 
