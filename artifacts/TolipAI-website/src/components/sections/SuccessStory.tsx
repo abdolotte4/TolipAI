@@ -64,7 +64,7 @@ export function SuccessStory() {
     },
     {
       icon: <Clock className="w-8 h-8 text-primary" />,
-      number: 5,
+      number: 1,
       label: "Years Experience",
       suffix: "+"
     }
