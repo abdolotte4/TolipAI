@@ -74,7 +74,7 @@ export default function Demo() {
                 See TolipAI in Action
               </h1>
               <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-                A full walkthrough of our Managed Marketing and Data Infrastructure platform — from distressed property data pipelines to fully managed outreach operations.
+                A full walkthrough of our Managed B2B Marketing and Data Infrastructure platform — from distressed property data pipelines to fully managed outreach operations.
               </p>
             </motion.div>
           </div>

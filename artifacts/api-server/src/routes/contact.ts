@@ -111,7 +111,7 @@ router.post("/contact", contactRateLimit, async (req, res) => {
           <p style="color:#222;margin:0;line-height:1.6;">${message.replace(/\n/g, "<br>")}</p>
         </div>
         <p style="margin-top:24px;color:#888;font-size:12px;border-top:1px solid #eee;padding-top:16px;">
-          Tolip Group LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
+          Tolip Group LLC | 1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801
         </p>
       </div>
     </div>

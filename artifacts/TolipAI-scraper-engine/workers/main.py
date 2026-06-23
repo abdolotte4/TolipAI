@@ -1081,6 +1081,89 @@ async def health_providers() -> Dict[str, Any]:
     }
 
 
+@app.get("/health/proxy")
+async def health_proxy() -> Dict[str, Any]:
+    """On-demand proxy connectivity check.
+
+    Makes a live outbound request through the configured residential proxy and
+    returns the exit IP, round-trip latency, and pass/fail status.  Call this
+    endpoint to instantly diagnose BrightData/Oxylabs connectivity without
+    running a full scrape job.
+
+    Returns:
+        status: "ok" | "error" | "unconfigured"
+        exit_ip: observed egress IP address
+        latency_ms: round-trip time through the proxy in milliseconds
+        proxy_url: credential-masked proxy URL for confirmation
+    """
+    import time
+
+    import httpx
+
+    proxy_url = settings.proxy_url()
+    if not proxy_url:
+        return {
+            "status": "unconfigured",
+            "reason": "BRIGHTDATA_USERNAME or BRIGHTDATA_PASSWORD not set",
+            "proxy_url": None,
+            "exit_ip": None,
+            "latency_ms": None,
+        }
+
+    # Mask credentials before returning in response
+    masked = re.sub(r"://[^@]+@", "://<credentials>@", proxy_url)
+
+    # Try multiple IP-echo services — if one is down it doesn't give a false failure
+    targets = [
+        ("ipify", "https://api.ipify.org?format=json"),
+        ("ipecho", "https://ipecho.net/plain"),
+        ("ifconfig", "https://ifconfig.me/ip"),
+    ]
+
+    last_error: Dict[str, Any] = {}
+    for label, url in targets:
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(
+                proxies={"all://": proxy_url},
+                verify=False,
+                timeout=14.0,
+                follow_redirects=True,
+            ) as client:
+                resp = await client.get(url)
+                latency_ms = int((time.monotonic() - t0) * 1000)
+                text = resp.text.strip()
+                try:
+                    exit_ip = resp.json().get("ip", text)
+                except Exception:
+                    exit_ip = text
+                return {
+                    "status": "ok",
+                    "proxy_url": masked,
+                    "exit_ip": exit_ip,
+                    "latency_ms": latency_ms,
+                    "source": label,
+                    "http_status": resp.status_code,
+                }
+        except Exception as exc:
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            last_error = {
+                "source": label,
+                "error": str(exc)[:300],
+                "latency_ms": latency_ms,
+            }
+            log.warning("proxy health check failed via %s: %s", label, exc)
+
+    return {
+        "status": "error",
+        "proxy_url": masked,
+        "reason": "all_targets_failed",
+        "last_error": last_error,
+        "exit_ip": None,
+        "latency_ms": None,
+    }
+
+
 # ─── Circuit breaker admin endpoints ────────────────────────────────────────
 
 

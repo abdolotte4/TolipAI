@@ -89,7 +89,7 @@ export function Contact() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-foreground text-lg mb-1">Headquarters</h4>
-                  <p className="text-muted-foreground">1095 Sugar View Dr Ste 500<br />Sheridan, WY 82801</p>
+                  <p className="text-muted-foreground">1309 Coffeen Avenue STE 1200<br />Sheridan, Wyoming 82801</p>
                 </div>
               </div>
 

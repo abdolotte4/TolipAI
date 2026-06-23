@@ -21,7 +21,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-foreground mb-3">1. Introduction</h2>
             <p>
               <strong className="text-foreground">Tolip Group LLC</strong> ("TolipAI," "we," "us," or "our"), a Wyoming Limited Liability Company
-              (1095 Sugar View Dr Ste 500, Sheridan, WY 82801), is committed to protecting your privacy.
+              (1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801), is committed to protecting your privacy.
               This Privacy Policy explains how we collect, use, disclose, and safeguard information about you
               when you visit our website, use our services, or interact with us.
             </p>
@@ -61,7 +61,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-foreground mb-3">3. How We Use Your Information</h2>
             <p>We use the information we collect to:</p>
             <ul className="list-disc pl-6 mt-3 space-y-1">
-              <li>Provide, maintain, and improve our managed marketing and data infrastructure services</li>
+              <li>Provide, maintain, and improve our managed B2B marketing and data infrastructure services</li>
               <li>Process transactions and send related information, including purchase confirmations and invoices</li>
               <li>Send promotional communications, newsletters, and service updates (where you have opted in)</li>
               <li>Send SMS/text messages for marketing purposes where you have provided explicit consent</li>
@@ -215,7 +215,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-foreground mb-3">13. Contact Us</h2>
             <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
               <p className="font-semibold text-foreground mb-3">Tolip Group LLC</p>
-              <p>1095 Sugar View Dr Ste 500, Sheridan, WY 82801</p>
+              <p>1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801</p>
               <p className="mt-2">📧 <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a></p>
               <p>📞 (659) 250-4618</p>
               <p className="mt-3 text-sm text-muted-foreground">

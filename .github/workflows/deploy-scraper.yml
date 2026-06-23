@@ -1,3 +1,12 @@
-# Disabled — scraper engine is deployed via AWS CLI directly on the Fargate ECS cluster.
+# This workflow is intentionally disabled.
+# The scraper engine (artifacts/TolipAI-scraper-engine) is deployed exclusively
+# from the Agawish24/Python-Worker repository via its own deploy.yml workflow.
+# Do NOT add deploy triggers here — the TolipAI monorepo is not a deployment target.
+name: "[disabled] scraper-deploy"
 on: {}
-jobs: {}
+jobs:
+  _disabled:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "disabled"

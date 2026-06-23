@@ -25,7 +25,7 @@ const BOT_RESPONSES = [
   },
   {
     keywords: ["contact", "email", "phone", "address", "location", "reach", "office"],
-    response: "You can reach Tolip Group LLC through the following channels:\n\n📧 General: info@tolipai.com\n📧 Info: hello@tolipai.com\n📧 Technology: martin@tolipai.com\n📞 Phone: (659) 250-4618\n📍 Address: 1095 Sugar View Dr Ste 500, Sheridan, WY 82801\n\nOur team responds to all inquiries within one business day."
+    response: "You can reach Tolip Group LLC through the following channels:\n\n📧 General: info@tolipai.com\n📧 Info: hello@tolipai.com\n📧 Technology: martin@tolipai.com\n📞 Phone: (659) 250-4618\n📍 Address: 1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801\n\nOur team responds to all inquiries within one business day."
   },
   {
     keywords: ["real estate", "property", "wholesale", "acquisition", "investor"],
@@ -45,7 +45,7 @@ const BOT_RESPONSES = [
   },
   {
     keywords: ["about", "company", "founded", "wyoming", "llc", "established"],
-    response: "TolipAI, a division of Tolip Group LLC, is a Managed Marketing and Data Infrastructure Agency delivering precision outreach operations, data engineering, and technical CRM infrastructure to real estate investors. Established in 2026, we are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
+    response: "TolipAI, a division of Tolip Group LLC, is a B2B Managed Marketing and Data Infrastructure Agency delivering precision outreach operations, data engineering, and technical CRM infrastructure to real estate investors. Established in 2026, we are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
   },
   {
     keywords: ["start", "begin", "get started", "onboard", "sign up", "work together"],

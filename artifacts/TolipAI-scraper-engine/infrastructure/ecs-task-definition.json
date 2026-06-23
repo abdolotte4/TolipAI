@@ -75,11 +75,14 @@
         }
       },
       "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost:8765/health || exit 1"],
+        "command": [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request,json,sys,time; t=time.time(); r=urllib.request.urlopen('http://localhost:8765/health',timeout=7); d=json.load(r); s=d.get('status','?'); db=d.get('database',{}).get('status','?'); ms=int((time.time()-t)*1000); print('ECS_HC status='+s+' db='+db+' ms='+str(ms)); sys.exit(0 if s in ('ok','degraded') else 1)\" 2>&1 || (echo 'ECS_HC FAIL: server not ready' && exit 1)"
+        ],
         "interval": 30,
-        "timeout": 5,
+        "timeout": 10,
         "retries": 3,
-        "startPeriod": 60
+        "startPeriod": 120
       },
       "ulimits": [
         {

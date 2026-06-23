@@ -64,7 +64,7 @@ async function sendDemoNotification(name: string | undefined, phone: string, sta
           <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Time:</td><td style="padding:8px 0;color:#222;">${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} ET</td></tr>
         </table>
         <p style="margin-top:24px;color:#888;font-size:12px;border-top:1px solid #eee;padding-top:16px;">
-          Tolip Group LLC | 1095 Sugar View Dr Ste 500, Sheridan, WY 82801
+          Tolip Group LLC | 1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801
         </p>
       </div>
     </div>

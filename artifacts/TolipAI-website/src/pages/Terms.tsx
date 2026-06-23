@@ -21,7 +21,7 @@ export default function Terms() {
             <h2 className="text-xl font-semibold text-foreground mb-3">1. Agreement to Terms</h2>
             <p>
               By subscribing to any service offered by <strong className="text-foreground">Tolip Group LLC</strong> ("TolipAI," "we," "us," or "our"),
-              a Wyoming Limited Liability Company (1095 Sugar View Dr Ste 500, Sheridan, WY 82801),
+              a Wyoming Limited Liability Company (1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801),
               you ("Client," "you," or "your") agree to be bound by these Terms of Service ("Terms").
               If you do not agree to these Terms, do not subscribe or use our services.
             </p>
@@ -193,7 +193,7 @@ export default function Terms() {
             <h2 className="text-xl font-semibold text-foreground mb-3">11. Contact</h2>
             <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
               <p className="font-semibold text-foreground mb-3">Tolip Group LLC</p>
-              <p>1095 Sugar View Dr Ste 500, Sheridan, WY 82801</p>
+              <p>1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801</p>
               <p className="mt-2">📧 <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a></p>
               <p>📞 (659) 250-4618</p>
             </div>

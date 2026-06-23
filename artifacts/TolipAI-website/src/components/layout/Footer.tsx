@@ -10,7 +10,7 @@ export function Footer() {
               TOLIPAI<span className="text-primary">.</span>
             </span>
             <p className="mt-4 text-muted-foreground max-w-sm">
-              Scalable Managed Marketing and Data Infrastructure Agency delivering precision outreach operations and technical CRM infrastructure to real estate investors.
+              Scalable B2B Managed Marketing and Data Infrastructure Agency delivering precision outreach operations and technical CRM infrastructure to real estate investors.
             </p>
           </div>
           
@@ -58,7 +58,7 @@ export function Footer() {
           <p className="mt-2 md:mt-0 text-center md:text-right">
             Wyoming Limited Liability Company <br className="md:hidden" />
             <span className="hidden md:inline"> | </span>
-            1095 Sugar View Dr Ste 500, Sheridan, WY 82801
+            1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801
           </p>
         </div>
       </div>
