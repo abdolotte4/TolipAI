@@ -18,8 +18,8 @@ export function setupFetchInterceptor() {
     }
     const response = await originalFetch(resource, config);
     const url = typeof resource === 'string' ? resource : '';
-    const isToolsRoute = url.includes('/tools/') || url.includes('/scraper/') || url.includes('/scraper-engine/');
-    if (response.status === 401 && typeof resource === 'string' && !url.includes('/auth/login') && !url.includes('/public/') && !isToolsRoute) {
+    const isCrmRoute = url.startsWith('/api/crm/');
+    if (response.status === 401 && isCrmRoute && !url.includes('/auth/login')) {
       localStorage.removeItem('crm_token');
       window.location.href = import.meta.env.BASE_URL + 'login';
     }

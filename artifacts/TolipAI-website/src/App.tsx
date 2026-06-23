@@ -12,6 +12,7 @@ const Terms              = lazy(() => import("@/pages/Terms"));
 const PrivacyPolicy      = lazy(() => import("@/pages/PrivacyPolicy"));
 const CheckoutSuccess    = lazy(() => import("@/pages/CheckoutSuccess"));
 const MissionVisionValues = lazy(() => import("@/pages/MissionVisionValues"));
+const Demo               = lazy(() => import("@/pages/Demo"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
 
 const WP_PARAMS = ["p", "page_id", "cat", "tag", "author", "feed", "s", "attachment_id"];
@@ -54,6 +55,7 @@ function Router() {
         <Route path="/privacy-policy" component={PrivacyPolicy} />
         <Route path="/checkout-success" component={CheckoutSuccess} />
         <Route path="/mission-vision-values" component={MissionVisionValues} />
+        <Route path="/demo" component={Demo} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
