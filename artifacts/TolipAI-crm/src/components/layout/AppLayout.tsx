@@ -83,10 +83,18 @@ function NotificationBell() {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [location, setLocation] = useLocation();
-  const { data: user, isLoading, isError } = useCrmGetMe();
+  const { data: user, isLoading, isError, error } = useCrmGetMe();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const { isDark, toggleTheme } = useTheme();
-  useEffect(() => { if (isError) setLocation("/login"); }, [isError, setLocation]);
+  useEffect(() => {
+    if (isError) {
+      const status = (error as any)?.status;
+      if (status === 401 || status === 403 || status === 404) {
+        localStorage.removeItem("crm_token");
+      }
+      setLocation("/login");
+    }
+  }, [isError, error, setLocation]);
   const handleLogout = () => { localStorage.removeItem("crm_token"); setLocation("/login"); };
   const [sseLeadDelta, setSseLeadDelta] = React.useState(0);
   const sseRef = useRef<EventSource | null>(null);

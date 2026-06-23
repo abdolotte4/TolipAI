@@ -46,7 +46,7 @@ export default function SmsConversations({ leadId, leadPhone, campaignId }: Prop
   const { data: messages = [], isFetching, refetch } = useQuery<SmsMessage[]>({
     queryKey: ["/api/twilio/sms-conversations", leadId],
     queryFn: async () => {
-      const d = await apiFetch(`/twilio/sms-conversations/${leadId}`);
+      const d = await apiRawFetch(`/twilio/sms-conversations/${leadId}`);
       if (Array.isArray(d)) return d as SmsMessage[];
       if (d && Array.isArray((d as any).messages)) return (d as any).messages as SmsMessage[];
       return [] as SmsMessage[];
@@ -81,7 +81,7 @@ export default function SmsConversations({ leadId, leadPhone, campaignId }: Prop
   // Send SMS mutation
   const sendMutation = useMutation({
     mutationFn: (content: string) =>
-      apiFetch("/twilio/messages", {
+      apiRawFetch("/twilio/messages", {
         method: "POST",
         body: JSON.stringify({
           phoneNumberId: selectedFrom,
