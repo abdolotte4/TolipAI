@@ -61,7 +61,7 @@
         { "name": "GOOGLE_MAPS_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/google-maps-key-89upPY" },
         { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/redis-url-CSzF81" },
         { "name": "S3_CACHE_BUCKET", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/s3-cache-bucket-rIXWv4" },
-        { "name": "ADMIN_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ADMIN_API_KEY-RrQJVC" }
+        { "name": "ADMIN_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/admin_api_key" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

@@ -310,7 +310,9 @@ app.add_middleware(
 )
 
 # ─── Security middleware ──────────────────────────────────────────────────────
-_EXEMPT_PATHS = frozenset({"/health", "/healthz", "/metrics", "/docs", "/openapi.json", "/redoc"})
+_EXEMPT_PATHS = frozenset({"/health", "/healthz"})
+# /metrics, /docs, /openapi.json, /redoc are intentionally NOT exempt —
+# they require the same X-API-Key auth as all other endpoints.
 _MAX_BODY_BYTES = 1_048_576  # 1 MB
 
 

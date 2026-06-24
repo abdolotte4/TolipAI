@@ -176,7 +176,7 @@ upsert_secret "$SECRET_PREFIX/S3_CACHE_BUCKET" \
     "tolipai-scraper-cache" \
     "S3 cache bucket name"
 
-upsert_secret "$SECRET_PREFIX/ADMIN_API_KEY" \
+upsert_secret "$SECRET_PREFIX/admin_api_key" \
     "change-me-to-your-real-admin-key" \
     "Admin API key for /admin/* endpoints (separate from SCRAPER_API_KEY)"
 
@@ -200,7 +200,7 @@ echo "  - PROPELIO_PASSWORD"
 echo "  - PROPWIRE_EMAIL"
 echo "  - PROPWIRE_PASSWORD"
 echo "  - GOOGLE_MAPS_API_KEY"
-echo "  - ADMIN_API_KEY"
+echo "  - admin_api_key"
 echo ""
 echo "NOTE: RealForeclose.com (REALFORECLOSE_USERNAME/PASSWORD) has been removed."
 echo "      FL county scrapers now use direct official county clerk websites."
