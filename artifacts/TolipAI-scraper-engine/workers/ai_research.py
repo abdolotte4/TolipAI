@@ -73,8 +73,8 @@ TRUSTEE_REGISTRY: List[Dict[str, Any]] = [
         "county": "miami-dade",
         "state": "FL",
         "website": "https://www.miamidade.gov/global/finance/clerk/courts/foreclosures.page",
-        "sale_listings_url": "https://www.realforeclose.com/index.cfm?zaction=AUCTION&Zmethod=PREVIEW&OFFID=1",
-        "notes": "Judicial foreclosures via RealForeclose.com. Daily auctions.",
+        "sale_listings_url": "https://www.miamidade.gov/CLDOCS/ForeclosureSales",
+        "notes": "Official Miami-Dade Clerk foreclosure sale listings — public HTML, no login required.",
     },
     {
         "name": "Broward County Clerk — Foreclosure Auctions",
@@ -82,8 +82,8 @@ TRUSTEE_REGISTRY: List[Dict[str, Any]] = [
         "county": "broward",
         "state": "FL",
         "website": "https://www.browardclerk.org/Web2/CaseSearch/Search",
-        "sale_listings_url": "https://www.realforeclose.com/index.cfm?zaction=AUCTION&Zmethod=PREVIEW&OFFID=3",
-        "notes": "Judicial foreclosures via RealForeclose.com.",
+        "sale_listings_url": "https://www.broward.org/RecordsTaxesTreasury/ForeClosureSales/Pages/default.aspx",
+        "notes": "Official Broward County Records/Treasury foreclosure page — public, no login required.",
     },
     {
         "name": "Hillsborough County Clerk — Foreclosure Auctions",
@@ -100,8 +100,8 @@ TRUSTEE_REGISTRY: List[Dict[str, Any]] = [
         "county": "orange",
         "state": "FL",
         "website": "https://myeclerk.myorangeclerk.com/",
-        "sale_listings_url": "https://www.realforeclose.com/index.cfm?zaction=AUCTION&Zmethod=PREVIEW&OFFID=2",
-        "notes": "Orlando area. Judicial foreclosures via RealForeclose.",
+        "sale_listings_url": "https://myeclerk.myorangeclerk.com/Auctions",
+        "notes": "Orlando area. Official Orange County Clerk auction portal — public, no login required.",
     },
     {
         "name": "Palm Beach County Clerk — Foreclosure Auctions",
@@ -109,8 +109,8 @@ TRUSTEE_REGISTRY: List[Dict[str, Any]] = [
         "county": "palm beach",
         "state": "FL",
         "website": "https://www.mypalmbeachclerk.com/",
-        "sale_listings_url": "https://www.realforeclose.com/index.cfm?zaction=AUCTION&Zmethod=PREVIEW&OFFID=4",
-        "notes": "West Palm Beach area. Judicial foreclosures via RealForeclose.",
+        "sale_listings_url": "https://www.mypalmbeachclerk.com/official-records/foreclosure-auction",
+        "notes": "West Palm Beach area. Official Palm Beach Clerk foreclosure auction — public, no login required.",
     },
     # ── Arizona ────────────────────────────────────────────────────────────────
     {

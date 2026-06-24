@@ -113,11 +113,6 @@ class Settings:
     # internal tooling can be scoped to admin operations only.
     admin_api_key: Optional[str] = _env("ADMIN_API_KEY")
 
-    # RealForeclose credentials — required for Broward FL and Miami-Dade FL
-    # county scrapers that log into realforeclose.com portals.
-    realforeclose_username: Optional[str] = _env("REALFORECLOSE_USERNAME")
-    realforeclose_password: Optional[str] = _env("REALFORECLOSE_PASSWORD")
-
     # ── Feature flags ──────────────────────────────────────────────────────
     enable_google_dorks: bool = os.getenv("ENABLE_GOOGLE_DORKS", "false").lower() == "true"
     enable_opencorporates: bool = os.getenv("ENABLE_OPENCORPORATES", "true").lower() == "true"

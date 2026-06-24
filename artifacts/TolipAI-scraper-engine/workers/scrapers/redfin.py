@@ -17,6 +17,54 @@ from ..http_client import fetch_html
 log = logging.getLogger("redfin")
 
 
+async def _redfin_autocomplete(q: str) -> Optional[str]:
+    """Call Redfin location-autocomplete with proper headers via httpx directly.
+
+    Redfin returns 403 when the Referer / X-Requested-With headers are missing
+    or when no US residential proxy is used.  We use the proxy from settings
+    and send the exact headers a real browser would send.
+    """
+    import urllib.parse
+    import httpx as _httpx
+    from ..config import settings
+
+    q_enc = urllib.parse.quote(q)
+    urls_to_try = [
+        f"https://www.redfin.com/stingray/do/location-autocomplete?location={q_enc}&v=2",
+        f"https://www.redfin.com/stingray/api/v1/location-autocomplete?location={q_enc}&v=2",
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.redfin.com/",
+        "Origin": "https://www.redfin.com",
+        "X-Requested-With": "XMLHttpRequest",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+    }
+    proxy = settings.proxy_url()
+    for url in urls_to_try:
+        try:
+            async with _httpx.AsyncClient(
+                timeout=20,
+                proxy=proxy,
+                verify=False,
+                follow_redirects=True,
+            ) as cli:
+                r = await cli.get(url, headers=headers)
+                if r.status_code == 403:
+                    log.warning("Redfin autocomplete 403 on %s (proxy=%s)", url, bool(proxy))
+                    continue
+                r.raise_for_status()
+                return r.text
+        except Exception as e:
+            log.debug("Redfin autocomplete attempt failed (%s): %s", url, str(e)[:80])
+    return None
+
+
 async def _resolve_region(
     zip_code: Optional[str] = None, city: str = "", state: str = "", retries: int = 2
 ) -> Optional[Dict[str, Any]]:
@@ -24,10 +72,12 @@ async def _resolve_region(
     q = zip_code or f"{city} {state}".strip()
     if not q:
         return None
-    url = f"https://www.redfin.com/stingray/do/location-autocomplete?location={q}&v=2"
     for attempt in range(retries):
         try:
-            text = await fetch_html(url, render=False)
+            text = await _redfin_autocomplete(q)
+            if not text:
+                log.warning("Redfin region lookup attempt %d: no response", attempt + 1)
+                continue
             payload = text.split("&&", 1)[-1]
             data = _json.loads(payload)
             sections = data.get("payload", {}).get("sections") or []

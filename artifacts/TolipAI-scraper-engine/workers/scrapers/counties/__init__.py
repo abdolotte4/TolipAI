@@ -9,8 +9,8 @@ Each county has its own module with a scraper class that:
 Available scrapers:
     harris_tx      — Harris County, TX (tax foreclosure auctions)
     dallas_tx      — Dallas County, TX (trustee sales)
-    miami_dade_fl  — Miami-Dade County, FL (RealForeclose — needs CAPTCHA_API_KEY)
-    broward_fl     — Broward County, FL (RealForeclose — needs CAPTCHA_API_KEY)
+    miami_dade_fl  — Miami-Dade County, FL (official miamidade.gov — no login)
+    broward_fl     — Broward County, FL (official broward.org — no login)
     maricopa_az    — Maricopa County, AZ (tax lien sales)
     clark_nv       — Clark County, NV (trustee sales)
     orange_ca      — Orange County, CA (Notice of Default)

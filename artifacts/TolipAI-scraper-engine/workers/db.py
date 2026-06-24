@@ -169,8 +169,12 @@ async def conn() -> AsyncIterator[Optional[asyncpg.Connection]]:
     if pool is None:
         yield None
         return
-    async with pool.acquire() as c:
-        yield c
+    try:
+        async with pool.acquire(timeout=5.0) as c:
+            yield c
+    except Exception as _conn_err:
+        log.error("DB pool acquire failed (pool exhausted or timeout after 5s): %s", _conn_err)
+        yield None
 
 
 # ─── scraper_jobs ────────────────────────────────────────────────────────────

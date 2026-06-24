@@ -341,6 +341,144 @@ class FreeCaptchaSolver:
         return None
 
 
+    # ── Strategy AI: Vision-based CAPTCHA solver (free, uses OPENAI_API_KEY) ────
+    async def _solve_with_ai_vision(self, page, challenge_type: str = "captcha") -> bool:
+        """Use GPT-4o-mini vision to analyse the page and attempt to solve the challenge.
+
+        Works best for:
+          - Text/distorted-character CAPTCHAs (types the answer)
+          - Image-grid CAPTCHAs (identifies which cells to click)
+          - "Press & hold" / slider challenges (locates element to interact with)
+          - DataDome "I am human" checkbox challenges
+
+        Requires OPENAI_API_KEY to be set.
+        """
+        import os
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            log.debug("[captcha] AI vision solver skipped — OPENAI_API_KEY not set")
+            return False
+
+        try:
+            import base64
+            import httpx as _httpx
+
+            # Take a full-page screenshot
+            screenshot_bytes = await page.screenshot(type="jpeg", quality=70, full_page=False)
+            b64_image = base64.b64encode(screenshot_bytes).decode("utf-8")
+
+            system_prompt = (
+                "You are a CAPTCHA solving assistant. Analyse the screenshot of a webpage and "
+                "provide EXACT instructions to solve any CAPTCHA or bot-challenge visible. "
+                "Reply in JSON only with these fields:\n"
+                "  action: 'type' | 'click_selector' | 'click_coordinates' | 'unsolvable' | 'already_clear'\n"
+                "  value: string — text to type (for 'type'), CSS selector (for 'click_selector'), "
+                "or 'x,y' pixel coords (for 'click_coordinates')\n"
+                "  confidence: 0.0-1.0\n"
+                "  reason: short explanation\n"
+                "If the page has NO captcha/challenge, return action='already_clear'.\n"
+                "If you cannot solve it, return action='unsolvable'."
+            )
+            user_prompt = (
+                f"Challenge type hint: {challenge_type}. "
+                "Solve the CAPTCHA or bot-challenge visible in this screenshot."
+            )
+
+            async with _httpx.AsyncClient(timeout=30) as cli:
+                resp = await cli.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": "gpt-4o-mini",
+                        "max_tokens": 300,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": user_prompt},
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/jpeg;base64,{b64_image}", "detail": "low"},
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                )
+
+            if resp.status_code != 200:
+                log.warning("[captcha] AI vision API error %d", resp.status_code)
+                return False
+
+            import json as _json
+            content = resp.json()["choices"][0]["message"]["content"].strip()
+            # Strip markdown code fences if present
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            result = _json.loads(content)
+            action = result.get("action", "unsolvable")
+            value = result.get("value", "")
+            confidence = float(result.get("confidence", 0))
+            log.info("[captcha] AI vision: action=%s value=%r confidence=%.2f reason=%s",
+                     action, value[:60], confidence, result.get("reason", "")[:80])
+
+            if action == "already_clear":
+                return True
+
+            if action == "unsolvable" or confidence < 0.4:
+                log.info("[captcha] AI vision: confidence too low or unsolvable")
+                return False
+
+            if action == "type" and value:
+                # Find the CAPTCHA input field and type the answer
+                input_el = page.locator(
+                    "input[id*='captcha' i], input[name*='captcha' i], "
+                    "input[placeholder*='captcha' i], input[type='text']:visible"
+                ).first
+                if await input_el.count():
+                    await input_el.fill(value)
+                    await page.wait_for_timeout(500)
+                    # Try to submit
+                    submit = page.locator(
+                        "button[type='submit'], input[type='submit'], button:has-text('Verify'), "
+                        "button:has-text('Submit'), button:has-text('Continue')"
+                    ).first
+                    if await submit.count():
+                        await submit.click()
+                        await page.wait_for_timeout(3000)
+                        log.info("[captcha] AI vision: typed answer and submitted")
+                        return True
+
+            elif action == "click_selector" and value:
+                try:
+                    el = page.locator(value).first
+                    if await el.count():
+                        await el.click()
+                        await page.wait_for_timeout(3000)
+                        log.info("[captcha] AI vision: clicked selector %r", value)
+                        return True
+                except Exception as sel_err:
+                    log.debug("[captcha] AI vision click_selector failed: %s", sel_err)
+
+            elif action == "click_coordinates" and value:
+                try:
+                    x, y = (float(v) for v in value.split(",", 1))
+                    await page.mouse.click(x, y)
+                    await page.wait_for_timeout(3000)
+                    log.info("[captcha] AI vision: clicked coordinates (%.0f, %.0f)", x, y)
+                    return True
+                except Exception as coord_err:
+                    log.debug("[captcha] AI vision click_coordinates failed: %s", coord_err)
+
+            return False
+
+        except Exception as e:
+            log.warning("[captcha] AI vision solver error: %s", str(e)[:120])
+            return False
+
     async def solve_datadome(self, page, page_url: str) -> bool:
         """Attempt to bypass a DataDome JS-challenge page.
 
@@ -369,6 +507,14 @@ class FreeCaptchaSolver:
         if not any(ind in html.lower() for ind in ("datadome", "captcha-delivery.com", "challenge")):
             log.info("[captcha] DataDome resolved after wait")
             return True
+
+        # 2.5. AI Vision solver (free, uses OPENAI_API_KEY)
+        log.info("[captcha] Trying AI vision solver for DataDome challenge...")
+        if await self._solve_with_ai_vision(page, "datadome"):
+            html = await page.content()
+            if not any(ind in html.lower() for ind in ("datadome", "captcha-delivery.com", "challenge")):
+                log.info("[captcha] DataDome resolved via AI vision")
+                return True
 
         # 3. Try clicking a visible "Continue" / verify button in the challenge
         try:

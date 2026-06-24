@@ -1,14 +1,18 @@
-"""Broward County, FL — RealForeclose.com scraper.
+"""Broward County, FL — Official County Foreclosure Sales Scraper.
 
-Source: https://www.realforeclose.com/index.cfm?zaction=auction&zmethod=host&zhost=10
-Type: Login required + reCAPTCHA (same platform as Miami-Dade)
-Status: Requires CAPTCHA_API_KEY + REALFORECLOSE_USERNAME + REALFORECLOSE_PASSWORD
+Source: https://www.broward.org/RecordsTaxesTreasury/ForeClosureSales/Pages/default.aspx
+Type:   Public HTML page — NO login required
+Auth:   None
+Proxy:  US domestic proxy recommended (county sites may geo-restrict)
+
+Playwright navigates to the official Broward County Records & Treasury
+foreclosure page and parses the auction listing table.
 """
 
 from __future__ import annotations
 
 import logging
-import os
+import re
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -16,32 +20,18 @@ from .base import CountyScraper
 
 log = logging.getLogger("broward_fl")
 
-_LOGIN_URL = "https://www.realforeclose.com/index.cfm?zaction=user&zmethod=logindisp"
-_AUCTION_URL = "https://www.realforeclose.com/index.cfm?zaction=auction&zmethod=host&zhost=10"
+_BASE_URL = "https://www.broward.org/RecordsTaxesTreasury/ForeClosureSales/Pages/default.aspx"
+_ALT_URL = "https://www.browardclerk.org/"
 
 
 class BrowardScraper(CountyScraper):
     county = "Broward"
     state = "FL"
-    source_url = _AUCTION_URL
-    requires_login = True
-    requires_captcha = True
+    source_url = _BASE_URL
+    requires_login = False
+    requires_captcha = False
 
     async def scrape(self, days_back: int = 30) -> List[Dict[str, Any]]:
-        username = os.getenv("REALFORECLOSE_USERNAME")
-        password = os.getenv("REALFORECLOSE_PASSWORD")
-
-        if not username or not password:
-            log.warning("[Broward FL] REALFORECLOSE_USERNAME/PASSWORD not set — skipping.")
-            return []
-
-        from ...captcha_solver import CaptchaSolver
-
-        solver = CaptchaSolver()
-        if not solver.paid_available:
-            log.warning("[Broward FL] CAPTCHA_API_KEY not set — skipping.")
-            return []
-
         listings: List[Dict[str, Any]] = []
 
         try:
@@ -50,85 +40,102 @@ class BrowardScraper(CountyScraper):
             from workers.scrapers._browser_session import _nav_with_fallback, browser_context
 
         try:
-            async with browser_context("broward_fl", headless=True, no_proxy=True) as ctx:
+            async with browser_context("broward_fl", headless=True) as ctx:
                 page = await ctx.new_page()
 
-                await _nav_with_fallback(page, _LOGIN_URL, log, "broward_fl")
-                await page.wait_for_selector("input[name='username'], input[type='email']", timeout=10000)
-                await page.fill("input[name='username'], input[type='email']", username)
-                await page.fill("input[name='password'], input[type='password']", password)
-
-                captcha_frame = await page.query_selector("iframe[src*='recaptcha']")
-                if captcha_frame:
-                    src = await captcha_frame.get_attribute("src") or ""
-                    import re
-
-                    m = re.search(r"k=([A-Za-z0-9_-]+)", src)
-                    site_key = m.group(1) if m else ""
-                    if site_key:
-                        token = await solver.solve_recaptcha_v2(page, site_key, _LOGIN_URL)
-                        if token:
-                            await page.evaluate(
-                                f"document.getElementById('g-recaptcha-response').value = '{token}'"
-                            )
-
-                await page.click("button[type='submit'], input[type='submit']")
-                try:
-                    await page.wait_for_url("**/index.cfm**", timeout=30000)
-                except Exception:
-                    self.log_block(_LOGIN_URL, "login_failed")
+                # ── Navigate to the official Broward foreclosure page ──────────
+                ok = await _nav_with_fallback(page, _BASE_URL, log, "broward_fl")
+                if not ok:
+                    log.warning("[Broward FL] Navigation to %s failed", _BASE_URL)
+                    self.log_block(_BASE_URL, "nav_failed")
                     return []
 
-                await _nav_with_fallback(page, _AUCTION_URL, log, "broward_fl")
+                # Wait for content to load
+                await page.wait_for_timeout(3000)
 
-                page_num = 1
-                while True:
-                    try:
-                        await page.wait_for_selector("table, .AUCTION_ITEM", timeout=30000)
-                    except Exception:
-                        break
+                # ── Try to find auction/foreclosure tables or links ───────────
+                html = await page.content()
 
-                    html = await page.content()
-                    raw_rows = self.parse_table(html, "table")
+                # Parse any tables present on the page
+                raw_rows = self.parse_table(html, "table")
+                log.info("[Broward FL] Found %d raw rows from table parse", len(raw_rows))
 
-                    for row in raw_rows:
-                        address = (row.get("property_address") or row.get("address") or "").strip()
-                        if not address:
-                            continue
-                        listing: Dict[str, Any] = {
-                            "address": address,
-                            "city": (row.get("city") or "Fort Lauderdale").strip(),
-                            "state": "FL",
-                            "zip": (row.get("zip") or "").strip() or None,
-                            "county": "Broward",
-                            "case_number": (row.get("case_number") or row.get("case#") or "").strip() or None,
-                            "parcel_id": (row.get("parcel_id") or row.get("folio") or "").strip() or None,
-                            "sale_date": self.parse_date(
-                                row.get("sale_date") or row.get("auction_date") or ""
-                            ),
-                            "sale_type": "foreclosure",
-                            "opening_bid": self.parse_money(
-                                row.get("opening_bid") or row.get("assessed_value") or ""
-                            ),
-                            "source_url": self.source_url,
-                            "source": "broward_fl",
-                            "scraped_at": datetime.utcnow().isoformat(),
-                        }
-                        if self.validate_listing(listing):
-                            listings.append(listing)
+                # Also look for links to individual auction sale PDFs or pages
+                # Many county sites list foreclosure sales as date-linked pages
+                auction_links = await page.query_selector_all(
+                    "a[href*='Foreclosure'], a[href*='foreclosure'], a[href*='auction'], a[href*='sale']"
+                )
+                log.info("[Broward FL] Found %d auction links on page", len(auction_links))
 
-                    next_btn = await page.query_selector("a.NEXT_PAGE, a[title='Next Page'], .pager-next a")
-                    if not next_btn or not await next_btn.is_visible():
-                        break
-                    await next_btn.click()
-                    await page.wait_for_timeout(2000)
-                    page_num += 1
-                    if page_num > 20:
-                        break
+                for row in raw_rows:
+                    listing = self._parse_row(row)
+                    if listing and self.validate_listing(listing):
+                        listings.append(listing)
+
+                # ── Follow sub-links to individual sale listings ─────────────
+                if len(listings) == 0 and len(auction_links) > 0:
+                    for link_el in auction_links[:5]:
+                        href = await link_el.get_attribute("href") or ""
+                        if not href.startswith("http"):
+                            href = "https://www.broward.org" + href
+                        try:
+                            await _nav_with_fallback(page, href, log, "broward_fl_sub")
+                            await page.wait_for_timeout(2000)
+                            sub_html = await page.content()
+                            sub_rows = self.parse_table(sub_html, "table")
+                            for row in sub_rows:
+                                listing = self._parse_row(row)
+                                if listing and self.validate_listing(listing):
+                                    listings.append(listing)
+                        except Exception as sub_err:
+                            log.debug("[Broward FL] Sub-page error: %s", sub_err)
 
         except Exception as e:
             self.log_block(self.source_url, "scraper_error", str(e)[:200])
             return []
 
-        log.info("[Broward FL] Scraped %d valid listings", len(listings))
+        log.info("[Broward FL] Scraped %d valid listings from official county site", len(listings))
         return listings
+
+    def _parse_row(self, row: Dict[str, str]) -> Dict[str, Any] | None:
+        # Field names vary by Broward's table layout — try common aliases
+        address = (
+            row.get("property_address")
+            or row.get("address")
+            or row.get("property address")
+            or row.get("street address")
+            or row.get("location")
+            or ""
+        ).strip()
+        if not address or len(address) < 5:
+            return None
+
+        # Skip header-like rows
+        if address.lower() in ("address", "property", "location", "n/a"):
+            return None
+
+        return {
+            "address": address,
+            "city": (
+                row.get("city") or row.get("municipality") or "Fort Lauderdale"
+            ).strip(),
+            "state": "FL",
+            "zip": (row.get("zip") or row.get("zip_code") or row.get("postal") or "").strip() or None,
+            "county": "Broward",
+            "case_number": (
+                row.get("case_number") or row.get("case#") or row.get("case number") or row.get("case no") or ""
+            ).strip() or None,
+            "parcel_id": (
+                row.get("parcel_id") or row.get("folio") or row.get("parcel") or row.get("folio number") or ""
+            ).strip() or None,
+            "sale_date": self.parse_date(
+                row.get("sale_date") or row.get("auction_date") or row.get("sale date") or row.get("date") or ""
+            ),
+            "sale_type": "foreclosure",
+            "opening_bid": self.parse_money(
+                row.get("opening_bid") or row.get("opening bid") or row.get("assessed_value") or row.get("judgment") or ""
+            ),
+            "source_url": self.source_url,
+            "source": "broward_fl",
+            "scraped_at": datetime.utcnow().isoformat(),
+        }

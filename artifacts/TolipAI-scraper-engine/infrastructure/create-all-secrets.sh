@@ -180,14 +180,6 @@ upsert_secret "$SECRET_PREFIX/ADMIN_API_KEY" \
     "change-me-to-your-real-admin-key" \
     "Admin API key for /admin/* endpoints (separate from SCRAPER_API_KEY)"
 
-upsert_secret "$SECRET_PREFIX/REALFORECLOSE_USERNAME" \
-    "change-me-to-your-realforeclose-username" \
-    "RealForeclose.com username (Broward FL + Miami-Dade FL county scrapers)"
-
-upsert_secret "$SECRET_PREFIX/REALFORECLOSE_PASSWORD" \
-    "change-me-to-your-realforeclose-password" \
-    "RealForeclose.com password (Broward FL + Miami-Dade FL county scrapers)"
-
 echo ""
 echo "========================================"
 echo "✅ ALL Secrets Created/Updated!"
@@ -196,21 +188,21 @@ echo ""
 echo "IMPORTANT: The following secrets have PLACEHOLDER values."
 echo "Update them with your REAL API keys in AWS Secrets Manager:"
 echo "  - OPENAI_API_KEY"
-echo "  - GROQ_KEY"
-echo "  - OPENROUTER_KEY"
-echo "  - MOONSHOT_KEY"
-echo "  - NVIDIA_KEY"
-echo "  - CEREBRAS_KEY"
-echo "  - GEMINI_KEY"
 echo "  - ATTOM_API_KEY"
-echo "  - ATTOM_API_KEY_2"
-echo "  - PEOPLEDATALABS_KEY"
 echo "  - WEBSCRAPER_KEY"
+echo "  - BRIGHTDATA_USERNAME"
+echo "  - BRIGHTDATA_PASSWORD"
 echo "  - BRIGHTDATA_API"
-echo "  - PROXY_HOST"
-echo "  - SCRAPER_API_KEY"
+echo "  - OXYLABS_USERNAME"
+echo "  - OXYLABS_PASSWORD"
+echo "  - PROPELIO_EMAIL"
+echo "  - PROPELIO_PASSWORD"
+echo "  - PROPWIRE_EMAIL"
+echo "  - PROPWIRE_PASSWORD"
+echo "  - GOOGLE_MAPS_API_KEY"
 echo "  - ADMIN_API_KEY"
-echo "  - REALFORECLOSE_USERNAME"
-echo "  - REALFORECLOSE_PASSWORD"
+echo ""
+echo "NOTE: RealForeclose.com (REALFORECLOSE_USERNAME/PASSWORD) has been removed."
+echo "      FL county scrapers now use direct official county clerk websites."
 echo ""
 echo "Next: Run fix-aws-roles.sh to create the IAM roles, then trigger the deploy."

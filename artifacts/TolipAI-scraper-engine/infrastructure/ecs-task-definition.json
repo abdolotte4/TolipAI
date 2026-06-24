@@ -43,7 +43,7 @@
         { "name": "HEALTH_CHECK_HEALTHY_THRESHOLD", "value": "2" },
         { "name": "ENABLE_METRICS", "value": "true" },
         { "name": "METRICS_PORT", "value": "9090" },
-        { "name": "SCRAPER_ENGINE_VERSION", "value": "2.0.0" }
+        { "name": "SCRAPER_ENGINE_VERSION", "value": "2.1.0" }
       ],
       "secrets": [
         { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/database-url-gam8ov" },
@@ -61,9 +61,7 @@
         { "name": "GOOGLE_MAPS_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/google-maps-key-89upPY" },
         { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/redis-url-CSzF81" },
         { "name": "S3_CACHE_BUCKET", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/s3-cache-bucket-rIXWv4" },
-        { "name": "ADMIN_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ADMIN_API_KEY" },
-        { "name": "REALFORECLOSE_USERNAME", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/REALFORECLOSE_USERNAME" },
-        { "name": "REALFORECLOSE_PASSWORD", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/REALFORECLOSE_PASSWORD" }
+        { "name": "ADMIN_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:583299526161:secret:TolipAI/scraper/ADMIN_API_KEY-RrQJVC" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
