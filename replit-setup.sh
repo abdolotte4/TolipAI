@@ -18,6 +18,24 @@
 # ============================================================
 set -eo pipefail
 
+# ── Fix Node.js PATH in Replit/NixOS (same logic as node-start.sh) ───────────
+_add_node_to_path() {
+  local REPLIT_NODE
+  REPLIT_NODE="$(available-pid2-node-paths 2>/dev/null | head -1 | xargs dirname 2>/dev/null)"
+  if [ -n "$REPLIT_NODE" ] && [ -x "$REPLIT_NODE/node" ]; then
+    export PATH="$REPLIT_NODE:$PATH"
+    return 0
+  fi
+  for NS in /nix/store/*-nodejs-*/bin; do
+    if [ -x "$NS/node" ]; then
+      export PATH="$NS:$PATH"
+      return 0
+    fi
+  done
+}
+_add_node_to_path
+export PATH="$HOME/.local/bin:$PATH"
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC}   $*"; }
