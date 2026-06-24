@@ -63,15 +63,17 @@ if [[ "$MAJOR" -lt 18 ]]; then
 fi
 info "Node.js: $NODE_VER"
 
-# ── Step 2: Install pnpm@9 ────────────────────────────────────────────────────
+# ── Step 2: Install pnpm@10 (must match packageManager field in package.json) ──
 info "Setting up pnpm..."
+# Disable corepack strict mode so it doesn't try to auto-download a version
+export COREPACK_ENABLE_STRICT=0
+export COREPACK_ENABLE_AUTO_PIN=0
 PNPM_VER=$(pnpm --version 2>/dev/null | cut -d. -f1 || echo "0")
-if ! command -v pnpm &>/dev/null || [[ "$PNPM_VER" != "9" ]]; then
-  info "Installing pnpm@9 via npm..."
-  npm install -g pnpm@9 --silent 2>&1 | tail -3
-  # Also install to ~/.local/bin for future non-login shells
-  node $(which npm 2>/dev/null || echo /nix/store/*-nodejs-*/bin/npm) install -g pnpm@9 --prefix "$HOME/.local" --silent 2>/dev/null || true
-  success "pnpm@9 installed"
+if ! command -v pnpm &>/dev/null || [[ "$PNPM_VER" != "10" ]]; then
+  info "Installing pnpm@10 via npm (workspace requires pnpm@10)..."
+  npm install -g pnpm@10 --silent 2>&1 | tail -3
+  node $(which npm 2>/dev/null || echo /nix/store/*-nodejs-*/bin/npm) install -g pnpm@10 --prefix "$HOME/.local" --silent 2>/dev/null || true
+  success "pnpm@10 installed"
 else
   success "pnpm $(pnpm --version) already installed"
 fi
