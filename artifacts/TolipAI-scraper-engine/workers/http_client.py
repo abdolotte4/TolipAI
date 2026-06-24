@@ -176,43 +176,98 @@ async def fetch_direct(url: str, *, use_proxy: bool = True, verify_ssl: bool = T
 
 # ─── Tiered fetch ────────────────────────────────────────────────────────────
 async def fetch_html(url: str, *, render: bool = False, country: str = "us", is_google: bool = False) -> Any:
-    """Tiered fetch: direct proxy → Crawl4AI (render-only fallback).
+    """Tiered fetch: direct → Crawl4AI (render-only fallback).
+
+    Proxy policy:
+      - Government / county / public-record domains → NO proxy.
+        The BrightData ISP zone (port 33335) rejects Playwright CONNECT tunnels
+        for HTTPS gov sites with ERR_TUNNEL_CONNECTION_FAILED.  These sites have
+        no bot protection so a direct connection is always preferred.
+      - Known bot-protected domains (Zillow, Redfin, Propelio, Propwire …) → proxy.
+      - Everything else → try without proxy first; fall back to proxy if needed.
+
     Returns HTML text or raw PDF bytes.
     """
     errors: list[str] = []
+    url_lower = url.lower()
 
-    # Only disable SSL for known government/county domains with self-signed certs
-    gov_domains = [
+    # ── Domain classification ─────────────────────────────────────────────────
+    # Domains that should NEVER use the proxy (gov/county/public-record sites).
+    # These have no bot protection and BrightData CONNECT tunnels fail for them.
+    _NO_PROXY_DOMAINS = (
         ".gov",
-        ".gov.",
-        "county-",
-        "treasurer",
-        "auditor",
-        "sheriffsale",
-        "hctax",
+        "hctax.net",
+        "cclerk.hctx.net",
+        "dallascounty.org",
+        "tarrantcountytx.gov",
+        "bexar.org",
+        "hillsclerk.com",
+        "broward.org",
+        "browardclerk.org",
+        "miamidade.gov",
+        "mypalmbeachclerk.com",
+        "pinellasclerk.org",
+        "myorangeclerk.com",
+        "publictrustees.colorado.gov",
+        "publicnoticetexas.com",
+        "albertellilaw.com",
+        "gsccca.org",
+        "hcad.org",
         "ttc.lacounty",
-        "cclerk.hctx",
         "octaxcol",
-        "broward.county-taxes",
-        "public-records",
-        "clerk.",
+        "sheriffsale",
         "recorder.",
+        "auditor.",
         "assessor.",
-    ]
-    is_gov = any(d in url.lower() for d in gov_domains)
+        "treasurer.",
+    )
+    # Domains that ALWAYS need the proxy (bot-protected / rate-limited).
+    _PROXY_DOMAINS = (
+        "zillow.com",
+        "redfin.com",
+        "propelio.com",
+        "propwire.com",
+        "realtor.com",
+        "trulia.com",
+        "homes.com",
+    )
 
+    is_no_proxy = any(d in url_lower for d in _NO_PROXY_DOMAINS)
+    is_proxy_required = any(d in url_lower for d in _PROXY_DOMAINS)
+
+    # Gov domains also don't verify SSL (many use self-signed certs)
+    verify_ssl = not is_no_proxy
+
+    # ── Tier 1: direct fetch ──────────────────────────────────────────────────
     try:
-        return await fetch_direct(url, use_proxy=True, verify_ssl=not is_gov)
+        return await fetch_direct(
+            url,
+            use_proxy=is_proxy_required and not is_no_proxy,
+            verify_ssl=verify_ssl,
+        )
     except Exception as e:
         errors.append(f"direct: {e}")
         log.debug("Direct fetch failed for %s: %s", url, e)
 
+    # ── Tier 2: Crawl4AI (JS render) ─────────────────────────────────────────
     if render:
+        # No-proxy domains: always render without proxy (CONNECT tunnel fails).
+        # Proxy-required domains: render WITH proxy (bot protection).
+        # Everything else: try without proxy first.
+        crawl4ai_proxy = is_proxy_required and not is_no_proxy
         try:
-            return await fetch_crawl4ai(url, use_proxy=True)
+            return await fetch_crawl4ai(url, use_proxy=crawl4ai_proxy)
         except Exception as e:
-            errors.append(f"crawl4ai: {e}")
-            log.info("Crawl4AI failed for %s: %s", url, e)
+            errors.append(f"crawl4ai(proxy={crawl4ai_proxy}): {e}")
+            log.info("Crawl4AI(proxy=%s) failed for %s: %s", crawl4ai_proxy, url, str(e)[:120])
+
+        # Final fallback: if proxy-required crawl4ai failed, try without proxy
+        if crawl4ai_proxy:
+            try:
+                return await fetch_crawl4ai(url, use_proxy=False)
+            except Exception as e:
+                errors.append(f"crawl4ai(no-proxy): {e}")
+                log.info("Crawl4AI(no-proxy) fallback also failed for %s: %s", url, str(e)[:120])
 
     raise RuntimeError(f"All fetch tiers failed for {url}: {'; '.join(errors)}")
 
