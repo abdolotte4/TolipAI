@@ -126,17 +126,28 @@ class Settings:
     def brightdata_configured(self) -> bool:
         return bool(self.brightdata_username and self.brightdata_password)
 
-    def _brightdata_username_full(self) -> str:
-        """Return the complete Bright Data username, appending zone if needed.
+    def _brightdata_username_full(self, country: Optional[str] = None) -> str:
+        """Return the complete Bright Data username, appending zone + country if needed.
 
-        Bright Data format: brd-customer-XXXXXX-zone-ZONE_NAME
+        Bright Data format: brd-customer-XXXXXX-zone-ZONE_NAME[-country-CC]
         If BRIGHTDATA_USERNAME already contains '-zone-', use it as-is.
         If BRIGHTDATA_ZONE is set and the username doesn't have a zone suffix,
         append it automatically.
+
+        country defaults to BRIGHTDATA_COUNTRY env var (default "us") so that
+        all residential proxy calls route through US exit nodes — required for
+        US-only sites (Propwire, Zillow, county portals, etc.).  Set
+        BRIGHTDATA_COUNTRY="" to disable country lock.
         """
         user = self.brightdata_username or ""
         if self.brightdata_zone and "-zone-" not in user:
             user = f"{user}-zone-{self.brightdata_zone}"
+        # Country lock — default US to prevent non-US routing (Asia/Africa IPs
+        # get blocked by DataDome, county government sites, and major listing portals)
+        if country is None:
+            country = os.getenv("BRIGHTDATA_COUNTRY", "us")
+        if country and "-country-" not in user:
+            user = f"{user}-country-{country}"
         return user
 
     def proxy_url(self) -> Optional[str]:
@@ -148,6 +159,8 @@ class Settings:
         connection, causing [SSL: CERTIFICATE_VERIFY_FAILED] and dropping every
         request silently.  The http:// scheme uses a plain CONNECT tunnel; the proxy
         still forwards HTTPS traffic to the target correctly.
+
+        Country targeting: defaults to US (see _brightdata_username_full).
         """
         if self.brightdata_configured():
             user = self._brightdata_username_full()
@@ -160,6 +173,7 @@ class Settings:
         """Return a {'server', 'username', 'password'} dict for Playwright / Crawl4AI.
 
         Uses http:// for the server scheme — see proxy_url() for rationale.
+        Country targeting: defaults to US (see _brightdata_username_full).
         """
         if self.brightdata_configured():
             return {
@@ -185,7 +199,8 @@ class Settings:
 
         session_id should be a short stable identifier like the service name
         ('propelio', 'propwire', 'county_FL_orange') so the same browser context
-        always gets the same exit node.
+        always gets the same exit node.  Country targeting (default US) is
+        preserved from _brightdata_username_full().
         """
         if self.brightdata_configured():
             user = self._brightdata_username_full()

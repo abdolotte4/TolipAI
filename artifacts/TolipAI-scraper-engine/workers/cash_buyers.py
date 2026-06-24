@@ -27,7 +27,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from . import db
+from . import db, spot_checkpoint
 from .llm import classify_buyer_type, score_buyer_match_rule_based
 from .scrapers import homeharvest_scraper, redfin, zillow
 from .scrapers.county_deeds import fetch_recent_deeds
@@ -218,6 +218,23 @@ async def find_cash_buyers(
         )
         return []
 
+    # ── Checkpoint: save partial data before expensive skip-trace loop ────────
+    if job_id:
+        _cb_params = {
+            "lead_id": lead.get("id"),
+            "address": lead.get("address"),
+            "city": city,
+            "state": state,
+            "zip": zip_code,
+        }
+        await spot_checkpoint.save_checkpoint(
+            job_id,
+            "cash_buyers",
+            _cb_params,
+            progress=45,
+            partial_result={"sales_count": len(all_sales), "sales_sample": all_sales[:5]},
+        )
+
     by_buyer = _aggregate_by_buyer(all_sales)
     candidates = list(by_buyer.values())
 
@@ -312,6 +329,16 @@ async def find_cash_buyers(
             await progress_cb(pct, f"Profiled {i + 1}/{len(candidates)} buyers")
 
     out.sort(key=lambda r: r.get("match_score", 0), reverse=True)
+
+    # ── Final checkpoint: save completed buyer list before DB write ────────────
+    if job_id and out:
+        await spot_checkpoint.save_checkpoint(
+            job_id,
+            "cash_buyers",
+            {"lead_id": lead.get("id"), "city": city, "state": state, "zip": zip_code},
+            progress=95,
+            partial_result=out,
+        )
 
     # Persist — pass lead["id"] as-is (db coerces to str to match TEXT column)
     if job_id and lead.get("id"):

@@ -526,10 +526,37 @@ async def search_property(address: str, *, login_fn=None) -> Dict[str, Any]:
         try:
             await _nav_with_fallback(page, SEARCH_URL, log, SERVICE)
 
-            # If we got bounced to login the cached session was stale → invalidate.
+            # If we got bounced to login the cached session was stale → try AI vision
+            # bypass first (could be a challenge overlay, not a true logout), then invalidate.
             if "/login" in page.url:
-                await invalidate_session(SERVICE)
-                raise RuntimeError("Propelio session expired; retry to re-login")
+                log.warning("Propelio: bounced to /login on search — testing for challenge overlay")
+                html_check = ""
+                try:
+                    html_check = (await page.locator("body").inner_text(timeout=3000)).lower()[:200]
+                except Exception:
+                    pass
+                _has_challenge = any(
+                    kw in html_check for kw in ("captcha", "challenge", "datadome", "cloudflare", "just a moment")
+                )
+                if _has_challenge:
+                    try:
+                        from ...captcha_solver import FreeCaptchaSolver as _CS
+                    except ImportError:
+                        from workers.captcha_solver import FreeCaptchaSolver as _CS
+                    _solved = await _CS()._solve_with_ai_vision(page, "login_redirect_challenge")
+                    if _solved:
+                        await page.wait_for_timeout(3000)
+                        if "/login" not in page.url:
+                            log.info("Propelio: AI vision resolved challenge — session still valid")
+                        else:
+                            await invalidate_session(SERVICE)
+                            raise RuntimeError("Propelio session expired after AI vision attempt; retry to re-login")
+                    else:
+                        await invalidate_session(SERVICE)
+                        raise RuntimeError("Propelio session expired (challenge could not be bypassed); retry to re-login")
+                else:
+                    await invalidate_session(SERVICE)
+                    raise RuntimeError("Propelio session expired; retry to re-login")
 
             # Type address into the search box — the input is usually labelled.
             search_input = page.locator(

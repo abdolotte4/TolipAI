@@ -167,7 +167,14 @@ class FreeCaptchaSolver:
         if await self._solve_audio_challenge(page):
             return "solved_by_audio"
 
-        # 3. Fall back to paid API if configured
+        # 3. AI Vision fallback (free, uses OPENAI_API_KEY — no subscription needed)
+        log.info("[captcha] Trying AI vision solver for reCAPTCHA v2 on %s", page_url)
+        if await self._solve_with_ai_vision(page, "recaptcha_v2"):
+            if await self._check_recaptcha_solved(page):
+                log.info("[captcha] reCAPTCHA v2 resolved via AI vision")
+                return "solved_by_ai_vision"
+
+        # 4. Fall back to paid API if configured
         if self.paid_available:
             return await self._solve_recaptcha_v2_paid(site_key, page_url)
 
@@ -233,9 +240,14 @@ class FreeCaptchaSolver:
         return None
 
     async def solve_hcaptcha(self, page, site_key: str, page_url: str) -> Optional[str]:
-        """Try free image heuristic, then paid fallback."""
+        """Try free image heuristic → AI vision → paid fallback."""
         if await self._solve_image_heuristic(page):
             return "solved_by_heuristic"
+        # AI Vision fallback (free, uses OPENAI_API_KEY)
+        log.info("[captcha] Trying AI vision solver for hCaptcha on %s", page_url)
+        if await self._solve_with_ai_vision(page, "hcaptcha"):
+            log.info("[captcha] hCaptcha resolved via AI vision")
+            return "solved_by_ai_vision"
         if self.paid_available:
             return await self._solve_hcaptcha_paid(site_key, page_url)
         return None
@@ -283,10 +295,16 @@ class FreeCaptchaSolver:
         return None
 
     async def solve_turnstile(self, page, site_key: str, page_url: str) -> Optional[str]:
-        """Try session rotation, then paid fallback."""
+        """Try session rotation → AI vision → paid fallback."""
         await self._rotate_session(page)
         if await self._check_turnstile_solved(page):
             return "solved_by_rotation"
+        # AI Vision fallback (free, uses OPENAI_API_KEY)
+        log.info("[captcha] Trying AI vision solver for Turnstile on %s", page_url)
+        if await self._solve_with_ai_vision(page, "turnstile"):
+            if await self._check_turnstile_solved(page):
+                log.info("[captcha] Turnstile resolved via AI vision")
+                return "solved_by_ai_vision"
         if self.paid_available:
             return await self._solve_turnstile_paid(site_key, page_url)
         return None

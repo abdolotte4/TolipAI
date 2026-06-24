@@ -287,14 +287,25 @@ async def _scrape_static_sources(
     categories: Optional[List[str]],
     zip_code: str = "",
     max_sources: int = 8,
+    source_keys: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Scrape static registry sources for the requested state + categories.
 
     Uses ds.sources_for_request() to select relevant URLs, then fetches each
     with fetch_rendered() and extracts table data with selectolax.
     LLM-free — no AI calls.
+
+    source_keys: when provided, ONLY these specific source keys are scraped
+    (bypasses state/category filter entirely).
     """
-    sources = ds.sources_for_request(categories=categories, state=state)
+    if source_keys:
+        # Pin to exactly the requested source keys — ignore state/category filter
+        sources = [s for s in ds.SOURCES if s.get("key") in source_keys]
+        if not sources:
+            log.info("[static] source_keys=%s not found in SOURCES registry", source_keys)
+            return []
+    else:
+        sources = ds.sources_for_request(categories=categories, state=state)
     if not sources:
         log.info("[static] No sources found for state=%s categories=%s", state, categories)
         return []
@@ -422,14 +433,16 @@ async def find_distressed(
 
     # ── 3. Static source registry (always runs — supplements county scrapers) ─
     # Scrapes URLs from distressed_sources.SOURCES filtered by state + categories.
+    # When source_keys are provided, filter static sources to only those keys.
     # Uses fetch_rendered() + selectolax for LLM-free extraction.
-    if state_upper:
+    if state_upper or source_keys:
         try:
             static_results = await _scrape_static_sources(
                 state=state_upper,
                 categories=categories,
                 zip_code=zip_code,
-                max_sources=8,
+                max_sources=len(source_keys) if source_keys else 8,
+                source_keys=source_keys if source_keys else None,
             )
             results.extend(static_results)
             log.info(
