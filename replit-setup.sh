@@ -80,7 +80,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # ── Step 3: Install all workspace dependencies ────────────────────────────────
 info "Installing workspace dependencies (this may take 2–4 minutes on first run)..."
-timeout 300 pnpm install --no-frozen-lockfile 2>&1 | grep -E "(warn|ERR|error|Done|✓|Packages|already up)" || warn "pnpm install timed out or had errors — retry with: pnpm install --no-frozen-lockfile"
+timeout 300 pnpm install --no-frozen-lockfile || warn "pnpm install timed out or had errors — retry with: pnpm install --no-frozen-lockfile"
 success "Dependencies installed"
 
 # ── Step 4: Verify shared DB package ─────────────────────────────────────────
