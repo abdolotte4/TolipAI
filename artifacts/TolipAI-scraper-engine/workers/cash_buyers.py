@@ -31,7 +31,6 @@ from . import db, spot_checkpoint
 from .llm import classify_buyer_type, score_buyer_match_rule_based
 from .scrapers import homeharvest_scraper, redfin, zillow
 from .scrapers.county_deeds import fetch_recent_deeds
-from .skip_trace import trace as skip_trace
 
 log = logging.getLogger("cash_buyers")
 
@@ -318,22 +317,6 @@ async def find_cash_buyers(
                             log.info("Google Maps: found phone for LLC '%s': [PHONE]", llc_name)
                 except Exception as _gm_exc:
                     log.debug("Google Maps lookup failed for %s: %s", llc_name, _gm_exc)
-
-            # ── Skip-trace via SOS / OpenCorporates / SEC EDGAR / PropertyAPI ──
-            try:
-                traced = await skip_trace(
-                    cand["buyer_name"],
-                    llc=llc_name,
-                    state=cand.get("state"),
-                )
-                profile["phones"] = list(set(profile["phones"] + traced.get("phones", [])))
-                profile["emails"] = list(set(traced.get("emails", [])))
-                if traced.get("principals"):
-                    profile["principals"] = traced["principals"]
-                if traced.get("addresses"):
-                    profile["mailing_address"] = traced["addresses"][0]
-            except Exception as e:
-                log.info("Skip-trace failed for %s: %s", cand["buyer_name"], e)
 
             # ── Rule-based match scoring (replaces LLM score_buyer_match) ──
             scoring = score_buyer_match_rule_based(profile, lead)
