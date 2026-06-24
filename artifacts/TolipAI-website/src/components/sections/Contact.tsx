@@ -177,7 +177,6 @@ export function Contact() {
                   >
                     <option value="">Select a service...</option>
                     <option value="data-engineering">Data Engineering</option>
-                    <option value="managed-outreach">Managed Outreach Operations</option>
                     <option value="crm-infrastructure">Technical CRM Infrastructure</option>
                     <option value="full-suite">Full Suite Managed Infrastructure</option>
                   </select>
@@ -220,7 +219,7 @@ export function Contact() {
                       </div>
                     </div>
                     <span className="text-xs text-muted-foreground leading-relaxed">
-                      I agree that <span className="text-foreground font-medium">TolipAI</span> may send me SMS/text messages for marketing updates and promotions. Message and data rates may apply. Reply <span className="font-medium text-foreground">STOP</span> to unsubscribe. Reply <span className="font-medium text-foreground">HELP</span> for assistance.{" "}
+                      I agree that <span className="text-foreground font-medium">TolipAI</span> may contact me via SMS/text messages regarding my inquiry and service-related updates. Message and data rates may apply. Reply <span className="font-medium text-foreground">STOP</span> to opt out at any time. Reply <span className="font-medium text-foreground">HELP</span> for assistance.{" "}
                       <a
                         href="/privacy-policy"
                         target="_blank"

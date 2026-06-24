@@ -289,6 +289,36 @@ async def find_cash_buyers(
                 "mailing_address": None,
             }
 
+            # ── Tier 0 (LLC only): Google Maps Places text search for public phone ──
+            if llc_name and settings.google_maps_api_key:
+                try:
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(timeout=10) as _cli:
+                        _maps_resp = await _cli.get(
+                            "https://maps.googleapis.com/maps/api/place/textsearch/json",
+                            params={"query": llc_name, "key": settings.google_maps_api_key},
+                        )
+                        _data = _maps_resp.json() if _maps_resp.status_code == 200 else {}
+                        _results = _data.get("results", [])
+                        _phone: Optional[str] = None
+                        if _results:
+                            _place = _results[0]
+                            _phone = _place.get("formatted_phone_number") or _place.get("international_phone_number")
+                            if not _phone:
+                                _place_id = _place.get("place_id", "")
+                                if _place_id:
+                                    _dr = await _cli.get(
+                                        "https://maps.googleapis.com/maps/api/place/details/json",
+                                        params={"place_id": _place_id, "fields": "formatted_phone_number", "key": settings.google_maps_api_key},
+                                    )
+                                    _dd = _dr.json() if _dr.status_code == 200 else {}
+                                    _phone = (_dd.get("result") or {}).get("formatted_phone_number")
+                        if _phone:
+                            profile["phones"].insert(0, _phone)
+                            log.info("Google Maps: found phone for LLC '%s': [PHONE]", llc_name)
+                except Exception as _gm_exc:
+                    log.debug("Google Maps lookup failed for %s: %s", llc_name, _gm_exc)
+
             # ── Skip-trace via SOS / OpenCorporates / SEC EDGAR / PropertyAPI ──
             try:
                 traced = await skip_trace(
@@ -296,7 +326,7 @@ async def find_cash_buyers(
                     llc=llc_name,
                     state=cand.get("state"),
                 )
-                profile["phones"] = list(set(traced.get("phones", [])))
+                profile["phones"] = list(set(profile["phones"] + traced.get("phones", [])))
                 profile["emails"] = list(set(traced.get("emails", [])))
                 if traced.get("principals"):
                     profile["principals"] = traced["principals"]

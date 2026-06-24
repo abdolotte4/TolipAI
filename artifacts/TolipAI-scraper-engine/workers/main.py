@@ -2877,6 +2877,58 @@ async def _phone_finder_lookup(name: str, address: str) -> Dict[str, Any]:
     return {"name": name, "address": address, "phones": phones[:5], "source": source}
 
 
+@app.get("/debug/propelio-search")
+async def debug_propelio_search(address: str) -> Dict[str, Any]:
+    """Run search_property() live against Propelio and return the result + page title.
+
+    Query param: address — the property address to search.
+    Returns: {address, property_id, url, page_title, screenshot_path, raw}
+    """
+    if not address:
+        raise HTTPException(status_code=400, detail="address query parameter is required")
+
+    import tempfile, os as _os
+    from .scrapers.propelio_v2 import search_property as _search_property
+
+    ss_dir = tempfile.mkdtemp(prefix="propelio_debug_")
+    ss_path = _os.path.join(ss_dir, "debug_search.png")
+
+    # Patch browser pool to capture a screenshot after navigation
+    result: Dict[str, Any] = {}
+    try:
+        result = await _search_property(address)
+    except Exception as exc:
+        result = {"address": address, "property_id": None, "error": str(exc)}
+
+    # Attempt a lightweight screenshot via a fresh browser page if pool is ready
+    screenshot_b64: Optional[str] = None
+    page_title: Optional[str] = result.get("title")
+    try:
+        async with browser_pool.acquire() as ctx:
+            page = await ctx.new_page()
+            target_url = result.get("url") or f"https://propelio.com/app/search?address={address.replace(' ', '+')}"
+            await page.goto(target_url, timeout=20_000, wait_until="domcontentloaded")
+            if not page_title:
+                page_title = await page.title()
+            await page.screenshot(path=ss_path, full_page=False)
+            import base64
+            with open(ss_path, "rb") as f:
+                screenshot_b64 = base64.b64encode(f.read()).decode()
+            await page.close()
+    except Exception as ss_exc:
+        log.debug("debug_propelio_search: screenshot failed: %s", ss_exc)
+
+    return {
+        "address": address,
+        "property_id": result.get("property_id"),
+        "url": result.get("url"),
+        "page_title": page_title,
+        "screenshot_base64": screenshot_b64,
+        "error": result.get("error"),
+        "raw": {k: v for k, v in result.items() if k not in ("title",)},
+    }
+
+
 @app.post("/lead-gen/foreclosure")
 async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
     """Start chained foreclosure lead-gen pipeline. Returns job_id immediately."""

@@ -81,7 +81,6 @@ router.post("/contact", contactRateLimit, async (req, res) => {
   const { name, email, company, phone, message, service } = parseResult.data;
   const serviceLabels: Record<string, string> = {
     "data-engineering": "Data Engineering",
-    "managed-outreach": "Managed Outreach Operations",
     "crm-infrastructure": "Technical CRM Infrastructure",
     "full-suite": "Full Suite Managed Infrastructure",
   };

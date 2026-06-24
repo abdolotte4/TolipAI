@@ -95,6 +95,10 @@ class Settings:
             "PROPERTY_API_KEY_5",
             "PROPERTY_API_KEY_6",
             "PROPERTY_API_KEY_7",
+            # Aliases used in Railway secrets (SCRAPERAPI_KEY_2/3/4)
+            "SCRAPERAPI_KEY_2",
+            "SCRAPERAPI_KEY_3",
+            "SCRAPERAPI_KEY_4",
         )
     )
 

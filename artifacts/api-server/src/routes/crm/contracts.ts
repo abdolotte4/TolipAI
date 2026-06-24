@@ -3,7 +3,6 @@ import { db } from "@workspace/db";
 import { crmContracts, crmLeads, crmCampaigns } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
 import { crmAuth } from "./middleware";
 import * as DropboxSign from "@dropbox/sign";
 import type { RequestFile } from "@dropbox/sign";
@@ -71,14 +70,27 @@ async function sendViaDropboxSign(opts: {
   }
 }
 
-// ── Mailer (optional — only works if SMTP env vars are set) ───────────────────
-function createMailer() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  if (!host || !user || !pass) return null;
-  return nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+// ── Brevo transactional email (replaces nodemailer/SMTP) ─────────────────────
+async function sendContractEmail(to: string, subject: string, html: string): Promise<boolean> {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || "info@tolipai.com";
+  if (!apiKey) return false;
+  try {
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender: { name: "TolipAI CRM", email: senderEmail },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 // ── Purchase Agreement HTML template ─────────────────────────────────────────
@@ -317,24 +329,20 @@ router.post("/", crmAuth, async (req, res) => {
 
       if (sellerEmail) {
         try {
-          const mailer = createMailer();
-          if (mailer) {
-            await mailer.sendMail({
-              from:    process.env.SMTP_FROM || process.env.SMTP_USER,
-              to:      sellerEmail,
-              subject: `Please sign your Purchase Agreement — ${propertyAddress}`,
-              html: `
-                <p>Hi ${sellerName},</p>
-                <p>Please review and sign the Purchase Agreement for your property at <strong>${propertyAddress}</strong>.</p>
-                <p style="margin:24px 0">
-                  <a href="${signingUrl}" style="background:#6d28d9;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
-                    Review &amp; Sign Agreement →
-                  </a>
-                </p>
-                <p>This link expires in 30 days. If you have any questions, please reply to this email.</p>
-                <p style="color:#888;font-size:12px">Powered by TolipAI CRM</p>
-              `,
-            });
+          const sent = await sendContractEmail(
+            sellerEmail,
+            `Please sign your Purchase Agreement — ${propertyAddress}`,
+            `<p>Hi ${sellerName},</p>
+            <p>Please review and sign the Purchase Agreement for your property at <strong>${propertyAddress}</strong>.</p>
+            <p style="margin:24px 0">
+              <a href="${signingUrl}" style="background:#6d28d9;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+                Review &amp; Sign Agreement →
+              </a>
+            </p>
+            <p>This link expires in 30 days. If you have any questions, please reply to this email.</p>
+            <p style="color:#888;font-size:12px">Powered by TolipAI CRM</p>`,
+          );
+          if (sent) {
             await db.update(crmContracts)
               .set({ status: "sent", emailSentAt: new Date() })
               .where(eq(crmContracts.id, contract.id));
@@ -434,16 +442,11 @@ router.post("/:id/resend", crmAuth, async (req, res) => {
     let emailSent = false;
     if (existing.sellerEmail) {
       try {
-        const mailer = createMailer();
-        if (mailer) {
-          await mailer.sendMail({
-            from: process.env.SMTP_FROM || process.env.SMTP_USER,
-            to: existing.sellerEmail,
-            subject: `[Reminder] Please sign your Purchase Agreement — ${existing.propertyAddress}`,
-            html: `<p>Hi ${existing.sellerName}, this is a reminder to sign your agreement. <a href="${signingUrl}">Click here to sign →</a></p>`,
-          });
-          emailSent = true;
-        }
+        emailSent = await sendContractEmail(
+          existing.sellerEmail,
+          `[Reminder] Please sign your Purchase Agreement — ${existing.propertyAddress}`,
+          `<p>Hi ${existing.sellerName}, this is a reminder to sign your agreement. <a href="${signingUrl}">Click here to sign →</a></p>`,
+        );
       } catch { /* non-fatal */ }
     }
 
@@ -531,16 +534,12 @@ router.post("/public/sign/:token", async (req, res) => {
 
     // Optional: email both parties a confirmation
     try {
-      const mailer = createMailer();
-      if (mailer && contract.sellerEmail) {
-        const appBase = process.env.RAILWAY_PUBLIC_DOMAIN
-          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "";
-        await mailer.sendMail({
-          from: process.env.SMTP_FROM || process.env.SMTP_USER,
-          to: contract.sellerEmail,
-          subject: `Contract Signed — ${contract.propertyAddress}`,
-          html: `<p>Hi ${contract.sellerName},</p><p>Your Purchase Agreement for <strong>${contract.propertyAddress}</strong> has been executed. Signed by: <strong>${signerName}</strong> on ${new Date().toLocaleDateString()}.</p><p>Thank you!</p>`,
-        });
+      if (contract.sellerEmail) {
+        await sendContractEmail(
+          contract.sellerEmail,
+          `Contract Signed — ${contract.propertyAddress}`,
+          `<p>Hi ${contract.sellerName},</p><p>Your Purchase Agreement for <strong>${contract.propertyAddress}</strong> has been executed. Signed by: <strong>${signerName}</strong> on ${new Date().toLocaleDateString()}.</p><p>Thank you!</p>`,
+        );
       }
     } catch { /* non-fatal */ }
 

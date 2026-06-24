@@ -3,7 +3,6 @@ import * as ZodSchemas from "@workspace/api-zod";
 const { SubmitSubscribeBody, SubmitSubscribeResponse } = ZodSchemas;
 import { db, subscribersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import nodemailer from "nodemailer";
 
 const _rlMap = new Map<string, { count: number; resetAt: number }>();
 function subscribeRateLimit(req: Request, res: Response, next: NextFunction) {
@@ -19,16 +18,20 @@ setInterval(() => { const now = Date.now(); for (const [k, v] of _rlMap) if (now
 
 const router: IRouter = Router();
 
-function createTransporter() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  if (!host || !user || !pass) return null;
-  return nodemailer.createTransport({
-    host, port, secure: port === 465,
-    auth: { user, pass },
-  });
+async function sendViaBrevo(payload: object): Promise<boolean> {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) return false;
+  try {
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 router.post("/subscribe", subscribeRateLimit, async (req, res) => {
@@ -50,38 +53,36 @@ router.post("/subscribe", subscribeRateLimit, async (req, res) => {
     req.log.error({ err }, "Failed to save subscriber");
   }
 
-  // Notify admin
-  const transporter = createTransporter();
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: `"TolipAI Website" <${process.env.SMTP_USER}>`,
-        to: "info@tolipai.com",
-        cc: "hello@tolipai.com, martin@tolipai.com",
-        replyTo: email,
-        subject: `New Subscription Intent: ${name} — Basic Plan ($1,500/mo)`,
-        html: `
-          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-            <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
-              <h1 style="color:#7367F0;margin:0;">Tolip Group LLC</h1>
-              <p style="color:#aaa;margin:8px 0 0;">New Subscription Intent</p>
-            </div>
-            <div style="background:#fff;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;">
-              <h2>Subscription Request: Basic Plan — $1,500/month</h2>
-              <table style="width:100%;border-collapse:collapse;">
-                <tr><td style="padding:8px 0;font-weight:bold;color:#555;width:120px;">Name:</td><td>${name}</td></tr>
-                <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Email:</td><td><a href="mailto:${email}">${email}</a></td></tr>
-                <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Company:</td><td>${company || "Not provided"}</td></tr>
-                <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Plan:</td><td>Basic — $1,500/month</td></tr>
-              </table>
-              <p style="margin-top:16px;color:#888;font-size:12px;">This subscriber is pending payment setup. Follow up to complete onboarding.</p>
-            </div>
+  // Notify admin via Brevo
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || "info@tolipai.com";
+  try {
+    await sendViaBrevo({
+      sender: { name: "TolipAI Website", email: senderEmail },
+      to: [{ email: "info@tolipai.com", name: "TolipAI Info" }],
+      cc: [{ email: "hello@tolipai.com" }, { email: "martin@tolipai.com" }],
+      replyTo: { email },
+      subject: `New Subscription Intent: ${name} — Basic Plan ($1,500/mo)`,
+      htmlContent: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <div style="background:#0a0e1a;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
+            <h1 style="color:#7367F0;margin:0;">Tolip Group LLC</h1>
+            <p style="color:#aaa;margin:8px 0 0;">New Subscription Intent</p>
           </div>
-        `,
-      });
-    } catch (err) {
-      req.log.error({ err }, "Failed to send subscriber notification email");
-    }
+          <div style="background:#fff;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;">
+            <h2>Subscription Request: Basic Plan — $1,500/month</h2>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="padding:8px 0;font-weight:bold;color:#555;width:120px;">Name:</td><td>${name}</td></tr>
+              <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Email:</td><td><a href="mailto:${email}">${email}</a></td></tr>
+              <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Company:</td><td>${company || "Not provided"}</td></tr>
+              <tr><td style="padding:8px 0;font-weight:bold;color:#555;">Plan:</td><td>Basic — $1,500/month</td></tr>
+            </table>
+            <p style="margin-top:16px;color:#888;font-size:12px;">This subscriber is pending payment setup. Follow up to complete onboarding.</p>
+          </div>
+        </div>
+      `,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send subscriber notification email");
   }
 
   res.json(SubmitSubscribeResponse.parse({

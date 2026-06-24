@@ -40,6 +40,11 @@ function loadApiKeys(): string[] {
   // Fallback to legacy single key
   const legacy = process.env.PROPERTY_API_KEY;
   if (legacy && !keys.includes(legacy.trim())) keys.push(legacy.trim());
+  // Aliases used in Railway secrets (SCRAPERAPI_KEY_2/3/4)
+  for (const alias of ["SCRAPERAPI_KEY_2", "SCRAPERAPI_KEY_3", "SCRAPERAPI_KEY_4"]) {
+    const k = process.env[alias];
+    if (k && !keys.includes(k.trim())) keys.push(k.trim());
+  }
   return keys;
 }
 
