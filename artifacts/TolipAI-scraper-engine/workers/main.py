@@ -292,11 +292,19 @@ async def lifespan(app: FastAPI):
     await db.close_pool()
 
 
+# Disable interactive API docs in production (SCRAPER_API_KEY is set).
+# The schema UI exposes every route + request model — not appropriate for a
+# production scraper engine that faces the internet.  Docs remain available
+# in dev/local environments where no key is configured.
+_PRODUCTION_MODE = bool(os.getenv("SCRAPER_API_KEY"))
 app = FastAPI(
     title="TolipAI Scraper Engine",
     version="0.2.0",
     description="Advanced scraping + skip-trace + investor classification",
     lifespan=lifespan,
+    docs_url=None if _PRODUCTION_MODE else "/docs",
+    redoc_url=None if _PRODUCTION_MODE else "/redoc",
+    openapi_url=None if _PRODUCTION_MODE else "/openapi.json",
 )
 
 # ─── CORS ────────────────────────────────────────────────────────────────────
@@ -311,8 +319,9 @@ app.add_middleware(
 
 # ─── Security middleware ──────────────────────────────────────────────────────
 _EXEMPT_PATHS = frozenset({"/health", "/healthz"})
-# /metrics, /docs, /openapi.json, /redoc are intentionally NOT exempt —
-# they require the same X-API-Key auth as all other endpoints.
+# Paths that always require auth — even when SCRAPER_API_KEY is not yet
+# configured (fail-secure: return 403 rather than leaking metrics data).
+_ALWAYS_AUTH_PATHS = frozenset({"/metrics"})
 _MAX_BODY_BYTES = 1_048_576  # 1 MB
 
 
@@ -340,6 +349,12 @@ async def _security_middleware(request: Request, call_next):
                     status_code=401,
                     content={"detail": "Invalid or missing API key. Set X-API-Key header."},
                 )
+        elif request.url.path in _ALWAYS_AUTH_PATHS:
+            # Fail-secure: sensitive paths are locked even without a configured key.
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "SCRAPER_API_KEY not configured — endpoint disabled"},
+            )
 
         # ── Admin endpoint additional auth ───────────────────────────────────
         if request.url.path.startswith("/admin/"):
@@ -521,6 +536,15 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
         await db.update_job(job_id, status="running", progress=0)
         cb = await _make_progress_cb(job_id)
 
+        # Save initial checkpoint so SIGTERM flush has something to write even
+        # if the job is killed before it produces any results.
+        await spot_checkpoint.save_checkpoint(
+            job_id=job_id,
+            job_type="cash_buyers",
+            params=params,
+            progress=0,
+        )
+
         # CRITICAL FIX: 15min cap — prevents infinite hang on dead LLM
         try:
             results = await asyncio.wait_for(
@@ -536,6 +560,7 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
             log.error("cash_buyers retry job %s timed out after 900s", job_id)
             _set_status(job_id, "failed", error="timeout_exceeded")
             await db.update_job(job_id, status="failed", error="timeout_exceeded", completed=True)
+            await spot_checkpoint.delete_checkpoint(job_id)
             return {"count": 0}
 
         _set_status(job_id, "done", progress=100, result=results)
@@ -547,11 +572,13 @@ async def _run_cash_buyers(job_id: str, params: Dict[str, Any]) -> Dict[str, Any
             completed=True,
             result=results,
         )
+        await spot_checkpoint.delete_checkpoint(job_id)
         return {"count": len(results)}
     except Exception as e:
         log.error("cash_buyers job %s failed: %s", job_id, str(e)[:120])
         _set_status(job_id, "failed", error=str(e))
         await db.update_job(job_id, status="failed", error=str(e), completed=True)
+        await spot_checkpoint.delete_checkpoint(job_id)
         return {"count": 0}
     finally:
         unregister_job(job_id)

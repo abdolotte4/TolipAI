@@ -558,27 +558,101 @@ async def search_property(address: str, *, login_fn=None) -> Dict[str, Any]:
                     await invalidate_session(SERVICE)
                     raise RuntimeError("Propelio session expired; retry to re-login")
 
-            # Type address into the search box — the input is usually labelled.
-            search_input = page.locator(
-                'input[placeholder*="address" i], input[placeholder*="search" i], input[type="search"]'
-            ).first
-            await search_input.wait_for(state="visible", timeout=30000)
-            await search_input.fill(address)
-            await page.wait_for_timeout(800)
-            await search_input.press("Enter")
+            # ── Find the search input (Propelio uses several possible selectors) ──
+            # Try progressively broader selectors so a UI reskin doesn't break this.
+            _search_selectors = [
+                # Specific Genesis app selectors (most precise first)
+                'input[data-testid*="search" i]',
+                'input[aria-label*="address" i]',
+                'input[aria-label*="search" i]',
+                # Generic fallbacks
+                'input[placeholder*="address" i]',
+                'input[placeholder*="search" i]',
+                'input[placeholder*="property" i]',
+                'input[type="search"]',
+                # Last resort: any visible input on the page that isn't email/password
+                'form input:not([type="email"]):not([type="password"]):not([type="hidden"])',
+            ]
+            search_input = None
+            for _sel in _search_selectors:
+                _loc = page.locator(_sel).first
+                try:
+                    await _loc.wait_for(state="visible", timeout=4000)
+                    search_input = _loc
+                    log.debug("Propelio search_property: found input via selector %r", _sel)
+                    break
+                except Exception:
+                    continue
 
-            # Wait for a navigation to /search/<id>/...
+            if search_input is None:
+                # Log the page title/URL to help diagnose selector drift
+                _title = await page.title()
+                log.warning(
+                    "Propelio search_property: no search input found on %s (title: %s) — "
+                    "page HTML may have changed; check Propelio UI for selector updates",
+                    page.url,
+                    _title,
+                )
+                return {"address": address, "property_id": None, "url": page.url}
+
+            await search_input.click()
+            await search_input.fill("")
+            await page.wait_for_timeout(300)
+            await search_input.type(address, delay=60)  # human-like typing
+            await page.wait_for_timeout(1200)  # wait for autocomplete dropdown
+
+            # Prefer clicking the first dropdown suggestion over pressing Enter —
+            # Enter sometimes navigates to a search-results listing page instead of
+            # a specific property page (no /search/<id>).
+            _dropdown_selectors = [
+                '[role="option"]',
+                'li[role="option"]',
+                '[class*="suggestion" i]',
+                '[class*="autocomplete" i] li',
+                '[class*="search-result" i]',
+                '[data-testid*="result" i]',
+            ]
+            _clicked_suggestion = False
+            for _dsel in _dropdown_selectors:
+                _first = page.locator(_dsel).first
+                try:
+                    await _first.wait_for(state="visible", timeout=3000)
+                    await _first.click()
+                    _clicked_suggestion = True
+                    log.debug("Propelio search_property: clicked suggestion via %r", _dsel)
+                    break
+                except Exception:
+                    continue
+
+            if not _clicked_suggestion:
+                await search_input.press("Enter")
+
+            # Wait for navigation to the property detail page (/search/<numeric-id>)
             try:
                 await page.wait_for_url(re.compile(r"/search/\d+"), timeout=25000)
             except Exception:
-                # Sometimes Propelio shows a dropdown — click the first suggestion.
-                first = page.locator('[role="option"], li[role="option"], .search-result').first
-                if await first.count():
-                    await first.click()
-                    await page.wait_for_url(re.compile(r"/search/\d+"), timeout=20000)
+                # If URL didn't change, try clicking first suggestion one more time
+                # (it may have appeared after Enter was pressed)
+                for _dsel in _dropdown_selectors:
+                    _first = page.locator(_dsel).first
+                    try:
+                        if await _first.count():
+                            await _first.click()
+                            await page.wait_for_url(re.compile(r"/search/\d+"), timeout=15000)
+                            break
+                    except Exception:
+                        continue
 
             m = re.search(r"/search/(\d+)", page.url)
             prop_id = m.group(1) if m else None
+            if not prop_id:
+                _title = await page.title()
+                log.warning(
+                    "Propelio search_property: no property ID in URL after search. "
+                    "Current URL: %s | Title: %s",
+                    page.url,
+                    _title,
+                )
             return {
                 "address": address,
                 "property_id": prop_id,
@@ -606,8 +680,34 @@ async def fetch_comps(
         try:
             await _nav_with_fallback(page, url, log, SERVICE)
             if "/login" in page.url:
-                await invalidate_session(SERVICE)
-                raise RuntimeError("Propelio session expired")
+                # Check whether this is a bot-challenge overlay (DataDome/Cloudflare)
+                # before concluding the session is truly expired — a challenge can land
+                # on /login even when cookies are still valid.
+                _body = ""
+                try:
+                    _body = (await page.locator("body").inner_text(timeout=3000)).lower()[:300]
+                except Exception:
+                    pass
+                _challenge_kws = ("captcha", "challenge", "datadome", "cloudflare", "just a moment")
+                if any(kw in _body for kw in _challenge_kws):
+                    try:
+                        from ...captcha_solver import FreeCaptchaSolver as _CS
+                    except ImportError:
+                        from workers.captcha_solver import FreeCaptchaSolver as _CS
+                    _solved = await _CS()._solve_with_ai_vision(page, "comps_login_redirect")
+                    if _solved:
+                        await page.wait_for_timeout(3000)
+                        if "/login" not in page.url:
+                            log.info("Propelio fetch_comps: challenge resolved — session valid")
+                        else:
+                            await invalidate_session(SERVICE)
+                            raise RuntimeError("Propelio session expired after challenge bypass attempt (fetch_comps); retry to re-login")
+                    else:
+                        await invalidate_session(SERVICE)
+                        raise RuntimeError("Propelio session expired (challenge not bypassed in fetch_comps); retry to re-login")
+                else:
+                    await invalidate_session(SERVICE)
+                    raise RuntimeError("Propelio session expired (fetch_comps); retry to re-login")
 
             # Try API capture first — Propelio loads comps via XHR.
             api_pat = re.compile(r"/api/.*(comp|comparable)", re.IGNORECASE)
@@ -708,8 +808,33 @@ async def fetch_cash_buyers(
         try:
             await _nav_with_fallback(page, url, log, SERVICE)
             if "/login" in page.url:
-                await invalidate_session(SERVICE)
-                raise RuntimeError("Propelio session expired")
+                # Same challenge-first check as search_property — DataDome can redirect
+                # to /login even with a valid session when it issues a new challenge.
+                _body = ""
+                try:
+                    _body = (await page.locator("body").inner_text(timeout=3000)).lower()[:300]
+                except Exception:
+                    pass
+                _challenge_kws = ("captcha", "challenge", "datadome", "cloudflare", "just a moment")
+                if any(kw in _body for kw in _challenge_kws):
+                    try:
+                        from ...captcha_solver import FreeCaptchaSolver as _CS
+                    except ImportError:
+                        from workers.captcha_solver import FreeCaptchaSolver as _CS
+                    _solved = await _CS()._solve_with_ai_vision(page, "buyers_login_redirect")
+                    if _solved:
+                        await page.wait_for_timeout(3000)
+                        if "/login" not in page.url:
+                            log.info("Propelio fetch_cash_buyers: challenge resolved — session valid")
+                        else:
+                            await invalidate_session(SERVICE)
+                            raise RuntimeError("Propelio session expired after challenge bypass (fetch_cash_buyers); retry to re-login")
+                    else:
+                        await invalidate_session(SERVICE)
+                        raise RuntimeError("Propelio session expired (challenge not bypassed in fetch_cash_buyers); retry to re-login")
+                else:
+                    await invalidate_session(SERVICE)
+                    raise RuntimeError("Propelio session expired (fetch_cash_buyers); retry to re-login")
 
             # Apply filters via the toolbar — selectors may shift; we try several.
             # Distance pill

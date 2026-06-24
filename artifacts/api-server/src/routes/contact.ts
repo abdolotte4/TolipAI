@@ -32,6 +32,10 @@ async function sendViaSmtp(subject: string, htmlContent: string, textContent: st
       port: parseInt(process.env.SMTP_PORT || "587", 10),
       secure: process.env.SMTP_PORT === "465",
       auth: { user, pass },
+      connectionTimeout: 8_000,
+      socketTimeout: 8_000,
+      greetingTimeout: 8_000,
+      dnsTimeout: 5_000,
     });
     const from = process.env.SMTP_FROM || `"TolipAI" <${user}>`;
     await transporter.sendMail({
@@ -44,7 +48,8 @@ async function sendViaSmtp(subject: string, htmlContent: string, textContent: st
       text: textContent,
     });
     return true;
-  } catch {
+  } catch (err) {
+    console.warn("[contact] SMTP send failed — falling back to Brevo:", (err as Error).message);
     return false;
   }
 }
