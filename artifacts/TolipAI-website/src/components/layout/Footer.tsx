@@ -10,7 +10,7 @@ export function Footer() {
               TOLIPAI<span className="text-primary">.</span>
             </span>
             <p className="mt-4 text-muted-foreground max-w-sm">
-              Scalable B2B Managed Marketing and Data Infrastructure Agency delivering precision outreach operations and technical CRM infrastructure to real estate investors.
+              Workflow automation and CRM infrastructure for real estate professionals. We help businesses streamline operations, manage property pipelines, and analyze data with compliance-focused systems.
             </p>
           </div>
           
@@ -46,6 +46,11 @@ export function Footer() {
                 <li>
                   <Link href="/privacy-policy" className="text-muted-foreground hover:text-primary transition-colors text-sm">
                     Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/mission-vision-values" className="text-muted-foreground hover:text-primary transition-colors text-sm">
+                    Mission, Vision &amp; Values
                   </Link>
                 </li>
               </ul>

@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense, createContext, useContext } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -50,6 +50,9 @@ function Router() {
     <Suspense fallback={<PageLoader />}>
       <Switch>
         <Route path="/" component={Home} />
+        {/* /crm and any sub-path redirect to homepage — CRM is not publicly accessible */}
+        <Route path="/crm">{() => <Redirect to="/" />}</Route>
+        <Route path="/crm/:rest*">{() => <Redirect to="/" />}</Route>
         <Route path="/admin" component={Admin} />
         <Route path="/terms-of-service" component={Terms} />
         <Route path="/privacy-policy" component={PrivacyPolicy} />

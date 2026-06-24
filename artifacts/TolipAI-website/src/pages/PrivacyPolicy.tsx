@@ -11,7 +11,7 @@ export default function PrivacyPolicy() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="mb-12">
           <h1 className="text-4xl font-bold text-foreground mb-3">Privacy Policy</h1>
-          <p className="text-muted-foreground text-sm">Effective Date: April 6, 2026 &nbsp;|&nbsp; Last Updated: May 22, 2026</p>
+          <p className="text-muted-foreground text-sm">Effective Date: April 6, 2026 &nbsp;|&nbsp; Last Updated: June 24, 2026</p>
           <div className="mt-6 h-px bg-gradient-to-r from-primary/50 to-transparent" />
         </div>
 
@@ -39,7 +39,6 @@ export default function PrivacyPolicy() {
               <li>Name, email address, phone number, and company name submitted via our contact form or subscription checkout</li>
               <li>Communication preferences and service inquiries</li>
               <li>Payment information (processed by Stripe — we never store raw card data)</li>
-              <li>SMS opt-in consent when you agree to receive marketing text messages from us</li>
             </ul>
 
             <p className="font-semibold text-foreground mt-4 mb-2">Information Collected Automatically</p>
@@ -51,9 +50,8 @@ export default function PrivacyPolicy() {
 
             <p className="font-semibold text-foreground mt-4 mb-2">Information from Third Parties</p>
             <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li>Data enrichment providers used to improve our B2B outreach infrastructure (e.g., property records, publicly available contact data)</li>
+              <li>Publicly available property records and business data used to support our CRM and analytics platform</li>
               <li>Stripe for payment processing and subscription management</li>
-              <li>Twilio for SMS and voice communication delivery</li>
             </ul>
           </section>
 
@@ -61,10 +59,9 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-foreground mb-3">3. How We Use Your Information</h2>
             <p>We use the information we collect to:</p>
             <ul className="list-disc pl-6 mt-3 space-y-1">
-              <li>Provide, maintain, and improve our managed B2B marketing and data infrastructure services</li>
+              <li>Provide, maintain, and improve our workflow automation and CRM infrastructure services</li>
               <li>Process transactions and send related information, including purchase confirmations and invoices</li>
-              <li>Send promotional communications, newsletters, and service updates (where you have opted in)</li>
-              <li>Send SMS/text messages for marketing purposes where you have provided explicit consent</li>
+              <li>Send service updates and platform notifications (where you have opted in)</li>
               <li>Respond to comments, questions, and requests for customer service</li>
               <li>Monitor and analyze usage trends to improve the user experience</li>
               <li>Detect, investigate, and prevent fraudulent transactions and other illegal activities</li>
@@ -73,26 +70,24 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">4. SMS / Text Message Communications</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">4. Transactional Communications</h2>
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-5">
-              <p className="font-semibold text-foreground mb-3">SMS Consent & Opt-In</p>
+              <p className="font-semibold text-foreground mb-3">Notification & Account Communications</p>
               <p>
-                By providing your phone number and checking the SMS consent box on our contact form, you expressly consent to receive
-                SMS/text messages from TolipAI for marketing updates and promotions. Message and data rates may apply.
-                Message frequency varies.
+                By providing your contact information and subscribing to our services, you consent to receive
+                transactional communications from TolipAI — including account updates, service notifications,
+                billing confirmations, and platform announcements. These communications are necessary to deliver
+                and support the services you have subscribed to.
               </p>
-              <p className="mt-3 font-semibold text-foreground">To opt out:</p>
+              <p className="mt-3 font-semibold text-foreground">To opt out of non-essential communications:</p>
               <p className="mt-1">
-                Reply <strong className="text-foreground">STOP</strong> to any SMS message to unsubscribe. You will receive a one-time confirmation
-                and no further messages will be sent.
-              </p>
-              <p className="mt-3 font-semibold text-foreground">For help:</p>
-              <p className="mt-1">
-                Reply <strong className="text-foreground">HELP</strong> to any SMS message or contact us at{" "}
-                <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a>.
+                Contact us at{" "}
+                <a href="mailto:info@tolipai.com" className="text-primary hover:underline">info@tolipai.com</a>{" "}
+                with "Communication Preferences" in the subject line. Note that transactional messages
+                required for service delivery cannot be disabled while your subscription is active.
               </p>
               <p className="mt-3 text-sm text-muted-foreground">
-                We do not share SMS opt-in data or consent with third parties for their own marketing purposes.
+                We do not share your contact information with third parties for their own marketing purposes.
               </p>
             </div>
           </section>
@@ -103,7 +98,7 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-6 mt-3 space-y-2">
               <li>
                 <strong className="text-foreground">Service Providers</strong> — We share information with vendors and service providers who perform
-                services on our behalf (e.g., Stripe for payments, Twilio for SMS/voice, cloud infrastructure providers).
+                services on our behalf (e.g., Stripe for payments, cloud infrastructure providers).
                 These parties are bound by contractual obligations to keep information confidential and use it only to provide the contracted services.
               </li>
               <li>
@@ -158,7 +153,7 @@ export default function PrivacyPolicy() {
             </p>
             <ul className="list-disc pl-6 mt-3 space-y-1">
               <li>All data is transmitted over encrypted connections (TLS/HTTPS)</li>
-              <li>Sensitive credentials (e.g., Twilio Auth Tokens) are encrypted at rest using AES-256</li>
+              <li>Sensitive credentials and tokens are encrypted at rest using AES-256</li>
               <li>Payment data is handled exclusively by Stripe (PCI DSS Level 1 certified) — we never store raw card numbers</li>
               <li>Access to personal data is restricted to authorized personnel on a need-to-know basis</li>
             </ul>
@@ -175,8 +170,7 @@ export default function PrivacyPolicy() {
               <li><strong className="text-foreground">Access</strong> — Request a copy of the personal information we hold about you</li>
               <li><strong className="text-foreground">Correction</strong> — Request correction of inaccurate or incomplete information</li>
               <li><strong className="text-foreground">Deletion</strong> — Request deletion of your personal information, subject to certain exceptions</li>
-              <li><strong className="text-foreground">Opt-out of SMS</strong> — Reply STOP to any text message or contact us at info@tolipai.com</li>
-              <li><strong className="text-foreground">Opt-out of email marketing</strong> — Click "unsubscribe" in any marketing email</li>
+              <li><strong className="text-foreground">Opt-out of email marketing</strong> — Click "unsubscribe" in any marketing email or contact us at info@tolipai.com</li>
             </ul>
             <p className="mt-3">
               To exercise any of these rights, please contact us at{" "}

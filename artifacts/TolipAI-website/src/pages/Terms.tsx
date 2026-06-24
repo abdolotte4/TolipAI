@@ -11,7 +11,7 @@ export default function Terms() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="mb-12">
           <h1 className="text-4xl font-bold text-foreground mb-3">Terms of Service</h1>
-          <p className="text-muted-foreground text-sm">Effective Date: April 6, 2026 &nbsp;|&nbsp; Last Updated: April 6, 2026</p>
+          <p className="text-muted-foreground text-sm">Effective Date: April 6, 2026 &nbsp;|&nbsp; Last Updated: June 24, 2026</p>
           <div className="mt-6 h-px bg-gradient-to-r from-primary/50 to-transparent" />
         </div>
 
@@ -34,12 +34,14 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">2. Services</h2>
             <p>
-              Tolip Group LLC provides managed B2B marketing and data infrastructure services for real estate investors, including but not limited to:
+              Tolip Group LLC provides SaaS-based workflow automation and CRM infrastructure services for real estate professionals, including but not limited to:
             </p>
             <ul className="list-disc pl-6 mt-3 space-y-1">
-              <li>Managed Data Engineering &amp; Contact Enrichment</li>
-              <li>Outreach Operations Management</li>
-              <li>Technical CRM Infrastructure Setup</li>
+              <li>Workflow Automation Configuration &amp; CRM Setup</li>
+              <li>Pipeline Management &amp; Property Data Analytics</li>
+              <li>ARV Calculation &amp; Comps Analysis Tools</li>
+              <li>Technical CRM Infrastructure Setup &amp; Maintenance</li>
+              <li>CRM Support &amp; Administrative Pipeline Services</li>
               <li>Human-in-the-Loop QA Protocol</li>
               <li>Operational Compliance Framework</li>
               <li>Dedicated Account Management</li>
@@ -74,7 +76,7 @@ export default function Terms() {
             <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-xl p-5">
               <p className="font-semibold text-red-600 dark:text-red-400 mb-2">⚠ All payments are non-refundable.</p>
               <p>
-                Due to the immediate deployment of managed services, dedicated resources, and proprietary data infrastructure
+                Due to the immediate deployment of managed services, dedicated resources, and proprietary CRM infrastructure
                 upon subscription activation, <strong className="text-foreground">all subscription fees are non-refundable</strong> once a billing period has commenced.
                 No partial refunds, prorated credits, or exceptions will be made for any reason, including but not limited to:
               </p>
@@ -151,12 +153,23 @@ export default function Terms() {
               <li>Respond to onboarding requests within a reasonable timeframe</li>
               <li>Comply with all applicable laws in connection with your use of our services</li>
               <li>Not misuse or attempt to reverse-engineer any proprietary systems or data provided</li>
-              <li>Client acknowledges that Tolip Group LLC does not share SMS opt-in data or consent with third parties for marketing purposes, and Client agrees to maintain similar privacy standards for any data enriched through our infrastructure.</li>
+              <li>Use the platform and all data outputs only for lawful business purposes consistent with applicable data protection and privacy regulations</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">8. Limitation of Liability</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">8. Compliance</h2>
+            <p>
+              TolipAI's platform and workflows are designed with compliance as a foundational requirement. Clients are responsible
+              for ensuring their use of any data, automation outputs, or CRM records complies with all applicable federal, state,
+              and local laws — including but not limited to data protection regulations, real estate licensing requirements, and
+              applicable consumer protection laws. Tolip Group LLC does not provide legal advice; clients should consult qualified
+              legal counsel for compliance guidance specific to their operations.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-foreground mb-3">9. Limitation of Liability</h2>
             <p>
               To the maximum extent permitted by law, Tolip Group LLC shall not be liable for any indirect, incidental, special,
               consequential, or punitive damages, including but not limited to lost profits, lost revenue, lost business opportunities,
@@ -173,7 +186,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">9. Modifications to Terms</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">10. Modifications to Terms</h2>
             <p>
               Tolip Group LLC reserves the right to modify these Terms at any time. Changes will be posted on this page with an updated
               effective date. Your continued use of our services after any change constitutes acceptance of the revised Terms.
@@ -182,7 +195,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">10. Governing Law</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">11. Governing Law</h2>
             <p>
               These Terms shall be governed by and construed in accordance with the laws of the State of Wyoming,
               without regard to its conflict of law provisions. Any disputes shall be resolved in the courts of Sheridan County, Wyoming.
@@ -190,7 +203,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">11. Contact</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">12. Contact</h2>
             <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
               <p className="font-semibold text-foreground mb-3">Tolip Group LLC</p>
               <p>1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801</p>

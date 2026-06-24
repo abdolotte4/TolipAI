@@ -5,8 +5,8 @@ export function About() {
   const highlights = [
     "Est. 2026",
     "1+ Years Experience",
-    "B2B Infrastructure",
-    "Human-in-the-Loop QA"
+    "CRM Infrastructure",
+    "Compliance-Focused"
   ];
 
   return (
@@ -31,10 +31,10 @@ export function About() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">About Tolip Group LLC</h2>
             <div className="w-20 h-1 bg-primary rounded-full mb-8" />
             <p className="text-lg text-muted-foreground leading-relaxed mb-6">
-              TolipAI, a division of Tolip Group LLC, is a B2B Managed Marketing and Data Infrastructure Agency delivering precision outreach operations, data engineering, and technical CRM infrastructure to real estate investors.
+              TolipAI, a division of Tolip Group LLC, provides workflow automation and CRM infrastructure for real estate professionals. Our platform helps businesses streamline operations, manage property pipelines, and analyze data with compliance‑focused systems.
             </p>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Our integrated approach combines data engineering, managed outreach operations, and technical CRM infrastructure to deliver measurable results. We engineer systems that scale, supported by rigorous quality assurance and compliance frameworks.
+              Our integrated approach combines data analytics, CRM configuration, and technical infrastructure to deliver measurable operational improvements. We engineer systems that scale, supported by rigorous quality assurance and compliance frameworks.
             </p>
           </motion.div>
 

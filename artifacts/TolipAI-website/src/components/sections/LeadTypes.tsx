@@ -25,7 +25,7 @@ const leadCategories = [
     title: "Non-Resident Property Owners",
     badge: "Non-Occupant",
     description:
-      "Owners of investment properties residing outside the subject property — including portfolio holders, out-of-state investors, and landlords. A core high-propensity data segment for contact enrichment campaigns targeting non-occupant owners.",
+      "Owners of investment properties residing outside the subject property — including portfolio holders, out-of-state investors, and landlords. A core high-propensity data segment for pipeline management and property opportunity tracking.",
     bg: "bg-violet-500/10 border-violet-500/20",
     badgeClass: "bg-violet-500/15 text-violet-400 border-violet-400/30",
   },
@@ -43,7 +43,7 @@ const leadCategories = [
     title: "Unutilized Property Assets",
     badge: "Unoccupied Inventory",
     description:
-      "A curated dataset of unoccupied properties identified through utility and occupancy data signals. These assets represent untapped inventory with high enrichment potential — prime candidates for wholesale, fix-and-flip, and rental acquisition strategies.",
+      "A curated dataset of unoccupied properties identified through utility and occupancy data signals. These assets represent untapped inventory — prime candidates for wholesale, fix-and-flip, and rental acquisition strategies tracked inside TolipAI CRM.",
     bg: "bg-sky-500/10 border-sky-500/20",
     badgeClass: "bg-sky-500/15 text-sky-400 border-sky-400/30",
   },
@@ -76,7 +76,7 @@ export function LeadTypes() {
           </h2>
           <div className="w-20 h-1 bg-primary mx-auto mb-6 rounded-full" />
           <p className="text-muted-foreground text-lg">
-            TolipAI specializes in strategic data enrichment and operational support for high-growth real estate firms. We build curated property datasets, provide bulk contact enrichment, and manage workflow automation — all tracked inside TolipAI CRM.
+            TolipAI specializes in property data analytics and CRM pipeline management for high-growth real estate firms. We organize curated property datasets, automate pipeline workflows, and track every opportunity inside TolipAI CRM.
           </p>
         </motion.div>
 
@@ -112,7 +112,7 @@ export function LeadTypes() {
           className="mt-12 p-6 rounded-2xl border border-primary/20 bg-primary/5 text-center max-w-3xl mx-auto"
         >
           <p className="text-muted-foreground text-sm md:text-base">
-            <span className="text-foreground font-semibold">TolipAI's data platform</span> identifies and enriches all six segments with owner contact data through bulk data enrichment — then loads them directly into <span className="text-primary font-semibold">TolipAI CRM</span> for your team to action.{" "}
+            <span className="text-foreground font-semibold">TolipAI's data platform</span> identifies and organizes all six segments with verified property analytics — then loads them directly into <span className="text-primary font-semibold">TolipAI CRM</span> for your team to action.{" "}
             <a href="#contact" className="text-primary hover:underline font-medium">Get started →</a>
           </p>
         </motion.div>

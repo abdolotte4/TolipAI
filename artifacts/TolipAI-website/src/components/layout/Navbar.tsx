@@ -69,11 +69,6 @@ export function Navbar() {
           >
             <Zap className="w-3 h-3" /> Subscribe
           </Button>
-          <a href="https://tolipai.com/crm/" target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
-            <Button variant="outline" size="sm" className="border-border text-foreground hover:bg-secondary rounded-full px-4 font-semibold text-xs whitespace-nowrap">
-              TolipAI CRM
-            </Button>
-          </a>
           <button
             onClick={toggleTheme}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
@@ -125,11 +120,6 @@ export function Navbar() {
               className="w-full border-primary/50 text-primary hover:bg-primary/10 flex items-center justify-center gap-2">
               <Zap className="w-4 h-4" /> Subscribe — $1,500/mo
             </Button>
-            <a href="https://tolipai.com/crm/" target="_blank" rel="noopener noreferrer" className="w-full">
-              <Button variant="outline" className="w-full border-border text-foreground hover:bg-secondary">
-                TolipAI CRM
-              </Button>
-            </a>
             <Button onClick={() => scrollTo("#contact")} className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
               Schedule a Consultation
             </Button>

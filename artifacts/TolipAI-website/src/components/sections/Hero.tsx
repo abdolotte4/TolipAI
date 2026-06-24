@@ -73,16 +73,16 @@ export function Hero() {
           className="max-w-4xl"
         >
           <span className="inline-block py-1 px-3 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold tracking-wider uppercase mb-6">
-            B2B Infrastructure & Managed Operations
+            CRM Infrastructure & Workflow Automation
           </span>
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-foreground leading-tight mb-6">
             Scalable Infrastructure for <br className="hidden md:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/60">
-              Real Estate Acquisition
+              Real Estate Professionals
             </span>
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-            TolipAI, a division of Tolip Group LLC, is a B2B Managed Marketing and Data Infrastructure Agency delivering precision outreach operations, data engineering, and technical CRM infrastructure to real estate investors.
+            TolipAI, a division of Tolip Group LLC, provides workflow automation and CRM infrastructure for real estate professionals. Our platform helps businesses streamline operations, manage property pipelines, and analyze data with compliance‑focused systems.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap mb-10">

@@ -5,51 +5,51 @@ import { MessageSquare, X, Send, ChevronDown } from "lucide-react";
 const BOT_RESPONSES = [
   {
     keywords: ["price", "pricing", "cost", "rate", "fee", "how much", "package"],
-    response: "Our pricing is customized based on your operational scope and service requirements. We offer flexible engagement models for Data Engineering, Managed Outreach Operations, and Technical CRM Infrastructure. Please schedule a consultation with our team for a detailed proposal tailored to your needs. You can reach us at info@tolipai.com or call (659) 250-4618."
+    response: "Our pricing is customized based on your operational scope and service requirements. We offer flexible engagement models for CRM Infrastructure, Workflow Automation, and Pipeline Management services. Please schedule a consultation with our team for a detailed proposal tailored to your needs. You can reach us at info@tolipai.com or call (659) 250-4618."
   },
   {
     keywords: ["service", "offer", "provide", "what do", "what you do"],
-    response: "Tolip Group LLC provides three core B2B infrastructure services:\n\n1. **Data Engineering** — Property data acquisition, cleansing, verification, and contact data enrichment\n\n2. **Managed Outreach Operations** — High-intent, compliance-driven outbound outreach managed end-to-end\n\n3. **Technical CRM Infrastructure** — Enterprise CRM architecture, automation workflows, and pipeline engineering\n\nWould you like more details about any specific service?"
+    response: "Tolip Group LLC provides workflow automation and CRM infrastructure for real estate professionals:\n\n1. **CRM Support & Pipeline Management** — Data entry, record management, pipeline organization, and administrative operations inside TolipAI CRM\n\n2. **Workflow Automation & Client Communication Tools** — CRM automation configuration, follow-up workflows, notification systems, and pipeline stage triggers\n\n3. **ARV Calculation & Comps Analysis** — Live property data, comparable sales analysis, and Maximum Allowable Offer calculations\n\n4. **Technical CRM Infrastructure** — Purpose-built real estate CRM with pipeline management, task tracking, and team collaboration\n\nWould you like more details about any specific service?"
   },
   {
-    keywords: ["data", "skip", "tracing", "engineer", "clean"],
-    response: "Our Data Engineering services include comprehensive property data acquisition, cleansing, verification, and contact data enrichment. We transform raw datasets into high-confidence, actionable intelligence with 98%+ accuracy rates. Our Human-in-the-Loop QA protocol ensures every record meets our rigorous quality standards."
+    keywords: ["data", "analytics", "engineer", "property", "pipeline"],
+    response: "Our data analytics and pipeline management services organize and surface property opportunity data inside TolipAI CRM. We structure property records, configure pipeline stages, and build analytics dashboards that give your team clear visibility into every deal — from initial inquiry through closing."
   },
   {
     keywords: ["crm", "technical", "infrastructure", "automation", "workflow"],
-    response: "Our Technical CRM Infrastructure service covers enterprise-grade CRM architecture design, automation workflow implementation, and pipeline engineering. We design, build, and manage the complete technical backbone of your acquisition operations using best-in-class platforms."
+    response: "Our Technical CRM Infrastructure service covers enterprise-grade CRM architecture design, workflow automation configuration, and pipeline engineering. TolipAI CRM is purpose-built for real estate professionals — featuring ARV calculations, comps analysis, task tracking, and full team collaboration tools."
   },
   {
-    keywords: ["outreach", "operation", "sdr", "call", "contact"],
-    response: "Our Managed Outreach Operations service provides high-intent, compliance-driven outbound engagement managed end-to-end. Our specialized outreach teams follow strict quality and regulatory protocols ensuring every interaction meets operational standards. We handle all aspects of outreach management so you can focus on closing."
+    keywords: ["arv", "comps", "comparable", "calculator", "offer", "mao"],
+    response: "TolipAI CRM includes a built-in ARV (After Repair Value) calculator and MAO (Maximum Allowable Offer) calculator. These tools automatically pull comparable sales data, adjust for property differences, and give your team data-driven numbers for every deal — no spreadsheets required."
   },
   {
     keywords: ["contact", "email", "phone", "address", "location", "reach", "office"],
     response: "You can reach Tolip Group LLC through the following channels:\n\n📧 General: info@tolipai.com\n📧 Info: hello@tolipai.com\n📧 Technology: martin@tolipai.com\n📞 Phone: (659) 250-4618\n📍 Address: 1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801\n\nOur team responds to all inquiries within one business day."
   },
   {
-    keywords: ["real estate", "property", "wholesale", "acquisition", "investor"],
-    response: "Tolip Group LLC specializes exclusively in B2B infrastructure for real estate investors and acquisition-focused organizations. We've helped clients achieve 340%+ pipeline growth, 3x operational throughput, and 98%+ data accuracy rates. Our integrated approach is purpose-built for the real estate acquisition market."
+    keywords: ["real estate", "wholesale", "acquisition", "investor", "professional"],
+    response: "Tolip Group LLC specializes exclusively in CRM infrastructure and workflow automation for real estate investors and acquisition-focused organizations. Our integrated platform helps real estate professionals manage pipelines, analyze property data, and automate administrative operations — so teams can focus on underwriting and closing."
   },
   {
     keywords: ["team", "who", "people", "founder", "ceo", "staff"],
-    response: "Tolip Group LLC is led by an experienced executive team:\n\n👔 Mahmoud Aly — CEO\n⚙️ David Holloway — COO\n📣 Abdullah Gawish — CMO\n💻 Martin Adams — CTO\n📋 Amr ALY — Head Of Finance\n\nOur team brings deep expertise in data engineering, managed operations, and technical infrastructure."
+    response: "Tolip Group LLC is led by an experienced executive team:\n\n👔 Mahmoud Aly — CEO\n⚙️ David Holloway — COO\n📣 Abdullah Gawish — CMO\n💻 Martin Adams — CTO\n📋 Amr ALY — Head Of Finance\n\nOur team brings deep expertise in CRM infrastructure, workflow automation, and technical platform development."
   },
   {
     keywords: ["result", "roi", "return", "performance", "outcome"],
-    response: "Our clients achieve exceptional results:\n\n• +340% data pipeline growth (12-month period)\n• 3x operational throughput with 60% cost reduction\n• 98.2% data accuracy across 500K+ records processed\n• 950% ROI for real estate professional clients\n\nEvery engagement is backed by our Human-in-the-Loop QA protocol and Operational Compliance Framework."
+    response: "Our clients achieve measurable operational improvements:\n\n• Streamlined pipeline management with full CRM visibility\n• Automated follow-up workflows reducing manual administrative work\n• Accurate ARV and comps analysis built into every deal review\n• Compliance-focused systems that reduce operational risk\n\nEvery engagement is backed by our Human-in-the-Loop QA protocol and Operational Compliance Framework."
   },
   {
     keywords: ["compliance", "regulation", "legal", "standard"],
-    response: "Compliance is foundational to everything we do at Tolip Group LLC. Our Operational Compliance Framework ensures all workflows — from data sourcing to outreach execution — meet and exceed industry regulatory standards. Our Human-in-the-Loop QA process provides human oversight at every stage of the pipeline."
+    response: "Compliance is foundational to everything we do at Tolip Group LLC. Our platform is designed with compliance-focused systems at its core — from CRM record management to workflow automation. Our Operational Compliance Framework ensures all systems and processes meet applicable regulatory standards, and our Human-in-the-Loop QA process provides human oversight at every stage."
   },
   {
     keywords: ["about", "company", "founded", "wyoming", "llc", "established"],
-    response: "TolipAI, a division of Tolip Group LLC, is a B2B Managed Marketing and Data Infrastructure Agency delivering precision outreach operations, data engineering, and technical CRM infrastructure to real estate investors. Established in 2026, we are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
+    response: "TolipAI, a division of Tolip Group LLC, provides workflow automation and CRM infrastructure for real estate professionals. Our platform helps businesses streamline operations, manage property pipelines, and analyze data with compliance-focused systems. Established in 2026, we are a registered Wyoming Limited Liability Company providing specialized B2B infrastructure solutions for real estate investors and acquisition-focused organizations nationwide."
   },
   {
     keywords: ["start", "begin", "get started", "onboard", "sign up", "work together"],
-    response: "Getting started with Tolip Group LLC is straightforward:\n\n1. Schedule a consultation — contact us at info@tolipai.com\n2. We'll assess your operational needs and current infrastructure\n3. We'll propose a customized service engagement\n4. Onboarding typically takes 1-2 weeks\n\nReady to scale your operations? Use the contact form below or call us at (659) 250-4618."
+    response: "Getting started with Tolip Group LLC is straightforward:\n\n1. Schedule a consultation — contact us at info@tolipai.com\n2. We'll assess your operational needs and current CRM infrastructure\n3. We'll propose a customized service engagement\n4. Onboarding typically takes 1-2 weeks\n\nReady to streamline your operations? Use the contact form below or call us at (659) 250-4618."
   }
 ];
 
@@ -65,7 +65,7 @@ export function ChatBot() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
-      text: "Hello! I'm the Tolip Group LLC assistant. How can I help you today? You can ask me about our services, pricing, team, or contact information.",
+      text: "Hello! I'm the Tolip Group LLC assistant. How can I help you today? You can ask me about our CRM infrastructure services, workflow automation, pricing, or contact information.",
       sender: "bot"
     }
   ]);

@@ -1,13 +1,13 @@
 import { motion } from "framer-motion";
-import { Database, MessageSquare, Settings, Users, BarChart3, Building2, Globe, Code2, Calculator } from "lucide-react";
+import { MessageSquare, Settings, Users, BarChart3, Building2, Globe, Code2, Calculator } from "lucide-react";
 import { Card } from "@/components/ui/card";
 const servicesBg = "/images/hero-bg.jpg";
 
 export function Services() {
   const pillars = [
     { icon: <Building2 className="w-5 h-5 text-primary" />, label: "Real Estate Investment & Wholesaling" },
-    { icon: <Users className="w-5 h-5 text-primary" />, label: "Managed Virtual Assistant Services" },
-    { icon: <BarChart3 className="w-5 h-5 text-primary" />, label: "B2B Marketing & Data Analytics" },
+    { icon: <Users className="w-5 h-5 text-primary" />, label: "CRM Support & Pipeline Management" },
+    { icon: <BarChart3 className="w-5 h-5 text-primary" />, label: "B2B SaaS & Data Analytics" },
     { icon: <Code2 className="w-5 h-5 text-primary" />, label: "Full-Stack Software Development" },
     { icon: <Calculator className="w-5 h-5 text-primary" />, label: "Accounting, FP&A & Tax Audit Support" },
     { icon: <Globe className="w-5 h-5 text-primary" />, label: "Business Operations & Infrastructure" },
@@ -15,19 +15,14 @@ export function Services() {
 
   const services = [
     {
-      title: "Virtual Assistants for Real Estate",
+      title: "CRM Support & Pipeline Management",
       icon: <Users className="w-8 h-8 text-primary" />,
-      description: "Trained real estate virtual assistants (VAs) handling outreach, follow-up, data entry, CRM management, and contact data coordination. Our virtual assistants specialize in property data outreach, real estate marketing, high-propensity prospect qualification, and pipeline support — so your team focuses on closing deals."
+      description: "Dedicated CRM support specialists handling data entry, record management, pipeline organization, task tracking, and administrative operations inside TolipAI CRM. Our team keeps your property pipeline accurate, organized, and actionable — so your team stays focused on underwriting and closing, not data administration."
     },
     {
-      title: "Data Enrichment & Contact Management",
-      icon: <Database className="w-8 h-8 text-primary" />,
-      description: "Individual and bulk contact data enrichment services for real estate professionals. We locate owner phone numbers, emails, and mailing addresses across all high-propensity property segments. Our property data enrichment service transforms raw property data into high-confidence, actionable owner contacts with 98%+ accuracy."
-    },
-    {
-      title: "Managed Outreach Operations",
+      title: "Workflow Automation & Client Communication Tools",
       icon: <MessageSquare className="w-8 h-8 text-primary" />,
-      description: "End-to-end outbound outreach for real estate professionals — outbound calls, SMS campaigns, and direct mail targeting high-propensity data segments. We build and execute outreach sequences across curated property datasets. All campaigns are tracked and managed inside TolipAI CRM for full pipeline visibility."
+      description: "End-to-end CRM automation configuration and client communication workflow setup for real estate businesses. We design and implement automated task sequences, follow-up workflows, notification systems, and pipeline stage triggers inside TolipAI CRM — giving your team full visibility and operational consistency across every deal."
     },
     {
       title: "ARV Calculation & Comps Analysis",
@@ -95,11 +90,11 @@ export function Services() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Specialized Infrastructure</h2>
           <div className="w-20 h-1 bg-primary mx-auto mb-6 rounded-full" />
           <p className="text-muted-foreground text-lg">
-            From TolipAI CRM to virtual assistants and data infrastructure — we build and operate the systems that power modern real estate operations.
+            From TolipAI CRM to workflow automation and pipeline management — we build and operate the systems that power modern real estate operations.
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {services.map((service, index) => (
             <motion.div
               key={index}

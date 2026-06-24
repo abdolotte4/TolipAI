@@ -11,22 +11,22 @@ export default function MissionVisionValues() {
     {
       icon: Users,
       title: "Client Success First",
-      body: "Every engagement begins with our client's desired outcome — not a service package. We measure our performance by the tangible results our clients achieve: enriched data records delivered, pipelines activated, operations scaled. A client win is our only win.",
+      body: "Every engagement begins with our client's desired outcome — not a service package. We measure our performance by the tangible operational improvements our clients achieve: pipelines organized, workflows automated, and administrative overhead reduced. A client win is our only win.",
     },
     {
       icon: BarChart2,
       title: "Data-Driven Execution",
-      body: "Every lead we deliver is backed by property data, ownership records, and market intelligence. We do not rely on guesswork or volume plays. Our decisions — from list selection to outreach sequencing — are grounded in verified data and continuously refined by real-world performance.",
+      body: "Every workflow we configure and every CRM system we build is grounded in property data, ownership records, and market intelligence. We do not rely on guesswork or generic templates. Our decisions — from pipeline structure to automation logic — are grounded in verified data and continuously refined by real-world performance.",
     },
     {
       icon: Lightbulb,
       title: "Relentless Innovation",
-      body: "Real estate is not static, and neither are we. We build and evolve our own tools — data enrichment pipelines, property opportunity finders, ARV calculators — to stay ahead of market conditions and give our clients advantages that off-the-shelf services cannot offer.",
+      body: "Real estate is not static, and neither are we. We build and evolve our own tools — CRM infrastructure, property analytics engines, ARV calculators, and workflow automation systems — to stay ahead of market conditions and give our clients advantages that off-the-shelf software cannot offer.",
     },
     {
       icon: Shield,
-      title: "Integrity and Transparency",
-      body: "We operate with full transparency on deliverables, timelines, and performance. No vanity metrics, no inflated lead counts. Our clients receive clear reporting, honest communication, and a service that stands behind what it promises — every billing cycle.",
+      title: "Integrity and Compliance",
+      body: "We operate with full transparency on deliverables, timelines, and performance. Our platform is designed with compliance as a foundational requirement — not an afterthought. Clients receive clear reporting, honest communication, and systems built to operate within applicable regulatory frameworks every billing cycle.",
     },
   ];
 
@@ -44,7 +44,7 @@ export default function MissionVisionValues() {
             Mission, Vision <span className="text-[#d4af37]">&amp;</span> Values
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            The principles that guide every decision we make, every lead we deliver, and every client relationship we build.
+            The principles that guide every decision we make, every system we build, and every client relationship we maintain.
           </p>
         </div>
       </section>
@@ -63,7 +63,7 @@ export default function MissionVisionValues() {
 
           <blockquote className="border-l-4 border-[#d4af37] pl-6 mb-10">
             <p className="text-xl text-foreground font-medium italic leading-relaxed">
-              "To deliver exceptional, measurable results for real estate professionals by providing curated data intelligence, property analytics, and managed infrastructure services — empowering our clients to scale their operations with confidence and consistency."
+              "To deliver exceptional, measurable results for real estate professionals by providing workflow automation, CRM infrastructure, and property analytics — empowering our clients to scale their operations with confidence, consistency, and compliance."
             </p>
           </blockquote>
 
@@ -71,19 +71,19 @@ export default function MissionVisionValues() {
             {[
               {
                 heading: "Outcome-Oriented Delivery",
-                body: "TolipAI's mission anchors every engagement to a concrete result: qualified, enriched data that produces actionable opportunities. We don't sell impressions or clicks — we deliver verified property owner records that have been researched, validated, and prioritized based on market criteria that match our clients' parameters.",
+                body: "TolipAI's mission anchors every engagement to a concrete operational result: organized pipelines, automated workflows, and reduced administrative overhead. We don't sell impressions or clicks — we deliver configured CRM systems and automation workflows that produce measurable efficiency gains for real estate professionals.",
               },
               {
                 heading: "Managed Infrastructure, Not Ad-Hoc Services",
-                body: "Our model functions as a fully managed marketing arm embedded within our clients' operations. From data enrichment and list building to outreach sequencing, we handle the infrastructure so investors can focus on underwriting and closing — not pipeline administration.",
+                body: "Our model functions as a fully managed technology arm embedded within our clients' operations. From CRM configuration and workflow automation to property analytics and pipeline management, we handle the infrastructure so investors can focus on underwriting and closing — not data administration.",
               },
               {
                 heading: "Consistency at Scale",
-                body: "We deliver 15–40 enriched data records per month, every month, with the same rigor applied to record #1 and record #400. Consistency is not an aspiration — it is an operational commitment built into our process from data sourcing through client handoff.",
+                body: "We deliver consistent operational infrastructure that performs the same way at month one and month twelve. Consistency is not an aspiration — it is an operational commitment built into every workflow we design, every pipeline we configure, and every analytics system we deploy.",
               },
               {
-                heading: "Data Intelligence as Competitive Advantage",
-                body: "TolipAI integrates property records, ownership data, market condition signals, and ARV analytics into every outreach campaign. This intelligence layer transforms broad outreach into precision targeting — reducing client costs and improving conversion rates across every market we operate in.",
+                heading: "Compliance as a Competitive Advantage",
+                body: "TolipAI integrates compliance-focused design into every workflow and system we build. This infrastructure layer transforms manual, error-prone processes into auditable, repeatable operations — reducing client risk and improving operational reliability across every market we serve.",
               },
             ].map((item) => (
               <div key={item.heading} className="bg-card border border-border rounded-2xl p-6">
@@ -114,7 +114,7 @@ export default function MissionVisionValues() {
 
           <blockquote className="border-l-4 border-[#d4af37] pl-6 mb-10">
             <p className="text-xl text-foreground font-medium italic leading-relaxed">
-              "To become the most trusted data infrastructure partner for real estate professionals nationwide — recognized for our ability to identify, enrich, and deliver actionable property data through the precise application of technology, proprietary analytics, and human expertise."
+              "To become the most trusted CRM infrastructure and workflow automation partner for real estate professionals nationwide — recognized for our ability to design, build, and operate compliant, scalable systems through the precise application of technology, proprietary analytics, and human expertise."
             </p>
           </blockquote>
 
@@ -122,19 +122,19 @@ export default function MissionVisionValues() {
             {[
               {
                 heading: "Trusted Partnership as Strategic Identity",
-                body: "TolipAI's vision is built on becoming an indispensable, long-term partner — not a rotating vendor. We aim to be the firm real estate professionals call before they expand into a new market, launch a new data strategy, or need to understand why a pipeline underperformed. That level of trust is earned through consistent results and honest communication.",
+                body: "TolipAI's vision is built on becoming an indispensable, long-term partner — not a rotating vendor. We aim to be the firm real estate professionals call before they expand into a new market, redesign their CRM pipeline, or need to understand why their operations underperformed. That level of trust is earned through consistent results and honest communication.",
               },
               {
-                heading: "Proprietary Intelligence at the Core",
-                body: "Our vision drives continuous investment in our own tools: data enrichment pipelines, property opportunity finders, ARV calculators, and market scoring models. We believe proprietary intelligence is the only durable competitive advantage in real estate services — and we build that advantage ourselves.",
+                heading: "Proprietary Infrastructure at the Core",
+                body: "Our vision drives continuous investment in our own tools: CRM automation engines, property analytics platforms, ARV calculators, and workflow orchestration systems. We believe proprietary infrastructure is the only durable competitive advantage in real estate services — and we build that advantage ourselves.",
               },
               {
                 heading: "Nationwide Reach, Market-Level Precision",
-                body: "We are building toward a model where TolipAI can activate data pipelines in any U.S. market within days — with the same data depth and outreach precision we deliver today in our core markets. Scale without sacrificing quality is the operational standard we hold ourselves to.",
+                body: "We are building toward a model where TolipAI can deploy CRM infrastructure and workflow automation in any U.S. market within days — with the same operational depth and analytical precision we deliver today in our core markets. Scale without sacrificing quality is the operational standard we hold ourselves to.",
               },
               {
-                heading: "Human Judgment Meets Data Infrastructure",
-                body: "Technology alone does not produce deals. TolipAI's vision combines automated data infrastructure with senior-level judgment on every list we build and every lead we qualify. The result is a service that thinks like an investor — because it is operated by people who understand what closable looks like.",
+                heading: "Human Judgment Meets Automation",
+                body: "Technology alone does not produce results. TolipAI's vision combines automated infrastructure with senior-level judgment on every system we configure and every pipeline we manage. The result is a platform that thinks like an investor — because it is operated by people who understand what a well-run acquisition operation looks like.",
               },
             ].map((item) => (
               <div key={item.heading} className="bg-card border border-border rounded-2xl p-6">
@@ -147,7 +147,7 @@ export default function MissionVisionValues() {
           {/* Signature */}
           <div className="bg-[#d4af37]/5 border border-[#d4af37]/20 rounded-2xl p-8 text-center">
             <p className="text-foreground/80 text-base italic leading-relaxed max-w-2xl mx-auto mb-6">
-              "Our vision isn't abstract. Every lead we deliver, every tool we build, and every client relationship we maintain is a step toward becoming the firm that investors trust without question — the partner they don't have to manage, because we already know what winning looks like for them."
+              "Our vision isn't abstract. Every system we build, every workflow we automate, and every client relationship we maintain is a step toward becoming the firm that investors trust without question — the partner they don't have to manage, because we already know what a well-run operation looks like for them."
             </p>
             <div className="flex flex-col items-center gap-1">
               <p className="text-[#d4af37] font-bold text-lg">Abdullah Gawish</p>
@@ -200,7 +200,7 @@ export default function MissionVisionValues() {
       <section className="py-16 px-4 bg-gradient-to-t from-[#0a0f1a] to-background">
         <div className="max-w-2xl mx-auto text-center">
           <h3 className="text-2xl font-bold text-foreground mb-3">Ready to work with a team that lives by these principles?</h3>
-          <p className="text-muted-foreground mb-8">Schedule a consultation and see how TolipAI's mission translates into results for your data pipeline.</p>
+          <p className="text-muted-foreground mb-8">Schedule a consultation and see how TolipAI's mission translates into operational results for your real estate business.</p>
           <a href="/" className="inline-block bg-[#d4af37] text-[#0a0f1a] font-bold px-8 py-4 rounded-full hover:bg-[#d4af37]/90 transition-colors">
             Back to TolipAI.com
           </a>
