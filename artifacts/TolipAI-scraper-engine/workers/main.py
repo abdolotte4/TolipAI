@@ -1671,6 +1671,7 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
 
     async def runner() -> None:
         try:
+            _set_status(job_id, "running", progress=5)
             result: Dict[str, Any] = {"address": req.address, "count": 0, "comps": [], "source": "none"}
 
             # 1. Try Propelio V2 ───────────────────────────────────────────────
@@ -1681,15 +1682,24 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
                     from functools import partial
 
                     login_fn = partial(propelio_v2._do_login, email=propelio_email, password=propelio_password)
-                    prop = await propelio_v2.search_property(req.address, login_fn=login_fn)
+                    prop = await asyncio.wait_for(
+                        propelio_v2.search_property(req.address, login_fn=login_fn),
+                        timeout=90,
+                    )
                     property_id = prop.get("property_id") if prop else None
                     if property_id:
-                        comps = await propelio_v2.fetch_comps(
-                            property_id, radius_miles=req.radius_miles, login_fn=login_fn
+                        _set_status(job_id, "running", progress=40)
+                        comps = await asyncio.wait_for(
+                            propelio_v2.fetch_comps(
+                                property_id, radius_miles=req.radius_miles, login_fn=login_fn
+                            ),
+                            timeout=90,
                         )
                         if comps:
                             log.info("scrape_comps: Propelio returned %d comps for %s", len(comps), req.address[:60])
                             result = {"address": req.address, "count": len(comps), "comps": comps, "source": "propelio"}
+                except asyncio.TimeoutError:
+                    log.warning("scrape_comps: Propelio timed out for %s", req.address[:60])
                 except Exception as e:
                     log.warning("scrape_comps: Propelio V2 failed for %s: %s", req.address[:60], str(e)[:200])
 
@@ -1701,21 +1711,33 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
                     try:
                         from functools import partial
 
+                        _set_status(job_id, "running", progress=60)
                         login_fn = partial(propwire._do_login, email=propwire_email, password=propwire_password)
-                        comps = await propwire.fetch_comps(req.address, max_results=req.max_results, login_fn=login_fn)
+                        comps = await asyncio.wait_for(
+                            propwire.fetch_comps(req.address, max_results=req.max_results, login_fn=login_fn),
+                            timeout=90,
+                        )
                         if comps:
                             log.info("scrape_comps: Propwire returned %d comps for %s", len(comps), req.address[:60])
                             result = {"address": req.address, "count": len(comps), "comps": comps, "source": "propwire"}
+                    except asyncio.TimeoutError:
+                        log.warning("scrape_comps: Propwire timed out for %s", req.address[:60])
                     except Exception as e:
                         log.warning("scrape_comps: Propwire failed for %s: %s", req.address[:60], str(e)[:200])
 
             # 3. HomeHarvest (no auth required) ───────────────────────────────
             if result["count"] == 0:
                 try:
-                    comps = await homeharvest_scraper.scrape_comps(req.address, max_results=req.max_results)
+                    _set_status(job_id, "running", progress=80)
+                    comps = await asyncio.wait_for(
+                        homeharvest_scraper.scrape_comps(req.address, max_results=req.max_results),
+                        timeout=60,
+                    )
                     if comps:
                         log.info("scrape_comps: HomeHarvest returned %d comps for %s", len(comps), req.address[:60])
                         result = {"address": req.address, "count": len(comps), "comps": comps, "source": "homeharvest"}
+                except asyncio.TimeoutError:
+                    log.warning("scrape_comps: HomeHarvest timed out for %s", req.address[:60])
                 except Exception as e:
                     log.warning("scrape_comps: HomeHarvest failed for %s: %s", req.address[:60], str(e)[:200])
 
@@ -2887,8 +2909,9 @@ async def debug_propelio_search(address: str) -> Dict[str, Any]:
     if not address:
         raise HTTPException(status_code=400, detail="address query parameter is required")
 
-    import tempfile, os as _os
-    from .scrapers.propelio_v2 import search_property as _search_property
+    import tempfile
+    import os as _os
+    from workers.scrapers.propelio_v2 import search_property as _search_property  # noqa: PLC0415
 
     ss_dir = tempfile.mkdtemp(prefix="propelio_debug_")
     ss_path = _os.path.join(ss_dir, "debug_search.png")
@@ -2937,7 +2960,7 @@ async def debug_browser_pool() -> Dict[str, Any]:
     Returns: { max_browsers, total, busy, idle, browsers: [{id, busy, idle_seconds}] }
     """
     import time as _time
-    from .browser_pool import MAX_BROWSERS as _MAX_BROWSERS
+    from workers.browser_pool import MAX_BROWSERS as _MAX_BROWSERS  # noqa: PLC0415
 
     pool = browser_pool
     now = _time.monotonic()
