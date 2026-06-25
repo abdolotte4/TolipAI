@@ -1684,7 +1684,7 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
                     login_fn = partial(propelio_v2._do_login, email=propelio_email, password=propelio_password)
                     prop = await asyncio.wait_for(
                         propelio_v2.search_property(req.address, login_fn=login_fn),
-                        timeout=90,
+                        timeout=150,
                     )
                     property_id = prop.get("property_id") if prop else None
                     if property_id:
@@ -1693,7 +1693,7 @@ async def scrape_comps(req: CompsRequest) -> Dict[str, Any]:
                             propelio_v2.fetch_comps(
                                 property_id, radius_miles=req.radius_miles, login_fn=login_fn
                             ),
-                            timeout=90,
+                            timeout=120,
                         )
                         if comps:
                             log.info("scrape_comps: Propelio returned %d comps for %s", len(comps), req.address[:60])
@@ -2911,7 +2911,7 @@ async def debug_propelio_search(address: str) -> Dict[str, Any]:
 
     import tempfile
     import os as _os
-    from workers.scrapers.propelio_v2 import search_property as _search_property  # noqa: PLC0415
+    from .scrapers.propelio_v2 import search_property as _search_property  # noqa: E402
 
     ss_dir = tempfile.mkdtemp(prefix="propelio_debug_")
     ss_path = _os.path.join(ss_dir, "debug_search.png")
@@ -2960,7 +2960,7 @@ async def debug_browser_pool() -> Dict[str, Any]:
     Returns: { max_browsers, total, busy, idle, browsers: [{id, busy, idle_seconds}] }
     """
     import time as _time
-    from workers.browser_pool import MAX_BROWSERS as _MAX_BROWSERS  # noqa: PLC0415
+    from .browser_pool import MAX_BROWSERS as _MAX_BROWSERS  # noqa: E402
 
     pool = browser_pool
     now = _time.monotonic()
