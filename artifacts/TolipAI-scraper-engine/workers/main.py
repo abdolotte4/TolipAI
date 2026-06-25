@@ -2929,6 +2929,50 @@ async def debug_propelio_search(address: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/debug/browser-pool")
+async def debug_browser_pool() -> Dict[str, Any]:
+    """Return current browser pool state — browser count, busy/idle split, idle ages.
+
+    Useful for diagnosing Playwright cold-start delays and pool exhaustion.
+    Returns: { max_browsers, total, busy, idle, browsers: [{id, busy, idle_seconds}] }
+    """
+    import time as _time
+
+    pool = browser_pool
+    now = _time.monotonic()
+    browsers = []
+    try:
+        async with pool._lock:
+            for pb in pool._pool:
+                idle_s = round(now - pb.last_used, 1) if not pb.busy else 0.0
+                browsers.append(
+                    {
+                        "id": hex(pb._id),
+                        "busy": pb.busy,
+                        "idle_seconds": idle_s,
+                    }
+                )
+    except Exception as exc:
+        return {
+            "max_browsers": MAX_BROWSERS,
+            "total": 0,
+            "busy": 0,
+            "idle": 0,
+            "browsers": [],
+            "error": str(exc),
+        }
+
+    busy = sum(1 for b in browsers if b["busy"])
+    return {
+        "max_browsers": MAX_BROWSERS,
+        "total": len(browsers),
+        "busy": busy,
+        "idle": len(browsers) - busy,
+        "pool_started": pool._started,
+        "browsers": browsers,
+    }
+
+
 @app.post("/lead-gen/foreclosure")
 async def lead_gen_foreclosure(req: ForeclosureLeadGenRequest) -> Dict[str, Any]:
     """Start chained foreclosure lead-gen pipeline. Returns job_id immediately."""

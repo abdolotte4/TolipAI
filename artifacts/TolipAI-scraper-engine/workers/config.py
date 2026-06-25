@@ -101,6 +101,7 @@ class Settings:
             "SCRAPERAPI_KEY_4",
         )
     )
+    realty_api_key: Optional[str] = _env("REALTY_API_KEY")
 
     # ── Redis / Cache / Storage ─────────────────────────────────────────────
     # REDIS_URL is used by job_store.py, cache.py, and retry_queue.py.
