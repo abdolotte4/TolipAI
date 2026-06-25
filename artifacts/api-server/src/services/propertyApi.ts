@@ -272,15 +272,6 @@ export async function runSkipTrace(
   lastName?: string | null,
 ): Promise<SkipTraceResult | null> {
   _lastSkipTraceError = null;
-  const apiKey = getNextApiKey();
-  if (!apiKey) {
-    logger.warn("[skipTrace] No PropertyAPI keys configured — trying PDL fallback");
-    const pdlResult = await runSkipTracePDL(street, city, state, zip);
-    if (pdlResult) return pdlResult;
-    _lastSkipTraceError = { apiMessage: "No skip trace API keys configured on server" };
-    return null;
-  }
-  const keyIndex = (_keyIndex === 0 ? loadApiKeys().length : _keyIndex);
 
   const lookup: Record<string, any> = {
     uid: "lead_skip",
@@ -298,65 +289,97 @@ export async function runSkipTrace(
     };
   }
 
-  try {
-    const resp = await fetch(`${BASE_URL}/skip-trace`, {
-      method: "POST",
-      headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ lookups: [lookup] }),
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => resp.statusText);
-      logger.error({ status: resp.status, body: text.slice(0, 500) }, `[skipTrace] key#${keyIndex} HTTP error`);
-      if (resp.status === 402 || text.toLowerCase().includes("insufficient credits") || text.toLowerCase().includes("credit")) {
-        logger.info("[skipTrace] PropertyAPI credits exhausted — trying PDL fallback");
-        const pdlResult = await runSkipTracePDL(street, city, state, zip);
-        if (pdlResult) return pdlResult;
-      }
-      _lastSkipTraceError = { httpStatus: resp.status, apiMessage: text.slice(0, 300) };
-      return null;
-    }
-    const json = await resp.json() as any;
-
-    // PropertyAPI returns data as an array with flat fields: phone_1_number, email_1, …
-    const item: Record<string, any> = Array.isArray(json.data) ? (json.data[0] ?? {}) : (json.data ?? {});
-
-    const hasAnyResult = item.phone_1_number || item.email_1 || item.name_first || item.name_last;
-    if (!hasAnyResult) {
-      logger.warn({ status: json.status }, "[skipTrace] PropertyAPI returned no contacts — trying PDL fallback");
-      const pdlResult = await runSkipTracePDL(street, city, state, zip);
-      if (pdlResult) return pdlResult;
-      _lastSkipTraceError = { apiMessage: "No contact data found for this property owner" };
-      return null;
-    }
-
-    const phones: SkipTracePhone[] = [];
-    const emails: string[] = [];
-
-    for (let i = 1; i <= 5; i++) {
-      const number = item[`phone_${i}_number`];
-      if (!number) continue;
-      phones.push({
-        number: String(number),
-        type: item[`phone_${i}_type`] ? String(item[`phone_${i}_type`]) : undefined,
-        isDisconnected: false,
-      });
-    }
-
-    for (let i = 1; i <= 5; i++) {
-      const email = item[`email_${i}`];
-      if (email) emails.push(String(email));
-    }
-
-    const matchStatus = (item.name_first || item.name_last) ? "matched" : "unmatched";
-    const creditsRemaining = json.credits_remaining ?? json.quote?.credit_balance_after;
-
-    logger.info({ keyIndex, matchStatus, phones: phones.length, emails: emails.length, credits: creditsRemaining }, "[skipTrace] success");
-    return { matchStatus, phones, emails, creditsRemaining };
-  } catch (err) {
-    logger.error({ err }, `[skipTrace] key#${keyIndex} fetch error`);
-    _lastSkipTraceError = { apiMessage: String(err) };
+  // ── Retry loop: try every non-depleted key before falling back to PDL ─────
+  const allKeys = loadApiKeys();
+  if (allKeys.length === 0) {
+    logger.warn("[skipTrace] No PropertyAPI keys configured — trying PDL fallback");
+    const pdlResult = await runSkipTracePDL(street, city, state, zip);
+    if (pdlResult) return pdlResult;
+    _lastSkipTraceError = { apiMessage: "No skip trace API keys configured on server" };
     return null;
   }
+
+  for (let attempt = 0; attempt < allKeys.length; attempt++) {
+    const apiKey = getNextApiKey();
+    if (!apiKey) break;
+    const keyIndex = (_keyIndex === 0 ? allKeys.length : _keyIndex);
+
+    try {
+      const resp = await fetch(`${BASE_URL}/skip-trace`, {
+        method: "POST",
+        headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ lookups: [lookup] }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => resp.statusText);
+        const is402 = resp.status === 402 ||
+          text.toLowerCase().includes("insufficient credits") ||
+          text.toLowerCase().includes("credit");
+
+        if (is402) {
+          logger.info({ keyIndex }, "[skipTrace] key depleted (402) — trying next key");
+          markKeyDepleted(apiKey);
+          continue;
+        }
+
+        logger.error({ status: resp.status, body: text.slice(0, 500) }, `[skipTrace] key#${keyIndex} HTTP error`);
+        _lastSkipTraceError = { httpStatus: resp.status, apiMessage: text.slice(0, 300) };
+        continue;
+      }
+
+      const json = await resp.json() as any;
+      const item: Record<string, any> = Array.isArray(json.data) ? (json.data[0] ?? {}) : (json.data ?? {});
+
+      const hasAnyResult = item.phone_1_number || item.email_1 || item.name_first || item.name_last;
+      if (!hasAnyResult) {
+        logger.warn({ status: json.status }, "[skipTrace] PropertyAPI returned no contacts — trying PDL fallback");
+        const pdlResult = await runSkipTracePDL(street, city, state, zip);
+        if (pdlResult) return pdlResult;
+        _lastSkipTraceError = { apiMessage: "No contact data found for this property owner" };
+        return null;
+      }
+
+      const phones: SkipTracePhone[] = [];
+      const emails: string[] = [];
+
+      for (let i = 1; i <= 5; i++) {
+        const number = item[`phone_${i}_number`];
+        if (!number) continue;
+        phones.push({
+          number: String(number),
+          type: item[`phone_${i}_type`] ? String(item[`phone_${i}_type`]) : undefined,
+          isDisconnected: false,
+        });
+      }
+
+      for (let i = 1; i <= 5; i++) {
+        const email = item[`email_${i}`];
+        if (email) emails.push(String(email));
+      }
+
+      const matchStatus = (item.name_first || item.name_last) ? "matched" : "unmatched";
+      const creditsRemaining = json.credits_remaining ?? json.quote?.credit_balance_after;
+
+      logger.info({ keyIndex, matchStatus, phones: phones.length, emails: emails.length, credits: creditsRemaining }, "[skipTrace] success");
+      return { matchStatus, phones, emails, creditsRemaining };
+
+    } catch (err) {
+      logger.error({ err }, `[skipTrace] key#${keyIndex} fetch error`);
+      _lastSkipTraceError = { apiMessage: String(err) };
+      continue;
+    }
+  }
+
+  // All PropertyAPI keys exhausted — try PDL
+  logger.info("[skipTrace] All PropertyAPI keys depleted — trying PDL fallback");
+  const pdlResult = await runSkipTracePDL(street, city, state, zip);
+  if (pdlResult) return pdlResult;
+
+  if (!_lastSkipTraceError) {
+    _lastSkipTraceError = { apiMessage: "All skip trace API keys depleted" };
+  }
+  return null;
 }
 
 // ─── Cooldown tracking (in-memory; resets on restart) ────────────────────────

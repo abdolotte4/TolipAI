@@ -5,8 +5,14 @@ import logging
 
 import fitz  # PyMuPDF
 import pdfplumber
-import pytesseract
-from PIL import Image
+try:
+    import pytesseract
+    from PIL import Image
+    _OCR_AVAILABLE = True
+except ImportError:
+    pytesseract = None  # type: ignore[assignment]
+    Image = None  # type: ignore[assignment]
+    _OCR_AVAILABLE = False
 
 log = logging.getLogger("pdf_utils")
 
@@ -31,16 +37,19 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     except Exception as e:
         log.debug("pdfplumber failed: %s", e)
 
-    # 3. OCR fallback (scanned images)
-    try:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        text_blocks = []
-        for page in doc:
-            pix = page.get_pixmap()
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            text_blocks.append(pytesseract.image_to_string(img))
-        return "\n".join(text_blocks)
-    except Exception as e:
-        log.warning("OCR failed: %s", e)
+    # 3. OCR fallback (scanned images) — only if tesseract is available
+    if _OCR_AVAILABLE:
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            text_blocks = []
+            for page in doc:
+                pix = page.get_pixmap()
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                text_blocks.append(pytesseract.image_to_string(img))
+            return "\n".join(text_blocks)
+        except Exception as e:
+            log.warning("OCR failed: %s", e)
+    else:
+        log.debug("pytesseract not available — skipping OCR fallback")
 
     return ""

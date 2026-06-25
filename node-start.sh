@@ -115,4 +115,45 @@ echo "[node-start] Port ${PORT} is free."
 
 echo "[node-start] Starting API server on port $PORT..."
 export NODE_ENV=production
+
+# ── Launch Python scraper engine on port 8000 (background) ───────────────────
+_SCRAPER_DIR="$(pwd)/artifacts/TolipAI-scraper-engine"
+_PYTHON=""
+for _p in \
+  "$_SCRAPER_DIR/.venv/bin/python" \
+  "$_SCRAPER_DIR/.venv/bin/python3"; do
+  if [ -x "$_p" ]; then _PYTHON="$_p"; break; fi
+done
+
+if [ -n "$_PYTHON" ]; then
+  # Kill any stale instance on port 8000
+  fuser -k "8000/tcp" 2>/dev/null || true
+  pkill -f "uvicorn workers.main" 2>/dev/null || true
+  sleep 1
+
+  # Set shared key so API server can authenticate against engine
+  export SCRAPER_ENGINE_URL="http://localhost:8000"
+  _KEY="${SCRAPER_API_KEY:-tolipai_local_dev_key}"
+  export SCRAPER_API_KEY="$_KEY"
+  export WEBSCRAPER_API_KEY="$_KEY"
+
+  echo "[node-start] Starting scraper engine on port 8000 (Python: $_PYTHON)..."
+  (cd "$_SCRAPER_DIR" && \
+    DATABASE_URL="${DATABASE_URL:-}" \
+    SCRAPER_API_KEY="$_KEY" \
+    PORT=8000 \
+    nohup "$_PYTHON" -m uvicorn workers.main:app \
+      --host 0.0.0.0 --port 8000 --log-level warning \
+      > /tmp/scraper-engine.log 2>&1 &)
+  sleep 4
+  if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+    echo "[node-start] Scraper engine healthy ✓"
+  else
+    echo "[node-start] Scraper engine not yet ready (check /tmp/scraper-engine.log)"
+  fi
+else
+  echo "[node-start] Python venv not found — scraper engine will not start locally."
+  echo "[node-start]   Run: cd artifacts/TolipAI-scraper-engine && uv venv .venv && uv pip install -r requirements.txt"
+fi
+
 exec node --enable-source-maps artifacts/api-server/dist/index.mjs
