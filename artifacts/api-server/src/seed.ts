@@ -71,13 +71,19 @@ async function seedAdmin(email: string, password: string, name: string) {
 
 async function ensureColumns() {
   const columns: [string, string][] = [
-    ["crm_call_logs.disposition",          "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS disposition text"],
-    ["crm_call_logs.ai_coaching_summary",  "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS ai_coaching_summary text"],
-    ["crm_campaigns.stripe_customer_id",   "ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS stripe_customer_id text"],
-    ["crm_campaigns.twilio_forward_phone", "ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS twilio_forward_phone text"],
-    ["crm_users.password_plain",           "ALTER TABLE crm_users ADD COLUMN IF NOT EXISTS password_plain text"],
-    ["crm_leads.last_motivation_score",    "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_score integer"],
-    ["crm_leads.last_motivation_label",    "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_label text"],
+    ["crm_call_logs.disposition",            "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS disposition text"],
+    ["crm_call_logs.ai_coaching_summary",    "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS ai_coaching_summary text"],
+    ["crm_call_logs.conference_sid",         "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS conference_sid text"],
+    ["crm_call_logs.qualification_score",    "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS qualification_score integer"],
+    ["crm_call_logs.qualification_notes",    "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS qualification_notes text"],
+    ["crm_call_logs.mos_score",              "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS mos_score numeric"],
+    ["crm_call_logs.jitter_ms",              "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS jitter_ms numeric"],
+    ["crm_call_logs.packet_loss_pct",        "ALTER TABLE crm_call_logs ADD COLUMN IF NOT EXISTS packet_loss_pct numeric"],
+    ["crm_campaigns.stripe_customer_id",     "ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS stripe_customer_id text"],
+    ["crm_campaigns.twilio_forward_phone",   "ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS twilio_forward_phone text"],
+    ["crm_users.password_plain",             "ALTER TABLE crm_users ADD COLUMN IF NOT EXISTS password_plain text"],
+    ["crm_leads.last_motivation_score",      "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_score integer"],
+    ["crm_leads.last_motivation_label",      "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS last_motivation_label text"],
     // Drop stale NOT NULL constraints that block manual lead creation (skip_traced fields are optional)
     ["crm_leads.skip_traced_name.nullable",   "ALTER TABLE crm_leads ALTER COLUMN skip_traced_name DROP NOT NULL"],
     ["crm_leads.skip_traced_phones.nullable", "ALTER TABLE crm_leads ALTER COLUMN skip_traced_phones DROP NOT NULL"],

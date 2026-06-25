@@ -131,11 +131,15 @@ if [ -n "$_PYTHON" ]; then
   pkill -f "uvicorn workers.main" 2>/dev/null || true
   sleep 1
 
-  # Set shared key so API server can authenticate against engine
-  export SCRAPER_ENGINE_URL="http://localhost:8000"
+  # Only use localhost:8000 as fallback — don't override if ELB/remote URL already set
   _KEY="${SCRAPER_API_KEY:-tolipai_local_dev_key}"
   export SCRAPER_API_KEY="$_KEY"
-  export WEBSCRAPER_API_KEY="$_KEY"
+  if [ -z "${SCRAPER_ENGINE_URL:-}" ]; then
+    export SCRAPER_ENGINE_URL="http://localhost:8000"
+    export WEBSCRAPER_API_KEY="$_KEY"
+  else
+    echo "[node-start] Using existing SCRAPER_ENGINE_URL=${SCRAPER_ENGINE_URL} (not overriding with localhost)"
+  fi
 
   echo "[node-start] Starting scraper engine on port 8000 (Python: $_PYTHON)..."
   (cd "$_SCRAPER_DIR" && \
