@@ -241,29 +241,43 @@ async def _sec_edgar_lookup(name: str) -> Dict[str, Any]:
 
 
 # ─── Tier 4: PropertyAPI.co ─────────────────────────────────────────────────
+_PROPERTYAPI_ENDPOINTS = [
+    # Canonical endpoint — try multiple hostnames in case DNS varies per environment
+    "https://api.propertyapi.co/skip-trace",
+    "https://propertyapi.co/api/skip-trace",
+    "https://api.propertyapi.io/v1/skip-trace",
+]
+
+
 async def _propertyapi_skip(name: str, address: Optional[str] = None) -> Dict[str, Any]:
     if not settings.enable_propertyapi or not settings.property_api_keys or "propertyapi" in _dead_sources:
         return {}
+    dns_fail_count = 0
     for key in settings.property_api_keys:
-        try:
-            async with httpx.AsyncClient(timeout=20) as cli:
-                r = await cli.post(
-                    "https://api.propertyapi.co/skip-trace",
-                    json={"name": name, "address": address or ""},
-                    headers={"Authorization": f"Bearer {key}"},
-                )
-            if r.status_code == 200:
-                return r.json()
-            if r.status_code in (402, 403) and "credit" in r.text.lower():
+        for endpoint in _PROPERTYAPI_ENDPOINTS:
+            try:
+                async with httpx.AsyncClient(timeout=20) as cli:
+                    r = await cli.post(
+                        endpoint,
+                        json={"name": name, "address": address or ""},
+                        headers={"Authorization": f"Bearer {key}", "x-api-key": key},
+                    )
+                if r.status_code == 200:
+                    log.info("PropertyAPI skip-trace hit via %s", endpoint)
+                    return r.json()
+                if r.status_code in (402, 403) and "credit" in r.text.lower():
+                    break  # try next key
+            except Exception as e:
+                err = str(e).lower()
+                if "dns" in err or "failed to connect" in err or "name or service not known" in err:
+                    dns_fail_count += 1
+                    log.debug("PropertyAPI DNS failure for %s: %s", endpoint, e)
+                    continue
+                log.info("PropertyAPI skip failed (%s): %s", endpoint, e)
                 continue
-        except Exception as e:
-            err = str(e).lower()
-            if "dns" in err or "failed to connect" in err:
-                _dead_sources.add("propertyapi")
-                log.warning("PropertyAPI DNS failure — disabling: %s", e)
-                return {}
-            log.info("PropertyAPI skip failed: %s", e)
-            continue
+    if dns_fail_count >= len(_PROPERTYAPI_ENDPOINTS) * len(settings.property_api_keys):
+        _dead_sources.add("propertyapi")
+        log.warning("PropertyAPI all endpoints unreachable — disabling for this process")
     return {}
 
 

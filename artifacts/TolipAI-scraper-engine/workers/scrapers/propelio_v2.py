@@ -710,8 +710,14 @@ async def fetch_comps(
                     raise RuntimeError("Propelio session expired (fetch_comps); retry to re-login")
 
             # Try API capture first — Propelio loads comps via XHR.
-            api_pat = re.compile(r"/api/.*(comp|comparable)", re.IGNORECASE)
-            xhr = await _intercept_json(page, api_pat, timeout_ms=10000)
+            # Broad pattern: catch any JSON XHR on the comparable-sales page.
+            # Propelio's actual endpoint varies (e.g. /api/v2/comps, /api/comps,
+            # /api/property/{id}/comparables) — capture all JSON and filter below.
+            api_pat = re.compile(
+                r"(comp|comparable|sale|sold|genesis\.propelio\.com/api)",
+                re.IGNORECASE,
+            )
+            xhr = await _intercept_json(page, api_pat, timeout_ms=18000)
             for item in xhr:
                 body = item.get("body")
                 if isinstance(body, dict):

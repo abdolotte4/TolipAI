@@ -2937,6 +2937,7 @@ async def debug_browser_pool() -> Dict[str, Any]:
     Returns: { max_browsers, total, busy, idle, browsers: [{id, busy, idle_seconds}] }
     """
     import time as _time
+    from .browser_pool import MAX_BROWSERS as _MAX_BROWSERS
 
     pool = browser_pool
     now = _time.monotonic()
@@ -2954,7 +2955,7 @@ async def debug_browser_pool() -> Dict[str, Any]:
                 )
     except Exception as exc:
         return {
-            "max_browsers": MAX_BROWSERS,
+            "max_browsers": _MAX_BROWSERS,
             "total": 0,
             "busy": 0,
             "idle": 0,
@@ -2964,7 +2965,7 @@ async def debug_browser_pool() -> Dict[str, Any]:
 
     busy = sum(1 for b in browsers if b["busy"])
     return {
-        "max_browsers": MAX_BROWSERS,
+        "max_browsers": _MAX_BROWSERS,
         "total": len(browsers),
         "busy": busy,
         "idle": len(browsers) - busy,
