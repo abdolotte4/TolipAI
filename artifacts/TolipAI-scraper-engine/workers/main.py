@@ -2952,6 +2952,51 @@ async def debug_propelio_search(address: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/debug/fetch-comps")
+async def debug_fetch_comps(
+    property_id: str = "",
+    radius_miles: int = 2,
+    max_results: int = 10,
+) -> Dict[str, Any]:
+    """Directly test Propelio fetch_comps with a known property_id (bypassing search step).
+
+    Query params:
+      - property_id  e.g. 8414406
+      - radius_miles (default 2)
+      - max_results  (default 10)
+    Returns: { property_id, count, comps, source, error }
+    """
+    if not property_id:
+        raise HTTPException(status_code=400, detail="property_id query parameter is required")
+
+    from .scrapers import propelio_v2 as _pv2  # noqa: E402
+
+    propelio_email = os.getenv("PROPELIO_EMAIL")
+    propelio_password = os.getenv("PROPELIO_PASSWORD")
+    if not (propelio_email and propelio_password):
+        raise HTTPException(status_code=503, detail="PROPELIO_EMAIL / PROPELIO_PASSWORD not configured")
+
+    from functools import partial as _partial  # noqa: E402
+
+    login_fn = _partial(_pv2._do_login, email=propelio_email, password=propelio_password)
+    try:
+        comps = await asyncio.wait_for(
+            _pv2.fetch_comps(property_id, radius_miles=radius_miles, max_results=max_results, login_fn=login_fn),
+            timeout=120,
+        )
+        return {
+            "property_id": property_id,
+            "count": len(comps),
+            "comps": comps[:5],
+            "source": "propelio" if comps else "none",
+            "error": None,
+        }
+    except asyncio.TimeoutError:
+        return {"property_id": property_id, "count": 0, "comps": [], "source": "none", "error": "timeout after 120s"}
+    except Exception as exc:
+        return {"property_id": property_id, "count": 0, "comps": [], "source": "none", "error": str(exc)[:300]}
+
+
 @app.get("/debug/browser-pool")
 async def debug_browser_pool() -> Dict[str, Any]:
     """Return current browser pool state — browser count, busy/idle split, idle ages.
