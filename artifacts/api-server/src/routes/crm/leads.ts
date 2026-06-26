@@ -1384,10 +1384,12 @@ router.post("/:id/skip-trace", crmAuth, async (req, res) => {
     if (!lead.address) { res.status(400).json({ error: "Lead has no address" }); return; }
 
     // Parse owner name to first/last for better match accuracy
+    // Fall back to sellerName if ownerName is absent
     let firstName: string | null = null;
     let lastName: string | null = null;
-    if (lead.ownerName) {
-      const parts = lead.ownerName.trim().split(/\s+/);
+    const nameSource = (lead.ownerName || lead.sellerName || "").trim();
+    if (nameSource) {
+      const parts = nameSource.split(/\s+/);
       if (parts.length >= 2) { firstName = parts[0]!; lastName = parts.slice(1).join(" "); }
       else { lastName = parts[0]!; }
     }

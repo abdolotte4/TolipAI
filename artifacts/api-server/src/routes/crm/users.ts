@@ -49,7 +49,8 @@ router.get("/", crmAuth, async (req, res) => {
     }
     res.json(users.map(u => formatUser(u, ownerUserId)));
   } catch (err) {
-    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
+    logger.error(err, "GET /crm/users error");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

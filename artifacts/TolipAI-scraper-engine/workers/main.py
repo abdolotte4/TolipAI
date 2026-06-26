@@ -1898,14 +1898,18 @@ async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
                         addr_el = item.select_one("[class*='W4Efsd']:last-child")
                         rating_el = item.select_one("[class*='MW4etd']")
                         cat_el = item.select_one("[class*='W4Efsd']:first-child [class*='uEubGf']")
+                        # Attempt to extract phone/website if available in list view
+                        phone_el = item.select_one("[class*='UsykUr'], [aria-label*='Phone']")
+                        website_el = item.select_one("a[aria-label*='Website'], a[data-value*='Website']")
+
                         if name_el:
                             results.append(
                                 {
                                     "name": name_el.get_text(strip=True),
                                     "category": cat_el.get_text(strip=True) if cat_el else "",
                                     "address": addr_el.get_text(strip=True)[:120] if addr_el else "",
-                                    "phone": "",
-                                    "website": "",
+                                    "phone": phone_el.get_text(strip=True) if phone_el else "",
+                                    "website": website_el.get("href") if website_el else "",
                                     "rating": rating_el.get_text(strip=True) if rating_el else "",
                                     "reviews": "",
                                     "keyword": keyword,
@@ -1944,13 +1948,15 @@ async def google_maps_scrape(req: GoogleMapsRequest) -> Dict[str, Any]:
                             for place in data.get("results") or []:
                                 if len(results) >= limit:
                                     break
+                                # If we want phone/website from Places API, we often need a separate Details call.
+                                # However, for efficiency, we first check if they are present in textsearch results.
                                 results.append(
                                     {
                                         "name": place.get("name", ""),
                                         "category": ", ".join((place.get("types") or [])[:3]),
                                         "address": place.get("formatted_address", ""),
-                                        "phone": "",
-                                        "website": "",
+                                        "phone": place.get("formatted_phone_number", ""),
+                                        "website": place.get("website", ""),
                                         "rating": place.get("rating", ""),
                                         "reviews": place.get("user_ratings_total", ""),
                                         "keyword": keyword,
@@ -2142,7 +2148,11 @@ async def nar_directory_scrape(req: NARDirectoryRequest) -> Dict[str, Any]:
 
     if not results:
         log.info("NAR directory returned 0 members for state=%s city=%s — all endpoint patterns tried", state, city)
-        return {"count": 0, "results": [], "message": f"No members found for {city}, {state} — NAR API may have changed patterns"}
+        return {
+            "count": 0, 
+            "results": [], 
+            "message": f"No members found for {city}, {state} — NAR API may have changed patterns or rate-limited our current IP. Try a different city or check back later."
+        }
 
     return {"count": len(results), "results": results}
 

@@ -900,8 +900,8 @@ export default function LeadDetail() {
     setFormData((f: any) => ({ ...f, [key]: val }));
   };
 
-  const handleUpdate = (e?: React.FormEvent<HTMLFormElement>) => {
-    if (e) e.preventDefault();
+  const handleUpdate = (e?: React.FormEvent<HTMLFormElement> | React.MouseEvent) => {
+    if (e && "preventDefault" in e) e.preventDefault();
     updateMutation.mutate(
       { id: leadId, data: formData },
       {

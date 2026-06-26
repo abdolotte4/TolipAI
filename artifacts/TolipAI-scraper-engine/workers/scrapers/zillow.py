@@ -159,7 +159,13 @@ async def fetch_recently_sold(
     try:
         html = await fetch_html(path, render=True)
     except Exception as e:  # noqa: BLE001
-        log.warning("Zillow fetch failed: %s", e)
+        msg = str(e)
+        if "401" in msg or "403" in msg or "429" in msg or "limit" in msg.lower():
+            log.warning("Zillow fetch blocked or limit reached: %s", msg)
+            # Return a special structure that indicating degradation if needed, 
+            # or just log clearly. The orchestrator should handle [] gracefully.
+        else:
+            log.warning("Zillow fetch failed: %s", e)
         return []
 
     data = _parse_next_data(html)
@@ -220,7 +226,11 @@ async def fetch_active_listings(
     try:
         html = await fetch_html(path, render=True)
     except Exception as e:
-        log.warning("Zillow active listings fetch failed: %s", e)
+        msg = str(e)
+        if "401" in msg or "403" in msg or "429" in msg or "limit" in msg.lower():
+            log.warning("Zillow active listings blocked or limit reached: %s", msg)
+        else:
+            log.warning("Zillow active listings fetch failed: %s", e)
         return []
     data = _parse_next_data(html)
     if not data:
@@ -297,7 +307,11 @@ async def fetch_fsbo(
     try:
         html = await fetch_html(path, render=True)
     except Exception as e:  # noqa: BLE001
-        log.warning("Zillow FSBO fetch failed: %s", e)
+        msg = str(e)
+        if "401" in msg or "403" in msg or "429" in msg or "limit" in msg.lower():
+            log.warning("Zillow FSBO blocked or limit reached: %s", msg)
+        else:
+            log.warning("Zillow FSBO fetch failed: %s", e)
         return []
     data = _parse_next_data(html)
     if not data:

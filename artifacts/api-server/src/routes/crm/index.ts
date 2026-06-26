@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { crmSubmissionLinks, crmLeads, crmCampaigns } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 
 const _submitRlMap = new Map<string, { count: number; resetAt: number }>();
@@ -140,7 +140,7 @@ router.post("/crm/public/submit/:token", publicSubmitRateLimit, async (req, res)
     await db.update(crmSubmissionLinks).set({ submissionsCount: sql`${crmSubmissionLinks.submissionsCount} + 1` }).where(eq(crmSubmissionLinks.id, link.id));
     res.status(201).json({ success: true, message: "Thank you! Your property has been submitted. We will be in touch soon." });
   } catch (err) {
-    req.log.error({ err }, "Public submission error");
+    logger.error({ err }, "Public submission error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

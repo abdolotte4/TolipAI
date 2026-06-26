@@ -117,14 +117,16 @@ router.get("/dashboard", crmAuth, async (req, res) => {
       .map(s => ({ status: s, count: funnelMap[s] as number }));
 
     const totals = (totalsResult.rows[0] ?? {}) as any;
-    const closeRate = totals.total > 0
-      ? Math.round((totals.closed / totals.total) * 100)
+    const closed = Number(totals.closed) || 0;
+    const totalCount = Number(totals.total) || 0;
+    const closeRate = totalCount > 0
+      ? Math.round((closed / totalCount) * 100)
       : 0;
 
     res.json({
       summary: {
-        totalLeads: Number(totals.total) || 0,
-        closedLeads: Number(totals.closed) || 0,
+        totalLeads: totalCount,
+        closedLeads: closed,
         underContract: Number(totals.under_contract) || 0,
         newLeads: Number(totals.new_count) || 0,
         closeRate,

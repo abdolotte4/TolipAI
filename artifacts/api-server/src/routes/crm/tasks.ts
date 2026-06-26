@@ -46,7 +46,8 @@ router.get("/", crmAuth, async (req, res) => {
 
     res.json(tasks.map(formatTask));
   } catch (err) {
-    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
+    logger.error(err, "GET /crm/tasks error");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -81,7 +82,8 @@ router.post("/", crmAuth, async (req, res) => {
 
     res.status(201).json(formatTask(full));
   } catch (err) {
-    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
+    logger.error(err, "POST /crm/tasks error");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -101,14 +103,15 @@ router.patch("/:id", crmAuth, async (req, res) => {
     if (!task) { res.status(404).json({ error: "Task not found" }); return; }
 
     const [full] = await db.select({
-      id: crmTasks.id, campaignId: crmTasks.campaignId, leadId: crmTasks.leadId, assignedTo: crmTasks.assignedTo,
+      id: crmTasks.id, campaignId: crmCampaigns.id, leadId: crmLeads.id, assignedTo: crmUsers.id,
       title: crmTasks.title, description: crmTasks.description, dueDate: crmTasks.dueDate,
       status: crmTasks.status, createdAt: crmTasks.createdAt, assignedToName: crmUsers.name, leadAddress: crmLeads.address,
     }).from(crmTasks).leftJoin(crmUsers, eq(crmTasks.assignedTo, crmUsers.id)).leftJoin(crmLeads, eq(crmTasks.leadId, crmLeads.id)).where(eq(crmTasks.id, task.id));
 
     res.json(formatTask(full));
   } catch (err) {
-    res.status(500).json({ error: (err instanceof Error ? err.message : String(err)) || "Internal server error" });
+    logger.error(err, "PATCH /crm/tasks error");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

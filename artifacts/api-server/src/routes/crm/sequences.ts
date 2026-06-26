@@ -36,7 +36,7 @@ router.get("/", crmAuth, async (req, res) => {
     const sequences = await db
       .select()
       .from(crmEmailSequences)
-      .where(user.campaignId ? eq(crmEmailSequences.campaignId, user.campaignId) : undefined)
+      .where(user.role !== "super_admin" && user.campaignId ? eq(crmEmailSequences.campaignId, user.campaignId) : undefined)
       .orderBy(desc(crmEmailSequences.createdAt));
 
     const withSteps = await Promise.all(sequences.map(async (seq) => {

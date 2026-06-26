@@ -191,12 +191,10 @@ async def _do_login(page, email: str | None = None, password: str | None = None)
                 page.remove_listener("response", _on_response)
             except Exception:
                 pass
-            raise RuntimeError(
-                f"Propelio: bot-block page could not be bypassed "
-                f"(title={title!r}, body={body_text[:100]!r}). "
-                f"Screenshot: {_ss_nav}. "
-                f"Set CAPTCHA_API_KEY (2Captcha) for paid bypass."
-            )
+            log.warning("Propelio: CAPTCHA / bot-block detected and could not be bypassed gracefully.")
+            # Graceful degradation: return rather than raising a hard RuntimeError that crashes the worker
+            # The calling code should handle the lack of authenticated session.
+            return
         log.info("Propelio: bot-block page resolved — continuing login")
 
     # If we were redirected away from /login (already authenticated), we're done

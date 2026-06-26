@@ -69,7 +69,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
       },
     });
   } catch (err) {
-    req.log.error({ err }, "CRM login error");
+    logger.error({ err }, "CRM login error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
