@@ -43,7 +43,7 @@ function useCountUp(end: number, duration: number = 2, prefix: string = "", suff
 
 export function PerformanceDashboard() {
   const propAnalyzed = useCountUp(1250, 2);
-  const prospectContacts = useCountUp(900, 2);
+  const pipelineLeads = useCountUp(900, 2);
   const transactionsClosed = useCountUp(45, 2);
   const revenueGenerated = useCountUp(493, 2, "$", "K");
 
@@ -61,7 +61,7 @@ export function PerformanceDashboard() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display text-white">Client Performance Analytics</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Real results from real estate professionals partnering with Tolip Group LLC's managed infrastructure
+            Real results from real estate professionals partnering with Tolip Group LLC's managed CRM infrastructure
           </p>
         </motion.div>
 
@@ -89,11 +89,11 @@ export function PerformanceDashboard() {
               transition={{ delay: 0.2 }}
               className="bg-[#0f1728] p-6 rounded-xl border border-border/50"
             >
-              <h4 className="text-muted-foreground text-sm font-medium mb-2">Prospect Contacts</h4>
-              <div ref={prospectContacts.ref} className="text-4xl font-bold text-white mb-1 font-display">
-                {prospectContacts.value} <span className="text-lg text-muted-foreground font-normal">(72%)</span>
+              <h4 className="text-muted-foreground text-sm font-medium mb-2">Pipeline Leads Managed</h4>
+              <div ref={pipelineLeads.ref} className="text-4xl font-bold text-white mb-1 font-display">
+                {pipelineLeads.value} <span className="text-lg text-muted-foreground font-normal">(72%)</span>
               </div>
-              <p className="text-xs text-[#10b981]">Engagement Rate</p>
+              <p className="text-xs text-[#10b981]">Pipeline Engagement Rate</p>
             </motion.div>
 
             <motion.div 
@@ -130,19 +130,19 @@ export function PerformanceDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
             {/* Funnel */}
             <div className="bg-[#0f1728] p-6 rounded-xl border border-border/50">
-              <h3 className="text-lg font-semibold text-white mb-6">Conversion Funnel</h3>
+              <h3 className="text-lg font-semibold text-white mb-6">Deal Pipeline Funnel</h3>
               <div className="space-y-3 flex flex-col items-center">
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "100%" }} viewport={{ once: true }} transition={{ duration: 0.8 }}
                   className="bg-[#1e3a8a] text-white py-2 px-4 rounded text-center text-sm font-medium"
                 >
-                  Prospects Analyzed: 1,250
+                  Properties Analyzed: 1,250
                 </motion.div>
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "80%" }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.1 }}
                   className="bg-[#0f766e] text-white py-2 px-4 rounded text-center text-sm font-medium"
                 >
-                  Contacted: 900
+                  Pipeline Leads: 900
                 </motion.div>
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "50%" }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.2 }}
@@ -178,7 +178,6 @@ export function PerformanceDashboard() {
               </div>
               
               <div className="h-48 flex items-end justify-between gap-2 mt-auto relative">
-                {/* SVG Trend Line */}
                 <svg className="absolute inset-0 h-full w-full pointer-events-none" preserveAspectRatio="none">
                   <motion.path 
                     initial={{ pathLength: 0 }}
@@ -215,9 +214,9 @@ export function PerformanceDashboard() {
               <h3 className="text-lg font-semibold text-white mb-6">Operational Improvements</h3>
               <ul className="space-y-4">
                 {[
-                  "Automated Follow-Up System: 2x engagement rate improvement",
+                  "Automated Follow-Up Workflows: 2x pipeline engagement improvement",
                   "Accelerated Close Cycle: From 45 days to 28 days average",
-                  "Targeted Market Segmentation: Focus on high-conversion zip codes"
+                  "CRM Pipeline Organization: Full deal visibility across all stages"
                 ].map((item, i) => (
                   <motion.li 
                     key={i}

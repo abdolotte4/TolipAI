@@ -6,19 +6,19 @@ export function Testimonials() {
     {
       name: "Michael Torres",
       role: "REAL ESTATE INVESTOR",
-      text: "TolipAI transformed our acquisition operations completely. Their data engineering services delivered verified property owner contacts with accuracy rates we had never seen before. Our transaction volume increased by 200% within the first quarter.",
+      text: "TolipAI transformed how we manage our deal pipeline. The CRM organization and workflow automation gave our team complete visibility across every stage. Our deal tracking and reporting clarity improved dramatically within the first month.",
       featured: false
     },
     {
       name: "Sarah Chen",
       role: "PORTFOLIO MANAGER",
-      text: "Outstanding operational infrastructure. Within weeks of partnering with TolipAI, our acquisition pipeline was producing consistent, qualified opportunities. Their managed outreach team operates with exceptional professionalism and compliance standards. The ROI has been remarkable.",
+      text: "Outstanding CRM platform. Within weeks of onboarding with TolipAI, our pipeline was organized, follow-up tasks were automated, and our team stopped losing deals to administrative gaps. The efficiency gains have been remarkable.",
       featured: true
     },
     {
       name: "David Williams",
       role: "REAL ESTATE ACQUISITIONS DIRECTOR",
-      text: "The TolipAI team has been instrumental in scaling our operations. Their technical CRM infrastructure and data engineering capabilities are best-in-class. We've achieved results that exceeded our most optimistic projections. Highly recommend.",
+      text: "The TolipAI team helped us set up CRM workflows that actually match how we operate. The ARV calculator and comps analysis tools save our analysts hours every week. Our pipeline management has never been more organized.",
       featured: false
     }
   ];
@@ -35,7 +35,7 @@ export function Testimonials() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Client Testimonials</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Don't just take our word for it. Hear what industry leaders are saying about Tolip Group LLC.
+            Don't just take our word for it. Hear what real estate professionals are saying about TolipAI.
           </p>
         </motion.div>
 

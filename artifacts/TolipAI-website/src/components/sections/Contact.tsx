@@ -52,7 +52,7 @@ export function Contact() {
         });
         setTimeout(() => setIsSuccess(false), 5000);
       },
-      onError: (error) => {
+      onError: () => {
         toast({
           variant: "destructive",
           title: "Submission Failed",
@@ -79,7 +79,7 @@ export function Contact() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Schedule a Consultation</h2>
             <div className="w-20 h-1 bg-primary rounded-full mb-8" />
             <p className="text-lg text-muted-foreground mb-12">
-              Ready to scale your acquisition operations? Contact us to discuss how our managed infrastructure can align with your operational goals.
+              Ready to streamline your CRM workflows? Contact us to discuss how TolipAI's managed infrastructure can align with your operational goals.
             </p>
 
             <div className="space-y-8">
@@ -176,9 +176,11 @@ export function Contact() {
                     className="flex h-10 w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                   >
                     <option value="">Select a service...</option>
-                    <option value="data-engineering">Data Engineering</option>
-                    <option value="crm-infrastructure">Technical CRM Infrastructure</option>
-                    <option value="full-suite">Full Suite Managed Infrastructure</option>
+                    <option value="crm-setup">CRM Setup & Pipeline Organization</option>
+                    <option value="workflow-automation">Workflow Automation Configuration</option>
+                    <option value="arv-comps">ARV Calculator & Comps Analysis Tools</option>
+                    <option value="admin-operations">Administrative Operations Support</option>
+                    <option value="full-suite">Full Suite Platform</option>
                   </select>
                 </div>
 
@@ -186,7 +188,7 @@ export function Contact() {
                   <label className="text-sm font-medium text-foreground">Message *</label>
                   <Textarea 
                     {...form.register("message")} 
-                    placeholder="Tell us about your acquisition operational needs..."
+                    placeholder="Tell us about your CRM and workflow needs..."
                     className="min-h-[120px] bg-secondary border-border focus:border-primary"
                   />
                   {form.formState.errors.message && (

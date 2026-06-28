@@ -10,20 +10,40 @@ export function Footer() {
               TOLIPAI<span className="text-primary">.</span>
             </span>
             <p className="mt-4 text-muted-foreground max-w-sm">
-              Workflow automation and CRM infrastructure for real estate professionals. We help businesses streamline operations, manage property pipelines, and analyze data with compliance-focused systems.
+              CRM software and workflow automation for real estate professionals. TolipAI helps teams manage lead pipelines, ARV calculations, comps analysis, and operational tasks — all in one platform.
             </p>
           </div>
           
           <div>
-            <h4 className="font-semibold text-foreground mb-4">Navigation</h4>
+            <h4 className="font-semibold text-foreground mb-4">Platform</h4>
             <ul className="space-y-2">
-              {['Services', 'Methodology', 'Case Studies', 'About'].map((item) => (
-                <li key={item}>
-                  <a href={`#${item.toLowerCase().replace(' ', '-')}`} className="text-muted-foreground hover:text-primary transition-colors">
-                    {item}
+              {[
+                { label: 'Services', href: '#services' },
+                { label: 'Methodology', href: '#methodology' },
+                { label: 'Case Studies', href: '#case-studies' },
+                { label: 'About', href: '#about' },
+              ].map((item) => (
+                <li key={item.label}>
+                  <a href={item.href} className="text-muted-foreground hover:text-primary transition-colors">
+                    {item.label}
                   </a>
                 </li>
               ))}
+              <li>
+                <Link href="/pricing" className="text-muted-foreground hover:text-primary transition-colors">
+                  Pricing
+                </Link>
+              </li>
+              <li>
+                <Link href="/blog" className="text-muted-foreground hover:text-primary transition-colors">
+                  Blog
+                </Link>
+              </li>
+              <li>
+                <Link href="/docs" className="text-muted-foreground hover:text-primary transition-colors">
+                  Help Docs
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -49,6 +69,11 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
+                  <Link href="/compliance" className="text-muted-foreground hover:text-primary transition-colors text-sm">
+                    Compliance
+                  </Link>
+                </li>
+                <li>
                   <Link href="/mission-vision-values" className="text-muted-foreground hover:text-primary transition-colors text-sm">
                     Mission, Vision &amp; Values
                   </Link>
@@ -59,7 +84,7 @@ export function Footer() {
         </div>
 
         <div className="pt-8 border-t border-border/50 flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} Tolip Group LLC. All rights reserved.</p>
+          <p>© 2026 Tolip Group LLC. TolipAI is a brand operated by Tolip Group LLC. All rights reserved.</p>
           <p className="mt-2 md:mt-0 text-center md:text-right">
             Wyoming Limited Liability Company <br className="md:hidden" />
             <span className="hidden md:inline"> | </span>

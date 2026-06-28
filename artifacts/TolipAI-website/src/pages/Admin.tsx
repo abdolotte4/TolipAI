@@ -171,9 +171,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   useEffect(() => { if (tab === "subscribers") fetchStripeSubscriptions(); }, [tab, fetchStripeSubscriptions]);
 
   const serviceLabels: Record<string, string> = {
-    "data-engineering": "Data Engineering",
-    "managed-outreach": "Managed Outreach",
-    "crm-infrastructure": "Technical CRM",
+    "data-engineering": "Property Research",
+    "managed-outreach": "Pipeline Workflows",
+    "crm-infrastructure": "CRM Infrastructure",
+    "crm-setup": "CRM Setup",
+    "workflow-automation": "Workflow Automation",
+    "arv-comps": "ARV & Comps Tools",
+    "admin-operations": "Admin Operations",
     "full-suite": "Full Suite",
   };
 

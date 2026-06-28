@@ -25,16 +25,22 @@ export function Navbar() {
 
   const scrollTo = (href: string) => {
     setMobileMenuOpen(false);
-    const element = document.querySelector(href);
-    if (element) element.scrollIntoView({ behavior: "smooth" });
+    if (href.startsWith("#")) {
+      if (window.location.pathname !== "/") {
+        window.location.href = "/" + href;
+        return;
+      }
+      const element = document.querySelector(href);
+      if (element) element.scrollIntoView({ behavior: "smooth" });
+    }
   };
 
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? "bg-background/80 backdrop-blur-md border-b border-border shadow-lg shadow-black/20 py-3" : "bg-transparent py-5"}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
 
-        {/* Logo — flex-shrink-0 prevents it from being squashed */}
-        <div className="flex items-center gap-2 cursor-pointer group flex-shrink-0" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+        {/* Logo */}
+        <a href="/" className="flex items-center gap-2 cursor-pointer group flex-shrink-0">
           <img
             src={isDark ? "/logo-gold.png" : "/logo.png"}
             alt="TolipAI"
@@ -43,9 +49,9 @@ export function Navbar() {
           <span className="font-display text-xl font-bold tracking-wider text-foreground group-hover:text-primary transition-colors">
             TOLIPAI<span className="text-primary">.</span>
           </span>
-        </div>
+        </a>
 
-        {/* Desktop Nav — only visible at lg+ to avoid overlap */}
+        {/* Desktop Nav */}
         <div className="hidden lg:flex items-center gap-4 xl:gap-5 flex-1 justify-end">
           {navLinks.map((link) => (
             <button key={link.name} onClick={() => scrollTo(link.href)}
@@ -53,14 +59,18 @@ export function Navbar() {
               {link.name}
             </button>
           ))}
-          <a href="/mission-vision-values"
+          <a href="/pricing"
             className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
-            Mission, Vision &amp; Values
+            Pricing
           </a>
-          <button onClick={() => scrollTo("#services")}
-            className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors whitespace-nowrap">
-            Watch Demo
-          </button>
+          <a href="/blog"
+            className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+            Blog
+          </a>
+          <a href="/docs"
+            className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+            Help
+          </a>
           <Button
             onClick={openSubscribe}
             variant="outline"
@@ -78,7 +88,7 @@ export function Navbar() {
           </button>
           <Button onClick={() => scrollTo("#contact")} size="sm"
             className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-5 font-semibold text-xs flex-shrink-0">
-            Consultation
+            Request a Demo
           </Button>
         </div>
 
@@ -107,21 +117,29 @@ export function Navbar() {
                 {link.name}
               </button>
             ))}
+            <a href="/pricing" onClick={() => setMobileMenuOpen(false)}
+              className="text-left text-lg font-medium text-muted-foreground hover:text-foreground py-2 border-b border-border/50">
+              Pricing
+            </a>
+            <a href="/blog" onClick={() => setMobileMenuOpen(false)}
+              className="text-left text-lg font-medium text-muted-foreground hover:text-foreground py-2 border-b border-border/50">
+              Blog
+            </a>
+            <a href="/docs" onClick={() => setMobileMenuOpen(false)}
+              className="text-left text-lg font-medium text-muted-foreground hover:text-foreground py-2 border-b border-border/50">
+              Help Docs
+            </a>
             <a href="/mission-vision-values" onClick={() => setMobileMenuOpen(false)}
               className="text-left text-lg font-medium text-muted-foreground hover:text-foreground py-2 border-b border-border/50">
               Mission, Vision &amp; Values
             </a>
-            <button onClick={() => scrollTo("#services")}
-              className="text-left text-lg font-semibold text-primary hover:text-primary/80 py-2 border-b border-border/50">
-              Watch Demo
-            </button>
             <Button onClick={() => { setMobileMenuOpen(false); openSubscribe(); }}
               variant="outline"
               className="w-full border-primary/50 text-primary hover:bg-primary/10 flex items-center justify-center gap-2">
-              <Zap className="w-4 h-4" /> Subscribe — $1,500/mo
+              <Zap className="w-4 h-4" /> Subscribe
             </Button>
             <Button onClick={() => scrollTo("#contact")} className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-              Schedule a Consultation
+              Request a Demo
             </Button>
           </div>
         </div>

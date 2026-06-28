@@ -11,7 +11,7 @@ export default function Terms() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="mb-12">
           <h1 className="text-4xl font-bold text-foreground mb-3">Terms of Service</h1>
-          <p className="text-muted-foreground text-sm">Effective Date: April 6, 2026 &nbsp;|&nbsp; Last Updated: June 24, 2026</p>
+          <p className="text-muted-foreground text-sm">Effective Date: April 6, 2026 &nbsp;|&nbsp; Last Updated: June 28, 2026</p>
           <div className="mt-6 h-px bg-gradient-to-r from-primary/50 to-transparent" />
         </div>
 
@@ -20,9 +20,10 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">1. Agreement to Terms</h2>
             <p>
-              By subscribing to any service offered by <strong className="text-foreground">Tolip Group LLC</strong> ("TolipAI," "we," "us," or "our"),
-              a Wyoming Limited Liability Company (1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801),
-              you ("Client," "you," or "your") agree to be bound by these Terms of Service ("Terms").
+              These Terms of Service are entered into by and between you and <strong className="text-foreground">Tolip Group LLC</strong>, a Wyoming limited liability company (1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801), operating under the brand name TolipAI ("TolipAI," "Company," "we," "us," or "our").
+            </p>
+            <p className="mt-3">
+              By subscribing to any service offered by Tolip Group LLC, you ("Client," "you," or "your") agree to be bound by these Terms of Service ("Terms").
               If you do not agree to these Terms, do not subscribe or use our services.
             </p>
             <p className="mt-3">
@@ -38,10 +39,10 @@ export default function Terms() {
             </p>
             <ul className="list-disc pl-6 mt-3 space-y-1">
               <li>Workflow Automation Configuration &amp; CRM Setup</li>
-              <li>Pipeline Management &amp; Property Data Analytics</li>
+              <li>Lead Pipeline Management &amp; Property Data Organization</li>
               <li>ARV Calculation &amp; Comps Analysis Tools</li>
               <li>Technical CRM Infrastructure Setup &amp; Maintenance</li>
-              <li>CRM Support &amp; Administrative Pipeline Services</li>
+              <li>Administrative Operations Support &amp; Pipeline Services</li>
               <li>Human-in-the-Loop QA Protocol</li>
               <li>Operational Compliance Framework</li>
               <li>Dedicated Account Management</li>
@@ -50,10 +51,26 @@ export default function Terms() {
             <p className="mt-3">
               The specific scope of services delivered is defined by the subscription plan selected at the time of purchase.
             </p>
+            <p className="mt-3">
+              TolipAI does not provide legal, financial, tax, investment, credit, tenant-screening, employment-screening, or consumer-reporting services.
+            </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">3. Subscription &amp; Billing</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">3. Acceptable Use</h2>
+            <p>
+              Users may not use TolipAI services for unlawful robocalling, spam, spoofing, impersonation, harassment, deceptive marketing, or communications without legally required consent.
+            </p>
+            <p className="mt-3">
+              Clients are responsible for ensuring that their use of any communication, CRM, property research, or workflow tools complies with applicable laws, including privacy, consumer protection, Do Not Call, TCPA, CAN-SPAM, and other applicable rules.
+            </p>
+            <p className="mt-3">
+              TolipAI services may not be used for credit eligibility, employment screening, tenant screening, insurance underwriting, consumer reporting, or any purpose regulated under the Fair Credit Reporting Act (FCRA) unless expressly authorized in writing by Tolip Group LLC.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-foreground mb-3">4. Subscription &amp; Billing</h2>
             <p>
               All subscriptions are billed on a recurring monthly basis. By subscribing, you authorize Tolip Group LLC to automatically charge
               your payment method on file each billing period until you cancel.
@@ -72,10 +89,9 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">4. Non-Refundable Policy</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">5. Non-Refundable Policy</h2>
             <div className="bg-red-50 dark:bg-red-800 border border-red-200 dark:border-red-700 rounded-xl p-5">
-  <p className="font-semibold text-red-800 dark:text-red-100 mb-2">⚠ All payments are non-refundable.</p>
-
+              <p className="font-semibold text-red-800 dark:text-red-100 mb-2">⚠ All payments are non-refundable.</p>
               <p>
                 Due to the immediate deployment of managed services, dedicated resources, and proprietary CRM infrastructure
                 upon subscription activation, <strong className="text-foreground">all subscription fees are non-refundable</strong> once a billing period has commenced.
@@ -91,7 +107,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">5. Cancellation Policy</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">6. Cancellation Policy</h2>
 
             <p className="font-semibold text-foreground mb-2">Cancelling Future Billing</p>
             <p>
@@ -115,8 +131,7 @@ export default function Terms() {
             </p>
 
             <div className="bg-amber-50 dark:bg-amber-800 border border-amber-200 dark:border-amber-700 rounded-xl p-5 mt-6">
-  <p className="font-semibold text-amber-800 dark:text-amber-100 mb-2">3-Day Billing Inquiry Window</p>
-
+              <p className="font-semibold text-amber-800 dark:text-amber-100 mb-2">3-Day Billing Inquiry Window</p>
               <p>
                 Service is non-refundable. For billing inquiries or technical support, please contact us{" "}
                 <strong className="text-foreground">by email only</strong> at{" "}
@@ -137,7 +152,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">6. Dispute Resolution</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">7. Dispute Resolution</h2>
             <p>
               Before initiating any chargeback or payment dispute with your card issuer or bank, you agree to first contact
               Tolip Group LLC directly at <span className="text-primary">info@tolipai.com</span> to attempt resolution.
@@ -147,7 +162,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">7. Client Responsibilities</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">8. Client Responsibilities</h2>
             <p>You agree to:</p>
             <ul className="list-disc pl-6 mt-3 space-y-1">
               <li>Provide accurate and complete information at the time of subscription</li>
@@ -156,22 +171,23 @@ export default function Terms() {
               <li>Comply with all applicable laws in connection with your use of our services</li>
               <li>Not misuse or attempt to reverse-engineer any proprietary systems or data provided</li>
               <li>Use the platform and all data outputs only for lawful business purposes consistent with applicable data protection and privacy regulations</li>
+              <li>Ensure that all imported contacts, records, property information, and communications are lawfully sourced and used for permitted business purposes</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">8. Compliance</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">9. Compliance</h2>
             <p>
               TolipAI's platform and workflows are designed with compliance as a foundational requirement. Clients are responsible
               for ensuring their use of any data, automation outputs, or CRM records complies with all applicable federal, state,
-              and local laws — including but not limited to data protection regulations, real estate licensing requirements, and
-              applicable consumer protection laws. Tolip Group LLC does not provide legal advice; clients should consult qualified
-              legal counsel for compliance guidance specific to their operations.
+              and local laws — including but not limited to privacy, consumer protection, Do Not Call, TCPA, CAN-SPAM, data protection regulations,
+              real estate licensing requirements, and applicable consumer protection laws. Tolip Group LLC does not provide legal advice;
+              clients should consult qualified legal counsel for compliance guidance specific to their operations.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">9. Limitation of Liability</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">10. Limitation of Liability</h2>
             <p>
               To the maximum extent permitted by law, Tolip Group LLC shall not be liable for any indirect, incidental, special,
               consequential, or punitive damages, including but not limited to lost profits, lost revenue, lost business opportunities,
@@ -188,7 +204,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">10. Modifications to Terms</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">11. Modifications to Terms</h2>
             <p>
               Tolip Group LLC reserves the right to modify these Terms at any time. Changes will be posted on this page with an updated
               effective date. Your continued use of our services after any change constitutes acceptance of the revised Terms.
@@ -197,7 +213,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">11. Governing Law</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">12. Governing Law</h2>
             <p>
               These Terms shall be governed by and construed in accordance with the laws of the State of Wyoming,
               without regard to its conflict of law provisions. Any disputes shall be resolved in the courts of Sheridan County, Wyoming.
@@ -205,7 +221,7 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">12. Contact</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">13. Contact</h2>
             <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
               <p className="font-semibold text-foreground mb-3">Tolip Group LLC</p>
               <p>1309 Coffeen Avenue STE 1200, Sheridan, Wyoming 82801</p>

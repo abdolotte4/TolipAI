@@ -15,14 +15,14 @@ export function Services() {
 
   const services = [
     {
-      title: "CRM Support & Pipeline Management",
+      title: "Property Research & CRM Data Organization",
       icon: <Users className="w-8 h-8 text-primary" />,
-      description: "Dedicated CRM support specialists handling data entry, record management, pipeline organization, task tracking, and administrative operations inside TolipAI CRM. Our team keeps your property pipeline accurate, organized, and actionable — so your team stays focused on underwriting and closing, not data administration."
+      description: "Tools to organize client-provided records, property information, and CRM data for permitted business purposes. Our dedicated CRM support specialists handle data entry, record management, pipeline organization, task tracking, and administrative operations inside TolipAI CRM — so your team stays focused on underwriting and closing."
     },
     {
-      title: "Workflow Automation & Client Communication Tools",
+      title: "Lead Pipeline & Client Communication Workflows",
       icon: <MessageSquare className="w-8 h-8 text-primary" />,
-      description: "End-to-end CRM automation configuration and client communication workflow setup for real estate businesses. We design and implement automated task sequences, follow-up workflows, notification systems, and pipeline stage triggers inside TolipAI CRM — giving your team full visibility and operational consistency across every deal."
+      description: "Lead pipeline management, appointment coordination, CRM organization, and client-approved follow-up workflows with appropriate consent and opt-out controls. We design and implement automated task sequences, notification systems, and pipeline stage triggers inside TolipAI CRM — giving your team full visibility and operational consistency across every deal."
     },
     {
       title: "ARV Calculation & Comps Analysis",
@@ -30,9 +30,9 @@ export function Services() {
       description: "Accurate After Repair Value (ARV) calculation and real estate comps analysis using live property data. TolipAI CRM's built-in ARV calculator and MAO calculator automatically pull comparable sales, adjust for property differences, and compute your Maximum Allowable Offer — giving real estate professionals data-driven numbers for every deal."
     },
     {
-      title: "Technical CRM Infrastructure",
+      title: "Administrative Operations Support",
       icon: <Settings className="w-8 h-8 text-primary" />,
-      description: "TolipAI CRM is a purpose-built real estate CRM for investors and real estate professionals. Features include lead pipeline management, ARV (After Repair Value) calculator, MAO (Maximum Allowable Offer) calculator, real estate comps analysis, task tracking, and team collaboration. Manage all high-propensity property segments from first contact to closed deal — all in one CRM."
+      description: "Administrative support for CRM management, data entry, appointment coordination, reporting, and workflow organization. TolipAI CRM is a purpose-built real estate CRM for professionals — featuring lead pipeline management, ARV calculator, MAO calculator, comps analysis, task tracking, and team collaboration. Manage all property segments from first contact to closed deal — all in one platform."
     }
   ];
 

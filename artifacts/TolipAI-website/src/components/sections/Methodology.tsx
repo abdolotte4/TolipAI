@@ -32,7 +32,7 @@ export function Methodology() {
               <div>
                 <h3 className="text-2xl font-bold text-foreground mb-3 font-display">Human-in-the-Loop Quality Assurance</h3>
                 <p className="text-muted-foreground text-lg leading-relaxed">
-                  Every data record and prospect interaction passes through our proprietary quality assurance protocol. Human oversight at every stage of the pipeline ensures precision, compliance, and measurable results.
+                  Every data record and CRM workflow passes through our proprietary quality assurance protocol. Human oversight at every stage of the pipeline ensures precision, compliance, and measurable results.
                 </p>
               </div>
             </div>
@@ -52,7 +52,7 @@ export function Methodology() {
               <div>
                 <h3 className="text-2xl font-bold text-foreground mb-3 font-display">Operational Compliance Framework</h3>
                 <p className="text-muted-foreground text-lg leading-relaxed">
-                  Our operations are built on a foundation of rigorous regulatory adherence. From data sourcing to outreach execution, every workflow is designed to meet and exceed industry compliance standards, protecting your business at every touchpoint.
+                  Our operations are built on a foundation of rigorous regulatory adherence. From data organization to workflow configuration, every process is designed to meet and exceed industry compliance standards, protecting your business at every touchpoint.
                 </p>
               </div>
             </div>

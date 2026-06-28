@@ -1,49 +1,49 @@
 import { motion } from "framer-motion";
-import { Home, AlertTriangle, UserX, DollarSign, Building2, TrendingUp } from "lucide-react";
+import { Home, Building2, UserCheck, BarChart2, FileText, TrendingUp } from "lucide-react";
 
-const leadCategories = [
+const analysisSegments = [
   {
-    icon: <AlertTriangle className="w-7 h-7 text-amber-400" />,
-    title: "Urgent Market Transitions",
-    badge: "High Propensity",
+    icon: <BarChart2 className="w-7 h-7 text-amber-400" />,
+    title: "Active Market Transitions",
+    badge: "Market Analysis",
     description:
-      "Properties tied to owners navigating time-sensitive market transitions. This segment exhibits above-average propensity for transactional activity, making it one of the most responsive datasets for targeted outreach campaigns by real estate professionals.",
+      "Properties in active market transition phases. TolipAI's pipeline tools help real estate professionals track and evaluate these opportunities through CRM workflows and property analysis dashboards.",
     bg: "bg-amber-500/10 border-amber-500/20",
     badgeClass: "bg-amber-500/15 text-amber-400 border-amber-400/30",
   },
   {
     icon: <Building2 className="w-7 h-7 text-red-400" />,
-    title: "Institutional & REO Data",
+    title: "Institutional & REO Properties",
     badge: "REO / Bank Assets",
     description:
-      "Properties moving through institutional disposition cycles — including REO inventory and lender-driven sale pipelines. This dataset surfaces below-market acquisition opportunities priced through institutional processes, ideal for real estate professionals sourcing off-market inventory.",
+      "Properties moving through institutional disposition cycles, including REO inventory. TolipAI CRM helps real estate professionals organize and track these opportunities through the deal pipeline from research to close.",
     bg: "bg-red-500/10 border-red-500/20",
     badgeClass: "bg-red-500/15 text-red-400 border-red-400/30",
   },
   {
-    icon: <UserX className="w-7 h-7 text-violet-400" />,
+    icon: <UserCheck className="w-7 h-7 text-violet-400" />,
     title: "Non-Resident Property Owners",
     badge: "Non-Occupant",
     description:
-      "Owners of investment properties residing outside the subject property — including portfolio holders, out-of-state investors, and landlords. A core high-propensity data segment for pipeline management and property opportunity tracking.",
+      "Investment properties owned by non-occupant holders, including portfolio owners and out-of-state investors. A core segment for CRM pipeline management and property opportunity tracking inside TolipAI.",
     bg: "bg-violet-500/10 border-violet-500/20",
     badgeClass: "bg-violet-500/15 text-violet-400 border-violet-400/30",
   },
   {
-    icon: <DollarSign className="w-7 h-7 text-orange-400" />,
-    title: "Tax-Advantaged Opportunities",
-    badge: "Fiscal Pressure Segment",
+    icon: <FileText className="w-7 h-7 text-orange-400" />,
+    title: "Property Analysis & Market Research",
+    badge: "Public Records",
     description:
-      "Property records tied to outstanding public tax obligations, sourced directly from county tax authority data. This segment identifies assets with elevated transactional propensity — a reliable data source for real estate professionals building acquisition pipelines.",
+      "Property analysis tools for evaluating real estate opportunities using public property records. TolipAI supports real estate professionals in organizing and researching property data for evaluation purposes.",
     bg: "bg-orange-500/10 border-orange-500/20",
     badgeClass: "bg-orange-500/15 text-orange-400 border-orange-400/30",
   },
   {
     icon: <Home className="w-7 h-7 text-sky-400" />,
-    title: "Unutilized Property Assets",
-    badge: "Unoccupied Inventory",
+    title: "Unoccupied Property Assets",
+    badge: "Vacant Inventory",
     description:
-      "A curated dataset of unoccupied properties identified through utility and occupancy data signals. These assets represent untapped inventory — prime candidates for wholesale, fix-and-flip, and rental acquisition strategies tracked inside TolipAI CRM.",
+      "Unoccupied properties identified through public data sources. These assets represent untapped inventory tracked inside TolipAI CRM for real estate professionals evaluating acquisition and investment strategies.",
     bg: "bg-sky-500/10 border-sky-500/20",
     badgeClass: "bg-sky-500/15 text-sky-400 border-sky-400/30",
   },
@@ -52,7 +52,7 @@ const leadCategories = [
     title: "Equity-Rich Property Owners",
     badge: "Low Leverage",
     description:
-      "Owners with significant equity positions or free-and-clear properties. This data segment identifies low-leverage owners with maximum transactional flexibility — ideal for real estate professionals exploring creative acquisition structures.",
+      "Owners with significant equity positions or clear-title properties. This segment offers flexible transaction structures and is tracked inside TolipAI CRM for real estate professionals exploring creative deal structures.",
     bg: "bg-emerald-500/10 border-emerald-500/20",
     badgeClass: "bg-emerald-500/15 text-emerald-400 border-emerald-400/30",
   },
@@ -69,19 +69,19 @@ export function LeadTypes() {
           className="text-center max-w-3xl mx-auto mb-16"
         >
           <span className="inline-block py-1 px-3 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold tracking-wider uppercase mb-4">
-            Property Data Segments
+            Property Analysis Segments
           </span>
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">
-            High-Propensity Data Segments
+            Property Analysis Segments
           </h2>
           <div className="w-20 h-1 bg-primary mx-auto mb-6 rounded-full" />
           <p className="text-muted-foreground text-lg">
-            TolipAI specializes in property data analytics and CRM pipeline management for high-growth real estate firms. We organize curated property datasets, automate pipeline workflows, and track every opportunity inside TolipAI CRM.
+            TolipAI specializes in property analysis tools and CRM pipeline management for real estate professionals. We organize property research data, automate pipeline workflows, and track every opportunity inside TolipAI CRM.
           </p>
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {leadCategories.map((cat, i) => (
+          {analysisSegments.map((cat, i) => (
             <motion.div
               key={cat.title}
               initial={{ opacity: 0, y: 24 }}
@@ -112,7 +112,7 @@ export function LeadTypes() {
           className="mt-12 p-6 rounded-2xl border border-primary/20 bg-primary/5 text-center max-w-3xl mx-auto"
         >
           <p className="text-muted-foreground text-sm md:text-base">
-            <span className="text-foreground font-semibold">TolipAI's data platform</span> identifies and organizes all six segments with verified property analytics — then loads them directly into <span className="text-primary font-semibold">TolipAI CRM</span> for your team to action.{" "}
+            <span className="text-foreground font-semibold">TolipAI's analytics platform</span> supports property research and organizes all six segments with verified property data — then loads them directly into <span className="text-primary font-semibold">TolipAI CRM</span> for your team to action.{" "}
             <a href="#contact" className="text-primary hover:underline font-medium">Get started →</a>
           </p>
         </motion.div>

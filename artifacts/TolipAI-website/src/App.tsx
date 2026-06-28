@@ -14,6 +14,10 @@ const CheckoutSuccess    = lazy(() => import("@/pages/CheckoutSuccess"));
 const MissionVisionValues = lazy(() => import("@/pages/MissionVisionValues"));
 const Demo               = lazy(() => import("@/pages/Demo"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
+const Pricing            = lazy(() => import("@/pages/Pricing"));
+const Docs               = lazy(() => import("@/pages/Docs"));
+const Blog               = lazy(() => import("@/pages/Blog"));
+const Compliance         = lazy(() => import("@/pages/Compliance"));
 
 const WP_PARAMS = ["p", "page_id", "cat", "tag", "author", "feed", "s", "attachment_id"];
 const searchParams = new URLSearchParams(window.location.search);
@@ -59,6 +63,12 @@ function Router() {
         <Route path="/checkout-success" component={CheckoutSuccess} />
         <Route path="/mission-vision-values" component={MissionVisionValues} />
         <Route path="/demo" component={Demo} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/docs" component={Docs} />
+        <Route path="/help" component={Docs} />
+        <Route path="/blog" component={Blog} />
+        <Route path="/compliance" component={Compliance} />
+        <Route path="/acceptable-use" component={Compliance} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

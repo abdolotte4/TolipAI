@@ -4,18 +4,18 @@ import { TrendingUp, Rocket, AlertCircle, Lightbulb, Trophy } from "lucide-react
 export function CaseStudies() {
   const studies = [
     {
-      title: "From Struggling to Closing Deals",
+      title: "From Scattered Data to Organized Pipeline",
       icon: <TrendingUp className="w-6 h-6 text-primary-foreground" />,
-      challenge: "A real estate investor was unable to generate consistent acquisition opportunities with their previous data provider due to poor data quality. The records consisted mainly of unverified contacts with low intent scores rather than qualified property owners ready to transact.",
-      solution: "We conducted a comprehensive data audit and rebuilt their acquisition pipeline from scratch. By identifying the right data sources and implementing our data verification protocols, we developed a customized data strategy aligned with their market objectives and budget.",
-      results: "Through daily performance monitoring and our Human-in-the-Loop QA process, we dramatically improved data accuracy. Within two weeks, the client began receiving verified, high-intent property owner contacts. They successfully executed their first contract after a sustained period of pipeline struggles."
+      challenge: "A real estate investment team was struggling to track deals across spreadsheets, email threads, and disconnected tools. Their pipeline lacked visibility, follow-up tasks fell through the cracks, and deal reporting was unreliable.",
+      solution: "We onboarded the team onto TolipAI CRM and configured custom pipeline stages, automated follow-up task sequences, and reporting dashboards aligned to their deal workflow. The CRM was set up with their existing records migrated and organized.",
+      results: "Within two weeks, the team had full pipeline visibility and automated follow-up reminders. Deal reporting went from a manual weekly process to real-time dashboards. The team closed their first deal using the structured pipeline within the first month of using TolipAI."
     },
     {
-      title: "Scaling Operations with Quality Infrastructure",
+      title: "Scaling Operations with CRM Infrastructure",
       icon: <Rocket className="w-6 h-6 text-primary-foreground" />,
-      challenge: "A growing real estate acquisitions group needed to scale their operations rapidly but lacked reliable data infrastructure and managed outreach capabilities. They required consistent, high-quality property data and professional outreach management to meet their ambitious growth targets.",
-      solution: "We implemented a comprehensive data enrichment and data engineering strategy, leveraging advanced analytics to identify and target high-potential properties. Our managed operations team provided full-service outreach management with dedicated account oversight and regular performance reviews.",
-      results: "Within three months, the client experienced a 300% increase in qualified acquisition opportunities and a 150% boost in closed transactions. The consistent flow of verified property data enabled them to scale operations confidently while maintaining excellent conversion rates."
+      challenge: "A growing real estate acquisitions group needed to scale their operations but lacked reliable CRM infrastructure and workflow automation. Their team was spending hours on manual data entry and administrative tasks instead of analyzing deals.",
+      solution: "We implemented TolipAI CRM with custom workflow automation, ARV calculator configuration, comps analysis tools, and a reporting dashboard tailored to their acquisition process. Administrative operations support was also set up to handle ongoing data entry and pipeline maintenance.",
+      results: "Within 90 days, the team reduced manual administrative time by over 60%, gained consistent pipeline reporting, and used TolipAI's ARV and comps tools on every deal evaluation. CRM organization and workflow automation allowed the team to handle significantly more deals without adding headcount."
     }
   ];
 
@@ -31,7 +31,7 @@ export function CaseStudies() {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Client Success Stories</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Measurable results delivered through engineered infrastructure and managed operations.
+            Measurable results delivered through CRM infrastructure and workflow automation.
           </p>
         </motion.div>
 

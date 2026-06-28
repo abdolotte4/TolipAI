@@ -8,33 +8,33 @@ import { Play, Database, Phone, BarChart3, Zap, Brain, Shield, ArrowRight, Check
 const FEATURES = [
   {
     icon: Database,
-    title: "Data Engineering & List Building",
-    desc: "See how we pull, clean, and enrich distressed property data — foreclosures, tax delinquencies, vacant properties — delivering verified owner contacts with 98%+ accuracy.",
+    title: "Property Research & CRM Data Organization",
+    desc: "See how TolipAI organizes client-provided property records, CRM data, and pipeline information for permitted real estate business purposes.",
   },
   {
     icon: Brain,
     title: "AI Lead Scoring",
-    desc: "Watch the AI score every lead in real-time based on deal potential, property condition, equity position, and owner motivation signals.",
-  },
-  {
-    icon: Phone,
-    title: "Managed Outreach Operations",
-    desc: "Live walkthrough of our multi-channel outreach infrastructure — cold calling, SMS sequences, and voicemail drops — all compliance-driven and managed end-to-end.",
+    desc: "Watch the AI score every lead in real-time based on deal potential, property condition, equity position, and pipeline stage signals.",
   },
   {
     icon: BarChart3,
-    title: "Technical CRM Infrastructure",
-    desc: "Explore the full CRM pipeline: lead intake, campaign management, conversation tracking, dialer integration, and real-time analytics dashboard.",
+    title: "Lead Pipeline & CRM Workflows",
+    desc: "Explore the full CRM pipeline: lead intake, pipeline stage management, task tracking, client communication workflows, and real-time analytics dashboard.",
   },
   {
     icon: Zap,
-    title: "Automation & Follow-Up Sequences",
-    desc: "See our automated follow-up engine — AI-driven SMS and email sequences that nurture leads around the clock without manual intervention.",
+    title: "Workflow Automation & Follow-Up Tasks",
+    desc: "See our automated follow-up workflow engine — task triggers, appointment coordination, and pipeline stage automation that keeps deals moving without manual effort.",
+  },
+  {
+    icon: Phone,
+    title: "ARV Calculator & Comps Analysis",
+    desc: "Live walkthrough of TolipAI's built-in ARV calculator and comps analysis tools — pulling comparable sales and computing ARV and MAO values in seconds.",
   },
   {
     icon: Shield,
     title: "Compliance & QA Framework",
-    desc: "Human-in-the-loop quality assurance protocols ensuring every record, every outreach, and every workflow meets regulatory and operational standards.",
+    desc: "Human-in-the-loop quality assurance protocols ensuring every record and workflow meets regulatory and operational standards.",
   },
 ];
 
@@ -48,7 +48,7 @@ const STATS = [
 export default function Demo() {
   useEffect(() => {
     window.scrollTo({ top: 0 });
-    document.title = "Live Demo | TolipAI — Managed Marketing & Data Infrastructure";
+    document.title = "Platform Demo | TolipAI — CRM & Workflow Automation for Real Estate";
   }, []);
 
   return (
@@ -74,7 +74,7 @@ export default function Demo() {
                 See TolipAI in Action
               </h1>
               <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-                A full walkthrough of our Managed B2B Marketing and Data Infrastructure platform — from distressed property data pipelines to fully managed outreach operations.
+                A full walkthrough of TolipAI's CRM platform — from lead pipeline management and workflow automation to ARV calculators, comps analysis, and reporting dashboards.
               </p>
             </motion.div>
           </div>
@@ -103,7 +103,7 @@ export default function Demo() {
                 </div>
                 <p className="text-foreground text-2xl font-bold font-display mb-2">Demo Video Coming Soon</p>
                 <p className="text-muted-foreground text-center max-w-md px-4">
-                  Schedule a live walkthrough with our team — we'll show you exactly how TolipAI works for your acquisition operation.
+                  Schedule a live walkthrough with our team — we'll show you exactly how TolipAI supports your CRM workflows and real estate operations.
                 </p>
                 <Button
                   asChild
@@ -190,10 +190,10 @@ export default function Demo() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 "30-minute walkthrough of the full platform",
-                "Live data pull from real property databases",
-                "CRM pipeline and dialer demonstration",
-                "Custom proposal based on your operation",
-                "Q&A with a senior infrastructure specialist",
+                "Live CRM pipeline and workflow demonstration",
+                "ARV calculator and comps analysis walkthrough",
+                "Custom proposal based on your workflow needs",
+                "Q&A with a senior platform specialist",
                 "No commitment required",
               ].map((item, i) => (
                 <motion.div
@@ -220,9 +220,9 @@ export default function Demo() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
             >
-              <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Ready to Scale Your Operations?</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Ready to Streamline Your Operations?</h2>
               <p className="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
-                Schedule a live demo with our team. We'll show you exactly what TolipAI can do for your real estate acquisition operation — no pressure, no fluff.
+                Schedule a live demo with our team. We'll show you exactly what TolipAI can do for your CRM workflows and real estate operations — no pressure, no fluff.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button

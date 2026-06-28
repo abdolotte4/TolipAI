@@ -2,9 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, Play, Mail, ArrowRight, CheckCircle } from "lucide-react";
-
-const DEMO_URL = "https://tolipai.com/demo/";
+import { ChevronDown, Mail, ArrowRight, CheckCircle, BookOpen, LayoutGrid } from "lucide-react";
 
 export function Hero() {
   const [email, setEmail] = useState("");
@@ -42,17 +40,12 @@ export function Hero() {
 
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
-      {/* Professional gradient background — no image dependency */}
+      {/* Professional gradient background */}
       <div className="absolute inset-0 z-0 overflow-hidden">
-        {/* Base — dark mode: deep navy; light mode: uses page background */}
         <div className="absolute inset-0 bg-background dark:bg-[#050810]" />
-        {/* Radial glow — top center (primary brand color) — stronger in light mode for visibility */}
         <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(212,175,55,0.18) 0%, transparent 70%)" }} />
-        {/* Radial glow — bottom left (cool accent) */}
         <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 50% at -10% 110%, rgba(99,102,241,0.08) 0%, transparent 65%)" }} />
-        {/* Radial glow — bottom right */}
         <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 50% 40% at 110% 100%, rgba(212,175,55,0.08) 0%, transparent 60%)" }} />
-        {/* Subtle dot-grid SVG overlay */}
         <svg className="absolute inset-0 w-full h-full opacity-[0.06] dark:opacity-[0.07]" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -61,7 +54,6 @@ export function Hero() {
           </defs>
           <rect width="100%" height="100%" fill="url(#dots)" />
         </svg>
-        {/* Fade to background at bottom so page sections blend */}
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
       </div>
 
@@ -73,45 +65,51 @@ export function Hero() {
           className="max-w-4xl"
         >
           <span className="inline-block py-1 px-3 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold tracking-wider uppercase mb-6">
-            CRM Infrastructure & Workflow Automation
+            CRM Software & Workflow Automation
           </span>
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-foreground leading-tight mb-6">
-            Scalable Infrastructure for <br className="hidden md:block" />
+            Real Estate CRM Software &<br className="hidden md:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/60">
-              Real Estate Professionals
+              Workflow Automation
             </span>
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-            TolipAI, a division of Tolip Group LLC, provides workflow automation and CRM infrastructure for real estate professionals. Our platform helps businesses streamline operations, manage property pipelines, and analyze data with compliance‑focused systems.
+            TolipAI provides AI workflow automation, CRM software, lead pipeline management, ARV calculators, comps analysis, and administrative operations tools for real estate professionals.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap mb-10">
-            <Button
-              size="lg"
-              asChild
-              className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 h-14 px-8 rounded-full font-semibold text-base shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:shadow-[0_0_30px_rgba(212,175,55,0.5)] transition-all"
-            >
-              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer">
-                <Play className="mr-2 h-4 w-4" />
-                Live Demo
-              </a>
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={() => scrollTo("#services")}
-              className="w-full sm:w-auto h-14 px-8 rounded-full font-semibold text-base border-border hover:bg-secondary transition-all"
-            >
-              Explore Our Services
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={() => scrollTo("#contact")}
-              className="w-full sm:w-auto h-14 px-8 rounded-full font-semibold text-base border-border hover:bg-secondary transition-all"
-            >
-              Schedule a Consultation
-            </Button>
+          <div className="mb-8">
+            <p className="text-muted-foreground mb-6">
+              Request a guided product demo to see how TolipAI supports CRM workflows, lead pipeline management, and real estate analysis tools.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
+              <Button
+                size="lg"
+                onClick={() => scrollTo("#contact")}
+                className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 h-14 px-8 rounded-full font-semibold text-base shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:shadow-[0_0_30px_rgba(212,175,55,0.5)] transition-all"
+              >
+                Request a Demo
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={() => scrollTo("#services")}
+                className="w-full sm:w-auto h-14 px-8 rounded-full font-semibold text-base border-border hover:bg-secondary transition-all"
+              >
+                <BookOpen className="mr-2 h-4 w-4" />
+                View Features
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                asChild
+                className="w-full sm:w-auto h-14 px-8 rounded-full font-semibold text-base border-border hover:bg-secondary transition-all"
+              >
+                <a href="/pricing">
+                  <LayoutGrid className="mr-2 h-4 w-4" />
+                  Explore Platform
+                </a>
+              </Button>
+            </div>
           </div>
 
           {/* Email Capture */}
