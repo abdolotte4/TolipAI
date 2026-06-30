@@ -33,17 +33,18 @@ const BASE_URL = "https://propertyapi.co/api/v1";
 
 function loadApiKeys(): string[] {
   const keys: string[] = [];
+  // PROPERTY_API_KEY (legacy/primary) first — most likely to be the newest/active key
+  const legacy = process.env.PROPERTY_API_KEY;
+  if (legacy?.trim()) keys.push(legacy.trim());
+  // Numbered keys 1–7 (may be depleted; tried after primary)
   for (let i = 1; i <= 7; i++) {
     const k = process.env[`PROPERTY_API_KEY_${i}`];
-    if (k) keys.push(k.trim());
+    if (k?.trim() && !keys.includes(k.trim())) keys.push(k.trim());
   }
-  // Fallback to legacy single key
-  const legacy = process.env.PROPERTY_API_KEY;
-  if (legacy && !keys.includes(legacy.trim())) keys.push(legacy.trim());
   // Aliases used in Railway secrets (SCRAPERAPI_KEY_2/3/4)
   for (const alias of ["SCRAPERAPI_KEY_2", "SCRAPERAPI_KEY_3", "SCRAPERAPI_KEY_4"]) {
     const k = process.env[alias];
-    if (k && !keys.includes(k.trim())) keys.push(k.trim());
+    if (k?.trim() && !keys.includes(k.trim())) keys.push(k.trim());
   }
   return keys;
 }
@@ -204,12 +205,23 @@ async function runSkipTracePDL(
   city?: string | null,
   state?: string | null,
   zip?: string | null,
+  firstName?: string | null,
+  lastName?: string | null,
 ): Promise<SkipTraceResult | null> {
   const apiKey = process.env.PEOPLEDATALABS_API_KEY?.trim();
   if (!apiKey) return null;
 
+  // PDL person/enrich requires at least one primary identifier (name, email, phone, profile).
+  // Without a name the request will 400. Skip the call entirely if we have no identifying info.
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  if (!fullName) {
+    logger.info("[PDL skipTrace] skipping — no name available to identify person");
+    return null;
+  }
+
   try {
     const params = new URLSearchParams();
+    params.set("name", fullName);
     if (street) params.set("street_address", street);
     if (city)   params.set("locality", city);
     if (state)  params.set("region", state);
@@ -293,7 +305,7 @@ export async function runSkipTrace(
   const allKeys = loadApiKeys();
   if (allKeys.length === 0) {
     logger.warn("[skipTrace] No PropertyAPI keys configured — trying PDL fallback");
-    const pdlResult = await runSkipTracePDL(street, city, state, zip);
+    const pdlResult = await runSkipTracePDL(street, city, state, zip, firstName, lastName);
     if (pdlResult) return pdlResult;
     _lastSkipTraceError = { apiMessage: "No skip trace API keys configured on server" };
     return null;
@@ -334,7 +346,7 @@ export async function runSkipTrace(
       const hasAnyResult = item.phone_1_number || item.email_1 || item.name_first || item.name_last;
       if (!hasAnyResult) {
         logger.warn({ status: json.status }, "[skipTrace] PropertyAPI returned no contacts — trying PDL fallback");
-        const pdlResult = await runSkipTracePDL(street, city, state, zip);
+        const pdlResult = await runSkipTracePDL(street, city, state, zip, firstName, lastName);
         if (pdlResult) return pdlResult;
         _lastSkipTraceError = { apiMessage: "No contact data found for this property owner" };
         return null;
@@ -373,7 +385,7 @@ export async function runSkipTrace(
 
   // All PropertyAPI keys exhausted — try PDL
   logger.info("[skipTrace] All PropertyAPI keys depleted — trying PDL fallback");
-  const pdlResult = await runSkipTracePDL(street, city, state, zip);
+  const pdlResult = await runSkipTracePDL(street, city, state, zip, firstName, lastName);
   if (pdlResult) return pdlResult;
 
   if (!_lastSkipTraceError) {
@@ -515,67 +527,93 @@ export interface FetchCompsResult {
   error?: string;
 }
 
-/** Call search-by-address (1 credit per call, uses next key in rotation). Returns null on failure. */
+/** Call search-by-address — retries across all non-depleted keys on 402 before giving up. */
 export async function fetchPropertyData(address: string): Promise<PropertyApiData | null> {
-  const apiKey = getNextApiKey();
-  if (!apiKey) {
-    logger.warn("[propertyApi] No API keys configured — set PROPERTY_API_KEY or PROPERTY_API_KEY_1 … 5");
+  const allKeys = loadApiKeys();
+  if (allKeys.length === 0) {
+    logger.warn("[propertyApi] No API keys configured — set PROPERTY_API_KEY or PROPERTY_API_KEY_1 … 7");
     return null;
   }
-  const keyIndex = (_keyIndex === 0 ? loadApiKeys().length : _keyIndex); // 1-based index of key that was just used
 
-  try {
-    // PropertyAPI requires + for spaces (not %20) — use URLSearchParams which encodes correctly
-    const qs = new URLSearchParams({ address });
-    const url = `${BASE_URL}/parcels/search-by-address?${qs}`;
-    const resp = await fetch(url, {
-      headers: { "X-Api-Key": apiKey },
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => resp.statusText);
-      logger.error({ status: resp.status, keyIndex }, `[propertyApi] key#${keyIndex} HTTP ${resp.status}: ${text.slice(0, 200)}`);
+  for (let attempt = 0; attempt < allKeys.length; attempt++) {
+    const apiKey = getNextApiKey();
+    if (!apiKey) break; // all keys depleted
+    const keyIndex = (_keyIndex === 0 ? allKeys.length : _keyIndex);
+
+    try {
+      // PropertyAPI requires + for spaces (not %20) — use URLSearchParams which encodes correctly
+      const qs = new URLSearchParams({ address });
+      const url = `${BASE_URL}/parcels/search-by-address?${qs}`;
+      const resp = await fetch(url, { headers: { "X-Api-Key": apiKey } });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => resp.statusText);
+        const is402 = resp.status === 402 ||
+          text.toLowerCase().includes("insufficient credits") ||
+          text.toLowerCase().includes("credit");
+        const is401 = resp.status === 401 || text.toLowerCase().includes("invalid api key");
+
+        if (is402) {
+          logger.info({ keyIndex }, "[propertyApi] key depleted (402) — trying next key");
+          markKeyDepleted(apiKey);
+          continue;
+        }
+
+        if (is401) {
+          logger.warn({ keyIndex, status: resp.status }, "[propertyApi] key invalid (401) — skipping to next key");
+          markKeyDepleted(apiKey);
+          continue;
+        }
+
+        // Hard error (404 address not found, 400 bad request, 5xx server) — stop retry loop
+        logger.error({ status: resp.status, keyIndex }, `[propertyApi] key#${keyIndex} HTTP ${resp.status}: ${text.slice(0, 200)}`);
+        return null;
+      }
+
+      const json = await resp.json() as { data?: Record<string, any>; credits_remaining?: number };
+      const d = json.data || {};
+
+      // Field names confirmed from live API response (propertyapi.co)
+      const beds          = num(d["bedrooms"]          ?? d["Bedrooms"]);
+      const baths         = num(d["bathrooms"]         ?? d["Bathrooms"]);
+      // Prefer living_sqft (heated area) then square_feet then lot sqft fields
+      const sqft          = num(d["living_sqft"]       ?? d["square_feet"]        ?? d["building_sqft"]);
+      const yearBuilt     = num(d["year_built"]        ?? d["struct_year_built"]);
+      // lot_size is in acres; convert to sqft
+      const lotAcres      = num(d["lot_size"]);
+      const lotSqft       = lotAcres != null ? Math.round(lotAcres * 43560)
+                          : num(d["sqft_county_preferred"] ?? d["sqft_county"]);
+      const hasPool       = false; // not in API response
+      const hasGarage     = false; // not in API response
+      // AVM: prefer market_estimate (model-derived), fallback to market_value
+      const avm           = num(d["market_estimate"]   ?? d["market_value"]);
+      const taxAssessed   = num(d["assessed_total"]    ?? d["tax_assessed_value"]);
+      const lastSalePrice = num(d["last_sale_price"]);
+      const lastSaleDateRaw = str(d["last_sale_date"]);
+      const lastSaleDate = lastSaleDateRaw ? lastSaleDateRaw.split("T")[0] : null;
+      const propertyType  = str(d["use_standardized_desc"] ?? d["property_type"]);
+      const ownerName     = str(d["owner"]                 ?? d["owner_name"]);
+      const latitude      = num(d["latitude"]);
+      const longitude     = num(d["longitude"]);
+
+      logger.info({ keyIndex, creditsRemaining: json.credits_remaining }, "[propertyApi] success");
+
+      return {
+        beds, baths, sqft, yearBuilt, ownerName, lotSqft, hasPool, hasGarage,
+        avm, taxAssessedValue: taxAssessed, lastSalePrice, lastSaleDate, propertyType,
+        latitude, longitude,
+        creditsRemaining: json.credits_remaining,
+        rawFields: d,
+        keyUsed: keyIndex,
+      };
+    } catch (err) {
+      logger.error({ err }, `[propertyApi] key#${keyIndex} fetch error`);
       return null;
     }
-    const json = await resp.json() as { data?: Record<string, any>; credits_remaining?: number };
-    const d = json.data || {};
-
-    // Field names confirmed from live API response (propertyapi.co)
-    const beds          = num(d["bedrooms"]          ?? d["Bedrooms"]);
-    const baths         = num(d["bathrooms"]         ?? d["Bathrooms"]);
-    // Prefer living_sqft (heated area) then square_feet then lot sqft fields
-    const sqft          = num(d["living_sqft"]       ?? d["square_feet"]        ?? d["building_sqft"]);
-    const yearBuilt     = num(d["year_built"]        ?? d["struct_year_built"]);
-    // lot_size is in acres; convert to sqft
-    const lotAcres      = num(d["lot_size"]);
-    const lotSqft       = lotAcres != null ? Math.round(lotAcres * 43560)
-                        : num(d["sqft_county_preferred"] ?? d["sqft_county"]);
-    const hasPool       = false; // not in API response
-    const hasGarage     = false; // not in API response
-    // AVM: prefer market_estimate (model-derived), fallback to market_value
-    const avm           = num(d["market_estimate"]   ?? d["market_value"]);
-    const taxAssessed   = num(d["assessed_total"]    ?? d["tax_assessed_value"]);
-    const lastSalePrice = num(d["last_sale_price"]);
-    const lastSaleDateRaw = str(d["last_sale_date"]);
-    const lastSaleDate = lastSaleDateRaw ? lastSaleDateRaw.split("T")[0] : null;
-    const propertyType  = str(d["use_standardized_desc"] ?? d["property_type"]);
-    const ownerName     = str(d["owner"]                 ?? d["owner_name"]);
-    const latitude      = num(d["latitude"]);
-    const longitude     = num(d["longitude"]);
-
-    logger.info({ keyIndex, creditsRemaining: json.credits_remaining }, "[propertyApi] success");
-
-    return {
-      beds, baths, sqft, yearBuilt, ownerName, lotSqft, hasPool, hasGarage,
-      avm, taxAssessedValue: taxAssessed, lastSalePrice, lastSaleDate, propertyType,
-      latitude, longitude,
-      creditsRemaining: json.credits_remaining,
-      rawFields: d,
-      keyUsed: keyIndex,
-    };
-  } catch (err) {
-    logger.error({ err }, "[propertyApi] fetch error");
-    return null;
   }
+
+  logger.error("[propertyApi] all keys depleted — property data unavailable");
+  return null;
 }
 
 // ─── Adjustment Factor Constants ──────────────────────────────────────────────
