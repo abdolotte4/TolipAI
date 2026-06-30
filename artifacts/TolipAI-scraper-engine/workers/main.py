@@ -1154,7 +1154,7 @@ async def health_proxy() -> Dict[str, Any]:
         t0 = time.monotonic()
         try:
             async with httpx.AsyncClient(
-                proxies={"all://": proxy_url},
+                proxy=proxy_url,
                 verify=False,
                 timeout=14.0,
                 follow_redirects=True,

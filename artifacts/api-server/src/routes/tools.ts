@@ -1272,4 +1272,72 @@ router.get("/tools/phone-finder/download/:jobId", requirePin, (req: Request, res
   res.send(csv);
 });
 
+// ─── POST /tools/opportunity-finder ─────────────────────────────────────────
+/**
+ * Find investment opportunities (distressed properties) in a given area.
+ * Uses the scraper engine with ATTOM as fallback.
+ * Accepts: { zip, city, state, categories?, limit? }
+ * Returns: { jobId, jobIds, status, source }
+ */
+router.post("/tools/opportunity-finder", requirePin, async (req: Request, res: Response) => {
+  try {
+    const { zip, city, state, county, categories, limit } = req.body || {};
+
+    if (!zip && !city && !state) {
+      res.status(400).json({ error: "Provide at least one of: zip, city, or state" });
+      return;
+    }
+
+    let job;
+    try {
+      job = await scraperEngine.startDistressed({
+        zip: zip || "",
+        countyKey: county || "",
+        state: state || "",
+        city: city || "",
+        categories: categories || [],
+        limit: Number(limit) || 100,
+      } as any);
+
+      distressedJobIds.push({ jobId: job.job_id, createdAt: new Date().toISOString() });
+      res.json({ jobId: job.job_id, jobIds: [job.job_id], status: "queued", source: "scraper" });
+      return;
+    } catch (scraperErr: any) {
+      logger.warn({ err: scraperErr?.message }, "[opportunity-finder] Scraper engine unavailable — trying ATTOM");
+    }
+
+    // ATTOM fallback
+    if (hasAttomKey() && zip) {
+      const jobId = `attom_opp_${randomUUID().slice(0, 8)}`;
+      const createdAt = new Date().toISOString();
+      _attomDistressedJobs.set(jobId, { status: "queued", progress: 0, result: null, error: null, createdAt });
+      distressedJobIds.push({ jobId, createdAt });
+
+      setImmediate(async () => {
+        _attomDistressedJobs.set(jobId, { status: "running", progress: 10, result: null, error: null, createdAt });
+        try {
+          const listings = await fetchDistressedViaAttom(String(zip), categories || [], Number(limit) || 100);
+          _attomDistressedJobs.set(jobId, {
+            status: "done", progress: 100,
+            result: { count: listings.length, listings, source: "ATTOM" },
+            error: null, createdAt,
+          });
+        } catch (err: any) {
+          _attomDistressedJobs.set(jobId, {
+            status: "failed", progress: 0, result: null,
+            error: err?.message || "ATTOM search failed", createdAt,
+          });
+        }
+      });
+
+      res.json({ jobId, jobIds: [jobId], status: "queued", source: "attom" });
+      return;
+    }
+
+    res.status(503).json({ error: "No opportunity finder sources available. Configure SCRAPER_ENGINE_URL or ATTOM_API_KEY." });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Failed to start opportunity finder" });
+  }
+});
+
 export default router;
