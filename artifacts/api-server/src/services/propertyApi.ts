@@ -226,7 +226,7 @@ async function runSkipTracePDL(
     if (city)   params.set("locality", city);
     if (state)  params.set("region", state);
     if (zip)    params.set("postal_code", zip);
-    params.set("min_likelihood", "0.5");
+    params.set("min_likelihood", "5");
     params.set("pretty", "false");
 
     const res = await fetch(
@@ -251,11 +251,12 @@ async function runSkipTracePDL(
     const json = await res.json() as any;
     const data = json?.data ?? {};
 
-    const phones: SkipTracePhone[] = (data.phone_numbers || []).slice(0, 5).map((n: string) => ({
-      number: n,
-      type: undefined,
+    const rawPhones: any[] = Array.isArray(data.phone_numbers) ? data.phone_numbers : [];
+    const phones: SkipTracePhone[] = rawPhones.slice(0, 5).map((n: any) => ({
+      number: typeof n === "string" ? n : String(n?.number ?? n?.value ?? n ?? ""),
+      type: typeof n === "object" ? (n?.type ?? undefined) : undefined,
       isDisconnected: false,
-    }));
+    })).filter(p => p.number);
     const emails: string[] = (data.emails || []).slice(0, 5).map((e: any) =>
       typeof e === "string" ? e : e?.address
     ).filter(Boolean);
@@ -328,9 +329,12 @@ export async function runSkipTrace(
         const is402 = resp.status === 402 ||
           text.toLowerCase().includes("insufficient credits") ||
           text.toLowerCase().includes("credit");
+        const is401 = resp.status === 401 ||
+          text.toLowerCase().includes("invalid api key") ||
+          text.toLowerCase().includes("invalid_api_key");
 
-        if (is402) {
-          logger.info({ keyIndex }, "[skipTrace] key depleted (402) — trying next key");
+        if (is402 || is401) {
+          logger.info({ keyIndex, status: resp.status }, `[skipTrace] key depleted/invalid (${resp.status}) — trying next key`);
           markKeyDepleted(apiKey);
           continue;
         }

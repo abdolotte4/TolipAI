@@ -927,8 +927,8 @@ router.delete("/:id", crmAuth, async (req, res) => {
         return;
       }
     }
-    // All roles — including super_admin — must respect the campaign's allowLeadDeletion flag (SEC-08)
-    if (existing.campaignId) {
+    // super_admin can always delete — skip campaign-level gate
+    if (crmUser.role !== "super_admin" && existing.campaignId) {
       const [campaign] = await db.select({ allowLeadDeletion: crmCampaigns.allowLeadDeletion })
         .from(crmCampaigns).where(eq(crmCampaigns.id, existing.campaignId)).limit(1);
       if (!campaign?.allowLeadDeletion) {
