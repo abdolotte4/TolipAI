@@ -18,6 +18,7 @@ const Pricing            = lazy(() => import("@/pages/Pricing"));
 const Docs               = lazy(() => import("@/pages/Docs"));
 const Blog               = lazy(() => import("@/pages/Blog"));
 const Compliance         = lazy(() => import("@/pages/Compliance"));
+const CookiePolicy       = lazy(() => import("@/pages/CookiePolicy"));
 
 const WP_PARAMS = ["p", "page_id", "cat", "tag", "author", "feed", "s", "attachment_id"];
 const searchParams = new URLSearchParams(window.location.search);
@@ -69,6 +70,7 @@ function Router() {
         <Route path="/blog" component={Blog} />
         <Route path="/compliance" component={Compliance} />
         <Route path="/acceptable-use" component={Compliance} />
+        <Route path="/cookie-policy" component={CookiePolicy} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

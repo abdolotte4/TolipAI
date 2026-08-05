@@ -17,22 +17,22 @@ const PLANS: Record<Plan, { label: string; price: number; priceId: string; leads
     label: "Full Package",
     price: 1500,
     priceId: "price_1TJLsdIRQyNh8s19OjY6WyAH",
-    leads: "30–40 Monthly Data Records",
-    desc: "Managed BPO service delivering 30–40 high-intent property data records per month.",
+    leads: "Full CRM & Workflow Automation",
+    desc: "Full TolipAI CRM access, workflow automation, AI property analysis tools, pipeline management, reporting dashboards, and CRM administration support.",
   },
   performance: {
     label: "Growth Infrastructure",
     price: 1000,
     priceId: "price_1TJR0HIRQyNh8s19lwWYhofS",
-    leads: "30–40 Monthly Data Records",
-    desc: "Core managed service delivering 30–40 data records with additional operational support.",
+    leads: "CRM Platform & Operational Support",
+    desc: "CRM platform access, workflow automation, reporting tools, and operational support for your real estate team.",
   },
   half: {
     label: "Half Package",
     price: 750,
     priceId: "price_1TJLsdIRQyNh8s19y3Fhwjih",
-    leads: "15–20 Monthly Data Records",
-    desc: "Entry-level service delivering 15–20 data records per month.",
+    leads: "Core CRM Functionality",
+    desc: "Core CRM functionality, pipeline tracking, AI-assisted property analysis tools, and essential workflow automation.",
   },
 };
 
@@ -125,8 +125,8 @@ export function SubscribeModal({ isOpen, onClose }: SubscribeModalProps) {
             {/* Header */}
             <div className="bg-[#0a0e1a] px-6 py-4 flex items-center justify-between border-b border-[#1f2937]">
               <div>
-                <h2 className="text-lg font-bold text-white">TOLIPAI<span className="text-[#d4af37]">.</span> Managed Services</h2>
-                <p className="text-xs text-gray-400">Verified Property Data Contacts</p>
+                <h2 className="text-lg font-bold text-white">TOLIPAI<span className="text-[#d4af37]">.</span> Platform Plans</h2>
+                <p className="text-xs text-gray-400">CRM &amp; Workflow Automation Plans</p>
               </div>
               <button onClick={handleClose} className="text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-[#1f2937]">
                 <X className="w-5 h-5" />

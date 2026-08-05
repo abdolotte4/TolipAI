@@ -11,6 +11,7 @@ import { SuccessStory } from "@/components/sections/SuccessStory";
 import { PerformanceDashboard } from "@/components/sections/PerformanceDashboard";
 import { Testimonials } from "@/components/sections/Testimonials";
 import { ChatBot } from "@/components/ChatBot";
+import { TrustCompliance } from "@/components/sections/TrustCompliance";
 
 export default function Home() {
   return (
@@ -27,6 +28,7 @@ export default function Home() {
         <CaseStudies />
         <Testimonials />
         <About />
+        <TrustCompliance />
         <Contact />
       </main>
 

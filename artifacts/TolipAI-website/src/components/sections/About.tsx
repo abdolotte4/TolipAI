@@ -31,11 +31,16 @@ export function About() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">About Tolip Group LLC</h2>
             <div className="w-20 h-1 bg-primary rounded-full mb-8" />
             <p className="text-lg text-muted-foreground leading-relaxed mb-6">
-              TolipAI, a division of Tolip Group LLC, provides workflow automation and CRM infrastructure for real estate professionals. Our platform helps businesses streamline operations, manage property pipelines, and analyze data with compliance‑focused systems.
+              TolipAI is a software-as-a-service (SaaS) platform that provides CRM software, workflow automation, AI-powered property analysis, and operational infrastructure for real estate professionals. Our platform helps teams organize data, automate business processes, and manage property workflows from a single system.
             </p>
-            <p className="text-lg text-muted-foreground leading-relaxed">
+            <p className="text-lg text-muted-foreground leading-relaxed mb-6">
               Our integrated approach combines data analytics, CRM configuration, and technical infrastructure to deliver measurable operational improvements. We engineer systems that scale, supported by rigorous quality assurance and compliance frameworks.
             </p>
+            <div className="bg-card border border-border/50 rounded-xl p-5 mt-2">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                <span className="text-foreground font-semibold">Software Platform Clarification:</span> TolipAI operates as a software platform. TolipAI does not act as a real estate broker, lender, investment advisor, title company, or lead brokerage service. Customers use TolipAI software to manage their own operations, workflows, and business data.
+              </p>
+            </div>
           </motion.div>
 
           <motion.div

@@ -1,0 +1,258 @@
+Act as a senior SaaS compliance UX designer, fintech onboarding consultant, and conversion-focused copywriter.
+
+Your task is to update the TolipAI website to improve banking, payment processor, and fintech compliance perception for providers such as Mercury, Relay, Payoneer, Stripe, Airwallex, Brex, and other financial institutions.
+
+CRITICAL:
+We are NOT changing the actual business model.
+We are NOT removing the SMS consent language.
+We are NOT removing TCPA opt-in/opt-out disclosures.
+We are NOT removing compliance disclosures.
+We ARE reframing the website to clearly position TolipAI as a SaaS software company providing CRM, workflow automation, AI analytics, and operational software for real estate professionals.
+
+====================
+PRIMARY OBJECTIVE
+====================
+
+A compliance reviewer should immediately understand:
+
+"TolipAI is a SaaS company providing CRM software, workflow automation, AI-powered property analysis tools, and operational infrastructure for real estate professionals."
+
+The website must NOT appear to be:
+
+- A lead generation company
+- A lead brokerage company
+- A data reseller
+- A list broker
+- A call center
+- A telemarketing company
+- A real estate brokerage
+- A lender
+- A financial advisory company
+
+====================
+HOMEPAGE UPDATES
+====================
+
+Update hero section messaging.
+
+Current messaging should be rewritten to emphasize:
+
+- SaaS Platform
+- CRM Software
+- Workflow Automation
+- AI Analytics
+- Property Intelligence
+- Operational Infrastructure
+
+Add a visible section near the top:
+
+"About TolipAI"
+
+Suggested positioning:
+
+"TolipAI is a software-as-a-service (SaaS) platform that provides CRM software, workflow automation, AI-powered property analysis, and operational infrastructure for real estate professionals. Our platform helps teams organize data, automate business processes, and manage property workflows from a single system."
+
+Add a compliance clarification section:
+
+"TolipAI operates as a software platform.
+
+TolipAI does not act as a real estate broker, lender, investment advisor, title company, or lead brokerage service. Customers use TolipAI software to manage their own operations, workflows, and business data."
+
+====================
+PRICING / SUBSCRIBE MODAL
+====================
+
+This is the highest priority area.
+
+Current wording:
+
+"Verified Property Data Contacts"
+
+must be replaced.
+
+Use wording such as:
+
+"CRM & Workflow Automation Plans"
+
+or
+
+"Property Intelligence & CRM Platform"
+
+or
+
+"Managed CRM Infrastructure"
+
+instead.
+
+The following phrases should be removed or rewritten:
+
+- High-intent property data records
+- Data records delivered
+- Verified property contacts
+
+Replace with language such as:
+
+- CRM infrastructure
+- Property intelligence tools
+- Workflow automation
+- Managed CRM operations
+- AI-assisted research tools
+- Property analysis capabilities
+- Team support services
+
+Rewrite package descriptions.
+
+Example:
+
+Full Package – $1,500/month
+
+Includes:
+
+- Full TolipAI CRM access
+- Workflow automation
+- AI property analysis tools
+- Pipeline management
+- Reporting dashboards
+- CRM administration support
+- Property intelligence workflows
+
+Growth Infrastructure
+
+Includes:
+
+- CRM platform access
+- Workflow automation
+- Reporting tools
+- Operational support
+
+Half Package
+
+Includes:
+
+- Core CRM functionality
+- Pipeline tracking
+- AI-assisted analysis tools
+- Essential workflow automation
+
+====================
+SMS CONSENT
+====================
+
+DO NOT REMOVE.
+
+Maintain TCPA compliance wording.
+
+Keep language similar to:
+
+"I agree that TolipAI may contact me via SMS/text messages regarding my inquiries, account activity, service updates, and support-related communications. Message and data rates may apply. Reply STOP to opt out. Reply HELP for assistance."
+
+Keep Privacy Policy and Terms links directly visible next to consent language.
+
+====================
+FOOTER
+====================
+
+Ensure footer clearly shows:
+
+Company Name:
+Tolip Group LLC
+
+Wyoming LLC
+
+Company Address
+
+Business Email
+
+Phone Number
+
+Privacy Policy
+
+Terms of Service
+
+Compliance Page
+
+Cookie Policy (create if missing)
+
+Acceptable Use Policy (create if missing)
+
+====================
+NEW TRUST SECTION
+====================
+
+Create a Trust & Compliance section.
+
+Include content similar to:
+
+Business Information
+
+- US Registered LLC
+- Software-as-a-Service Provider
+- Real Estate Operations Software
+- Secure Customer Data Handling
+- Compliance-Focused Architecture
+
+Add:
+
+"Customer data is processed and managed in accordance with our Privacy Policy and applicable regulations."
+
+====================
+CASE STUDIES
+====================
+
+Reduce emphasis on:
+
+- Deals closed
+- Offers made
+- Acquisition strategies
+
+Increase emphasis on:
+
+- Workflow efficiency
+- Operational visibility
+- CRM adoption
+- Reporting improvements
+- Administrative automation
+- Process optimization
+
+We want clients buying software infrastructure, not investment returns.
+
+====================
+COPY CLEANUP
+====================
+
+Search entire website and reduce wording that suggests:
+
+- Selling leads
+- Selling contact lists
+- Selling consumer data
+- Cold calling services
+- Telemarketing services
+
+Replace with:
+
+- CRM workflows
+- Property intelligence
+- Workflow automation
+- Customer-managed communications
+- Operational infrastructure
+
+====================
+FINAL DELIVERABLE
+====================
+
+Implement changes directly in the codebase.
+
+Provide:
+
+1. List of pages modified.
+2. Original wording and replacement wording.
+3. Compliance improvements made.
+4. UX improvements made.
+5. Any remaining compliance risks discovered.
+6. Summary explaining how the website now positions TolipAI as a SaaS software company instead of a lead-generation business.
+
+Do not remove legitimate compliance disclosures.
+Do not remove SMS consent.
+Do not remove opt-out messaging.
+Do not remove TCPA language.
+Only improve fintech, banking, and payment processor perception while preserving legal compliance.
