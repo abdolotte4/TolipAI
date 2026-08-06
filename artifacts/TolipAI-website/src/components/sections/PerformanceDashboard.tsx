@@ -42,10 +42,10 @@ function useCountUp(end: number, duration: number = 2, prefix: string = "", suff
 }
 
 export function PerformanceDashboard() {
-  const propAnalyzed = useCountUp(1250, 2);
-  const pipelineLeads = useCountUp(900, 2);
-  const transactionsClosed = useCountUp(45, 2);
-  const revenueGenerated = useCountUp(493, 2, "$", "K");
+  const workflowsConfigured = useCountUp(1250, 2);
+  const pipelineStages = useCountUp(900, 2);
+  const teamsOnboarded = useCountUp(45, 2);
+  const clientRetention = useCountUp(94, 2, "", "%");
 
   return (
     <section className="py-24 bg-[#0f1728] border-t border-b border-border relative overflow-hidden">
@@ -58,10 +58,10 @@ export function PerformanceDashboard() {
           viewport={{ once: true, margin: "-100px" }}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display text-white">Client Performance Analytics</h2>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display text-white">Platform Adoption Metrics</h2>
           <div className="w-20 h-1 bg-primary mx-auto rounded-full mb-6" />
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Real results from real estate professionals partnering with Tolip Group LLC's managed CRM infrastructure
+            Operational results from real estate professionals using TolipAI CRM software and workflow automation
           </p>
         </motion.div>
 
@@ -75,11 +75,11 @@ export function PerformanceDashboard() {
               transition={{ delay: 0.1 }}
               className="bg-[#0f1728] p-6 rounded-xl border border-border/50"
             >
-              <h4 className="text-muted-foreground text-sm font-medium mb-2">Properties Analyzed</h4>
-              <div ref={propAnalyzed.ref} className="text-4xl font-bold text-white mb-1 font-display">
-                {propAnalyzed.value}
+              <h4 className="text-muted-foreground text-sm font-medium mb-2">CRM Workflows Configured</h4>
+              <div ref={workflowsConfigured.ref} className="text-4xl font-bold text-white mb-1 font-display">
+                {workflowsConfigured.value}
               </div>
-              <p className="text-xs text-[#3b82f6]">Per Quarter</p>
+              <p className="text-xs text-[#3b82f6]">Across all clients</p>
             </motion.div>
             
             <motion.div 
@@ -89,11 +89,11 @@ export function PerformanceDashboard() {
               transition={{ delay: 0.2 }}
               className="bg-[#0f1728] p-6 rounded-xl border border-border/50"
             >
-              <h4 className="text-muted-foreground text-sm font-medium mb-2">Pipeline Leads Managed</h4>
-              <div ref={pipelineLeads.ref} className="text-4xl font-bold text-white mb-1 font-display">
-                {pipelineLeads.value} <span className="text-lg text-muted-foreground font-normal">(72%)</span>
+              <h4 className="text-muted-foreground text-sm font-medium mb-2">Pipeline Stages Automated</h4>
+              <div ref={pipelineStages.ref} className="text-4xl font-bold text-white mb-1 font-display">
+                {pipelineStages.value} <span className="text-lg text-muted-foreground font-normal">(72%)</span>
               </div>
-              <p className="text-xs text-[#10b981]">Pipeline Engagement Rate</p>
+              <p className="text-xs text-[#10b981]">Automation Coverage Rate</p>
             </motion.div>
 
             <motion.div 
@@ -103,11 +103,11 @@ export function PerformanceDashboard() {
               transition={{ delay: 0.3 }}
               className="bg-[#0f1728] p-6 rounded-xl border border-border/50"
             >
-              <h4 className="text-muted-foreground text-sm font-medium mb-2">Transactions Closed</h4>
-              <div ref={transactionsClosed.ref} className="text-4xl font-bold text-white mb-1 font-display">
-                {transactionsClosed.value}
+              <h4 className="text-muted-foreground text-sm font-medium mb-2">Teams Onboarded</h4>
+              <div ref={teamsOnboarded.ref} className="text-4xl font-bold text-white mb-1 font-display">
+                {teamsOnboarded.value}
               </div>
-              <p className="text-xs text-[#f59e0b]">Verified Closings</p>
+              <p className="text-xs text-[#f59e0b]">Active Platform Users</p>
             </motion.div>
 
             <motion.div 
@@ -118,49 +118,49 @@ export function PerformanceDashboard() {
               className="bg-[#0f1728] p-6 rounded-xl border border-border/50 relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 rounded-bl-full" />
-              <h4 className="text-muted-foreground text-sm font-medium mb-2 relative z-10">Revenue Generated</h4>
-              <div ref={revenueGenerated.ref} className="text-4xl font-bold text-primary mb-1 font-display relative z-10">
-                {revenueGenerated.value}
+              <h4 className="text-muted-foreground text-sm font-medium mb-2 relative z-10">Client Retention Rate</h4>
+              <div ref={clientRetention.ref} className="text-4xl font-bold text-primary mb-1 font-display relative z-10">
+                {clientRetention.value}
               </div>
-              <p className="text-xs text-primary/80 relative z-10">Client ROI: 950%</p>
+              <p className="text-xs text-primary/80 relative z-10">Monthly subscription renewal</p>
             </motion.div>
           </div>
 
           {/* MIDDLE ROW */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-            {/* Funnel */}
+            {/* CRM Adoption Funnel */}
             <div className="bg-[#0f1728] p-6 rounded-xl border border-border/50">
-              <h3 className="text-lg font-semibold text-white mb-6">Deal Pipeline Funnel</h3>
+              <h3 className="text-lg font-semibold text-white mb-6">CRM Adoption Workflow</h3>
               <div className="space-y-3 flex flex-col items-center">
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "100%" }} viewport={{ once: true }} transition={{ duration: 0.8 }}
                   className="bg-[#1e3a8a] text-white py-2 px-4 rounded text-center text-sm font-medium"
                 >
-                  Properties Analyzed: 1,250
+                  Platform Onboarding: 1,250 workflows
                 </motion.div>
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "80%" }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.1 }}
                   className="bg-[#0f766e] text-white py-2 px-4 rounded text-center text-sm font-medium"
                 >
-                  Pipeline Leads: 900
+                  Pipeline Configured: 900
                 </motion.div>
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "50%" }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.2 }}
                   className="bg-[#047857] text-white py-2 px-4 rounded text-center text-sm font-medium"
                 >
-                  Qualified: 400
+                  Automation Active: 400
                 </motion.div>
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "30%" }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.3 }}
                   className="bg-[#b45309] text-white py-2 px-4 rounded text-center text-sm font-medium"
                 >
-                  Offers Made: 100
+                  Reporting Live: 100
                 </motion.div>
                 <motion.div 
                   initial={{ width: 0 }} whileInView={{ width: "15%" }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.4 }}
-                  className="bg-[#b91c1c] text-white py-2 px-4 rounded text-center text-sm font-medium"
+                  className="bg-[#6d28d9] text-white py-2 px-4 rounded text-center text-sm font-medium"
                 >
-                  Deals Closed: 45
+                  Full Deployment: 45
                 </motion.div>
               </div>
             </div>
@@ -168,12 +168,12 @@ export function PerformanceDashboard() {
             {/* Performance Trend */}
             <div className="bg-[#0f1728] p-6 rounded-xl border border-border/50 flex flex-col justify-between">
               <div className="flex justify-between items-start mb-6">
-                <h3 className="text-lg font-semibold text-white">Performance Trend</h3>
+                <h3 className="text-lg font-semibold text-white">Workflow Efficiency Trend</h3>
                 <div className="flex items-center text-[#10b981] bg-[#10b981]/10 px-3 py-1 rounded-full text-sm font-medium">
                   <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                   </svg>
-                  +18% Transactions Last Quarter
+                  +18% Efficiency Last Quarter
                 </div>
               </div>
               
@@ -215,8 +215,8 @@ export function PerformanceDashboard() {
               <ul className="space-y-4">
                 {[
                   "Automated Follow-Up Workflows: 2x pipeline engagement improvement",
-                  "Accelerated Close Cycle: From 45 days to 28 days average",
-                  "CRM Pipeline Organization: Full deal visibility across all stages"
+                  "Accelerated Workflow Cycle: Administrative overhead reduced by 60%",
+                  "CRM Pipeline Organization: Full visibility across all pipeline stages"
                 ].map((item, i) => (
                   <motion.li 
                     key={i}
@@ -238,12 +238,12 @@ export function PerformanceDashboard() {
             </div>
 
             <div className="bg-[#0f1728] p-6 rounded-xl border border-border/50 flex flex-col justify-center">
-              <h3 className="text-lg font-semibold text-white mb-6">Impact Comparison</h3>
+              <h3 className="text-lg font-semibold text-white mb-6">Efficiency Comparison</h3>
               <div className="flex items-end justify-center gap-8 h-32">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-20 bg-muted/30 rounded-t-md h-[40%]" />
                   <span className="text-sm font-medium text-muted-foreground">Before TolipAI</span>
-                  <span className="text-xs text-muted-foreground">20 Transactions</span>
+                  <span className="text-xs text-muted-foreground">Manual Workflows</span>
                 </div>
                 
                 <motion.div 
@@ -254,7 +254,7 @@ export function PerformanceDashboard() {
                   className="flex flex-col items-center justify-center -mt-8"
                 >
                   <div className="bg-[#10b981]/20 text-[#10b981] px-3 py-1 rounded-full text-sm font-bold border border-[#10b981]/30">
-                    +125% Improvement
+                    +125% Efficiency Gain
                   </div>
                 </motion.div>
 
@@ -267,7 +267,7 @@ export function PerformanceDashboard() {
                     className="w-20 bg-primary/80 rounded-t-md" 
                   />
                   <span className="text-sm font-medium text-white">After TolipAI</span>
-                  <span className="text-xs text-primary">45 Transactions</span>
+                  <span className="text-xs text-primary">Automated Pipelines</span>
                 </div>
               </div>
             </div>

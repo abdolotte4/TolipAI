@@ -6,19 +6,19 @@ export function Testimonials() {
     {
       name: "Michael Torres",
       role: "REAL ESTATE INVESTOR",
-      text: "TolipAI transformed how we manage our deal pipeline. The CRM organization and workflow automation gave our team complete visibility across every stage. Our deal tracking and reporting clarity improved dramatically within the first month.",
+      text: "TolipAI's CRM platform transformed our operational workflow completely. Their software infrastructure delivered organized pipeline management and workflow automation that we had never experienced before. Our team efficiency increased significantly within the first quarter.",
       featured: false
     },
     {
       name: "Sarah Chen",
       role: "PORTFOLIO MANAGER",
-      text: "Outstanding CRM platform. Within weeks of onboarding with TolipAI, our pipeline was organized, follow-up tasks were automated, and our team stopped losing deals to administrative gaps. The efficiency gains have been remarkable.",
+      text: "Outstanding software infrastructure. Within weeks of implementing TolipAI's CRM platform, our pipeline management was producing consistent operational visibility. Their customer success team provides exceptional onboarding and compliance guidance.",
       featured: true
     },
     {
       name: "David Williams",
       role: "REAL ESTATE ACQUISITIONS DIRECTOR",
-      text: "The TolipAI team helped us set up CRM workflows that actually match how we operate. The ARV calculator and comps analysis tools save our analysts hours every week. Our pipeline management has never been more organized.",
+      text: "The TolipAI platform has been instrumental in scaling our operations. Their technical CRM infrastructure and workflow automation capabilities are best-in-class. We've achieved operational efficiency that exceeded our most optimistic projections.",
       featured: false
     }
   ];

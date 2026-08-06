@@ -5,10 +5,10 @@ const servicesBg = "/images/hero-bg.jpg";
 
 export function Services() {
   const pillars = [
-    { icon: <Building2 className="w-5 h-5 text-primary" />, label: "Real Estate Investment & Wholesaling" },
+    { icon: <Code2 className="w-5 h-5 text-primary" />, label: "SaaS Software Development (TolipAI)" },
     { icon: <Users className="w-5 h-5 text-primary" />, label: "CRM Support & Pipeline Management" },
-    { icon: <BarChart3 className="w-5 h-5 text-primary" />, label: "B2B SaaS & Data Analytics" },
-    { icon: <Code2 className="w-5 h-5 text-primary" />, label: "Full-Stack Software Development" },
+    { icon: <BarChart3 className="w-5 h-5 text-primary" />, label: "Business Operations Consulting" },
+    { icon: <Building2 className="w-5 h-5 text-primary" />, label: "Full-Stack Software Development" },
     { icon: <Calculator className="w-5 h-5 text-primary" />, label: "Accounting, FP&A & Tax Audit Support" },
     { icon: <Globe className="w-5 h-5 text-primary" />, label: "Business Operations & Infrastructure" },
   ];
@@ -64,7 +64,7 @@ export function Services() {
               </h2>
               <div className="w-16 h-1 bg-primary rounded-full mb-6" />
               <p className="text-muted-foreground text-lg leading-relaxed mb-8 max-w-3xl">
-                Tolip Group LLC is the parent company behind TolipAI. We deliver a wide range of professional services spanning real estate investment, technology, and business operations — combining technical infrastructure with business strategy to help clients scale efficiently and stay compliant.
+                Tolip Group LLC is the parent company behind TolipAI. We deliver professional services spanning SaaS software development, technology infrastructure, and business operations — combining technical infrastructure with business strategy to help clients scale efficiently and stay compliant.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {pillars.map((p, i) => (
