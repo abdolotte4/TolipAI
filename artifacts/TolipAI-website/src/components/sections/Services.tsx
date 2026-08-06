@@ -27,12 +27,12 @@ export function Services() {
     {
       title: "ARV Calculation & Comps Analysis",
       icon: <BarChart3 className="w-8 h-8 text-primary" />,
-      description: "Accurate After Repair Value (ARV) calculation and real estate comps analysis using live property data. TolipAI CRM's built-in ARV calculator and MAO calculator automatically pull comparable sales, adjust for property differences, and compute your Maximum Allowable Offer — giving real estate professionals data-driven numbers for every deal."
+      description: "Accurate After Repair Value (ARV) calculation and real estate comps analysis using live property data. TolipAI CRM's built-in ARV calculator and MAO calculator automatically pull comparable sales, adjust for property differences, and compute your Maximum Allowable Offer — giving real estate professionals reliable numbers for every evaluation."
     },
     {
       title: "Administrative Operations Support",
       icon: <Settings className="w-8 h-8 text-primary" />,
-      description: "Administrative support for CRM management, data entry, appointment coordination, reporting, and workflow organization. TolipAI CRM is a purpose-built real estate CRM for professionals — featuring lead pipeline management, ARV calculator, MAO calculator, comps analysis, task tracking, and team collaboration. Manage all property segments from first contact to closed deal — all in one platform."
+      description: "Administrative support for CRM management, data entry, appointment coordination, reporting, and workflow organization. TolipAI CRM is a purpose-built real estate CRM for professionals — featuring pipeline management, ARV calculator, MAO calculator, comps analysis, task tracking, and team collaboration. Manage all property segments and workflow stages — all in one platform."
     }
   ];
 

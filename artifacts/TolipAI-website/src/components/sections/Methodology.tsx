@@ -32,7 +32,7 @@ export function Methodology() {
               <div>
                 <h3 className="text-2xl font-bold text-foreground mb-3 font-display">Human-in-the-Loop Quality Assurance</h3>
                 <p className="text-muted-foreground text-lg leading-relaxed">
-                  Every data record and CRM workflow passes through our proprietary quality assurance protocol. Human oversight at every stage of the pipeline ensures precision, compliance, and measurable results.
+                  Every CRM workflow and automation configuration passes through our proprietary quality assurance protocol. Human oversight at every stage ensures precision, compliance, and measurable operational results.
                 </p>
               </div>
             </div>

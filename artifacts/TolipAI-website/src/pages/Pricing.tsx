@@ -12,7 +12,7 @@ const tiers = [
     description: "For solo investors and small teams getting organized.",
     features: [
       "CRM setup support",
-      "Lead pipeline organization",
+      "Pipeline organization & management",
       "Basic property analysis tools",
       "Task tracking",
       "Email support",
@@ -26,7 +26,7 @@ const tiers = [
     description: "For growing teams that need automation and analytics.",
     features: [
       "CRM workflows & automation",
-      "Lead pipeline dashboards",
+      "Pipeline dashboards & reporting",
       "ARV calculator",
       "Comps analysis tools",
       "Appointment coordination workflows",
@@ -136,7 +136,7 @@ export default function Pricing() {
         <div className="mt-16 p-8 rounded-2xl border border-primary/20 bg-primary/5 text-center">
           <h3 className="text-xl font-bold text-foreground mb-3 font-display">Not sure which plan is right for you?</h3>
           <p className="text-muted-foreground mb-6">
-            Request a guided product demo to see how TolipAI supports CRM workflows, lead pipeline management, and real estate analysis tools.
+            Request a guided product demo to see how TolipAI supports CRM workflows, pipeline management, and real estate analysis tools.
           </p>
           <Button
             className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-8 font-semibold"

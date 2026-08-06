@@ -112,7 +112,7 @@ export function LeadTypes() {
           className="mt-12 p-6 rounded-2xl border border-primary/20 bg-primary/5 text-center max-w-3xl mx-auto"
         >
           <p className="text-muted-foreground text-sm md:text-base">
-            <span className="text-foreground font-semibold">TolipAI's analytics platform</span> supports property research and organizes all six segments with verified property data — then loads them directly into <span className="text-primary font-semibold">TolipAI CRM</span> for your team to action.{" "}
+            <span className="text-foreground font-semibold">TolipAI's analytics platform</span> supports property research and organizes all six segments with structured property data — then loads them directly into <span className="text-primary font-semibold">TolipAI CRM</span> for your team to action.{" "}
             <a href="#contact" className="text-primary hover:underline font-medium">Get started →</a>
           </p>
         </motion.div>

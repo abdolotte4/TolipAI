@@ -8,7 +8,7 @@ export function CaseStudies() {
       icon: <TrendingUp className="w-6 h-6 text-primary-foreground" />,
       challenge: "A real estate investment team was struggling to track deals across spreadsheets, email threads, and disconnected tools. Their pipeline lacked visibility, follow-up tasks fell through the cracks, and deal reporting was unreliable.",
       solution: "We onboarded the team onto TolipAI CRM and configured custom pipeline stages, automated follow-up task sequences, and reporting dashboards aligned to their deal workflow. The CRM was set up with their existing records migrated and organized.",
-      results: "Within two weeks, the team had full pipeline visibility and automated follow-up reminders. Deal reporting went from a manual weekly process to real-time dashboards. The team closed their first deal using the structured pipeline within the first month of using TolipAI."
+      results: "Within two weeks, the team had full pipeline visibility and automated follow-up reminders. Deal reporting went from a manual weekly process to real-time dashboards. The team completed their first full CRM workflow deployment within the first month, with all pipeline stages organized and automated."
     },
     {
       title: "Scaling Operations with CRM Infrastructure",

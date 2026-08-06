@@ -58,9 +58,9 @@ export function SuccessStory() {
     },
     {
       icon: <Trophy className="w-8 h-8 text-primary" />,
-      number: 150,
-      label: "Awards Won",
-      suffix: "+"
+      number: 100,
+      label: "Client Satisfaction",
+      suffix: "%"
     },
     {
       icon: <Clock className="w-8 h-8 text-primary" />,

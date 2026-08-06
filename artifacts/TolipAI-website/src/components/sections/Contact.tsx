@@ -79,7 +79,7 @@ export function Contact() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4 font-display">Schedule a Consultation</h2>
             <div className="w-20 h-1 bg-primary rounded-full mb-8" />
             <p className="text-lg text-muted-foreground mb-12">
-              Ready to streamline your CRM workflows? Contact us to discuss how TolipAI's managed infrastructure can align with your operational goals.
+              Ready to streamline your CRM workflows? Contact us to discuss how TolipAI's software platform can support your operational goals.
             </p>
 
             <div className="space-y-8">
@@ -120,7 +120,7 @@ export function Contact() {
                   </svg>
                 </div>
                 <h3 className="text-2xl font-bold text-foreground mb-2">Message Received</h3>
-                <p className="text-muted-foreground">Thank you for your interest. A representative will contact you shortly.</p>
+                <p className="text-muted-foreground">Thank you for your interest. Our team will follow up via email within one business day.</p>
               </div>
             ) : (
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -160,7 +160,7 @@ export function Contact() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Phone Number</label>
+                    <label className="text-sm font-medium text-foreground">Phone <span className="text-muted-foreground font-normal">(optional — for SMS updates only)</span></label>
                     <Input 
                       {...form.register("phone")} 
                       placeholder="(555) 123-4567"
